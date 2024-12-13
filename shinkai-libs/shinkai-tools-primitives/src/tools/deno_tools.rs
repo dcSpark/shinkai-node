@@ -75,6 +75,7 @@ impl DenoTool {
         node_name: ShinkaiName,
         is_temporary: bool,
         files_tool_router_key: Option<String>,
+        mounts: Option<Vec<String>>,
     ) -> Result<RunResult, ToolError> {
         let assets_files = match files_tool_router_key {
             Some(tool_router_key) => {
@@ -105,6 +106,7 @@ impl DenoTool {
             node_name,
             is_temporary,
             assets_files,
+            mounts,
         )
     }
 
@@ -122,6 +124,7 @@ impl DenoTool {
         node_name: ShinkaiName,
         is_temporary: bool,
         assets_files: Vec<PathBuf>,
+        mounts: Option<Vec<String>>,
     ) -> Result<RunResult, ToolError> {
         println!(
             "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
@@ -274,7 +277,12 @@ impl DenoTool {
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
                                 assets_files,
-                                mount_files: vec![],
+                                mount_files: mounts
+                                    .clone()
+                                    .unwrap_or_default()
+                                    .iter()
+                                    .map(|mount| PathBuf::from(mount))
+                                    .collect(),
                             },
                             deno_binary_path: PathBuf::from(
                                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")

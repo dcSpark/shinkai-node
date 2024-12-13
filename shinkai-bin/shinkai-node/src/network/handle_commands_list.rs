@@ -2388,6 +2388,7 @@ impl Node {
                 app_id,
                 llm_provider,
                 extra_config,
+                mounts,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2416,6 +2417,7 @@ impl Node {
                         encryption_secret_key,
                         encryption_public_key,
                         signing_secret_key,
+                        mounts,
                         res,
                     )
                     .await;
@@ -2432,6 +2434,7 @@ impl Node {
                 tool_id,
                 app_id,
                 llm_provider,
+                mounts,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2450,6 +2453,7 @@ impl Node {
                         app_id,
                         llm_provider,
                         node_name,
+                        mounts,
                         res,
                     )
                     .await;

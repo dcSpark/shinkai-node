@@ -455,6 +455,7 @@ impl ToolRouter {
                         node_name,
                         false,
                         Some(tool_id),
+                        None,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -802,6 +803,7 @@ impl ToolRouter {
                 requester_node_name,
                 true,
                 Some(tool_id),
+                None,
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =

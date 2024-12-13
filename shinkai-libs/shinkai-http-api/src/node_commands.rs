@@ -936,6 +936,7 @@ pub enum NodeCommand {
         app_id: String,
         llm_provider: String,
         extra_config: Map<String, Value>,
+        mounts: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -949,6 +950,7 @@ pub enum NodeCommand {
         tool_id: String,
         app_id: String,
         llm_provider: String,
+        mounts: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolDefinitions {
