@@ -340,7 +340,7 @@ impl JobManager {
         );
 
         // Save response data to DB
-        db.write().await.add_step_history(
+        db.write().await.add_job_prompt(
             job_message.job_id.clone(),
             job_message.content,
             Some(image_files),

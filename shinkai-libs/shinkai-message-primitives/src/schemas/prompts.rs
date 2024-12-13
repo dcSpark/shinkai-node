@@ -249,18 +249,6 @@ impl Prompt {
         self.add_sub_prompts(updated_sub_prompts);
     }
 
-    /// Adds previous results from step history into the Prompt, up to max_tokens
-    /// Of note, priority value must be between 0-100.
-    pub fn add_step_history(&mut self, history: Vec<JobStepResult>, priority_value: u8) {
-        let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
-        let sub_prompts_list: Vec<SubPrompt> = history
-            .iter()
-            .filter_map(|step| step.get_result_prompt())
-            .flat_map(|prompt| prompt.sub_prompts.clone())
-            .collect();
-        self.add_sub_prompts_with_new_priority(sub_prompts_list, capped_priority_value);
-    }
-
     /// Removes the first sub-prompt from the end of the sub_prompts list that has the lowest priority value.
     /// Used primarily for cutting down prompt when it is too large to fit in context window.
     pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
@@ -418,12 +406,12 @@ impl Prompt {
                 SubPrompt::Omni(prompt_type, _, _, _) => {
                     // Process the current sub-prompt
                     let new_message = sub_prompt.into_chat_completion_request_message();
-                    
+
                     if let SubPromptType::UserLastMessage = prompt_type {
                         last_user_message = Some(new_message);
                     } else {
                         current_length +=
-                        sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
+                            sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
                         tiktoken_messages.push(new_message);
                     }
                 }

@@ -4,7 +4,7 @@ use rusqlite::params;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
-        job::{ForkedJob, Job, JobLike, JobStepResult},
+        job::{ForkedJob, Job, JobLike},
         job_config::JobConfig,
         prompts::Prompt,
         subprompts::SubPromptType,
@@ -114,7 +114,7 @@ impl SqliteManager {
     pub fn get_job_with_options(
         &self,
         job_id: &str,
-        fetch_step_history: bool,
+        fetch_prompts: bool,
         fetch_scope_with_files: bool,
     ) -> Result<Job, SqliteManagerError> {
         let (
@@ -125,12 +125,12 @@ impl SqliteManager {
             datetime_created,
             parent_agent_id,
             conversation_inbox,
-            step_history,
+            prompts,
             execution_context,
             associated_ui,
             config,
             forked_jobs,
-        ) = self.get_job_data(job_id, fetch_step_history, fetch_scope_with_files)?;
+        ) = self.get_job_data(job_id, fetch_prompts, fetch_scope_with_files)?;
 
         let job = Job {
             job_id: job_id.to_string(),
@@ -141,7 +141,7 @@ impl SqliteManager {
             scope,
             scope_with_files,
             conversation_inbox_name: conversation_inbox,
-            step_history: step_history.unwrap_or_else(Vec::new),
+            prompts,
             execution_context,
             associated_ui,
             config,
@@ -180,7 +180,7 @@ impl SqliteManager {
             scope,
             scope_with_files,
             conversation_inbox_name: conversation_inbox,
-            step_history: Vec::new(), // Empty step history for JobLike
+            prompts: Vec::new(),
             execution_context,
             associated_ui,
             config,
@@ -194,7 +194,7 @@ impl SqliteManager {
     fn get_job_data(
         &self,
         job_id: &str,
-        fetch_step_history: bool,
+        fetch_prompts: bool,
         fetch_scope_with_files: bool,
     ) -> Result<
         (
@@ -205,7 +205,7 @@ impl SqliteManager {
             String,
             String,
             InboxName,
-            Option<Vec<JobStepResult>>,
+            Vec<Prompt>,
             HashMap<String, String>,
             Option<AssociatedUI>,
             Option<JobConfig>,
@@ -260,10 +260,10 @@ impl SqliteManager {
             None
         };
 
-        let step_history = if fetch_step_history {
-            self.get_step_history(job_id, true)?
+        let prompts = if fetch_prompts {
+            self.get_job_prompts(job_id)?
         } else {
-            None
+            Vec::new()
         };
 
         let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
@@ -293,7 +293,7 @@ impl SqliteManager {
             datetime_created,
             parent_agent_id,
             conversation_inbox,
-            step_history,
+            prompts,
             execution_context,
             associated_ui,
             config,
@@ -324,7 +324,6 @@ impl SqliteManager {
             let config_bytes: Option<Vec<u8>> = row.get(10)?;
             let scope = serde_json::from_slice(&scope_bytes)?;
             let scope_with_files = serde_json::from_slice(&scope_with_files_bytes.unwrap_or_default())?;
-            let step_history = self.get_step_history(&job_id, false)?;
             let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
             let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
             let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
@@ -354,7 +353,7 @@ impl SqliteManager {
                 scope,
                 scope_with_files,
                 conversation_inbox_name: conversation_inbox,
-                step_history: step_history.unwrap_or_else(Vec::new),
+                prompts: Vec::new(),
                 execution_context,
                 associated_ui,
                 config,
@@ -403,7 +402,6 @@ impl SqliteManager {
             let config_bytes: Option<Vec<u8>> = row.get(10)?;
             let scope = serde_json::from_slice(&scope_bytes)?;
             let scope_with_files = serde_json::from_slice(&scope_with_files_bytes.unwrap_or_default())?;
-            let step_history = self.get_step_history(&job_id, false)?;
             let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
             let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
             let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
@@ -432,7 +430,7 @@ impl SqliteManager {
                 scope,
                 scope_with_files,
                 conversation_inbox_name: conversation_inbox,
-                step_history: step_history.unwrap_or_else(Vec::new),
+                prompts: Vec::new(),
                 execution_context,
                 associated_ui,
                 config,
@@ -490,7 +488,7 @@ impl SqliteManager {
         Ok(())
     }
 
-    pub fn add_step_history(
+    pub fn add_job_prompt(
         &self,
         job_id: String,
         user_message: String,
@@ -522,38 +520,27 @@ impl SqliteManager {
             }
         };
 
-        // Create prompt & JobStepResult
+        // Create prompt
         let mut prompt = Prompt::new();
         let user_files = user_files.unwrap_or_default();
         let agent_files = agent_files.unwrap_or_default();
         prompt.add_omni(user_message, user_files, SubPromptType::User, 100);
         prompt.add_omni(agent_response, agent_files, SubPromptType::Assistant, 100);
-        let mut job_step_result = JobStepResult::new();
-        job_step_result.add_new_step_revision(prompt);
 
-        let step_result_bytes = serde_json::to_vec(&job_step_result)
+        let prompt_bytes = serde_json::to_vec(&prompt)
             .map_err(|e| SqliteManagerError::SerializationError(format!("Error serializing JobStepResult: {}", e)))?;
 
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("INSERT INTO step_history (message_key, job_id, job_step_result) VALUES (?1, ?2, ?3)")?;
-        stmt.execute(params![message_key, job_id, step_result_bytes])?;
+        let mut stmt = conn.prepare("INSERT INTO job_prompts (message_key, job_id, prompt) VALUES (?1, ?2, ?3)")?;
+        stmt.execute(params![message_key, job_id, prompt_bytes])?;
 
         Ok(())
     }
 
-    pub fn get_step_history(
-        &self,
-        job_id: &str,
-        fetch_step_history: bool,
-    ) -> Result<Option<Vec<JobStepResult>>, SqliteManagerError> {
-        if !fetch_step_history {
-            return Ok(None);
-        }
-
+    pub fn get_job_prompts(&self, job_id: &str) -> Result<Vec<Prompt>, SqliteManagerError> {
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())
             .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e)))?;
-        let mut step_history: Vec<JobStepResult> = Vec::new();
+        let mut prompts: Vec<Prompt> = Vec::new();
         let mut until_offset_key: Option<String> = None;
 
         let conn = self.get_connection()?;
@@ -572,14 +559,14 @@ impl SqliteManager {
             for message_path in &messages {
                 if let Some(message) = message_path.first() {
                     let message_key = message.calculate_message_hash_for_pagination();
-                    let mut stmt = conn.prepare("SELECT job_step_result FROM step_history WHERE message_key = ?1")?;
+                    let mut stmt = conn.prepare("SELECT prompt FROM job_prompts WHERE message_key = ?1")?;
                     let mut rows = stmt.query(params![message_key])?;
 
                     while let Some(row) = rows.next()? {
                         let step_result_bytes: Vec<u8> = row.get(0)?;
-                        let step_result: JobStepResult = serde_json::from_slice(&step_result_bytes)?;
+                        let step_result: Prompt = serde_json::from_slice(&step_result_bytes)?;
 
-                        step_history.push(step_result);
+                        prompts.push(step_result);
                     }
                 }
             }
@@ -595,9 +582,9 @@ impl SqliteManager {
             }
         }
 
-        // Reverse the step history before returning
-        step_history.reverse();
-        Ok(Some(step_history))
+        // Reverse the prompts before returning
+        prompts.reverse();
+        Ok(prompts)
     }
 
     pub fn is_job_inbox_empty(&self, job_id: &str) -> Result<bool, SqliteManagerError> {
@@ -651,7 +638,7 @@ impl SqliteManager {
             params![inbox_name.to_string()],
         )?;
 
-        tx.execute("DELETE FROM step_history WHERE job_id = ?1", params![job_id])?;
+        tx.execute("DELETE FROM job_prompts WHERE job_id = ?1", params![job_id])?;
         tx.execute("DELETE FROM jobs WHERE job_id = ?1", params![job_id])?;
 
         tx.commit()?;
@@ -837,7 +824,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_step_history() {
+    async fn test_update_job_prompts() {
         let db = setup_test_db();
         let job_id = "test_job".to_string();
 
@@ -866,7 +853,7 @@ mod tests {
         db.unsafe_insert_inbox_message(&message, None, None).await.unwrap();
 
         // Update step history
-        db.add_step_history(
+        db.add_job_prompt(
             job_id.clone(),
             "What is 10 + 25".to_string(),
             None,
@@ -876,7 +863,7 @@ mod tests {
         )
         .unwrap();
         sleep(Duration::from_millis(10)).await;
-        db.add_step_history(
+        db.add_job_prompt(
             job_id.clone(),
             "2) What is 10 + 25".to_string(),
             None,
@@ -888,7 +875,7 @@ mod tests {
 
         // Retrieve the job and check that step history is updated
         let job = db.get_job(&job_id.clone()).unwrap();
-        assert_eq!(job.step_history.len(), 2);
+        assert_eq!(job.prompts.len(), 2);
     }
 
     #[test]
@@ -1076,7 +1063,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
+    async fn test_job_inbox_tree_structure_with_job_prompt_and_execution_context() {
         let db = setup_test_db();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -1128,9 +1115,9 @@ mod tests {
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
-            // Add a step history
+            // Add a prompt
             let result = format!("Result {}", i);
-            db.add_step_history(
+            db.add_job_prompt(
                 job_id.clone(),
                 format!("Step {} Level {}", i, current_level),
                 None,
@@ -1207,34 +1194,34 @@ mod tests {
         );
 
         // Check the step history
-        let step1 = &job.step_history[0];
-        let step2 = &job.step_history[1];
-        let step4 = &job.step_history[2];
+        let prompt1 = &job.prompts[0];
+        let prompt2 = &job.prompts[1];
+        let prompt4 = &job.prompts[2];
 
         assert_eq!(
-            step1.step_revisions[0].sub_prompts[0],
+            prompt1.sub_prompts[0],
             SubPrompt::Omni(User, "Step 1 Level 0".to_string(), vec![], 100)
         );
         assert_eq!(
-            step1.step_revisions[0].sub_prompts[1],
+            prompt1.sub_prompts[1],
             SubPrompt::Omni(Assistant, "Result 1".to_string(), vec![], 100)
         );
 
         assert_eq!(
-            step2.step_revisions[0].sub_prompts[0],
+            prompt2.sub_prompts[0],
             SubPrompt::Omni(User, "Step 2 Level 1".to_string(), vec![], 100)
         );
         assert_eq!(
-            step2.step_revisions[0].sub_prompts[1],
+            prompt2.sub_prompts[1],
             SubPrompt::Omni(Assistant, "Result 2".to_string(), vec![], 100)
         );
 
         assert_eq!(
-            step4.step_revisions[0].sub_prompts[0],
+            prompt4.sub_prompts[0],
             SubPrompt::Omni(User, "Step 4 Level 2".to_string(), vec![], 100)
         );
         assert_eq!(
-            step4.step_revisions[0].sub_prompts[1],
+            prompt4.sub_prompts[1],
             SubPrompt::Omni(Assistant, "Result 4".to_string(), vec![], 100)
         );
     }
@@ -1293,7 +1280,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            db.add_step_history(job_id.to_string(), user_message, None, agent_response, None, None)
+            db.add_job_prompt(job_id.to_string(), user_message, None, agent_response, None, None)
                 .unwrap();
 
             // Update the parent message hash according to the tree structure
@@ -1324,16 +1311,16 @@ mod tests {
 
         eprintln!("\n\n Getting steps...");
 
-        let step_history = db.get_step_history(job_id, true).unwrap().unwrap();
+        let job_prompt = db.get_job_prompts(job_id).unwrap();
 
-        let step_history_content: Vec<String> = step_history
+        let prompt_contents: Vec<String> = job_prompt
             .iter()
-            .map(|step| {
-                let user_message = match &step.step_revisions[0].sub_prompts[0] {
+            .map(|prompt| {
+                let user_message = match &prompt.sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 };
-                let agent_response = match &step.step_revisions[0].sub_prompts[1] {
+                let agent_response = match &prompt.sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 };
@@ -1341,19 +1328,19 @@ mod tests {
             })
             .collect();
 
-        eprintln!("Step history: {:?}", step_history_content);
+        eprintln!("Step history: {:?}", prompt_contents);
 
-        assert_eq!(step_history.len(), 3);
+        assert_eq!(job_prompt.len(), 3);
 
         // Check the content of the steps
         assert_eq!(
             format!(
                 "{} {}",
-                match &step_history[0].step_revisions[0].sub_prompts[0] {
+                match &job_prompt[0].sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
-                match &step_history[0].step_revisions[0].sub_prompts[1] {
+                match &job_prompt[0].sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }
@@ -1363,11 +1350,11 @@ mod tests {
         assert_eq!(
             format!(
                 "{} {}",
-                match &step_history[1].step_revisions[0].sub_prompts[0] {
+                match &job_prompt[1].sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
-                match &step_history[1].step_revisions[0].sub_prompts[1] {
+                match &job_prompt[1].sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }
@@ -1377,11 +1364,11 @@ mod tests {
         assert_eq!(
             format!(
                 "{} {}",
-                match &step_history[2].step_revisions[0].sub_prompts[0] {
+                match &job_prompt[2].sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
-                match &step_history[2].step_revisions[0].sub_prompts[1] {
+                match &job_prompt[2].sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }

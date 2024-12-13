@@ -214,7 +214,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_step_history() {
+    async fn test_update_job_prompts() {
         let job_id = "test_job".to_string();
         let db = setup_test_db();
         let shinkai_db = Arc::new(RwLock::new(db));
@@ -252,7 +252,7 @@ mod tests {
         shinkai_db
             .write()
             .await
-            .add_step_history(
+            .add_job_prompt(
                 job_id.clone(),
                 "What is 10 + 25".to_string(),
                 None,
@@ -265,7 +265,7 @@ mod tests {
         shinkai_db
             .write()
             .await
-            .add_step_history(
+            .add_job_prompt(
                 job_id.clone(),
                 "2) What is 10 + 25".to_string(),
                 None,
@@ -277,7 +277,7 @@ mod tests {
 
         // Retrieve the job and check that step history is updated
         let job = shinkai_db.read().await.get_job(&job_id.clone()).unwrap();
-        assert_eq!(job.step_history.len(), 2);
+        assert_eq!(job.prompts.len(), 2);
     }
 
     #[tokio::test]
@@ -495,7 +495,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
+    async fn test_job_inbox_tree_structure_with_prompts_and_execution_context() {
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
@@ -555,7 +555,7 @@ mod tests {
             shinkai_db
                 .write()
                 .await
-                .add_step_history(
+                .add_job_prompt(
                     job_id.clone(),
                     format!("Step {} Level {}", i, current_level),
                     None,
@@ -639,34 +639,34 @@ mod tests {
         );
 
         // Check the step history
-        let step1 = &job.step_history[0];
-        let step2 = &job.step_history[1];
-        let step4 = &job.step_history[2];
+        let prompt1 = &job.prompts[0];
+        let prompt2 = &job.prompts[1];
+        let prompt4 = &job.prompts[2];
 
         assert_eq!(
-            step1.step_revisions[0].sub_prompts[0],
+            prompt1.sub_prompts[0],
             SubPrompt::Omni(User, "Step 1 Level 0".to_string(), vec![], 100)
         );
         assert_eq!(
-            step1.step_revisions[0].sub_prompts[1],
+            prompt1.sub_prompts[1],
             SubPrompt::Omni(Assistant, "Result 1".to_string(), vec![], 100)
         );
 
         assert_eq!(
-            step2.step_revisions[0].sub_prompts[0],
+            prompt2.sub_prompts[0],
             SubPrompt::Omni(User, "Step 2 Level 1".to_string(), vec![], 100)
         );
         assert_eq!(
-            step2.step_revisions[0].sub_prompts[1],
+            prompt2.sub_prompts[1],
             SubPrompt::Omni(Assistant, "Result 2".to_string(), vec![], 100)
         );
 
         assert_eq!(
-            step4.step_revisions[0].sub_prompts[0],
+            prompt4.sub_prompts[0],
             SubPrompt::Omni(User, "Step 4 Level 2".to_string(), vec![], 100)
         );
         assert_eq!(
-            step4.step_revisions[0].sub_prompts[1],
+            prompt4.sub_prompts[1],
             SubPrompt::Omni(Assistant, "Result 4".to_string(), vec![], 100)
         );
     }
@@ -732,7 +732,7 @@ mod tests {
             shinkai_db
                 .write()
                 .await
-                .add_step_history(job_id.to_string(), user_message, None, agent_response, None, None)
+                .add_job_prompt(job_id.to_string(), user_message, None, agent_response, None, None)
                 .unwrap();
 
             // Update the parent message hash according to the tree structure
@@ -767,16 +767,16 @@ mod tests {
 
         eprintln!("\n\n Getting steps...");
 
-        let step_history = shinkai_db.read().await.get_step_history(job_id, true).unwrap().unwrap();
+        let prompts = shinkai_db.read().await.get_job_prompts(job_id).unwrap();
 
-        let step_history_content: Vec<String> = step_history
+        let prompt_contents: Vec<String> = prompts
             .iter()
             .map(|step| {
-                let user_message = match &step.step_revisions[0].sub_prompts[0] {
+                let user_message = match &step.sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 };
-                let agent_response = match &step.step_revisions[0].sub_prompts[1] {
+                let agent_response = match &step.sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 };
@@ -784,19 +784,19 @@ mod tests {
             })
             .collect();
 
-        eprintln!("Step history: {:?}", step_history_content);
+        eprintln!("Step history: {:?}", prompt_contents);
 
-        assert_eq!(step_history.len(), 3);
+        assert_eq!(prompts.len(), 3);
 
         // Check the content of the steps
         assert_eq!(
             format!(
                 "{} {}",
-                match &step_history[0].step_revisions[0].sub_prompts[0] {
+                match &prompts[0].sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
-                match &step_history[0].step_revisions[0].sub_prompts[1] {
+                match &prompts[0].sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }
@@ -806,11 +806,11 @@ mod tests {
         assert_eq!(
             format!(
                 "{} {}",
-                match &step_history[1].step_revisions[0].sub_prompts[0] {
+                match &prompts[1].sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
-                match &step_history[1].step_revisions[0].sub_prompts[1] {
+                match &prompts[1].sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }
@@ -820,11 +820,11 @@ mod tests {
         assert_eq!(
             format!(
                 "{} {}",
-                match &step_history[2].step_revisions[0].sub_prompts[0] {
+                match &prompts[2].sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 },
-                match &step_history[2].step_revisions[0].sub_prompts[1] {
+                match &prompts[2].sub_prompts[1] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 }

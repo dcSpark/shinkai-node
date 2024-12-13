@@ -1,4 +1,7 @@
-use crate::{shinkai_message::shinkai_message_schemas::AssociatedUI, shinkai_utils::job_scope::{JobScope, MinimalJobScope}};
+use crate::{
+    shinkai_message::shinkai_message_schemas::AssociatedUI,
+    shinkai_utils::job_scope::{JobScope, MinimalJobScope},
+};
 
 use super::{inbox_name::InboxName, job_config::JobConfig, prompts::Prompt};
 use serde::{Deserialize, Serialize};
@@ -38,12 +41,13 @@ pub struct Job {
     /// An inbox where messages to the agent from the user and messages from the agent are stored,
     /// enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
-    /// The job's step history (an ordered list of all prompts/outputs from LLM inferencing when processing steps)
+    /// List of Prompts that hold User->System sub prompt pairs that denote what the user
+    /// asked, and what the Agent finally responded with.
     /// Under the hood this is a tree, but it looks like a simple Vec because we only care about the latest valid path
-    /// based on the last message sent by the user
-    pub step_history: Vec<JobStepResult>,
+    /// based on the last message sent by the user.
+    pub prompts: Vec<Prompt>,
     /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
-    /// Same as step_history. Under the hood this is a tree, but everything is automagically filtered and converted to a hashmap.
+    /// Under the hood this is a tree, but everything is automagically filtered and converted to a hashmap.
     pub execution_context: HashMap<String, String>,
     /// A link to the UI where the user can view the job e.g. Sheet UI
     pub associated_ui: Option<AssociatedUI>,
