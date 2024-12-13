@@ -419,6 +419,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         // Create a ShinkaiTool instance
@@ -496,6 +497,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);

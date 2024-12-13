@@ -384,11 +384,101 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         payload: ToolPlayground,
+        node_env: NodeEnvironment,
+        _tool_id: String,
+        app_id: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
+        }
+
+        let toolkit_name = {
+            let name = format!(
+                "{}_{}",
+                payload
+                    .metadata
+                    .name
+                    .to_lowercase()
+                    .replace(" ", "_")
+                    .replace("-", "_")
+                    .replace(":", "_"),
+                payload
+                    .metadata
+                    .author
+                    .to_lowercase()
+                    .replace(" ", "_")
+                    .replace("-", "_")
+                    .replace(":", "_")
+            );
+            // Use a regex to filter out unwanted characters
+            let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
+            re.replace_all(&name, "").to_string()
+        };
+
+        let storage_path = node_env.node_storage_path.unwrap_or_default();
+        // Check all asset files exist in the {storage}/tool_storage/assets/{app_id}/
+        let mut origin_path: PathBuf = PathBuf::from(storage_path.clone());
+        origin_path.push(".tools_storage");
+        origin_path.push("playground");
+        origin_path.push(app_id);
+        if let Some(assets) = payload.assets.clone() {
+            for file_name in assets {
+                let mut asset_path: PathBuf = origin_path.clone();
+                asset_path.push(file_name.clone());
+                if !asset_path.exists() {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Asset file {} does not exist", file_name.clone()),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        }
+
+        // Copy asset to permanent tool_storage folder {storage}/tool_storage/{toolkit_name}.assets/
+        let mut perm_file_path = PathBuf::from(storage_path.clone());
+        perm_file_path.push(".tools_storage");
+        perm_file_path.push("tools");
+        perm_file_path.push(toolkit_name.clone());
+        if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to create permanent storage directory: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        if let Some(assets) = payload.assets.clone() {
+            for file_name in assets {
+                let mut tool_path = origin_path.clone();
+                tool_path.push(file_name.clone());
+                let mut perm_path = perm_file_path.clone();
+                perm_path.push(file_name.clone());
+                println!(
+                    "copying {} to {}",
+                    tool_path.to_string_lossy(),
+                    perm_path.to_string_lossy()
+                );
+                let copy_res = std::fs::copy(tool_path, perm_path);
+                if copy_res.is_err() {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!(
+                            "Failed to copy asset file {} to permanent storage: {}",
+                            file_name.clone(),
+                            copy_res.err().unwrap()
+                        ),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
         }
 
         // TODO: check that job_id exists
@@ -397,28 +487,7 @@ impl Node {
         let shinkai_tool = match payload.language {
             CodeLanguage::Typescript => {
                 let tool = DenoTool {
-                    toolkit_name: {
-                        let name = format!(
-                            "{}_{}",
-                            payload
-                                .metadata
-                                .name
-                                .to_lowercase()
-                                .replace(" ", "_")
-                                .replace("-", "_")
-                                .replace(":", "_"),
-                            payload
-                                .metadata
-                                .author
-                                .to_lowercase()
-                                .replace(" ", "_")
-                                .replace("-", "_")
-                                .replace(":", "_")
-                        );
-                        // Use a regex to filter out unwanted characters
-                        let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
-                        re.replace_all(&name, "").to_string()
-                    },
+                    toolkit_name,
                     name: payload.metadata.name.clone(),
                     author: payload.metadata.author.clone(),
                     js_code: payload.code.clone(),
@@ -435,33 +504,13 @@ impl Node {
                     sql_tables: Some(payload.metadata.sql_tables),
                     sql_queries: Some(payload.metadata.sql_queries),
                     file_inbox: None,
+                    assets: payload.assets,
                 };
                 ShinkaiTool::Deno(tool, false)
             }
             CodeLanguage::Python => {
                 let tool = PythonTool {
-                    toolkit_name: {
-                        let name = format!(
-                            "{}_{}",
-                            payload
-                                .metadata
-                                .name
-                                .to_lowercase()
-                                .replace(" ", "_")
-                                .replace("-", "_")
-                                .replace(":", "_"),
-                            payload
-                                .metadata
-                                .author
-                                .to_lowercase()
-                                .replace(" ", "_")
-                                .replace("-", "_")
-                                .replace(":", "_")
-                        );
-                        // Use a regex to filter out unwanted characters
-                        let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
-                        re.replace_all(&name, "").to_string()
-                    },
+                    toolkit_name,
                     name: payload.metadata.name.clone(),
                     author: payload.metadata.author.clone(),
                     py_code: payload.code.clone(),
@@ -478,6 +527,7 @@ impl Node {
                     sql_tables: Some(payload.metadata.sql_tables),
                     sql_queries: Some(payload.metadata.sql_queries),
                     file_inbox: None,
+                    assets: payload.assets,
                 };
                 ShinkaiTool::Python(tool, false)
             }
@@ -1757,10 +1807,8 @@ impl Node {
 
         let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
         file_path.push(".tools_storage");
+        file_path.push("playground");
         file_path.push(app_id);
-        // TODO
-        // keep this in sync with deno/python runner
-        file_path.push("assets");
         // Create directories if they don't exist
         if !file_path.exists() {
             std::fs::create_dir_all(&file_path)?;
@@ -1793,11 +1841,14 @@ impl Node {
 
         let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
         file_path.push(".tools_storage");
+        file_path.push("playground");
         file_path.push(app_id);
-        // TODO
-        // keep this in sync with deno/python runner
-        file_path.push("assets");
-        let files = std::fs::read_dir(&file_path).unwrap();
+        let files = std::fs::read_dir(&file_path);
+        if files.is_err() {
+            let _ = res.send(Ok(vec![])).await;
+            return Ok(());
+        }
+        let files = files.unwrap();
         let file_names = files
             .map(|file| file.unwrap().file_name().to_string_lossy().to_string())
             .collect();
@@ -1821,10 +1872,8 @@ impl Node {
 
         let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
         file_path.push(".tools_storage");
+        file_path.push("playground");
         file_path.push(app_id);
-        // TODO
-        // keep this in sync with deno/python runner
-        file_path.push("assets");
         file_path.push(&file_name);
         let stat = std::fs::remove_file(&file_path).map_err(|err| APIError {
             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

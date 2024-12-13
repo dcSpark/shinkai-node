@@ -160,6 +160,7 @@ impl SqliteManager {
                     job_id: row.get(8)?,
                     job_id_history: job_id_history.split(',').map(String::from).collect(),
                     code: row.get(10)?,
+                    assets: None,
                 })
             })
             .map_err(|e| {
@@ -223,6 +224,7 @@ impl SqliteManager {
                 job_id: row.get(8)?,
                 job_id_history: job_id_history.split(',').map(String::from).collect(),
                 code: row.get(10)?,
+                assets: None,
             })
         })?;
 
@@ -258,7 +260,10 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use shinkai_tools_primitives::tools::{
-        tool_output_arg::ToolOutputArg, deno_tools::{DenoTool, ToolResult}, parameters::Parameters, shinkai_tool::ShinkaiTool
+        deno_tools::{DenoTool, ToolResult},
+        parameters::Parameters,
+        shinkai_tool::ShinkaiTool,
+        tool_output_arg::ToolOutputArg,
     };
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
@@ -293,6 +298,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -325,6 +331,7 @@ mod tests {
             job_id: "job_123".to_string(),
             job_id_history: vec![],
             code: "console.log('Hello, world!');".to_string(),
+            assets: None,
         }
     }
 
@@ -408,7 +415,6 @@ mod tests {
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: Parameters::new(),
-
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -417,6 +423,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -480,7 +487,6 @@ mod tests {
             description: "A Deno tool for testing".to_string(),
             keywords: vec!["deno".to_string(), "test".to_string()],
             input_args: Parameters::new(),
-
             output_arg: ToolOutputArg::empty(),
             activated: true,
             embedding: None,
@@ -489,6 +495,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);

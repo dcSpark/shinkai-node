@@ -989,6 +989,8 @@ pub enum NodeCommand {
     V2ApiSetPlaygroundTool {
         bearer: String,
         payload: ToolPlayground,
+        tool_id: String,
+        app_id: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListPlaygroundTools {

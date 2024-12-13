@@ -40,6 +40,7 @@ pub struct PythonTool {
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
+    pub assets: Option<Vec<String>>,
 }
 
 impl PythonTool {
@@ -73,6 +74,18 @@ impl PythonTool {
         node_name: ShinkaiName,
         is_temporary: bool,
     ) -> Result<RunResult, ToolError> {
+        let path = PathBuf::from(&node_storage_path)
+            .join(".tools_storage")
+            .join("tools")
+            .join(self.toolkit_name.clone());
+        let assets_files = self
+            .assets
+            .clone()
+            .unwrap_or(vec![])
+            .iter()
+            .map(|asset| path.clone().join(asset))
+            .collect();
+
         self.run_on_demand(
             envs,
             api_ip,
@@ -85,6 +98,7 @@ impl PythonTool {
             tool_id,
             node_name,
             is_temporary,
+            assets_files,
         )
     }
 
@@ -101,6 +115,7 @@ impl PythonTool {
         tool_id: String,
         node_name: ShinkaiName,
         is_temporary: bool,
+        assets_files: Vec<PathBuf>,
     ) -> Result<RunResult, ToolError> {
         println!(
             "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
@@ -238,26 +253,6 @@ impl PythonTool {
                     support_files.iter().for_each(|(file_name, file_code)| {
                         code_files.insert(format!("{}.py", file_name), file_code.clone());
                     });
-
-                    let assets_path = Path::new(&node_storage_path)
-                        .join(".tools_storage")
-                        .join(&app_id)
-                        .join("assets");
-
-                    let mut assets_files = Vec::new();
-                    if assets_path.exists() {
-                        for entry in std::fs::read_dir(assets_path)
-                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
-                        {
-                            let entry = entry.map_err(|e| {
-                                ToolError::ExecutionError(format!("Failed to read directory entry: {}", e))
-                            })?;
-                            let path = entry.path();
-                            if path.is_file() {
-                                assets_files.push(path);
-                            }
-                        }
-                    }
 
                     // Setup the engine with the code files and config
                     let tool = PythonRunner::new(
