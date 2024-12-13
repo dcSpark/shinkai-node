@@ -140,6 +140,7 @@ impl JobManager {
                     llm_provider_found.clone(),
                 )
                 .await?;
+                // if we return a string here, we need to update the job message to have the new content
             }
         }
 
@@ -947,6 +948,7 @@ impl JobManager {
         llm_stopper: Arc<LLMStopper>,
         llm_provider_found: Option<ProviderOrAgent>,
     ) -> Result<(), LLMProviderError> {
+        // ^ eddie do we want to return a string after all of the processing?
         let llm_provider = llm_provider_found.ok_or(LLMProviderError::LLMProviderNotFound)?;
         let model = {
             if let ProviderOrAgent::LLMProvider(llm_provider) = llm_provider.clone() {
@@ -1001,9 +1003,9 @@ impl JobManager {
             );
 
             let function_call = FunctionCall {
-                name: "".to_string(), // Eddie more logic here
+                name: "".to_string(),              // Eddie more logic here
                 arguments: serde_json::Map::new(), // Eddie more logic here
-                tool_router_key: None, // Not needed
+                tool_router_key: None,             // Not needed
             };
 
             // Call the function with the context
