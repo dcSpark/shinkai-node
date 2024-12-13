@@ -918,6 +918,7 @@ impl Node {
                         let mut subidentity_manager = identity_manager.lock().await;
                         match subidentity_manager.add_profile_subidentity(subidentity).await {
                             Ok(_) => {
+                                std::mem::drop(subidentity_manager);
                                 if !first_device_needs_registration_code && !main_profile_exists {
                                     // Call the new function to scan and add Ollama models
                                     if let Err(err) = Self::scan_and_add_ollama_models(
@@ -1042,8 +1043,8 @@ impl Node {
                         let mut identity_manager_mut = identity_manager.lock().await;
                         match identity_manager_mut.add_device_subidentity(device_identity).await {
                             Ok(_) => {
+                                std::mem::drop(identity_manager_mut);
                                 if !main_profile_exists && !initial_llm_providers.is_empty() {
-                                    std::mem::drop(identity_manager_mut);
                                     let profile = full_identity_name.extract_profile()?;
                                     for llm_provider in &initial_llm_providers {
                                         Self::internal_add_llm_provider(

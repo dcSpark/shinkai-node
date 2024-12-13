@@ -6847,9 +6847,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.9.4"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "559613de6d5fa95ded06b87d05f4e3e1426ee24789b6640a83624b1b60fb1083"
+checksum = "48c57bb4f0f17afa717610da76132fade98dd41b01ef9d46a4323b53c66ab728"
 dependencies = [
  "anyhow",
  "base64-simd",
@@ -6876,6 +6876,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-util",
+ "toml_edit",
  "zip 2.2.1",
 ]
 
