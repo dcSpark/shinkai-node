@@ -392,7 +392,7 @@ impl ToolRouter {
         match shinkai_tool {
             ShinkaiTool::Python(_, _) => {
                 return Ok(ToolCallFunctionResponse {
-                    response: "Deno!".to_string(),
+                    response: "🐍 Python not connected".to_string(),
                     function_call,
                 });
             }

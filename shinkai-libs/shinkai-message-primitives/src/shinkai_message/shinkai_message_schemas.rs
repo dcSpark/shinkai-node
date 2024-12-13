@@ -314,6 +314,12 @@ pub enum CallbackAction {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
+pub struct MiddlewareTool {
+    pub tool_router_key: String,
+    // We can add more fields here if needed
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct JobMessage {
     pub job_id: String,
     pub content: String,
@@ -326,6 +332,24 @@ pub struct JobMessage {
     pub metadata: Option<MessageMetadata>,
     // Whenever we want to force the use of a specific tool, we can use this
     pub tool_key: Option<String>,
+    // Whenever we want to force the use of a specific tool before processing the message
+    pub middleware_tools: Option<Vec<MiddlewareTool>>,
+}
+
+impl JobMessage {
+    pub fn new(job_id: String, content: String) -> Self {
+        Self {
+            job_id,
+            content,
+            files_inbox: String::new(),
+            parent: None,
+            sheet_job_data: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+            middleware_tools: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, ToSchema)]

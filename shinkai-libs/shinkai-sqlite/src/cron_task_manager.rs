@@ -227,6 +227,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let name = "Test Task";
@@ -256,6 +257,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let name = "Test Task";
@@ -283,6 +285,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let action2 = CronTaskAction::SendMessageToJob {
@@ -296,6 +299,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let name1 = "Task 1";
@@ -329,6 +333,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let name = "Initial Task";
@@ -351,6 +356,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
 
@@ -379,6 +385,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let name = "Test Task";
@@ -415,6 +422,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let name = "Test Task";
@@ -452,6 +460,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                middleware_tools: None,
             },
         };
         let name = "Test Task";
