@@ -48,6 +48,7 @@ pub async fn execute_python_tool(
         sql_queries: None,
         file_inbox: None,
         oauth: oauth.clone(),
+        assets: None,
     };
 
     let mut envs = HashMap::new();

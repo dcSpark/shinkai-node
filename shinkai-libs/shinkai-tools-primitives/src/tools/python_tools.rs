@@ -40,6 +40,7 @@ pub struct PythonTool {
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
+    pub assets: Option<Vec<String>>,
 }
 
 impl PythonTool {

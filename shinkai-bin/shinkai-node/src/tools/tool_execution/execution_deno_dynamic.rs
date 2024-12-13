@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::{DenoTool, ToolResult};
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 
 use super::execution_coordinator::handle_oauth;
 use crate::utils::environment::fetch_node_environment;
@@ -46,6 +46,7 @@ pub async fn execute_deno_tool(
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
+        assets: None,
     };
 
     let mut envs = HashMap::new();
@@ -114,6 +115,7 @@ pub fn check_deno_tool(
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
+        assets: None,
     };
 
     let node_env = fetch_node_environment();

@@ -87,6 +87,8 @@ pub fn tool_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
         .and(warp::body::json())
         .and_then(set_playground_tool_handler);
 
@@ -713,6 +715,8 @@ pub async fn add_shinkai_tool_handler(
 pub async fn set_playground_tool_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    tool_id: String,
+    app_id: String,
     payload: ToolPlayground,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -721,6 +725,8 @@ pub async fn set_playground_tool_handler(
         .send(NodeCommand::V2ApiSetPlaygroundTool {
             bearer,
             payload, 
+            tool_id,
+            app_id,
             res: res_sender,
         })
         .await

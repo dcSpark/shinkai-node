@@ -5,10 +5,10 @@ use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
-    tool_output_arg::ToolOutputArg,
     deno_tools::ToolResult,
     parameters::{Parameters, Property},
     tool_config::{BasicConfig, ToolConfig},
+    tool_output_arg::ToolOutputArg,
 };
 
 /// A JSToolkit is a collection of JSTools.
@@ -73,6 +73,7 @@ impl JSToolkit {
             sql_tables: None,
             sql_queries: None,
             file_inbox: None,
+            assets: None,
         }
     }
 
@@ -99,7 +100,13 @@ impl JSToolkit {
                 for (key, value) in props {
                     let property_type = value["type"].as_str().unwrap_or("string").to_string();
                     let description = value["description"].as_str().unwrap_or_default().to_string();
-                    properties.insert(key.clone(), Property { property_type, description });
+                    properties.insert(
+                        key.clone(),
+                        Property {
+                            property_type,
+                            description,
+                        },
+                    );
                 }
             }
 

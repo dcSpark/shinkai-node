@@ -28,6 +28,7 @@ pub struct ToolPlayground {
     pub job_id_history: Vec<String>,
     pub code: String,
     pub language: CodeLanguage,
+    pub assets: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

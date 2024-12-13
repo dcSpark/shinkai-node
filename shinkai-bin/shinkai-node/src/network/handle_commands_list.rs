@@ -2690,10 +2690,18 @@ impl Node {
                     let _ = Node::v2_api_search_shinkai_tool(db_clone, bearer, query, res).await;
                 });
             }
-            NodeCommand::V2ApiSetPlaygroundTool { bearer, payload, res } => {
+            NodeCommand::V2ApiSetPlaygroundTool {
+                bearer,
+                payload,
+                tool_id,
+                app_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_playground_tool(db_clone, bearer, payload, res).await;
+                    let _ = Node::v2_api_set_playground_tool(db_clone, bearer, payload, node_env, tool_id, app_id, res)
+                        .await;
                 });
             }
             NodeCommand::V2ApiListPlaygroundTools { bearer, res } => {
