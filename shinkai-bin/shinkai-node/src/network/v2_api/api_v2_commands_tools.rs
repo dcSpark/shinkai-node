@@ -103,19 +103,12 @@ impl Node {
         // Start the timer for vector search
         let vector_start_time = Instant::now();
 
-        let vector_search_result = if let Some(ref allowed_tools) = allowed_tools {
-            // Use the limited vector search when allowed_tools is non-empty
-            db.read()
-                .await
-                .tool_vector_search_with_vector_limited(&sanitized_query, 5, allowed_tools.clone())
-                .await
-        } else {
-            // Use the regular vector search otherwise
-            db.read()
-                .await
-                .tool_vector_search(&sanitized_query, 5, false, true)
-                .await
-        };
+        // TODO: if allowed_tools is not None, then we should only search within those tools. Use alt search
+        let vector_search_result = db
+            .read()
+            .await
+            .tool_vector_search(&sanitized_query, 5, false, true)
+            .await;
         let vector_elapsed_time = vector_start_time.elapsed();
         println!("Time taken for vector search: {:?}", vector_elapsed_time);
 
@@ -1131,7 +1124,7 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
-            }
+            };
 
             // Handle the last message safely
             if let Some(last_message) = messages.last().and_then(|msg| msg.last()) {

@@ -29,21 +29,21 @@ pub fn cron_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<i64>())
+        .and(warp::query::<String>())
         .and_then(get_specific_cron_task_handler);
 
     let remove_cron_task_route = warp::path("remove_cron_task")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<i64>())
+        .and(warp::query::<String>())
         .and_then(remove_cron_task_handler);
 
     let get_cron_task_logs_route = warp::path("get_cron_task_logs")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<i64>())
+        .and(warp::query::<String>())
         .and_then(get_cron_task_logs_handler);
 
     let update_cron_task_route = warp::path("update_cron_task")
@@ -160,7 +160,7 @@ pub async fn list_all_cron_tasks_handler(
     get,
     path = "/v2/get_specific_cron_task",
     params(
-        ("cron_task_id" = i64, Query, description = "Cron task ID to retrieve")
+        ("cron_task_id" = String, Query, description = "Cron task ID to retrieve")
     ),
     responses(
         (status = 200, description = "Successfully retrieved specific cron task", body = Option<CronTask>),
@@ -171,8 +171,9 @@ pub async fn list_all_cron_tasks_handler(
 pub async fn get_specific_cron_task_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    cron_task_id: i64,
+    cron_task_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let cron_task_id: i64 = cron_task_id.parse().map_err(|_| warp::reject::reject())?;
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
@@ -201,7 +202,7 @@ pub async fn get_specific_cron_task_handler(
     post,
     path = "/v2/remove_cron_task",
     params(
-        ("cron_task_id" = i64, Query, description = "Cron task ID to remove")
+        ("cron_task_id" = String, Query, description = "Cron task ID to remove")
     ),
     responses(
         (status = 200, description = "Successfully removed cron task", body = Value),
@@ -212,8 +213,9 @@ pub async fn get_specific_cron_task_handler(
 pub async fn remove_cron_task_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    cron_task_id: i64,
+    cron_task_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let cron_task_id: i64 = cron_task_id.parse().map_err(|_| warp::reject::reject())?;
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
@@ -242,7 +244,7 @@ pub async fn remove_cron_task_handler(
     get,
     path = "/v2/get_cron_task_logs",
     params(
-        ("cron_task_id" = i64, Query, description = "Cron task ID to retrieve logs for")
+        ("cron_task_id" = String, Query, description = "Cron task ID to retrieve logs for")
     ),
     responses(
         (status = 200, description = "Successfully retrieved cron task logs", body = Value),
@@ -253,8 +255,9 @@ pub async fn remove_cron_task_handler(
 pub async fn get_cron_task_logs_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    cron_task_id: i64,
+    cron_task_id: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let cron_task_id: i64 = cron_task_id.parse().map_err(|_| warp::reject::reject())?;
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
@@ -297,12 +300,13 @@ pub async fn update_cron_task_handler(
     authorization: String,
     payload: UpdateCronTaskRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let cron_task_id: i64 = payload.cron_task_id.parse().map_err(|_| warp::reject::reject())?;
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::V2ApiUpdateCronTask {
             bearer,
-            cron_task_id: payload.cron_task_id,
+            cron_task_id,
             cron: payload.cron,
             action: payload.action,
             name: payload.name,
