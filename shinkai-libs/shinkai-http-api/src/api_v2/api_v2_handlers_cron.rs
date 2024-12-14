@@ -1,10 +1,11 @@
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
 use async_channel::Sender;
+use serde::Deserialize;
 use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use utoipa::OpenApi;
 use warp::http::StatusCode;
 use warp::Filter;
-use serde::Deserialize;
+use std::collections::HashMap;
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -29,7 +30,7 @@ pub fn cron_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<String>())
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(get_specific_cron_task_handler);
 
     let remove_cron_task_route = warp::path("remove_cron_task")
@@ -43,7 +44,7 @@ pub fn cron_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<String>())
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(get_cron_task_logs_handler);
 
     let update_cron_task_route = warp::path("update_cron_task")
@@ -171,10 +172,30 @@ pub async fn list_all_cron_tasks_handler(
 pub async fn get_specific_cron_task_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    cron_task_id: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let cron_task_id: i64 = cron_task_id.parse().map_err(|_| warp::reject::reject())?;
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    // Extract cron_task_id from query parameters
+    let cron_task_id_str = query_params
+        .get("cron_task_id")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?;
+
+    // Parse cron_task_id to i64
+    let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The cron_task_id must be a valid integer.".to_string(),
+        })
+    })?;
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::V2ApiGetSpecificCronTask {
@@ -255,10 +276,30 @@ pub async fn remove_cron_task_handler(
 pub async fn get_cron_task_logs_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    cron_task_id: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let cron_task_id: i64 = cron_task_id.parse().map_err(|_| warp::reject::reject())?;
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    // Extract cron_task_id from query parameters
+    let cron_task_id_str = query_params
+        .get("cron_task_id")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?;
+
+    // Parse cron_task_id to i64
+    let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The cron_task_id must be a valid integer.".to_string(),
+        })
+    })?;
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::V2ApiGetCronTaskLogs {
