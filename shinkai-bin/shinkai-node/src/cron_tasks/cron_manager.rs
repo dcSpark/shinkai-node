@@ -364,6 +364,12 @@ impl CronManager {
         println!("  Current time: {}", now);
         println!("  End of interval: {}", end_of_interval);
 
+        // Validate that the cron expression has exactly 5 fields
+        if cron_task.cron.split_whitespace().count() != 5 {
+            println!("  Invalid cron expression: wrong number of fields");
+            return false;
+        }
+
         let next_execution_time = match cron_parser::parse(&cron_task.cron, &now) {
             Ok(datetime) => {
                 println!("  Next execution time: {}", datetime);
@@ -512,8 +518,16 @@ mod tests {
 
     #[test]
     fn test_invalid_cron_expression() {
-        let task = create_test_cron_task("* * * *");
+        // Using an invalid cron expression with only 4 fields instead of 5
+        let task = create_test_cron_task("* * * *"); 
+        
+        // The should_execute_cron_task function should return false for invalid expressions
+        // as it already handles the error case in its implementation
         assert!(!CronManager::should_execute_cron_task(&task, 60));
+        
+        // We can also test another invalid expression
+        let task_invalid_values = create_test_cron_task("60 24 32 13 8");
+        assert!(!CronManager::should_execute_cron_task(&task_invalid_values, 60));
     }
 
     #[test]
