@@ -33,12 +33,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    python_tools::PythonTool,
-    shinkai_tool::ShinkaiTool,
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::ToolPlayground,
+    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::ShinkaiTool, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
@@ -72,12 +67,11 @@ impl Node {
     /// # Returns
     ///
     /// A `Result` indicating success or failure of the search operation.
-
-    // TODO: we need the search to also takes an agent so it only searches for tools that the agent has access to
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -88,16 +82,42 @@ impl Node {
         // Sanitize the query to handle special characters
         let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
 
+        // Attempt to get the agent's tools if agent_or_llm is provided
+        let allowed_tools = if let Some(agent_id) = agent_or_llm {
+            match db.read().await.get_agent(&agent_id) {
+                Ok(Some(agent)) => Some(agent.tools),
+                Ok(None) | Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         // Start the timer for logging purposes
         let start_time = Instant::now();
 
         // Start the timer for vector search
         let vector_start_time = Instant::now();
-        let vector_search_result = db
-            .read()
-            .await
-            .tool_vector_search(&sanitized_query, 5, false, true)
-            .await;
+
+        // Use different search method based on whether we have allowed_tools
+        let vector_search_result = if let Some(tools) = allowed_tools {
+            // First generate the embedding from the query
+            let embedding = db.read()
+                .await
+                .generate_embeddings(&sanitized_query)
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+            // Then use the embedding with the limited search
+            db.read()
+                .await
+                .tool_vector_search_with_vector_limited(embedding, 5, tools)
+        } else {
+            db.read()
+                .await
+                .tool_vector_search(&sanitized_query, 5, false, true)
+                .await
+        };
+
         let vector_elapsed_time = vector_start_time.elapsed();
         println!("Time taken for vector search: {:?}", vector_elapsed_time);
 
@@ -1113,7 +1133,7 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
-            };
+            }
 
             // Handle the last message safely
             if let Some(last_message) = messages.last().and_then(|msg| msg.last()) {

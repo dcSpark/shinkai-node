@@ -1,6 +1,6 @@
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue, NetworkVRKai};
+use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -15,10 +15,6 @@ use crate::network::network_limiter::ConnectionLimiter;
 use crate::network::ws_routes::run_ws_api;
 use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
-use aes_gcm::aead::generic_array::GenericArray;
-use aes_gcm::aead::Aead;
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
@@ -26,7 +22,7 @@ use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
-use rand::{Rng, RngCore};
+use rand::RngCore;
 use reqwest::StatusCode;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
@@ -34,7 +30,6 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::retry::RetryMessage;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
-use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{

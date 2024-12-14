@@ -555,6 +555,7 @@ fn micropayment_flow_test() {
                     .send(NodeCommand::V2ApiSearchShinkaiTool {
                         bearer: api_v2_key.to_string(),
                         query: "echo".to_string(),
+                        agent_or_llm: None,
                         res: sender,
                     })
                     .await

@@ -680,6 +680,7 @@ pub enum NodeCommand {
     V2ApiSearchShinkaiTool {
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiTools {

@@ -443,7 +443,8 @@ pub async fn tool_metadata_implementation_handler(
     get,
     path = "/v2/search_shinkai_tool",
     params(
-        ("query" = String, Query, description = "Search query for Shinkai tools")
+        ("query" = String, Query, description = "Search query for Shinkai tools"),
+        ("agent_or_llm" = Option<String>, Query, description = "Optional agent or LLM identifier")
     ),
     responses(
         (status = 200, description = "Successfully searched Shinkai tools", body = Value),
@@ -467,11 +468,16 @@ pub async fn search_shinkai_tool_handler(
             })
         })?
         .to_string();
+    
+    // Get the optional agent_or_llm parameter
+    let agent_or_llm = query_params.get("agent_or_llm").cloned();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSearchShinkaiTool {
             bearer,
             query,
+            agent_or_llm,
             res: res_sender,
         })
         .await
