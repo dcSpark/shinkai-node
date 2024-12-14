@@ -71,7 +71,7 @@ pub struct AddCronTaskRequest {
 
 #[derive(Deserialize)]
 pub struct UpdateCronTaskRequest {
-    cron_task_id: i64,
+    cron_task_id: String,
     cron: String,
     action: CronTaskAction,
     name: String,
@@ -286,7 +286,7 @@ pub async fn get_cron_task_logs_handler(
     put,
     path = "/v2/update_cron_task",
     params(
-        ("cron_task_id" = i64, Query, description = "Cron task ID to update")
+        ("cron_task_id" = String, Query, description = "Cron task ID to update")
     ),
     request_body = UpdateCronTaskRequest,
     responses(
