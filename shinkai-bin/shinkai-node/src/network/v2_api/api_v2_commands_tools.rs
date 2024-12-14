@@ -72,12 +72,11 @@ impl Node {
     /// # Returns
     ///
     /// A `Result` indicating success or failure of the search operation.
-
-    // TODO: we need the search to also takes an agent so it only searches for tools that the agent has access to
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -88,16 +87,35 @@ impl Node {
         // Sanitize the query to handle special characters
         let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
 
+        // Attempt to get the agent's tools if agent_or_llm is provided
+        let allowed_tools = if let Some(agent_id) = agent_or_llm {
+            match db.read().await.get_agent(&agent_id) {
+                Ok(Some(agent)) => Some(agent.tools),
+                Ok(None) | Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         // Start the timer for logging purposes
         let start_time = Instant::now();
 
         // Start the timer for vector search
         let vector_start_time = Instant::now();
-        let vector_search_result = db
-            .read()
-            .await
-            .tool_vector_search(&sanitized_query, 5, false, true)
-            .await;
+
+        let vector_search_result = if let Some(ref allowed_tools) = allowed_tools {
+            // Use the limited vector search when allowed_tools is non-empty
+            db.read()
+                .await
+                .tool_vector_search_with_vector_limited(&sanitized_query, 5, allowed_tools.clone())
+                .await
+        } else {
+            // Use the regular vector search otherwise
+            db.read()
+                .await
+                .tool_vector_search(&sanitized_query, 5, false, true)
+                .await
+        };
         let vector_elapsed_time = vector_start_time.elapsed();
         println!("Time taken for vector search: {:?}", vector_elapsed_time);
 
@@ -1113,7 +1131,7 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
-            };
+            }
 
             // Handle the last message safely
             if let Some(last_message) = messages.last().and_then(|msg| msg.last()) {

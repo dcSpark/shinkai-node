@@ -2738,10 +2738,10 @@ impl Node {
                     let _ = Node::v2_export_messages_from_inbox(db_clone, bearer, inbox_name, format, res).await;
                 });
             }
-            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, res } => {
+            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, agent_or_llm, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_search_shinkai_tool(db_clone, bearer, query, res).await;
+                    let _ = Node::v2_api_search_shinkai_tool(db_clone, bearer, query, agent_or_llm, res).await;
                 });
             }
             NodeCommand::V2ApiSetPlaygroundTool { bearer, payload, res } => {

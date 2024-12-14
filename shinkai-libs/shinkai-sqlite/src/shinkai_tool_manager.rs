@@ -614,15 +614,133 @@ impl SqliteManager {
                 is_enabled = ?2,
                 is_network = ?3
              WHERE tool_key = ?4",
-            params![
-                cast_slice(&embedding),
-                is_enabled,
-                is_network,
-                tool_key
-            ],
+            params![cast_slice(&embedding), is_enabled, is_network, tool_key],
         )?;
 
         Ok(())
+    }
+
+    // Performs a vector search for tools using a precomputed vector within a limited scope
+    pub fn tool_vector_search_with_vector_limited(
+        &self,
+        vector: Vec<f32>,
+        num_results: u64,
+        tool_keys: Vec<String>,
+    ) -> Result<Vec<(ShinkaiToolHeader, f64)>, SqliteManagerError> {
+        // Serialize the vector to a JSON array string for the database query
+        let vector_json = serde_json::to_string(&vector).map_err(|e| {
+            eprintln!("Vector serialization error: {}", e);
+            SqliteManagerError::SerializationError(e.to_string())
+        })?;
+
+        // Establish a connection to the database
+        let conn = self.get_connection()?;
+
+        // Start with a larger limit to account for filtering
+        let mut current_limit = num_results * 2; // Adjust this multiplier as needed
+
+        // SQL query to perform the vector search
+        let query = "SELECT v.tool_key, v.distance 
+             FROM shinkai_tools_vec_items v
+             WHERE v.embedding MATCH json(?1)
+             ORDER BY v.distance 
+             LIMIT ?2";
+
+        let mut tools_with_distances = Vec::new();
+
+        // Fetch and filter results until we have enough
+        loop {
+            let mut stmt = conn.prepare(&query)?;
+            let tool_keys_and_distances: Vec<(String, f64)> = stmt
+                .query_map(&[&vector_json, &current_limit.to_string()], |row| {
+                    // Dereference the distance to convert from &f64 to f64
+                    Ok((row.get(0)?, row.get::<_, f64>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            // Filter results based on the provided tool keys
+            for (tool_key, distance) in &tool_keys_and_distances {
+                if tool_keys.contains(tool_key) {
+                    if let Ok(tool_header) = self.get_tool_header_by_key(tool_key) {
+                        tools_with_distances.push((tool_header, *distance));
+                    }
+                }
+                // Break if we have enough results
+                if tools_with_distances.len() >= num_results as usize {
+                    return Ok(tools_with_distances);
+                }
+            }
+
+            // Break if the query returned fewer results than the current limit
+            if tool_keys_and_distances.len() < current_limit as usize {
+                break;
+            }
+
+            // Increase the limit for the next query
+            current_limit *= 2;
+        }
+
+        Ok(tools_with_distances)
+    }
+
+    // Search the FTS table with a limited scope
+    pub fn search_tools_fts_limited(
+        &self,
+        query: &str,
+        tool_keys: Vec<String>,
+    ) -> Result<Vec<ShinkaiToolHeader>, SqliteManagerError> {
+        // Get a connection from the in-memory pool for FTS operations
+        let fts_conn = self
+            .fts_pool
+            .get()
+            .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
+
+        // Extract keyphrases using the `keyphrases` crate (RAKE under the hood).
+        let extractor = KeyPhraseExtractor::new(query, 5);
+        let keywords = extractor.get_keywords();
+
+        // If no key phrases were found, just use the original query
+        let phrases_to_search = if keywords.is_empty() {
+            vec![query.to_string()]
+        } else {
+            keywords.iter().map(|(_, kw)| kw.clone()).collect::<Vec<String>>()
+        };
+
+        let mut tool_headers = Vec::new();
+        let mut seen = HashSet::new(); // avoid duplicates if multiple phrases match the same tool
+
+        let conn = self.get_connection()?;
+
+        for phrase in phrases_to_search {
+            let mut stmt = fts_conn.prepare("SELECT name FROM shinkai_tools_fts WHERE shinkai_tools_fts MATCH ?1")?;
+            let name_iter = stmt.query_map(rusqlite::params![phrase], |row| row.get::<_, String>(0))?;
+
+            for name_res in name_iter {
+                let name = name_res.map_err(|e| {
+                    eprintln!("FTS query error: {}", e);
+                    SqliteManagerError::DatabaseError(e)
+                })?;
+
+                // Only fetch tool header if we haven't seen this one already and it's in the limited scope
+                if seen.insert(name.clone()) && tool_keys.contains(&name) {
+                    let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE name = ?1")?;
+                    let tool_header_data: Vec<u8> =
+                        stmt.query_row(rusqlite::params![name], |row| row.get(0)).map_err(|e| {
+                            eprintln!("Persistent DB query error: {}", e);
+                            SqliteManagerError::DatabaseError(e)
+                        })?;
+
+                    let tool_header: ShinkaiToolHeader = serde_json::from_slice(&tool_header_data).map_err(|e| {
+                        eprintln!("Deserialization error: {}", e);
+                        SqliteManagerError::SerializationError(e.to_string())
+                    })?;
+
+                    tool_headers.push(tool_header);
+                }
+            }
+        }
+
+        Ok(tool_headers)
     }
 }
 
@@ -635,11 +753,11 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
-    use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
     use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
+    use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
     use shinkai_vector_resources::embeddings::Embedding;
     use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
@@ -1171,7 +1289,9 @@ mod tests {
             deno_tool.activated = false;
             let updated_tool = ShinkaiTool::Deno(deno_tool, false);
             // Just update the tool status - no need to regenerate the vector
-            manager.update_tool_with_vector(updated_tool, SqliteManager::generate_vector_for_testing(0.1)).unwrap();
+            manager
+                .update_tool_with_vector(updated_tool, SqliteManager::generate_vector_for_testing(0.1))
+                .unwrap();
         }
 
         // Search again excluding disabled tools - should now return empty results
@@ -1332,5 +1452,227 @@ mod tests {
         assert!(search_results.iter().any(|t| t.name == "Enabled Non-Network Tool"));
         assert!(search_results.iter().any(|t| t.name == "Disabled Non-Network Tool"));
         assert!(search_results.iter().any(|t| t.name == "Enabled Network Tool"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_vector_search_with_vector_limited() {
+        let mut manager = setup_test_db().await;
+
+        // Create three tools with different vectors
+        let tool1 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Tool One".to_string(),
+            author: "Author 1".to_string(),
+            js_code: "console.log('Tool 1');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "First test tool".to_string(),
+            keywords: vec!["test".to_string(), "one".to_string()],
+            input_args: Parameters::new(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        let tool2 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Tool Two".to_string(),
+            author: "Author 2".to_string(),
+            js_code: "console.log('Tool 2');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "Second test tool".to_string(),
+            keywords: vec!["test".to_string(), "two".to_string()],
+            input_args: Parameters::new(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        let tool3 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Tool Three".to_string(),
+            author: "Author 3".to_string(),
+            js_code: "console.log('Tool 3');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "Third test tool".to_string(),
+            keywords: vec!["test".to_string(), "three".to_string()],
+            input_args: Parameters::new(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        // Add tools to database with specific vectors
+        let shinkai_tool1 = ShinkaiTool::Deno(tool1, true);
+        let shinkai_tool2 = ShinkaiTool::Deno(tool2, true);
+        let shinkai_tool3 = ShinkaiTool::Deno(tool3, true);
+
+        // Tool 2 will have the closest vector to our search query
+        manager
+            .add_tool_with_vector(shinkai_tool1.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool2.clone(), SqliteManager::generate_vector_for_testing(0.5))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool3.clone(), SqliteManager::generate_vector_for_testing(0.9))
+            .unwrap();
+
+        // Search vector that's closest to Tool 2's vector
+        let search_vector = SqliteManager::generate_vector_for_testing(0.5);
+
+        // Only include Tool 1 and Tool 3 in the search scope
+        let limited_tool_keys = vec![shinkai_tool1.tool_router_key(), shinkai_tool3.tool_router_key()];
+
+        // Perform the limited search
+        let results = manager
+            .tool_vector_search_with_vector_limited(search_vector.clone(), 2, limited_tool_keys.clone())
+            .unwrap();
+
+        // Verify results
+        assert_eq!(results.len(), 2, "Should only find two tools");
+
+        // Perform the limited search
+        let results = manager
+            .tool_vector_search_with_vector_limited(search_vector, 10, limited_tool_keys)
+            .unwrap();
+
+        // Verify results
+        assert_eq!(results.len(), 2, "Should only find two tools");
+
+        // Tool 2 should not be in results despite having the closest vector
+        for (tool, _distance) in &results {
+            assert_ne!(
+                tool.name, "Tool Two",
+                "Tool Two should not be in results as it wasn't in the limited scope"
+            );
+        }
+
+        // Verify that Tool 1 and Tool 3 are in the results
+        let result_names: Vec<String> = results.iter().map(|(tool, _)| tool.name.clone()).collect();
+        assert!(result_names.contains(&"Tool One".to_string()));
+        assert!(result_names.contains(&"Tool Three".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_search_tools_fts_limited() {
+        let mut manager = setup_test_db().await;
+
+        // Create three tools with different names and descriptions
+        let tool1 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Tool One".to_string(),
+            author: "Author 1".to_string(),
+            js_code: "console.log('Tool 1');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "First test tool".to_string(),
+            keywords: vec!["test".to_string(), "one".to_string()],
+            input_args: Parameters::new(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        let tool2 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Tool Two".to_string(),
+            author: "Author 2".to_string(),
+            js_code: "console.log('Tool 2');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "Second test tool".to_string(),
+            keywords: vec!["test".to_string(), "two".to_string()],
+            input_args: Parameters::new(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        let tool3 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Tool Three".to_string(),
+            author: "Author 3".to_string(),
+            js_code: "console.log('Tool 3');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "Third test tool".to_string(),
+            keywords: vec!["test".to_string(), "three".to_string()],
+            input_args: Parameters::new(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            output_arg: ToolOutputArg::empty(),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        // Add tools to the database
+        let shinkai_tool1 = ShinkaiTool::Deno(tool1, true);
+        let shinkai_tool2 = ShinkaiTool::Deno(tool2, true);
+        let shinkai_tool3 = ShinkaiTool::Deno(tool3, true);
+
+        manager
+            .add_tool_with_vector(shinkai_tool1.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool2.clone(), SqliteManager::generate_vector_for_testing(0.5))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool3.clone(), SqliteManager::generate_vector_for_testing(0.9))
+            .unwrap();
+
+        // Only include Tool 1 and Tool 3 in the search scope
+        let limited_tool_keys = vec![shinkai_tool1.tool_router_key(), shinkai_tool3.tool_router_key()];
+
+        // Perform the limited FTS search
+        let results = manager
+            .search_tools_fts_limited("test", limited_tool_keys.clone())
+            .unwrap();
+
+        // Verify results
+        assert_eq!(results.len(), 2, "Should only find two tools");
+
+        // Tool 2 should not be in results despite matching the query
+        for tool in &results {
+            assert_ne!(
+                tool.name, "Tool Two",
+                "Tool Two should not be in results as it wasn't in the limited scope"
+            );
+        }
+
+        // Verify that Tool 1 and Tool 3 are in the results
+        let result_names: Vec<String> = results.iter().map(|tool| tool.name.clone()).collect();
+        assert!(result_names.contains(&"Tool One".to_string()));
+        assert!(result_names.contains(&"Tool Three".to_string()));
     }
 }
