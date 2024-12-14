@@ -449,7 +449,7 @@ mod tests {
                 parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
             }
 
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(Duration::from_millis(300)).await;
         }
 
         // Check if the job inbox is not empty after adding a message
