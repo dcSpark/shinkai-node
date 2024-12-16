@@ -183,6 +183,7 @@ class CONFIG:
 
 class INPUTS:
     sample: List[str]
+    argN: Optional[str] = None
 
 class OUTPUT:
     another_sample: str

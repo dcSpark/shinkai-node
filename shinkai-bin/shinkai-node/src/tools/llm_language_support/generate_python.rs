@@ -242,7 +242,7 @@ pub fn generate_python_definition(
     } else {
         // Original implementation for .py file
         python_output.push_str(&format!("async def {}(", function_name));
-        python_output.push_str(&generate_parameters(&tool, true));
+        python_output.push_str(&generate_parameters(&tool));
         python_output.push_str(") -> Dict[str, Any]:\n");
         python_output.push_str(&generate_docstring(&tool, "    "));
 
