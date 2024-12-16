@@ -669,6 +669,7 @@ impl ModelCapabilitiesManager {
                 // For Ollama, check model type and respect the passed stream parameter
                 model.model_type.starts_with("llama3.1")
                     || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama3.3")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("mistral-nemo")
@@ -683,10 +684,12 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")
+                    || model.model_type.starts_with("llama3.3")
             }
             LLMProviderInterface::OpenRouter(model) => {
                 model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama3.3")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")
                     || model.model_type.starts_with("mistral-nemo")
