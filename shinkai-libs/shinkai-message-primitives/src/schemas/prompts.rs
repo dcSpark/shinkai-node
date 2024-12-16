@@ -2,11 +2,12 @@ use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+// use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 use super::{
     job::JobStepResult,
     llm_message::{DetailedFunctionCall, LlmMessage},
+    shinkai_fs::ShinkaiFileChunkCollection,
     subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType},
 };
 
@@ -111,7 +112,7 @@ impl Prompt {
     /// Adds RetrievedNode content into the prompt if it is a Text-holding node. Otherwise skips.
     pub fn add_ret_node_content(
         &mut self,
-        retrieved_node: RetrievedNode,
+        retrieved_node: ShinkaiFileChunkCollection,
         prompt_type: SubPromptType,
         priority_value: u8,
     ) {
@@ -418,12 +419,12 @@ impl Prompt {
                 SubPrompt::Omni(prompt_type, _, _, _) => {
                     // Process the current sub-prompt
                     let new_message = sub_prompt.into_chat_completion_request_message();
-                    
+
                     if let SubPromptType::UserLastMessage = prompt_type {
                         last_user_message = Some(new_message);
                     } else {
                         current_length +=
-                        sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
+                            sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
                         tiktoken_messages.push(new_message);
                     }
                 }

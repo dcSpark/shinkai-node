@@ -32,7 +32,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::utils::hash_string;
 use std::path::PathBuf;
 use std::sync::Arc;

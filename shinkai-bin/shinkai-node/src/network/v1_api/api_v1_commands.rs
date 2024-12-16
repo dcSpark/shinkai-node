@@ -53,7 +53,6 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
 use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};

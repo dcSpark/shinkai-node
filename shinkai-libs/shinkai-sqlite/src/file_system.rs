@@ -1,43 +1,6 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, ToSql};
-use serde::{Deserialize, Serialize};
-
-// Example struct definitions (adjust as needed)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Directory {
-    pub dir_id: i64,
-    pub parent_dir_id: Option<i64>,
-    pub name: String,
-    pub full_path: String,
-    pub created_at: Option<i64>,
-    pub modified_at: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct File {
-    pub file_id: i64,
-    pub directory_id: i64,
-    pub name: String,
-    pub full_path: String,
-    pub size: Option<i64>,
-    pub created_at: Option<i64>,
-    pub modified_at: Option<i64>,
-    pub mime_type: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileChunk {
-    pub chunk_id: i64,
-    pub file_id: i64,
-    pub sequence: i64,
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileChunkEmbedding {
-    pub chunk_id: i64,
-    pub embedding: Vec<u8>, // TODO: change to f32
-}
+use shinkai_message_primitives::schemas::shinkai_fs::{ShinkaiDirectory, ShinkaiFile, ShinkaiFileChunk, ShinkaiFileChunkEmbedding};
 
 impl SqliteManager {
     pub fn initialize_filesystem_tables(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
@@ -130,7 +93,7 @@ impl SqliteManager {
     // -------------------------
     // Directories
     // -------------------------
-    pub fn add_directory(&self, dir: &Directory) -> Result<(), SqliteManagerError> {
+    pub fn add_directory(&self, dir: &ShinkaiDirectory) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -200,13 +163,13 @@ impl SqliteManager {
         Ok(())
     }
 
-    pub fn get_directory_by_id(&self, dir_id: i64) -> Result<Option<Directory>, SqliteManagerError> {
+    pub fn get_directory_by_id(&self, dir_id: i64) -> Result<Option<ShinkaiDirectory>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT dir_id, parent_dir_id, name, full_path, created_at, modified_at FROM directories WHERE dir_id = ?",
         )?;
         let res = stmt.query_row([dir_id], |row| {
-            Ok(Directory {
+            Ok(ShinkaiDirectory {
                 dir_id: row.get(0)?,
                 parent_dir_id: row.get(1)?,
                 name: row.get(2)?,
@@ -223,11 +186,11 @@ impl SqliteManager {
         }
     }
 
-    pub fn get_directory_by_path(&self, path: &str) -> Result<Option<Directory>, SqliteManagerError> {
+    pub fn get_directory_by_path(&self, path: &str) -> Result<Option<ShinkaiDirectory>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT dir_id, parent_dir_id, name, full_path, created_at, modified_at FROM directories WHERE full_path = ?")?;
         let res = stmt.query_row([path], |row| {
-            Ok(Directory {
+            Ok(ShinkaiDirectory {
                 dir_id: row.get(0)?,
                 parent_dir_id: row.get(1)?,
                 name: row.get(2)?,
@@ -244,12 +207,12 @@ impl SqliteManager {
         }
     }
 
-    pub fn get_all_directories(&self) -> Result<Vec<Directory>, SqliteManagerError> {
+    pub fn get_all_directories(&self) -> Result<Vec<ShinkaiDirectory>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
             conn.prepare("SELECT dir_id, parent_dir_id, name, full_path, created_at, modified_at FROM directories")?;
         let directories = stmt.query_map([], |row| {
-            Ok(Directory {
+            Ok(ShinkaiDirectory {
                 dir_id: row.get(0)?,
                 parent_dir_id: row.get(1)?,
                 name: row.get(2)?,
@@ -266,7 +229,7 @@ impl SqliteManager {
         Ok(result)
     }
 
-    pub fn update_directory(&self, dir: &Directory) -> Result<(), SqliteManagerError> {
+    pub fn update_directory(&self, dir: &ShinkaiDirectory) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -301,7 +264,7 @@ impl SqliteManager {
     // -------------------------
     // Files
     // -------------------------
-    pub fn add_file(&self, file: &File) -> Result<(), SqliteManagerError> {
+    pub fn add_file(&self, file: &ShinkaiFile) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -353,11 +316,11 @@ impl SqliteManager {
         Ok(())
     }
 
-    pub fn get_file_by_id(&self, file_id: i64) -> Result<Option<File>, SqliteManagerError> {
+    pub fn get_file_by_id(&self, file_id: i64) -> Result<Option<ShinkaiFile>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT file_id, directory_id, name, full_path, size, created_at, modified_at, mime_type FROM files WHERE file_id = ?")?;
         let res = stmt.query_row([file_id], |row| {
-            Ok(File {
+            Ok(ShinkaiFile {
                 file_id: row.get(0)?,
                 directory_id: row.get(1)?,
                 name: row.get(2)?,
@@ -376,11 +339,11 @@ impl SqliteManager {
         }
     }
 
-    pub fn get_file_by_path(&self, path: &str) -> Result<Option<File>, SqliteManagerError> {
+    pub fn get_file_by_path(&self, path: &str) -> Result<Option<ShinkaiFile>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT file_id, directory_id, name, full_path, size, created_at, modified_at, mime_type FROM files WHERE full_path = ?")?;
         let res = stmt.query_row([path], |row| {
-            Ok(File {
+            Ok(ShinkaiFile {
                 file_id: row.get(0)?,
                 directory_id: row.get(1)?,
                 name: row.get(2)?,
@@ -399,11 +362,11 @@ impl SqliteManager {
         }
     }
 
-    pub fn get_files_in_directory(&self, directory_id: i64) -> Result<Vec<File>, SqliteManagerError> {
+    pub fn get_files_in_directory(&self, directory_id: i64) -> Result<Vec<ShinkaiFile>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT file_id, directory_id, name, full_path, size, created_at, modified_at, mime_type FROM files WHERE directory_id = ?")?;
         let files = stmt.query_map([directory_id], |row| {
-            Ok(File {
+            Ok(ShinkaiFile {
                 file_id: row.get(0)?,
                 directory_id: row.get(1)?,
                 name: row.get(2)?,
@@ -422,7 +385,7 @@ impl SqliteManager {
         Ok(result)
     }
 
-    pub fn update_file(&self, file: &File) -> Result<(), SqliteManagerError> {
+    pub fn update_file(&self, file: &ShinkaiFile) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -459,7 +422,7 @@ impl SqliteManager {
     // -------------------------
     // File Chunks
     // -------------------------
-    pub fn add_file_chunk(&self, chunk: &FileChunk) -> Result<(), SqliteManagerError> {
+    pub fn add_file_chunk(&self, chunk: &ShinkaiFileChunk) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -474,13 +437,13 @@ impl SqliteManager {
         Ok(())
     }
 
-    pub fn get_chunks_for_file(&self, file_id: i64) -> Result<Vec<FileChunk>, SqliteManagerError> {
+    pub fn get_chunks_for_file(&self, file_id: i64) -> Result<Vec<ShinkaiFileChunk>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT chunk_id, file_id, sequence, content FROM file_chunks WHERE file_id = ? ORDER BY sequence",
         )?;
         let chunks = stmt.query_map([file_id], |row| {
-            Ok(FileChunk {
+            Ok(ShinkaiFileChunk {
                 chunk_id: row.get(0)?,
                 file_id: row.get(1)?,
                 sequence: row.get(2)?,
@@ -508,7 +471,7 @@ impl SqliteManager {
     // -------------------------
     // File Chunk Embeddings
     // -------------------------
-    pub fn add_file_chunk_embedding(&self, embedding: &FileChunkEmbedding) -> Result<(), SqliteManagerError> {
+    pub fn add_file_chunk_embedding(&self, embedding: &ShinkaiFileChunkEmbedding) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -535,12 +498,12 @@ impl SqliteManager {
         Ok(())
     }
 
-    pub fn get_file_chunk_embedding(&self, chunk_id: i64) -> Result<Option<FileChunkEmbedding>, SqliteManagerError> {
+    pub fn get_file_chunk_embedding(&self, chunk_id: i64) -> Result<Option<ShinkaiFileChunkEmbedding>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT chunk_id, embedding FROM file_chunk_embeddings WHERE chunk_id = ?")?;
         let res = stmt.query_row([chunk_id], |row| {
             let embedding: Vec<u8> = row.get(1)?;
-            Ok(FileChunkEmbedding {
+            Ok(ShinkaiFileChunkEmbedding {
                 chunk_id: row.get(0)?,
                 embedding,
             })
@@ -557,7 +520,7 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -577,8 +540,8 @@ mod tests {
         parent_dir_id: Option<i64>,
         name: &str,
         full_path: &str
-    ) -> Directory {
-        Directory {
+    ) -> ShinkaiDirectory {
+        ShinkaiDirectory {
             dir_id,
             parent_dir_id,
             name: name.to_string(),
@@ -593,8 +556,8 @@ mod tests {
         directory_id: i64,
         name: &str,
         full_path: &str
-    ) -> File {
-        File {
+    ) -> ShinkaiFile {
+        ShinkaiFile {
             file_id,
             directory_id,
             name: name.to_string(),

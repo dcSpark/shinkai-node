@@ -42,7 +42,6 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tcp_relayer::NetworkMessage;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::convert::TryInto;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};

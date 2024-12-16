@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tempfile::NamedTempFile;
 
 pub fn setup() {

@@ -260,7 +260,7 @@ mod tests {
     use shinkai_tools_primitives::tools::{
         tool_output_arg::ToolOutputArg, deno_tools::{DenoTool, ToolResult}, parameters::Parameters, shinkai_tool::ShinkaiTool
     };
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 

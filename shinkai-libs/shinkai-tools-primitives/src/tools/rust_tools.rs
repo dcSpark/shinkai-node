@@ -1,5 +1,7 @@
 use std::fmt;
 
+use shinkai_message_primitives::shinkai_utils::utils;
+
 use crate::tools::error::ToolError;
 
 use super::tool_output_arg::ToolOutputArg;
@@ -43,7 +45,7 @@ impl RustTool {
         tool_router_key: String,
     ) -> Self {
         Self {
-            name: VRPath::clean_string(&name),
+            name: utils::clean_string(&name),
             description,
             input_args,
             output_arg,

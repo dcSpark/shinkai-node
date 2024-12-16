@@ -1,7 +1,4 @@
-use crate::{
-    schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::MessageMetadata,
-    shinkai_utils::job_scope::JobScope,
-};
+use crate::{schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::MessageMetadata};
 use ed25519_dalek::SigningKey;
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -25,8 +22,7 @@ use crate::{
 };
 
 use super::{
-    encryption::unsafe_deterministic_encryption_keypair,
-    shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
+    encryption::unsafe_deterministic_encryption_keypair, job_scope::MinimalJobScope, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}
 };
 
 impl ShinkaiMessageBuilder {
@@ -97,7 +93,7 @@ impl ShinkaiMessageBuilder {
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
     pub fn job_creation(
-        scope: JobScope,
+        scope: MinimalJobScope,
         is_hidden: bool,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -208,19 +204,23 @@ impl ShinkaiMessageBuilder {
 
         let (placeholder_encryption_sk, placeholder_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-        ShinkaiMessageBuilder::new(placeholder_encryption_sk, my_signature_secret_key, placeholder_encryption_pk)
-            .message_raw_content(body)
-            .internal_metadata_with_schema(
-                sender_subidentity.to_string(),
-                node_receiver_subidentity.clone(),
-                inbox,
-                MessageSchemaType::JobMessageSchema,
-                EncryptionMethod::None,
-                None,
-            )
-            .body_encryption(EncryptionMethod::None)
-            .external_metadata_with_intra_sender(node_receiver, node_sender, sender_subidentity)
-            .build()
+        ShinkaiMessageBuilder::new(
+            placeholder_encryption_sk,
+            my_signature_secret_key,
+            placeholder_encryption_pk,
+        )
+        .message_raw_content(body)
+        .internal_metadata_with_schema(
+            sender_subidentity.to_string(),
+            node_receiver_subidentity.clone(),
+            inbox,
+            MessageSchemaType::JobMessageSchema,
+            EncryptionMethod::None,
+            None,
+        )
+        .body_encryption(EncryptionMethod::None)
+        .external_metadata_with_intra_sender(node_receiver, node_sender, sender_subidentity)
+        .build()
     }
 
     #[allow(dead_code)]

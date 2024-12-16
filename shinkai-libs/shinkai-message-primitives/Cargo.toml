@@ -16,7 +16,6 @@ chrono = { workspace = true }
 regex = { workspace = true }
 thiserror = "1.0.44"
 hex = { workspace = true }
-shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }
 aes-gcm = "0.10.3"
 blake3 = { workspace = true }
 rust_decimal = "1.17.0"

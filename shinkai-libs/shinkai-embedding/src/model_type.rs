@@ -1,7 +1,7 @@
 use std::fmt;
 use std::hash::Hash;
 
-use crate::shinkai_fs_error::ShinkaiFsError;
+use crate::shinkai_embedding_errors::ShinkaiEmbeddingError;
 
 pub type EmbeddingModelTypeString = String;
 
@@ -11,10 +11,10 @@ pub enum EmbeddingModelType {
 }
 
 impl EmbeddingModelType {
-    pub fn from_string(s: &str) -> Result<Self, ShinkaiFsError> {
+    pub fn from_string(s: &str) -> Result<Self, ShinkaiEmbeddingError> {
         OllamaTextEmbeddingsInference::from_string(s)
             .map(EmbeddingModelType::OllamaTextEmbeddingsInference)
-            .map_err(|_| ShinkaiFsError::InvalidModelArchitecture)
+            .map_err(|_| ShinkaiEmbeddingError::InvalidModelArchitecture)
     }
 
     pub fn max_input_token_count(&self) -> usize {
@@ -29,7 +29,7 @@ impl EmbeddingModelType {
         }
     }
 
-    pub fn vector_dimensions(&self) -> Result<usize, ShinkaiFsError> {
+    pub fn vector_dimensions(&self) -> Result<usize, ShinkaiEmbeddingError> {
         match self {
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.vector_dimensions(),
         }
@@ -57,12 +57,12 @@ impl OllamaTextEmbeddingsInference {
     const SNOWFLAKE_ARCTIC_EMBED_M: &'static str = "snowflake-arctic-embed:xs";
     const JINA_EMBEDDINGS_V2_BASE_ES: &'static str = "jina/jina-embeddings-v2-base-es:latest";
 
-    pub fn from_string(s: &str) -> Result<Self, ShinkaiFsError> {
+    pub fn from_string(s: &str) -> Result<Self, ShinkaiEmbeddingError> {
         match s {
             Self::ALL_MINI_LML6V2 => Ok(Self::AllMiniLML6v2),
             Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(Self::SnowflakeArcticEmbed_M),
             Self::JINA_EMBEDDINGS_V2_BASE_ES => Ok(Self::JinaEmbeddingsV2BaseEs),
-            _ => Err(ShinkaiFsError::InvalidModelArchitecture),
+            _ => Err(ShinkaiEmbeddingError::InvalidModelArchitecture),
         }
     }
 
@@ -80,11 +80,11 @@ impl OllamaTextEmbeddingsInference {
         }
     }
 
-    pub fn vector_dimensions(&self) -> Result<usize, ShinkaiFsError> {
+    pub fn vector_dimensions(&self) -> Result<usize, ShinkaiEmbeddingError> {
         match self {
             Self::SnowflakeArcticEmbed_M => Ok(384),
             Self::JinaEmbeddingsV2BaseEs => Ok(768),
-            _ => Err(ShinkaiFsError::UnimplementedModelDimensions(format!("{:?}", self))),
+            _ => Err(ShinkaiEmbeddingError::UnimplementedModelDimensions(format!("{:?}", self))),
         }
     }
 }

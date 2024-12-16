@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::model_type::EmbeddingModelType;
+EmbeddingModelType;
 use shinkai_vector_resources::vector_resource::{VRKai, VRPath, VectorResourceCore, VectorResourceSearch};
 use std::collections::HashMap;
 use std::sync::Arc;

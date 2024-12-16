@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use std::fmt;
 
 use super::{llm_message::LlmMessage, prompts::Prompt};
@@ -215,148 +214,88 @@ impl SubPrompt {
         token_counter(&[completion_message.clone()])
     }
 
-    /// Converts a vector resource into a series of subprompts to be used in a prompt
-    /// If the VR is ordered, the output will be as well.
-    pub fn convert_resource_into_subprompts(resource: &BaseVectorResource, subprompt_priority: u8) -> Vec<SubPrompt> {
-        let mut temp_prompt = Prompt::new();
+    // /// Converts a vector resource into a series of subprompts to be used in a prompt
+    // /// If the VR is ordered, the output will be as well.
+    // pub fn convert_resource_into_subprompts(resource: &BaseVectorResource, subprompt_priority: u8) -> Vec<SubPrompt> {
+    //     let mut temp_prompt = Prompt::new();
 
-        let nodes = resource.as_trait_object().get_all_nodes_flattened();
+    //     let nodes = resource.as_trait_object().get_all_nodes_flattened();
 
-        // Iterate through each node and add its text string to the prompt (which is the name of the VR)
-        for node in nodes {
-            if let Ok(content) = node.get_text_content() {
-                temp_prompt.add_content(content.to_string(), SubPromptType::ExtraContext, subprompt_priority);
-            }
-            if let Ok(resource) = node.get_vector_resource_content() {
-                temp_prompt.add_content(
-                    resource.as_trait_object().name().to_string(),
-                    SubPromptType::ExtraContext,
-                    subprompt_priority,
-                );
-            }
-        }
+    //     // Iterate through each node and add its text string to the prompt (which is the name of the VR)
+    //     for node in nodes {
+    //         if let Ok(content) = node.get_text_content() {
+    //             temp_prompt.add_content(content.to_string(), SubPromptType::ExtraContext, subprompt_priority);
+    //         }
+    //         if let Ok(resource) = node.get_vector_resource_content() {
+    //             temp_prompt.add_content(
+    //                 resource.as_trait_object().name().to_string(),
+    //                 SubPromptType::ExtraContext,
+    //                 subprompt_priority,
+    //             );
+    //         }
+    //     }
 
-        temp_prompt.sub_prompts
-    }
+    //     temp_prompt.sub_prompts
+    // }
 
-    // TODO: if we have content with the same extra_info, don't repeat the extra info!
-    pub fn convert_resource_into_subprompts_with_extra_info(
-        resource: &BaseVectorResource,
-        subprompt_priority: u8,
-    ) -> Vec<SubPrompt> {
-        let mut temp_prompt = Prompt::new();
-        let resource_trait = resource.as_trait_object();
-        let nodes = resource_trait.get_all_nodes_flattened();
-        let mut last_content = String::new();
-        let mut last_reference = String::new();
-        let mut buffer_content = String::new();
+    // // TODO: if we have content with the same extra_info, don't repeat the extra info!
+    // pub fn convert_resource_into_subprompts_with_extra_info(
+    //     resource: &BaseVectorResource,
+    //     subprompt_priority: u8,
+    // ) -> Vec<SubPrompt> {
+    //     let mut temp_prompt = Prompt::new();
+    //     let resource_trait = resource.as_trait_object();
+    //     let nodes = resource_trait.get_all_nodes_flattened();
+    //     let mut last_content = String::new();
+    //     let mut last_reference = String::new();
+    //     let mut buffer_content = String::new();
 
-        for (i, node) in nodes.iter().enumerate() {
-            let mut current_content = String::new();
+    //     for (i, node) in nodes.iter().enumerate() {
+    //         let mut current_content = String::new();
 
-            if let Ok(content) = node.get_text_content() {
-                current_content = content.to_string();
-            } else if let Ok(resource) = node.get_vector_resource_content() {
-                current_content = resource.as_trait_object().name().to_string();
-            }
+    //         if let Ok(content) = node.get_text_content() {
+    //             current_content = content.to_string();
+    //         } else if let Ok(resource) = node.get_vector_resource_content() {
+    //             current_content = resource.as_trait_object().name().to_string();
+    //         }
 
-            // Some text is repeated between nodes, so we skip it
-            if current_content.is_empty() || current_content == last_content {
-                continue;
-            }
+    //         // Some text is repeated between nodes, so we skip it
+    //         if current_content.is_empty() || current_content == last_content {
+    //             continue;
+    //         }
 
-            let mut extra_info = String::new();
-            let file_name = resource_trait.source().format_source_string();
+    //         let mut extra_info = String::new();
+    //         let file_name = resource_trait.source().format_source_string();
 
-            if let Some(metadata) = &node.metadata {
-                if let Some(pg_nums) = metadata.get("pg_nums") {
-                    extra_info = format!("\nRef. page: {} from {}.", pg_nums, file_name);
-                } else {
-                    extra_info = format!("\nRef. from {}.", file_name);
-                }
-            } else {
-                extra_info = format!("\nRef. from {}.", file_name);
-            }
+    //         if let Some(metadata) = &node.metadata {
+    //             if let Some(pg_nums) = metadata.get("pg_nums") {
+    //                 extra_info = format!("\nRef. page: {} from {}.", pg_nums, file_name);
+    //             } else {
+    //                 extra_info = format!("\nRef. from {}.", file_name);
+    //             }
+    //         } else {
+    //             extra_info = format!("\nRef. from {}.", file_name);
+    //         }
 
-            if extra_info != last_reference {
-                if !buffer_content.is_empty() {
-                    temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
-                }
-                buffer_content.clone_from(&current_content);
-                last_reference.clone_from(&extra_info);
-            } else {
-                buffer_content.push_str(&format!(" {}", current_content));
-            }
+    //         if extra_info != last_reference {
+    //             if !buffer_content.is_empty() {
+    //                 temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
+    //             }
+    //             buffer_content.clone_from(&current_content);
+    //             last_reference.clone_from(&extra_info);
+    //         } else {
+    //             buffer_content.push_str(&format!(" {}", current_content));
+    //         }
 
-            if i == nodes.len() - 1 || extra_info != last_reference {
-                buffer_content.push_str(&extra_info);
-                temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
-                buffer_content.clear();
-            }
+    //         if i == nodes.len() - 1 || extra_info != last_reference {
+    //             buffer_content.push_str(&extra_info);
+    //             temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
+    //             buffer_content.clear();
+    //         }
 
-            last_content = current_content;
-        }
+    //         last_content = current_content;
+    //     }
 
-        temp_prompt.remove_all_subprompts()
-    }
-
-    pub fn convert_resource_into_submprompts_for_citation_rag(
-        resource: &BaseVectorResource,
-    ) -> Vec<serde_json::Value> {
-        let resource_trait = resource.as_trait_object();
-        let nodes = resource_trait.get_all_nodes_flattened();
-        let mut last_content = String::new();
-        let mut last_reference = String::new();
-        let mut buffer_content = String::new();
-        let mut embeddings = Vec::new();
-    
-        for (i, node) in nodes.iter().enumerate() {
-            let mut current_content = String::new();
-    
-            if let Ok(content) = node.get_text_content() {
-                current_content = content.to_string();
-            } else if let Ok(resource) = node.get_vector_resource_content() {
-                current_content = resource.as_trait_object().name().to_string();
-            }
-    
-            // Some text is repeated between nodes, so we skip it
-            if current_content.is_empty() || current_content == last_content {
-                continue;
-            }
-    
-            let mut extra_info = String::new();
-            if let Some(metadata) = &node.metadata {
-                if let Some(pg_nums) = metadata.get("pg_nums") {
-                    extra_info = format!("Page: {}", pg_nums);
-                }
-            }
-    
-            if extra_info != last_reference {
-                if !buffer_content.is_empty() {
-                    embeddings.push(serde_json::json!({
-                        "text": buffer_content,
-                        "reference": last_reference,
-                        "file": resource_trait.source().format_source_string()
-                    }));
-                }
-                buffer_content.clone_from(&current_content);
-                last_reference.clone_from(&extra_info);
-            } else {
-                buffer_content.push_str(&format!(" {}", current_content));
-            }
-    
-            if i == nodes.len() - 1 || extra_info != last_reference {
-                embeddings.push(serde_json::json!({
-                    "text": buffer_content,
-                    "reference": extra_info,
-                    "file": resource_trait.source().format_source_string()
-                }));
-                buffer_content.clear();
-            }
-    
-            last_content = current_content;
-        }
-    
-        embeddings
-    }
+    //     temp_prompt.remove_all_subprompts()
+    // }
 }

@@ -612,7 +612,7 @@ mod tests {
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
     use shinkai_sqlite::SqliteManager;
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::{
         fs,
         path::{Path, PathBuf},

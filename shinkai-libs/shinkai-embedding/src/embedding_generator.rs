@@ -1,5 +1,5 @@
 use crate::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use crate::shinkai_fs_error::ShinkaiFsError;
+use crate::shinkai_embedding_errors::ShinkaiEmbeddingError;
 use async_trait::async_trait;
 
 use lazy_static::lazy_static;
@@ -28,41 +28,41 @@ pub trait EmbeddingGenerator: Sync + Send {
 
     /// Generates an embedding from the given input string, and assigns the
     /// provided id.
-    fn generate_embedding_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError>;
+    fn generate_embedding_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
     /// of empty string.
-    fn generate_embedding_default_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError> {
+    fn generate_embedding_default_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         self.generate_embedding_blocking(input_string)
     }
 
     /// Generates embeddings from the given list of input strings and ids.
-    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiFsError>;
+    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError>;
 
     /// Generate Embeddings for a list of input strings, sets ids to default.
     fn generate_embeddings_blocking_default(
         &self,
         input_strings: &Vec<String>,
-    ) -> Result<Vec<Vec<f32>>, ShinkaiFsError> {
+    ) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         self.generate_embeddings_blocking(input_strings)
     }
 
     /// Generates an embedding from the given input string, and assigns the
     /// provided id.
-    async fn generate_embedding(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError>;
+    async fn generate_embedding(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
     /// of empty string.
-    async fn generate_embedding_default(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError> {
+    async fn generate_embedding_default(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         self.generate_embedding(input_string).await
     }
     // ### TODO: remove all these duplicate methods
 
     /// Generates embeddings from the given list of input strings and ids.
-    async fn generate_embeddings(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiFsError>;
+    async fn generate_embeddings(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError>;
 
     /// Generate Embeddings for a list of input strings, sets ids to default
-    async fn generate_embeddings_default(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiFsError> {
+    async fn generate_embeddings_default(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         self.generate_embeddings(input_strings).await
     }
 }
@@ -85,7 +85,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate Embeddings for an input list of strings by using the external API.
     /// This method batch generates whenever possible to increase speed.
     /// Note this method is blocking.
-    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiFsError> {
+    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         let input_strings: Vec<String> = input_strings
             .iter()
             .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
@@ -105,7 +105,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 
     /// Generate an Embedding for an input string by using the external API.
     /// Note this method is blocking.
-    fn generate_embedding_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError> {
+    fn generate_embedding_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         let input_strings = [input_string.to_string()];
         let input_strings: Vec<String> = input_strings
             .iter()
@@ -114,7 +114,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 
         let results = self.generate_embeddings_blocking(&input_strings)?;
         if results.is_empty() {
-            Err(ShinkaiFsError::FailedEmbeddingGeneration(
+            Err(ShinkaiEmbeddingError::FailedEmbeddingGeneration(
                 "No results returned from the embedding generation".to_string(),
             ))
         } else {
@@ -124,7 +124,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 
     /// Generate an Embedding for an input string by using the external API.
     /// This method batch generates whenever possible to increase speed.
-    async fn generate_embeddings(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiFsError> {
+    async fn generate_embeddings(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         let input_strings: Vec<String> = input_strings
             .iter()
             .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
@@ -145,7 +145,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     }
 
     /// Generate an Embedding for an input string by using the external API.
-    async fn generate_embedding(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError> {
+    async fn generate_embedding(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         let input_strings = [input_string.to_string()];
         let input_strings: Vec<String> = input_strings
             .iter()
@@ -154,7 +154,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 
         let results = self.generate_embeddings(&input_strings).await?;
         if results.is_empty() {
-            Err(ShinkaiFsError::FailedEmbeddingGeneration(
+            Err(ShinkaiEmbeddingError::FailedEmbeddingGeneration(
                 "No results returned from the embedding generation".to_string(),
             ))
         } else {
@@ -230,7 +230,7 @@ impl RemoteEmbeddingGenerator {
         &self,
         input_string: String,
         model: String,
-    ) -> Result<Vec<f32>, ShinkaiFsError> {
+    ) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         let max_retries = 3;
         let mut retry_count = 0;
         let mut shortening_retry = 0;
@@ -270,7 +270,7 @@ impl RemoteEmbeddingGenerator {
                             return Ok(embedding_response.embedding);
                         }
                         Err(err) => {
-                            return Err(ShinkaiFsError::RequestFailed(format!(
+                            return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                                 "Failed to deserialize response JSON: {}",
                                 err
                             )));
@@ -290,7 +290,7 @@ impl RemoteEmbeddingGenerator {
                     retry_count = 0;
                     shortening_retry += 1;
                     if shortening_retry > 10 {
-                        return Err(ShinkaiFsError::RequestFailed(format!(
+                        return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                             "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
                             response.status()
                         )));
@@ -298,7 +298,7 @@ impl RemoteEmbeddingGenerator {
                     continue;
                 }
                 Ok(response) => {
-                    return Err(ShinkaiFsError::RequestFailed(format!(
+                    return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                         "HTTP request failed with status: {}",
                         response.status()
                     )));
@@ -308,7 +308,7 @@ impl RemoteEmbeddingGenerator {
                         retry_count += 1;
                         continue;
                     } else {
-                        return Err(ShinkaiFsError::RequestFailed(format!(
+                        return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                             "HTTP request failed after {} retries: {}",
                             max_retries, err
                         )));
@@ -319,7 +319,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generate an Embedding for an input string by using the external Ollama API.
-    fn generate_embedding_ollama_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError> {
+    fn generate_embedding_ollama_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         // Prepare the request body
         let request_body = OllamaEmbeddingsRequestBody {
             model: self.model_type.to_string(),
@@ -343,17 +343,17 @@ impl RemoteEmbeddingGenerator {
         // Send the request and check for errors
         let response = request.send().map_err(|err| {
             // Handle any HTTP client errors here (e.g., request creation failure)
-            ShinkaiFsError::RequestFailed(format!("HTTP request failed: {}", err))
+            ShinkaiEmbeddingError::RequestFailed(format!("HTTP request failed: {}", err))
         })?;
 
         // Check if the response is successful
         if response.status().is_success() {
             let embedding_response: OllamaEmbeddingsResponse = response.json().map_err(|err| {
-                ShinkaiFsError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
+                ShinkaiEmbeddingError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
             })?;
             Ok(embedding_response.embedding)
         } else {
-            Err(ShinkaiFsError::RequestFailed(format!(
+            Err(ShinkaiEmbeddingError::RequestFailed(format!(
                 "HTTP request failed with status: {}",
                 response.status()
             )))
@@ -361,7 +361,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
-    pub async fn generate_embedding_tei(&self, input_strings: Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiFsError> {
+    pub async fn generate_embedding_tei(&self, input_strings: Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         let max_retries = 3;
         let mut retry_count = 0;
         let mut shortening_retry = 0;
@@ -399,7 +399,7 @@ impl RemoteEmbeddingGenerator {
                             return Ok(embedding_response);
                         }
                         Err(err) => {
-                            return Err(ShinkaiFsError::RequestFailed(format!(
+                            return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                                 "Failed to deserialize response JSON: {}",
                                 err
                             )));
@@ -428,7 +428,7 @@ impl RemoteEmbeddingGenerator {
                     retry_count = 0;
                     shortening_retry += 1;
                     if shortening_retry > 10 {
-                        return Err(ShinkaiFsError::RequestFailed(format!(
+                        return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                             "HTTP request failed after multiple recursive iterations shortening input. Status: {}",
                             response.status()
                         )));
@@ -436,7 +436,7 @@ impl RemoteEmbeddingGenerator {
                     continue;
                 }
                 Ok(response) => {
-                    return Err(ShinkaiFsError::RequestFailed(format!(
+                    return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                         "HTTP request failed with status: {}",
                         response.status()
                     )));
@@ -446,7 +446,7 @@ impl RemoteEmbeddingGenerator {
                         retry_count += 1;
                         continue;
                     } else {
-                        return Err(ShinkaiFsError::RequestFailed(format!(
+                        return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                             "HTTP request failed after {} retries: {}",
                             max_retries, err
                         )));
@@ -457,7 +457,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generates embeddings using a Hugging Face Text Embeddings Inference server
-    fn generate_embedding_tei_blocking(&self, input_strings: Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiFsError> {
+    fn generate_embedding_tei_blocking(&self, input_strings: Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         // Prepare the request body
         let request_body = EmbeddingArrayRequestBody {
             inputs: input_strings.iter().map(|s| s.to_string()).collect(),
@@ -468,7 +468,7 @@ impl RemoteEmbeddingGenerator {
         let client = Client::builder()
             .timeout(timeout)
             .build()
-            .map_err(|err| ShinkaiFsError::RequestFailed(format!("Failed to create HTTP client: {}", err)))?;
+            .map_err(|err| ShinkaiEmbeddingError::RequestFailed(format!("Failed to create HTTP client: {}", err)))?;
 
         // Build the request
         let mut request = client
@@ -488,7 +488,7 @@ impl RemoteEmbeddingGenerator {
             let cloned_request = match request.try_clone() {
                 Some(req) => req,
                 None => {
-                    return Err(ShinkaiFsError::RequestFailed(
+                    return Err(ShinkaiEmbeddingError::RequestFailed(
                         "Failed to clone request for retry".into(),
                     ))
                 }
@@ -504,7 +504,7 @@ impl RemoteEmbeddingGenerator {
                         );
                         std::thread::sleep(Duration::from_secs(1)); // Optional: Add a delay between retries
                     } else {
-                        return Err(ShinkaiFsError::RequestFailed(format!(
+                        return Err(ShinkaiEmbeddingError::RequestFailed(format!(
                             "HTTP request failed after {} retries: {}",
                             max_retries, err
                         )));
@@ -518,14 +518,14 @@ impl RemoteEmbeddingGenerator {
             let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>();
             match embedding_response {
                 Ok(embedding_response) => Ok(embedding_response),
-                Err(err) => Err(ShinkaiFsError::RequestFailed(format!(
+                Err(err) => Err(ShinkaiEmbeddingError::RequestFailed(format!(
                     "Failed to deserialize response JSON: {}",
                     err
                 ))),
             }
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
-            Err(ShinkaiFsError::RequestFailed(format!(
+            Err(ShinkaiEmbeddingError::RequestFailed(format!(
                 "HTTP request failed with status: {}",
                 response.status()
             )))
@@ -533,7 +533,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
-    pub async fn generate_embedding_open_ai(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError> {
+    pub async fn generate_embedding_open_ai(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         // Prepare the request body
         let request_body = EmbeddingRequestBody {
             input: String::from(input_string),
@@ -557,7 +557,7 @@ impl RemoteEmbeddingGenerator {
         // Send the request and check for errors
         let response = request.send().await.map_err(|err| {
             // Handle any HTTP client errors here (e.g., request creation failure)
-            ShinkaiFsError::RequestFailed(format!("HTTP request failed: {}", err))
+            ShinkaiEmbeddingError::RequestFailed(format!("HTTP request failed: {}", err))
         })?;
 
         // Check if the response is successful
@@ -565,14 +565,14 @@ impl RemoteEmbeddingGenerator {
             // Deserialize the response JSON into a struct (assuming you have an
             // EmbeddingResponse struct)
             let embedding_response: EmbeddingResponse = response.json().await.map_err(|err| {
-                ShinkaiFsError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
+                ShinkaiEmbeddingError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
             })?;
 
             // Use the response to create an Embedding instance
             Ok(embedding_response.data[0].embedding.clone())
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
-            Err(ShinkaiFsError::RequestFailed(format!(
+            Err(ShinkaiEmbeddingError::RequestFailed(format!(
                 "HTTP request failed with status: {}",
                 response.status()
             )))
@@ -580,7 +580,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
-    fn generate_embedding_open_ai_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiFsError> {
+    fn generate_embedding_open_ai_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         // Prepare the request body
         let request_body = EmbeddingRequestBody {
             input: String::from(input_string),
@@ -604,7 +604,7 @@ impl RemoteEmbeddingGenerator {
         // Send the request and check for errors
         let response = request.send().map_err(|err| {
             // Handle any HTTP client errors here (e.g., request creation failure)
-            ShinkaiFsError::RequestFailed(format!("HTTP request failed: {}", err))
+            ShinkaiEmbeddingError::RequestFailed(format!("HTTP request failed: {}", err))
         })?;
 
         // Check if the response is successful
@@ -612,14 +612,14 @@ impl RemoteEmbeddingGenerator {
             // Deserialize the response JSON into a struct (assuming you have an
             // EmbeddingResponse struct)
             let embedding_response: EmbeddingResponse = response.json().map_err(|err| {
-                ShinkaiFsError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
+                ShinkaiEmbeddingError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
             })?;
 
             // Use the response to create an Embedding instance
             Ok(embedding_response.data[0].embedding.clone())
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
-            Err(ShinkaiFsError::RequestFailed(format!(
+            Err(ShinkaiEmbeddingError::RequestFailed(format!(
                 "HTTP request failed with status: {}",
                 response.status()
             )))

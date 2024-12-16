@@ -27,7 +27,7 @@ use shinkai_vector_fs::vector_fs::vector_fs_permissions::{ReadPermission, WriteP
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, SourceFileType};
 use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};

@@ -199,7 +199,7 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 

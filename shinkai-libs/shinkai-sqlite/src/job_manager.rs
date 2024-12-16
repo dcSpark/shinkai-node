@@ -11,9 +11,8 @@ use shinkai_message_primitives::{
         ws_types::WSUpdateHandler,
     },
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::AssociatedUI},
-    shinkai_utils::job_scope::{JobScope, MinimalJobScope},
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
-use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 use tokio::sync::Mutex;
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -23,7 +22,7 @@ impl SqliteManager {
         &self,
         job_id: String,
         llm_provider_id: String,
-        scope: JobScope,
+        scope: MinimalJobScope,
         is_hidden: bool,
         associated_ui: Option<AssociatedUI>,
         config: Option<JobConfig>,
@@ -31,8 +30,12 @@ impl SqliteManager {
         let conn = self.get_connection()?;
 
         let current_time = ShinkaiStringTime::generate_time_now();
-        let scope_with_files_bytes = scope.to_bytes()?;
-        let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
+        let scope_text = serde_json::to_string(&scope)?;
+        let associated_ui_text = associated_ui.map_or(Ok("".to_string()), |ui| serde_json::to_string(&ui))?;
+        let config_text = match &config {
+            Some(cfg) => serde_json::to_string(cfg)?,
+            None => "{}".to_string(),
+        };
         let job_inbox_name = format!("job_inbox::{}::false", job_id);
 
         let mut stmt = conn.prepare(
@@ -43,12 +46,11 @@ impl SqliteManager {
                 is_finished,
                 parent_agent_or_llm_provider_id,
                 scope,
-                scope_with_files,
                 conversation_inbox_name,
                 execution_context,
                 associated_ui,
                 config
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         )?;
 
         stmt.execute(params![
@@ -57,18 +59,13 @@ impl SqliteManager {
             current_time,
             false,
             llm_provider_id,
-            scope_bytes,
-            scope_with_files_bytes,
+            scope_text,
             job_inbox_name.clone(),
             serde_json::to_vec(&HashMap::<String, String>::new()).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?,
-            serde_json::to_vec(&associated_ui).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?,
-            serde_json::to_vec(&config).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?,
+            associated_ui_text,
+            config_text,
         ])?;
 
         self.create_empty_inbox(job_inbox_name)?;
@@ -111,15 +108,9 @@ impl SqliteManager {
         full_hash[..full_hash.len() / 2].to_string()
     }
 
-    pub fn get_job_with_options(
-        &self,
-        job_id: &str,
-        fetch_step_history: bool,
-        fetch_scope_with_files: bool,
-    ) -> Result<Job, SqliteManagerError> {
+    pub fn get_job_with_options(&self, job_id: &str, fetch_step_history: bool) -> Result<Job, SqliteManagerError> {
         let (
             scope,
-            scope_with_files,
             is_finished,
             is_hidden,
             datetime_created,
@@ -130,7 +121,7 @@ impl SqliteManager {
             associated_ui,
             config,
             forked_jobs,
-        ) = self.get_job_data(job_id, fetch_step_history, fetch_scope_with_files)?;
+        ) = self.get_job_data(job_id, fetch_step_history)?;
 
         let job = Job {
             job_id: job_id.to_string(),
@@ -139,7 +130,6 @@ impl SqliteManager {
             is_finished,
             parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
-            scope_with_files,
             conversation_inbox_name: conversation_inbox,
             step_history: step_history.unwrap_or_else(Vec::new),
             execution_context,
@@ -152,13 +142,12 @@ impl SqliteManager {
     }
 
     pub fn get_job(&self, job_id: &str) -> Result<Job, SqliteManagerError> {
-        self.get_job_with_options(job_id, true, true)
+        self.get_job_with_options(job_id, true)
     }
 
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, SqliteManagerError> {
         let (
             scope,
-            scope_with_files,
             is_finished,
             is_hidden,
             datetime_created,
@@ -169,7 +158,7 @@ impl SqliteManager {
             associated_ui,
             config,
             forked_jobs,
-        ) = self.get_job_data(job_id, false, true)?;
+        ) = self.get_job_data(job_id, false)?;
 
         let job = Job {
             job_id: job_id.to_string(),
@@ -178,7 +167,6 @@ impl SqliteManager {
             is_finished,
             parent_agent_or_llm_provider_id: parent_agent_id,
             scope,
-            scope_with_files,
             conversation_inbox_name: conversation_inbox,
             step_history: Vec::new(), // Empty step history for JobLike
             execution_context,
@@ -195,11 +183,9 @@ impl SqliteManager {
         &self,
         job_id: &str,
         fetch_step_history: bool,
-        fetch_scope_with_files: bool,
     ) -> Result<
         (
             MinimalJobScope,
-            Option<JobScope>,
             bool,
             bool,
             String,
@@ -215,12 +201,7 @@ impl SqliteManager {
     > {
         let conn = self.get_connection()?;
 
-        let scope_with_files = match fetch_scope_with_files {
-            true => "scope_with_files",
-            false => "NULL",
-        };
-
-        let mut stmt = conn.prepare(&format!(
+        let mut stmt = conn.prepare(
             "SELECT
             job_id,
             is_hidden,
@@ -228,47 +209,45 @@ impl SqliteManager {
             is_finished,
             parent_agent_or_llm_provider_id,
             scope,
-            {scope_with_files},
             conversation_inbox_name,
             execution_context,
             associated_ui,
             config
             FROM jobs WHERE job_id = ?1"
-        ))?;
+        )?;
 
         let mut rows = stmt.query(params![job_id])?;
 
         let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
 
-        let scope_bytes: Vec<u8> = row.get(5)?;
+        let scope_text: String = row.get(5)?;
         let is_finished: bool = row.get(3)?;
         let is_hidden: bool = row.get(1)?;
         let datetime_created: String = row.get(2)?;
         let parent_agent_id: String = row.get(4)?;
-        let inbox_name: String = row.get(7)?;
+        let inbox_name: String = row.get(6)?;
         let conversation_inbox: InboxName =
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-        let execution_context_bytes: Option<Vec<u8>> = row.get(8)?;
-        let associated_ui_bytes: Option<Vec<u8>> = row.get(9)?;
-        let config_bytes: Option<Vec<u8>> = row.get(10)?;
+        let execution_context_bytes: Vec<u8> = row.get(7)?;
+        let execution_context: HashMap<String, String> = serde_json::from_slice(&execution_context_bytes)?;
+        let associated_ui_text: Option<String> = row.get(8)?;
+        let config_text: Option<String> = row.get(9)?;
 
-        let scope = serde_json::from_slice(&scope_bytes)?;
-        let scope_with_files = if fetch_scope_with_files {
-            let scope_with_files_bytes: Option<Vec<u8>> = row.get(6)?;
-            serde_json::from_slice(&scope_with_files_bytes.unwrap_or_default())?
-        } else {
-            None
-        };
+        let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
+        let associated_ui = associated_ui_text
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
+        let config = config_text
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
 
         let step_history = if fetch_step_history {
             self.get_step_history(job_id, true)?
         } else {
             None
         };
-
-        let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
-        let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
-        let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
 
         let mut forked_jobs = vec![];
 
@@ -287,7 +266,6 @@ impl SqliteManager {
 
         Ok((
             scope,
-            scope_with_files,
             is_finished,
             is_hidden,
             datetime_created,
@@ -314,25 +292,30 @@ impl SqliteManager {
             let datetime_created: String = row.get(2)?;
             let is_finished: bool = row.get(3)?;
             let parent_agent_id: String = row.get(4)?;
-            let scope_bytes: Vec<u8> = row.get(5)?;
-            let scope_with_files_bytes: Option<Vec<u8>> = row.get(6)?;
-            let inbox_name: String = row.get(7)?;
+            let scope_text: String = row.get(5)?;
+            let inbox_name: String = row.get(6)?;
             let conversation_inbox: InboxName =
                 InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-            let execution_context_bytes: Option<Vec<u8>> = row.get(8)?;
-            let associated_ui_bytes: Option<Vec<u8>> = row.get(9)?;
-            let config_bytes: Option<Vec<u8>> = row.get(10)?;
-            let scope = serde_json::from_slice(&scope_bytes)?;
-            let scope_with_files = serde_json::from_slice(&scope_with_files_bytes.unwrap_or_default())?;
+            let execution_context_bytes: Option<Vec<u8>> = row.get(7)?;
+            let associated_ui_text: Option<String> = row.get(8)?;
+            let config_text: Option<String> = row.get(9)?;
+
+            let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
+            let associated_ui = associated_ui_text
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
+            let config = config_text
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
+
             let step_history = self.get_step_history(&job_id, false)?;
             let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
-            let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
-            let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
 
             let mut forked_jobs = vec![];
 
             let mut stmt = conn.prepare("SELECT * FROM forked_jobs WHERE parent_job_id = ?1")?;
-
             let mut rows = stmt.query(params![job_id])?;
 
             while let Some(row) = rows.next()? {
@@ -352,7 +335,6 @@ impl SqliteManager {
                 is_finished,
                 parent_agent_or_llm_provider_id: parent_agent_id,
                 scope,
-                scope_with_files,
                 conversation_inbox_name: conversation_inbox,
                 step_history: step_history.unwrap_or_else(Vec::new),
                 execution_context,
@@ -367,15 +349,14 @@ impl SqliteManager {
         Ok(jobs.into_iter().map(|job| Box::new(job) as Box<dyn JobLike>).collect())
     }
 
-    pub fn update_job_scope(&self, job_id: String, scope: JobScope) -> Result<(), SqliteManagerError> {
+    pub fn update_job_scope(&self, job_id: String, scope: MinimalJobScope) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
 
-        let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
-        let scope_with_files_bytes = scope.to_bytes()?;
+        let scope_text = serde_json::to_string(&scope.to_json_value()?)?;
 
-        let mut stmt = conn.prepare("UPDATE jobs SET scope = ?1, scope_with_files = ?2 WHERE job_id = ?3")?;
+        let mut stmt = conn.prepare("UPDATE jobs SET scope = ?1 WHERE job_id = ?2")?;
 
-        stmt.execute(params![scope_bytes, scope_with_files_bytes, job_id])?;
+        stmt.execute(params![scope_text, job_id])?;
 
         Ok(())
     }
@@ -393,20 +374,26 @@ impl SqliteManager {
             let datetime_created: String = row.get(2)?;
             let is_finished: bool = row.get(3)?;
             let parent_agent_id: String = row.get(4)?;
-            let scope_bytes: Vec<u8> = row.get(5)?;
-            let scope_with_files_bytes: Option<Vec<u8>> = row.get(6)?;
-            let inbox_name: String = row.get(7)?;
+            let scope_text: String = row.get(5)?;
+            let inbox_name: String = row.get(6)?;
             let conversation_inbox: InboxName =
                 InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-            let execution_context_bytes: Option<Vec<u8>> = row.get(8)?;
-            let associated_ui_bytes: Option<Vec<u8>> = row.get(9)?;
-            let config_bytes: Option<Vec<u8>> = row.get(10)?;
-            let scope = serde_json::from_slice(&scope_bytes)?;
-            let scope_with_files = serde_json::from_slice(&scope_with_files_bytes.unwrap_or_default())?;
+            let execution_context_bytes: Option<Vec<u8>> = row.get(7)?;
+            let associated_ui_text: Option<String> = row.get(8)?;
+            let config_text: Option<String> = row.get(9)?;
+
+            let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
+
             let step_history = self.get_step_history(&job_id, false)?;
             let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
-            let associated_ui = serde_json::from_slice(&associated_ui_bytes.unwrap_or_default())?;
-            let config = serde_json::from_slice(&config_bytes.unwrap_or_default())?;
+            let associated_ui = associated_ui_text
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
+            let config = config_text
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
 
             let mut forked_jobs = vec![];
 
@@ -430,7 +417,6 @@ impl SqliteManager {
                 is_finished,
                 parent_agent_or_llm_provider_id: parent_agent_id,
                 scope,
-                scope_with_files,
                 conversation_inbox_name: conversation_inbox,
                 step_history: step_history.unwrap_or_else(Vec::new),
                 execution_context,
@@ -664,6 +650,7 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use ed25519_dalek::SigningKey;
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::identity::StandardIdentity;
     use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -677,7 +664,6 @@ mod tests {
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
         },
     };
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::{collections::HashSet, path::PathBuf, time::Duration};
     use tempfile::NamedTempFile;
     use tokio::time::sleep;
@@ -693,7 +679,7 @@ mod tests {
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
 
-    fn create_new_job(db: &SqliteManager, job_id: String, agent_id: String, scope: JobScope) {
+    fn create_new_job(db: &SqliteManager, job_id: String, agent_id: String, scope: MinimalJobScope) {
         match db.create_new_job(job_id, agent_id, scope, false, None, None) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
@@ -740,7 +726,7 @@ mod tests {
         let db = setup_test_db();
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
@@ -768,7 +754,7 @@ mod tests {
         for i in 1..=5 {
             let job_id = format!("job{}", i);
             eprintln!("job_id: {}", job_id.clone());
-            let scope = JobScope::new_default();
+            let scope = MinimalJobScope::default();
             create_new_job(&db, job_id, agent_id.clone(), scope);
         }
 
@@ -792,7 +778,7 @@ mod tests {
         let job_id = "job_to_change_agent".to_string();
         let initial_agent_id = "initial_agent".to_string();
         let new_agent_id = "new_agent".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job with the initial agent
         create_new_job(&db, job_id.clone(), initial_agent_id.clone(), scope);
@@ -823,7 +809,7 @@ mod tests {
         // let inbox_name =
         //     InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
         //         .unwrap();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
@@ -847,7 +833,7 @@ mod tests {
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
@@ -932,7 +918,7 @@ mod tests {
         // Create new jobs for the agent
         for i in 1..=5 {
             let job_id = format!("job{}", i);
-            let scope = JobScope::new_default();
+            let scope = MinimalJobScope::default();
             create_new_job(&db, job_id, agent_id.clone(), scope);
         }
 
@@ -952,7 +938,7 @@ mod tests {
         let db = setup_test_db();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
@@ -986,7 +972,7 @@ mod tests {
         let db = setup_test_db();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
@@ -1080,7 +1066,7 @@ mod tests {
         let db = setup_test_db();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
@@ -1250,7 +1236,7 @@ mod tests {
 
         let job_id = "test_job";
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         create_new_job(&db, job_id.to_string(), agent_id.clone(), scope);
 
@@ -1395,7 +1381,7 @@ mod tests {
         let db = setup_test_db();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
@@ -1475,7 +1461,7 @@ mod tests {
         let db = setup_test_db();
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         create_new_job(&db, job_id.clone(), agent_id.clone(), scope.clone());
@@ -1548,7 +1534,7 @@ mod tests {
             .unwrap()
             .calculate_message_hash_for_pagination();
         create_new_job(&db, forked_job1_id.clone(), agent_id.clone(), scope.clone());
-        create_new_job(&db, forked_job2_id.clone(), agent_id.clone(), scope);
+        create_new_job(&db, forked_job2_id.clone(), agent_id.clone(), scope.clone());
 
         let forked_job1 = ForkedJob {
             job_id: forked_job1_id.clone(),
@@ -1582,11 +1568,11 @@ mod tests {
         let job1_id = "job1".to_string();
         let job2_id = "job2".to_string();
         let agent_id = "agent1".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create new jobs
         create_new_job(&db, job1_id.clone(), agent_id.clone(), scope.clone());
-        create_new_job(&db, job2_id.clone(), agent_id.clone(), scope);
+        create_new_job(&db, job2_id.clone(), agent_id.clone(), scope.clone());
 
         // Check smart_inboxes
         let node1_identity_name = "@@node1.shinkai";

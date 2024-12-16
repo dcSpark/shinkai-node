@@ -7,7 +7,7 @@ use shinkai_node::managers::tool_router::ToolRouter;
 use shinkai_sqlite::SqliteManager;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tokio::sync::{Mutex, RwLock};
 
 use core::panic;

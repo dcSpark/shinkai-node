@@ -1,4 +1,3 @@
-use shinkai_vector_resources::resource_errors::VRError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -57,8 +56,6 @@ pub enum SqliteManagerError {
     InboxNotFound(String),
     #[error("Lock error")]
     LockError,
-    #[error("VR error: {0}")]
-    VRError(VRError),
     #[error("Invalid data")]
     InvalidData,
     #[error("Failed fetching value")]
@@ -75,12 +72,6 @@ pub enum SqliteManagerError {
     #[error("Unsupported embedding length: {0}")]
     UnsupportedEmbeddingLength(usize),
     // Add other error variants as needed
-}
-
-impl From<VRError> for SqliteManagerError {
-    fn from(err: VRError) -> SqliteManagerError {
-        SqliteManagerError::VRError(err)
-    }
 }
 
 impl From<&str> for SqliteManagerError {
