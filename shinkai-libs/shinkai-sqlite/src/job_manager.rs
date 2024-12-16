@@ -142,7 +142,12 @@ impl SqliteManager {
     }
 
     pub fn get_job(&self, job_id: &str) -> Result<Job, SqliteManagerError> {
-        self.get_job_with_options(job_id, true)
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT * FROM jobs WHERE job_id = ?1")?;
+        let mut rows = stmt.query(params![job_id])?;
+
+        let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
+        self.parse_job_from_row(&row, true)
     }
 
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, SqliteManagerError> {
@@ -287,66 +292,11 @@ impl SqliteManager {
         let mut jobs = vec![];
 
         while let Some(row) = rows.next()? {
-            let job_id: String = row.get(0)?;
-            let is_hidden: bool = row.get(1)?;
-            let datetime_created: String = row.get(2)?;
-            let is_finished: bool = row.get(3)?;
-            let parent_agent_id: String = row.get(4)?;
-            let scope_text: String = row.get(5)?;
-            let inbox_name: String = row.get(6)?;
-            let conversation_inbox: InboxName =
-                InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-            let execution_context_bytes: Option<Vec<u8>> = row.get(7)?;
-            let associated_ui_text: Option<String> = row.get(8)?;
-            let config_text: Option<String> = row.get(9)?;
-
-            let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
-            let associated_ui = associated_ui_text
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
-            let config = config_text
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
-
-            let step_history = self.get_step_history(&job_id, false)?;
-            let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
-
-            let mut forked_jobs = vec![];
-
-            let mut stmt = conn.prepare("SELECT * FROM forked_jobs WHERE parent_job_id = ?1")?;
-            let mut rows = stmt.query(params![job_id])?;
-
-            while let Some(row) = rows.next()? {
-                let forked_job_id: String = row.get(1)?;
-                let message_id: String = row.get(2)?;
-
-                forked_jobs.push(ForkedJob {
-                    job_id: forked_job_id,
-                    message_id,
-                });
-            }
-
-            let job = Job {
-                job_id,
-                is_hidden,
-                datetime_created,
-                is_finished,
-                parent_agent_or_llm_provider_id: parent_agent_id,
-                scope,
-                conversation_inbox_name: conversation_inbox,
-                step_history: step_history.unwrap_or_else(Vec::new),
-                execution_context,
-                associated_ui,
-                config,
-                forked_jobs,
-            };
-
-            jobs.push(job);
+            let job = self.parse_job_from_row(&row, false)?;
+            jobs.push(Box::new(job) as Box<dyn JobLike>);
         }
 
-        Ok(jobs.into_iter().map(|job| Box::new(job) as Box<dyn JobLike>).collect())
+        Ok(jobs)
     }
 
     pub fn update_job_scope(&self, job_id: String, scope: MinimalJobScope) -> Result<(), SqliteManagerError> {
@@ -369,66 +319,11 @@ impl SqliteManager {
         let mut jobs = vec![];
 
         while let Some(row) = rows.next()? {
-            let job_id: String = row.get(0)?;
-            let is_hidden: bool = row.get(1)?;
-            let datetime_created: String = row.get(2)?;
-            let is_finished: bool = row.get(3)?;
-            let parent_agent_id: String = row.get(4)?;
-            let scope_text: String = row.get(5)?;
-            let inbox_name: String = row.get(6)?;
-            let conversation_inbox: InboxName =
-                InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-            let execution_context_bytes: Option<Vec<u8>> = row.get(7)?;
-            let associated_ui_text: Option<String> = row.get(8)?;
-            let config_text: Option<String> = row.get(9)?;
-
-            let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
-
-            let step_history = self.get_step_history(&job_id, false)?;
-            let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
-            let associated_ui = associated_ui_text
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
-            let config = config_text
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
-
-            let mut forked_jobs = vec![];
-
-            let mut stmt = conn.prepare("SELECT * FROM forked_jobs WHERE parent_job_id = ?1")?;
-            let mut rows = stmt.query(params![job_id])?;
-
-            while let Some(row) = rows.next()? {
-                let forked_job_id: String = row.get(1)?;
-                let message_id: String = row.get(2)?;
-
-                forked_jobs.push(ForkedJob {
-                    job_id: forked_job_id,
-                    message_id,
-                });
-            }
-
-            let job = Job {
-                job_id,
-                is_hidden,
-                datetime_created,
-                is_finished,
-                parent_agent_or_llm_provider_id: parent_agent_id,
-                scope,
-                conversation_inbox_name: conversation_inbox,
-                step_history: step_history.unwrap_or_else(Vec::new),
-                execution_context,
-                associated_ui,
-                config,
-                forked_jobs,
-            };
-
-            jobs.push(job);
+            let job = self.parse_job_from_row(&row, false)?;
+            jobs.push(Box::new(job) as Box<dyn JobLike>);
         }
 
-        Ok(jobs.into_iter().map(|job| Box::new(job) as Box<dyn JobLike>).collect())
+        Ok(jobs)
     }
 
     pub fn set_job_execution_context(
@@ -643,6 +538,74 @@ impl SqliteManager {
         tx.commit()?;
 
         Ok(())
+    }
+
+    fn parse_job_from_row(
+        &self,
+        row: &rusqlite::Row,
+        fetch_step_history: bool,
+    ) -> Result<Job, SqliteManagerError> {
+        let job_id: String = row.get(0)?;
+        let is_hidden: bool = row.get(1)?;
+        let datetime_created: String = row.get(2)?;
+        let is_finished: bool = row.get(3)?;
+        let parent_agent_id: String = row.get(4)?;
+        let scope_text: String = row.get(5)?;
+        let inbox_name: String = row.get(6)?;
+        let conversation_inbox: InboxName =
+            InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
+        let execution_context_bytes: Option<Vec<u8>> = row.get(7)?;
+        let associated_ui_text: Option<String> = row.get(8)?;
+        let config_text: Option<String> = row.get(9)?;
+
+        let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
+        let associated_ui = associated_ui_text
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
+        let config = config_text
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map_or(Ok(None), |s| serde_json::from_str(s).map(Some))?;
+
+        let step_history = if fetch_step_history {
+            self.get_step_history(&job_id, true)?
+        } else {
+            None
+        };
+
+        let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
+
+        let mut forked_jobs = vec![];
+
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT * FROM forked_jobs WHERE parent_job_id = ?1")?;
+        let mut rows = stmt.query(params![job_id])?;
+
+        while let Some(row) = rows.next()? {
+            let forked_job_id: String = row.get(1)?;
+            let message_id: String = row.get(2)?;
+
+            forked_jobs.push(ForkedJob {
+                job_id: forked_job_id,
+                message_id,
+            });
+        }
+
+        Ok(Job {
+            job_id,
+            is_hidden,
+            datetime_created,
+            is_finished,
+            parent_agent_or_llm_provider_id: parent_agent_id,
+            scope,
+            conversation_inbox_name: conversation_inbox,
+            step_history: step_history.unwrap_or_else(Vec::new),
+            execution_context,
+            associated_ui,
+            config,
+            forked_jobs,
+        })
     }
 }
 
