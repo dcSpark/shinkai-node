@@ -279,54 +279,63 @@ pub async fn tool_metadata_implementation_prompt(
 <agent_metadata_schema>
   * This is the SCHEMA for the METADATA:
   ```json
-  {{
-    "name": "metaschema",
+    {{
+    "name": "function",
     "schema": {{
       "type": "object",
       "properties": {{
         "name": {{
           "type": "string",
-          "description": "The name of the schema"
+          "description": "The name of the function"
         }},
-        "type": {{
+        "description": {{
           "type": "string",
-          "enum": [
-            "object",
-            "array",
-            "string",
-            "number",
-            "boolean",
-            "null"
-          ]
+          "description": "A description of what the function does"
         }},
-        "properties": {{
-          "type": "object",
-          "additionalProperties": {{
-            "$ref": "#/$defs/schema_definition"
-          }}
+        "author": {{
+          "type": "string",
+          "description": "The author of the function"
         }},
-        "items": {{
-          "anyOf": [
-            {{
-              "$ref": "#/$defs/schema_definition"
-            }},
-            {{
-              "type": "array",
-              "items": {{
-                "$ref": "#/$defs/schema_definition"
-              }}
-            }}
-          ]
-        }},
-        "required": {{
+        "keywords": {{
           "type": "array",
+          "description": "A list of keywords that describe the function",
           "items": {{
             "type": "string"
           }}
         }},
-        "additionalProperties": {{
-          "type": "boolean"
-        }}
+        "configurations": {{
+          "$ref": "#/$defs/root_type",
+          "description": "A JSON schema that defines the function's configurations"
+        }},
+        "parameters": {{
+          "$ref": "#/$defs/root_type",
+          "description": "A JSON schema that defines the function's parameters"
+        }},
+        "result": {{
+          "$ref": "#/$defs/root_type",
+          "description": "A JSON schema that defines the function's result"
+        }},
+        "sqlTables": {{
+          "type": "array",
+          "description": "A list of SQL tables used by the function",
+          "items": {{
+            "type": "string"
+          }}
+        }},
+        "sqlQueries": {{
+          "type": "array",
+          "description": "A list of SQL queries used by the function",
+          "items": {{
+            "type": "string"
+          }}
+        }},
+        "tools": {{
+          "type": "array",
+          "description": "A list of tools used by the function",
+          "items": {{
+            "type": "string"
+          }}
+        }},
         "oauth": {{
           "type": "array",
           "description": "A list of OAuth integrations",
@@ -394,121 +403,99 @@ pub async fn tool_metadata_implementation_prompt(
         }}
       }},
       "required": [
-        "type"
+        "name",
+        "description",
+        "author",
+        "keywords",
+        "configurations",
+        "parameters",
+        "result",
+        "sqlTables",
+        "sqlQueries",
+        "tools",
+        "oauth"
       ],
-      "additionalProperties": false,
-      "if": {{
+      "additionalProperties": false
+    }},
+    "$defs": {{
+      "root_type": {{
         "properties": {{
-          "type": {{
-            "const": "object"
+          "type": "object",
+          "additionalProperties": {{
+            "$ref": "#/$defs/schema_definition"
           }}
         }}
       }},
-      "then": {{
-        "required": [
-          "properties"
-        ]
-      }},
-      "$defs": {{
-        "schema_definition": {{
-          "type": "object",
+      "schema_definition": {{
+        "type": "object",
+        "properties": {{
+          "name": {{
+            "type": "string"
+          }},
+          "description": {{
+            "type": "string"
+          }},
+          "order": {{
+            "type": "number"
+          }},
+          "type": {{
+            "type": "string",
+            "enum": [
+              "object",
+              "array",
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          }},
           "properties": {{
-            "type": {{
-              "type": "string",
-              "enum": [
-                "object",
-                "array",
-                "string",
-                "number",
-                "boolean",
-                "null"
-              ]
-            }},
-            "properties": {{
-              "type": "object",
-              "additionalProperties": {{
-                "$ref": "#/$defs/schema_definition"
-              }}
-            }},
-            "items": {{
-              "anyOf": [
-                {{
-                  "$ref": "#/$defs/schema_definition"
-                }},
-                {{
-                  "type": "array",
-                  "items": {{
-                    "$ref": "#/$defs/schema_definition"
-                  }}
-                }}
-              ]
-            }},
-            "required": {{
-              "type": "array",
-              "items": {{
-                "type": "string"
-              }}
-            }},
+            "type": "object",
             "additionalProperties": {{
-              "type": "boolean"
+              "$ref": "#/$defs/schema_definition"
             }}
           }},
-          "required": [
-            "type"
-          ],
-          "additionalProperties": false,
-          "sqlTables": {{
-            "type": "array",
-            "items": {{
-              "type": "object",
-              "properties": {{
-                "name": {{
-                  "type": "string",
-                  "description": "Name of the table"
-                }},
-                "definition": {{
-                  "type": "string",
-                  "description": "SQL CREATE TABLE statement"
-                }}
+          "items": {{
+            "anyOf": [
+              {{
+                "$ref": "#/$defs/schema_definition"
               }},
-              "required": ["name", "definition"]
-            }}
-          }},
-          "sqlQueries": {{
-            "type": "array",
-            "items": {{
-              "type": "object",
-              "properties": {{
-                "name": {{
-                  "type": "string",
-                  "description": "Name/description of the query"
-                }},
-                "query": {{
-                  "type": "string",
-                  "description": "Example SQL query"
+              {{
+                "type": "array",
+                "items": {{
+                  "$ref": "#/$defs/schema_definition"
                 }}
-              }},
-              "required": ["name", "query"]
-            }}
+              }}
+            ]
           }},
-          "tools": {{
+          "required": {{
             "type": "array",
             "items": {{
               "type": "string"
             }}
           }},
-          "if": {{
-            "properties": {{
-              "type": {{
-                "const": "object"
-              }}
-            }}
-          }},
-          "then": {{
-            "required": [
-              "properties"
-            ]
+          "additionalProperties": {{
+            "type": "boolean"
           }}
+        }},
+        "required": [
+          "type",
+          "name",
+          "description",
+          "order"
+        ],
+        "additionalProperties": false,
+        "if": {{
+          "properties": {{
+            "type": {{
+              "const": "object"
+            }}
+          }}
+        }},
+        "then": {{
+          "required": [
+            "properties"
+          ]
         }}
       }}
     }}
@@ -532,9 +519,9 @@ pub async fn tool_metadata_implementation_prompt(
     "configurations": {{
       "type": "object",
       "properties": {{
-        "name": {{ "type": "string" }},
-        "privateKey": {{ "type": "string" }},
-        "useServerSigner": {{ "type": "string", "default": "false", "nullable": true }},
+        "name": {{ "type": "string", "description": "The name of the function" }},
+        "privateKey": {{ "type": "string", "description": "The private key of the function" }},
+        "useServerSigner": {{ "type": "string", "default": "false", "nullable": true, "description": "Whether to use the server signer" }},
       }},
       "required": [
         "name",
@@ -549,9 +536,9 @@ pub async fn tool_metadata_implementation_prompt(
     "result": {{
       "type": "object",
       "properties": {{
-        "walletId": {{ "type": "string", "nullable": true }},
-        "seed": {{ "type": "string", "nullable": true }},
-        "address": {{ "type": "string", "nullable": true }},
+        "walletId": {{ "type": "string", "nullable": true, "description": "The ID of the wallet" }},
+        "seed": {{ "type": "string", "nullable": true, "description": "The seed of the wallet" }},
+        "address": {{ "type": "string", "nullable": true, "description": "The address of the wallet" }},
       }},
       "required": []
     }},
@@ -595,6 +582,8 @@ pub async fn tool_metadata_implementation_prompt(
       "type": "object",
       "properties": {{
         "urls": {{ "type": "array", "description": "The URLs to download", "items": {{ "type": "string" }} }},
+        "email": {{ "type": "string", "description": "The email to send the markdown to" }},
+        "subject": {{ "type": "string", "description": "The subject of the email" }},
       }},
       "required": [
         "urls"
@@ -603,7 +592,7 @@ pub async fn tool_metadata_implementation_prompt(
     "result": {{
       "type": "object",
       "properties": {{
-        "markdowns": {{ "type": "array", "items": {{ "type": "string" }} }},
+        "markdowns": {{ "type": "array", "items": {{ "type": "string" }}, "description": "The markdown content of the downloaded pages" }},
       }},
       "required": [
         "markdowns"

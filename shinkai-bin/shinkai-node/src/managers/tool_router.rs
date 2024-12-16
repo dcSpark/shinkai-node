@@ -549,11 +549,19 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     .unwrap_or_default()
                     .unwrap_or_default();
                 let llm_provider = context.agent().clone().get_id().to_string();
-                let uuid = uuid::Uuid::new_v4().to_string();
                 envs.insert("BEARER".to_string(), bearer);
-                envs.insert("X_SHINKAI_TOOL_ID".to_string(), format!("call_function-{}", uuid));
-                envs.insert("X_SHINKAI_APP_ID".to_string(), format!("app_id-{}", uuid));
-                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), format!("instance_id-{}", uuid));
+                envs.insert(
+                    "X_SHINKAI_TOOL_ID".to_string(),
+                    format!("jid-{}", context.full_job().job_id()),
+                );
+                envs.insert(
+                    "X_SHINKAI_APP_ID".to_string(),
+                    format!("jid-{}", context.full_job().job_id()),
+                );
+                envs.insert(
+                    "X_SHINKAI_INSTANCE_ID".to_string(),
+                    format!("jid-{}", context.full_job().job_id()),
+                );
                 envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
                 let result = python_tool
                     .run(
@@ -619,12 +627,20 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     .read_api_v2_key()
                     .unwrap_or_default()
                     .unwrap_or_default();
-                let uuid = uuid::Uuid::new_v4().to_string();
                 let llm_provider = context.agent().clone().get_id().to_string();
                 envs.insert("BEARER".to_string(), bearer);
-                envs.insert("X_SHINKAI_TOOL_ID".to_string(), format!("call_function-{}", uuid));
-                envs.insert("X_SHINKAI_APP_ID".to_string(), format!("app_id-{}", uuid));
-                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), format!("instance_id-{}", uuid));
+                envs.insert(
+                    "X_SHINKAI_TOOL_ID".to_string(),
+                    format!("jid-{}", context.full_job().job_id()),
+                );
+                envs.insert(
+                    "X_SHINKAI_APP_ID".to_string(),
+                    format!("jid-{}", context.full_job().job_id()),
+                );
+                envs.insert(
+                    "X_SHINKAI_INSTANCE_ID".to_string(),
+                    format!("jid-{}", context.full_job().job_id()),
+                );
                 envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
                 let result = deno_tool
                     .run(

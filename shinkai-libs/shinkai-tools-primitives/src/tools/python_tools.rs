@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::fs::{self, DirEntry};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, io, thread};
+use std::{env, thread};
 
 use crate::tools::error::ToolError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -15,10 +14,11 @@ use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
 use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
-use super::tool_output_arg::ToolOutputArg;
 use super::deno_tools::ToolResult;
 use super::parameters::Parameters;
+use super::shared_execution::update_with_modified_files;
 use super::tool_config::{OAuth, ToolConfig};
+use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -137,49 +137,6 @@ impl PythonTool {
         let py_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
         py_tool_thread
             .spawn(move || {
-                fn get_files_in_directory(directories: Vec<PathBuf>) -> io::Result<Vec<DirEntry>> {
-                    let mut files = Vec::new();
-
-                    for directory in directories {
-                        let entries = fs::read_dir(directory)?;
-
-                        for entry in entries {
-                            let entry = entry?;
-                            let path = entry.path();
-
-                            if path.is_file() {
-                                files.push(entry);
-                            } else if path.is_dir() {
-                                // Recursively get files from subdirectories
-                                let sub_files = get_files_in_directory(vec![path])?;
-                                files.extend(sub_files);
-                            }
-                        }
-                    }
-
-                    Ok(files)
-                }
-
-                fn get_files_after(start_time: u64, files: Vec<DirEntry>) -> Vec<(String, u64)> {
-                    files
-                        .iter()
-                        .map(|file| {
-                            let name = file.path().to_str().unwrap_or_default().to_string();
-                            let modified = file
-                                .metadata()
-                                .ok()
-                                .map(|m| m.modified().ok())
-                                .unwrap_or_default()
-                                .unwrap_or(SystemTime::now())
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs();
-                            (name, modified)
-                        })
-                        .filter(|(_, modified)| *modified > start_time)
-                        .collect()
-                }
-
                 fn print_result(result: &Result<RunResult, ToolError>) {
                     match result {
                         Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
@@ -196,7 +153,13 @@ impl PythonTool {
                     println!(
                         "[Running DenoTool] Code: {} ... {}",
                         code.chars().take(120).collect::<String>(),
-                        code.chars().rev().take(400).collect::<String>().chars().rev().collect::<String>()
+                        code.chars()
+                            .rev()
+                            .take(400)
+                            .collect::<String>()
+                            .chars()
+                            .rev()
+                            .collect::<String>()
                     );
                     println!(
                         "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
@@ -275,53 +238,10 @@ impl PythonTool {
                         .map_err(|e| ToolError::ExecutionError(e.to_string()));
                     print_result(&result);
 
-                    pub fn convert_to_shinkai_file_protocol(
-                        node_name: &ShinkaiName,
-                        path: &str,
-                        app_id: &str,
-                    ) -> String {
-                        // Find the position after app_id in the path
-                        if let Some(pos) = path.find(&format!("tools_storage/{}/", app_id)) {
-                            // Get the relative path after app_id
-                            let relative_path = &path[pos + format!("tools_storage/{}", app_id).len()..];
-                            // Construct the shinkai URL preserving the path structure
-                            format!("shinkai://{}/{}{}", node_name, app_id, relative_path)
-                        } else {
-                            return "".to_string();
-                        }
+                    if result.is_err() {
+                        return result;
                     }
-
-                    // Add modified files to the result data
-                    match result {
-                        Ok(mut result) => {
-                            if let serde_json::Value::Object(ref mut data) = result.data {
-                                let modified_files = get_files_after(
-                                    start_time,
-                                    get_files_in_directory(vec![home_path, logs_path]).unwrap_or_default(),
-                                );
-                                data.insert(
-                                    "__created_files__".to_string(),
-                                    serde_json::Value::Array(
-                                        modified_files
-                                            .into_iter()
-                                            .map(|(name, _)| {
-                                                serde_json::Value::String(convert_to_shinkai_file_protocol(
-                                                    &node_name, &name, &app_id,
-                                                ))
-                                            })
-                                            .collect(),
-                                    ),
-                                );
-                            } else {
-                                println!("[Running DenoTool] Result is not an object, skipping modified files");
-                                return Err(ToolError::ExecutionError(
-                                    "Result is not an object, skipping modified files".to_string(),
-                                ));
-                            }
-                            Ok(result)
-                        }
-                        Err(e) => Err(e),
-                    }
+                    update_with_modified_files(result.unwrap(), start_time, &home_path, &logs_path, &node_name, &app_id)
                 })
             })
             .unwrap()

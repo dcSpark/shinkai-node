@@ -1,36 +1,39 @@
 // Example output:
 /*
-    /**
-     * Analyzes text and provides statistics
-     * @param text - (required, The text to analyze)
-     * @param include_sentiment - (optional, Whether to include sentiment analysis) , default: undefined
-     * @returns {
-     *   word_count: integer - Number of words in the text
-     *   character_count: integer - Number of characters in the text
-     *   sentiment_score: number - Sentiment score (-1 to 1) if requested
-     * }
-     */
-    async function textAnalyzer(text: string, include_sentiment?: boolean): Promise<{
-        word_count: integer;
-        character_count: integer;
-        sentiment_score: number;
-    }> {
-        const _url = 'http://localhost:9950/v2/tool_execution';
-        const data = {
-            tool_router_key: 'internal:::text_analyzer',
-            tool_type: 'js',
-            parameters: {
-                text: text,
-                include_sentiment: include_sentiment,
-            },
-        };
+/**
+ * Downloads one or more URLs and converts their HTML content to Markdown
+ * @param input - {
+ *   urls: any[]
+ *
+ * @returns {
+ *   markdowns: string[];
+ * }
+ */
+export async function shinkaiDownloadPages(input: {urls: any[]}): Promise<{
+    markdowns: string[];
+}> {
+
+    const _url = `${Deno.env.get('SHINKAI_NODE_LOCATION')}/v2/tool_execution`;
+    const data = {
+        tool_router_key: 'local:::shinkai_tool_download_pages:::shinkai__download_pages',
+        tool_type: 'deno',
+        llm_provider: `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`,
+        parameters: input,
+    };
+    try {
         const response = await axios.post(_url, data, {
             headers: {
-                'Authorization': `Bearer ${process.env.BEARER}`
+                'Authorization': `Bearer ${Deno.env.get('BEARER')}`,
+                'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,
+                'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`,
+                'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`
             }
         });
         return response.data;
+    } catch (error) {
+        return manageAxiosError(error);
     }
+}
 */
 use serde_json::Value;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
@@ -68,14 +71,7 @@ fn json_type_to_typescript(type_value: &Value, items_value: Option<&Value>) -> S
         Some("number") => "number".to_string(),
         Some("integer") => "number".to_string(),
         Some("boolean") => "boolean".to_string(),
-        Some("object") => {
-            // Handle object types with properties if available
-            if let Some(properties) = type_value.get("properties") {
-                "object".to_string() // Could be expanded to generate interface
-            } else {
-                "object".to_string()
-            }
-        }
+        Some("object") => "object".to_string(),
         Some(t) => t.to_string(),
         None => "any".to_string(),
     }
@@ -109,34 +105,21 @@ pub fn generate_typescript_definition(
     // Combine JSDoc comment generation
     typescript_output.push_str(&format!("/**\n * {}\n", tool.description));
 
-    // Generate parameter documentation
-    for arg in &tool.input_args.to_deprecated_arguments() {
-        typescript_output.push_str(&format!(
-            " * @param {} - ({}{}) {}\n",
-            arg.name,
-            if arg.is_required { "required" } else { "optional" },
-            if !arg.description.is_empty() {
-                format!(", {}", arg.description)
-            } else {
-                String::new()
-            },
-            if arg.is_required { "" } else { ", default: undefined" }
-        ));
-    }
-
-    // Generate return type documentation
-    typescript_output.push_str(" * @returns {\n");
-    if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
-        if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
+    // Generate input schema documentation
+    typescript_output.push_str(" * @param input - {\n");
+    if let Ok(input_schema) = serde_json::from_str::<Value>(&serde_json::to_string(&tool.input_args).unwrap()) {
+        if let Some(properties) = input_schema.get("properties").and_then(|v| v.as_object()) {
             for (prop_name, prop_value) in properties {
                 let type_str = json_type_to_typescript(
                     prop_value.get("type").unwrap_or(&Value::String("any".to_string())),
                     prop_value.get("items"),
                 );
                 let desc = prop_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                let required = tool.input_args.required.contains(prop_name);
                 typescript_output.push_str(&format!(
-                    " *   {}: {} {}\n",
+                    " *   {}{}: {} {}\n",
                     prop_name,
+                    if required { "" } else { "?" },
                     type_str,
                     if !desc.is_empty() {
                         format!("- {}", desc)
@@ -147,12 +130,27 @@ pub fn generate_typescript_definition(
             }
         }
     }
+
+    // Generate return type documentation
+    typescript_output.push_str(" *\n");
+    typescript_output.push_str(" * @returns {\n");
+    if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
+        if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
+            for (prop_name, prop_value) in properties {
+                let type_str = json_type_to_typescript(
+                    prop_value.get("type").unwrap_or(&Value::String("any".to_string())),
+                    prop_value.get("items"),
+                );
+                typescript_output.push_str(&format!(" *   {}: {};\n", prop_name, type_str));
+            }
+        }
+    }
     typescript_output.push_str(" * }\n */\n");
 
-    // Function signature
-    typescript_output.push_str(&format!("export async function {}(", function_name));
+    // Function signature with single input parameter
+    typescript_output.push_str(&format!("export async function {}(input: {{", function_name));
 
-    // Generate function parameters
+    // Generate input type inline
     let params: Vec<String> = tool
         .input_args
         .to_deprecated_arguments()
@@ -167,9 +165,9 @@ pub fn generate_typescript_definition(
         })
         .collect();
     typescript_output.push_str(&params.join(", "));
+    typescript_output.push_str("}): Promise<{\n");
 
     // Generate return type inline
-    typescript_output.push_str("): Promise<{\n");
     if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
         if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
             for (prop_name, prop_value) in properties {
@@ -195,38 +193,26 @@ pub fn generate_typescript_definition(
         tool_router_key: '{}',
         tool_type: '{}',
         llm_provider: `${{Deno.env.get('X_SHINKAI_LLM_PROVIDER')}}`,
-        parameters: {{
+        parameters: input,
+    }};
+    try {{
+        const response = await axios.post(_url, data, {{
+            headers: {{
+                'Authorization': `Bearer ${{Deno.env.get('BEARER')}}`,
+                'x-shinkai-tool-id': `${{Deno.env.get('X_SHINKAI_TOOL_ID')}}`,
+                'x-shinkai-app-id': `${{Deno.env.get('X_SHINKAI_APP_ID')}}`,
+                'x-shinkai-llm-provider': `${{Deno.env.get('X_SHINKAI_LLM_PROVIDER')}}`
+            }}
+        }});
+        return response.data;
+    }} catch (error) {{
+        return manageAxiosError(error);
+    }}
+}}
 ",
             tool.tool_router_key,
             tool.tool_type.to_lowercase()
         ));
-
-        // Parameters
-        for arg in &tool.input_args.to_deprecated_arguments() {
-            typescript_output.push_str(&format!("            {}: {},\n", arg.name, arg.name));
-        }
-
-        // Combine the rest of implementation
-        typescript_output.push_str(
-            "
-        },
-    };
-    try {
-        const response = await axios.post(_url, data, {
-            headers: {
-                'Authorization': `Bearer ${Deno.env.get('BEARER')}`,
-                'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,
-                'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`,
-                'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`
-            }
-        });
-        return response.data;
-    } catch (error) {
-        return manageAxiosError(error);
-    }
-}
-",
-        );
     }
 
     // If SQL tables exist, generate a query function
