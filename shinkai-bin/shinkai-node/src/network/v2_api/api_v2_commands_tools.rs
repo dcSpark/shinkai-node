@@ -33,7 +33,12 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::ShinkaiTool, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
+    deno_tools::DenoTool,
+    python_tools::PythonTool,
+    shinkai_tool::ShinkaiTool,
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
@@ -1133,7 +1138,7 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
-            }
+            };
 
             // Handle the last message safely
             if let Some(last_message) = messages.last().and_then(|msg| msg.last()) {
@@ -1756,6 +1761,42 @@ impl Node {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(api_error)) => Err(format!("API error while updating job config: {}", api_error.message)),
             Err(err) => Err(format!("Failed to update job config: {}", err)),
+        }
+    }
+
+    pub async fn v2_api_remove_tool(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Acquire a write lock on the database
+        let db_write = db.write().await;
+
+        // Attempt to remove the playground tool first
+        let _ = db_write.remove_tool_playground(&tool_key);
+
+        // Remove the tool from the database
+        match db_write.remove_tool(&tool_key) {
+            Ok(_) => {
+                let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
         }
     }
 }

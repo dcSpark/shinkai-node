@@ -1034,6 +1034,11 @@ pub enum NodeCommand {
         url: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiRemoveTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiResolveShinkaiFileProtocol {
         bearer: String,
         shinkai_file_protocol: String,
