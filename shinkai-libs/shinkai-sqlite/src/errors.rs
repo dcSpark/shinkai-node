@@ -72,6 +72,8 @@ pub enum SqliteManagerError {
     DirectoryNotEmpty,
     #[error("Directory not found")]
     DirectoryNotFound,
+    #[error("Unsupported embedding length: {0}")]
+    UnsupportedEmbeddingLength(usize),
     // Add other error variants as needed
 }
 

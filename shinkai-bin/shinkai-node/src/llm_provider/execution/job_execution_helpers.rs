@@ -65,7 +65,7 @@ impl JobManager {
         let mut user_profile: Option<ShinkaiName> = None;
         let agents_and_llm_providers = JobManager::get_all_agents_and_llm_providers(db).await.unwrap_or(vec![]);
         for agent_or_llm_provider in agents_and_llm_providers {
-            if agent_or_llm_provider.get_id() == &agent_or_llm_provider_id {
+            if agent_or_llm_provider.get_id().to_lowercase() == agent_or_llm_provider_id.to_lowercase() {
                 agent_or_llm_provider_found = Some(agent_or_llm_provider.clone());
                 profile_name.clone_from(&agent_or_llm_provider.get_full_identity_name().full_name);
                 user_profile = Some(

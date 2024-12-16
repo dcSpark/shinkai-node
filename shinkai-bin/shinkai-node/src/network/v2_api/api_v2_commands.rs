@@ -1033,11 +1033,6 @@ impl Node {
         // Stop the LLM
         stopper.stop(&inbox_name.get_value());
 
-        // search in    let job_queue_manager_lock = job_queue_manager.lock().await;
-        // for everything that has this job_id and stop it
-
-        // Make sure that the job is stopped and not left "hanging"
-
         let _ = res.send(Ok(())).await;
         Ok(())
     }
@@ -1072,7 +1067,7 @@ impl Node {
         let expected_full_identity_name = ShinkaiName::new(format!(
             "{}/main/agent/{}",
             requester_name.get_node_name_string(),
-            agent.agent_id
+            agent.agent_id.to_lowercase()
         ))
         .unwrap();
 

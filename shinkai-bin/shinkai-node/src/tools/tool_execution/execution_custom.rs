@@ -8,6 +8,7 @@ use ed25519_dalek::SigningKey;
 
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
+use shinkai_tools_primitives::tools::tool_config::OAuth;
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
@@ -27,7 +28,6 @@ pub async fn execute_custom_tool(
     tool_id: String,
     app_id: String,
     _extra_config: Vec<ToolConfig>,
-    _oauth: Vec<ToolConfig>,
     bearer: String,
     db: Arc<RwLock<SqliteManager>>,
     vector_fs: Arc<VectorFS>,
@@ -112,11 +112,15 @@ pub async fn execute_custom_tool(
     let text_result = format!("{:?}", result);
     if text_result.chars().count() > 200 {
         let start = text_result.chars().take(100).collect::<String>();
-        let end = text_result.chars().rev().take(100).collect::<String>().chars().rev().collect::<String>();
-        println!(
-            "[executing_rust_tool] result: {}...{}",
-            start, end
-        );
+        let end = text_result
+            .chars()
+            .rev()
+            .take(100)
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect::<String>();
+        println!("[executing_rust_tool] result: {}...{}", start, end);
     } else {
         println!("[executing_rust_tool] result: {}", text_result);
     }

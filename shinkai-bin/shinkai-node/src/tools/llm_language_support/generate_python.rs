@@ -64,7 +64,7 @@ fn generate_parameters(tool: &ShinkaiToolHeader, include_defaults: bool) -> Stri
     let mut required_params: Vec<String> = Vec::new();
     let mut optional_params: Vec<String> = Vec::new();
 
-    for arg in &tool.input_args {
+    for arg in &tool.input_args.to_deprecated_arguments() {
         let type_str = json_type_to_python(&Value::String(arg.arg_type.clone()), None);
         let param = if arg.is_required {
             format!("{}: {}", arg.name, type_str)
@@ -90,9 +90,27 @@ fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
     // Main description
     doc.push_str(&format!("{}\"\"\"{}\n\n", indent, tool.description));
 
+    // Example usage
+    doc.push_str(&format!("{}Example Usage:\n", indent));
+    let function_name = create_function_name_set(tool);
+    let mut example_args = Vec::new();
+
+    for arg in &tool.input_args.to_deprecated_arguments() {
+        if arg.is_required {
+            example_args.push(format!("{0} = {0}", arg.name));
+        }
+    }
+
+    doc.push_str(&format!(
+        "{}    result = async {}({})\n\n",
+        indent,
+        function_name,
+        example_args.join(", ")
+    ));
+
     // Parameter documentation
     doc.push_str(&format!("{}Args:\n", indent));
-    for arg in &tool.input_args {
+    for arg in &tool.input_args.to_deprecated_arguments() {
         doc.push_str(&format!(
             "{}    {}: {} {}\n",
             indent,
@@ -144,7 +162,7 @@ pub fn generate_python_definition(
 
     if generate_pyi {
         // Generate .pyi stub file
-        python_output.push_str(&format!("def {}(", function_name));
+        python_output.push_str(&format!("async def {}(", function_name));
         python_output.push_str(&generate_parameters(&tool, false));
         python_output.push_str(") -> Dict[str, Any]:\n");
 
@@ -157,7 +175,7 @@ pub fn generate_python_definition(
             if !playground.metadata.sql_tables.is_empty() {
                 python_output.push_str("\n\n");
                 python_output.push_str(&format!(
-                    "def query_{}(query: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:\n",
+                    "async def query_{}(query: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:\n",
                     function_name
                 ));
 
@@ -196,7 +214,7 @@ pub fn generate_python_definition(
         return python_output;
     } else {
         // Original implementation for .py file
-        python_output.push_str(&format!("def {}(", function_name));
+        python_output.push_str(&format!("async def {}(", function_name));
         python_output.push_str(&generate_parameters(&tool, true));
         python_output.push_str(") -> Dict[str, Any]:\n");
         python_output.push_str(&generate_docstring(&tool, "    "));
@@ -222,7 +240,7 @@ pub fn generate_python_definition(
         );
 
         // Add parameters
-        for arg in &tool.input_args {
+        for arg in &tool.input_args.to_deprecated_arguments() {
             python_output.push_str(&format!("            '{}': {},\n", arg.name, arg.name));
         }
 

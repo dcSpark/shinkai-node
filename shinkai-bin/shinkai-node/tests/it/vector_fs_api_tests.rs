@@ -32,6 +32,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 use crate::it::utils::shinkai_testing_framework::ShinkaiTestingFramework;
 
 use super::utils;
+use super::utils::db_handlers::setup_node_storage_path;
 use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, api_llm_provider_registration};
 use mockito::Server;
 
@@ -66,7 +67,10 @@ pub fn generate_message_with_payload<T: ToString>(
 
 #[test]
 fn vector_fs_api_tests() {
+    setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
+    std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
+
 
     let mut server = Server::new();
 

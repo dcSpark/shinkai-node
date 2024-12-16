@@ -38,6 +38,7 @@ use shinkai_message_primitives::{
 
 use shinkai_tools_primitives::tools::{
     shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_config::OAuth,
     tool_playground::ToolPlayground,
 };
 // use crate::{
@@ -564,6 +565,12 @@ pub enum NodeCommand {
         job_message: JobMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
+    V2ApiAddMessagesGodMode {
+        bearer: String,
+        job_id: String,
+        messages: Vec<JobMessage>,
+        res: Sender<Result<String, APIError>>,
+    },
     V2ApiForkJobMessages {
         bearer: String,
         job_id: String,
@@ -673,6 +680,7 @@ pub enum NodeCommand {
     V2ApiSearchShinkaiTool {
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiTools {
@@ -935,7 +943,6 @@ pub enum NodeCommand {
         app_id: String,
         llm_provider: String,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -945,7 +952,7 @@ pub enum NodeCommand {
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
+        oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -961,6 +968,7 @@ pub enum NodeCommand {
         bearer: String,
         language: CodeLanguage,
         tools: Vec<String>,
+        code: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolImplementation {
@@ -1035,6 +1043,8 @@ pub enum NodeCommand {
         bearer: String,
         cron: String,
         action: CronTaskAction,
+        name: String,
+        description: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllCronTasks {
@@ -1056,9 +1066,30 @@ pub enum NodeCommand {
         cron_task_id: i64,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiUpdateCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        cron: String,
+        action: CronTaskAction,
+        name: String,
+        description: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiTestLlmProvider {
         bearer: String,
         provider: SerializedLLMProvider,
         res: Sender<Result<serde_json::Value, APIError>>,
+    },
+    V2ApiGetOAuthToken {
+        bearer: String,
+        connection_name: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetOAuthToken {
+        bearer: String,
+        code: String,
+        state: String,
+        res: Sender<Result<Value, APIError>>,
     },
 }

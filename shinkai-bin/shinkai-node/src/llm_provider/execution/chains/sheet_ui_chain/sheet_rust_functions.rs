@@ -5,13 +5,13 @@ use bigdecimal::ToPrimitive;
 use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use shinkai_tools_primitives::tools::{
-    argument::{ToolArgument, ToolOutputArg},
-    rust_tools::RustTool,
-    shinkai_tool::ShinkaiTool,
+    parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg,
 };
 use tokio::sync::Mutex;
 use umya_spreadsheet::new_file;
 use uuid::Uuid;
+
+const MAX_ROWS: u32 = 100000;
 
 pub struct SheetRustFunctions;
 
@@ -303,38 +303,16 @@ impl SheetRustFunctions {
             }
         }
 
-        // Ensure the number of rows matches the number of records
-        {
+        // Add rows with values in chunks
+        for chunk in records.chunks(MAX_ROWS as usize) {
+            let mut rows = Vec::new();
+            for record in chunk {
+                let row_cells = record.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+                rows.push(row_cells);
+            }
+
             let mut sheet_manager = sheet_manager.lock().await;
-            while {
-                let (sheet, _) = sheet_manager.sheets.get_mut(&sheet_id).ok_or("Sheet ID not found")?;
-                sheet.rows.len() < records.len()
-            } {
-                sheet_manager.add_row(&sheet_id, None).await?;
-            }
-        }
-
-        // Set values for the new columns
-        let row_ids: Vec<String> = {
-            let sheet_manager = sheet_manager.lock().await;
-            let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
-            sheet.display_rows.clone()
-        };
-
-        for (row_index, record) in records.iter().enumerate() {
-            let row_id = row_ids.get(row_index).ok_or("Row ID not found")?.clone();
-            for (col_index, value) in record.iter().enumerate() {
-                let column_definition = &column_definitions[col_index];
-                let mut sheet_manager = sheet_manager.lock().await;
-                sheet_manager
-                    .set_cell_value(
-                        &sheet_id,
-                        row_id.clone(),
-                        column_definition.id.clone(),
-                        value.to_string(),
-                    )
-                    .await?;
-            }
+            sheet_manager.add_values(&sheet_id, rows).await?;
         }
 
         Ok("Columns created successfully".to_string())
@@ -387,49 +365,36 @@ impl SheetRustFunctions {
                 }
             }
 
-            let mut num_rows: u32 = 0;
-            for row_index in 1..u32::MAX {
-                let row_cells = worksheet.get_collection_by_row(&row_index);
-                let is_empty_row =
-                    row_cells.is_empty() || row_cells.into_iter().all(|cell| cell.get_cell_value().is_empty());
+            // Add rows with values in chunks
+            for chunk_start in (1..u32::MAX).step_by(MAX_ROWS as usize) {
+                let mut rows = Vec::new();
+                let mut is_empty_row = false;
+                for row_index in chunk_start..(chunk_start + MAX_ROWS) {
+                    let row_cells = worksheet.get_collection_by_row(&row_index);
+                    is_empty_row =
+                        row_cells.is_empty() || row_cells.into_iter().all(|cell| cell.get_cell_value().is_empty());
+
+                    if is_empty_row {
+                        break;
+                    }
+
+                    let mut row_cells = Vec::new();
+                    for col_index in 1..=num_columns {
+                        if let Some(cell) = worksheet.get_cell((col_index.to_u32().unwrap_or_default(), row_index)) {
+                            row_cells.push(cell.get_value().to_string());
+                        }
+                    }
+
+                    rows.push(row_cells);
+                }
+
+                if !rows.is_empty() {
+                    let mut sheet_manager = sheet_manager.lock().await;
+                    sheet_manager.add_values(&sheet_id, rows).await?;
+                }
 
                 if is_empty_row {
                     break;
-                }
-
-                num_rows += 1;
-            }
-
-            {
-                let mut sheet_manager = sheet_manager.lock().await;
-
-                for _ in 0..num_rows {
-                    sheet_manager.add_row(&sheet_id, None).await?;
-                }
-            }
-
-            let row_ids: Vec<String> = {
-                let sheet_manager = sheet_manager.lock().await;
-                let (sheet, _) = sheet_manager.sheets.get(&sheet_id).ok_or("Sheet ID not found")?;
-                sheet.display_rows.clone()
-            };
-
-            for row_index in 1..=num_rows {
-                for col_index in 1..=num_columns {
-                    if let Some(cell) = worksheet.get_cell((col_index.to_u32().unwrap_or_default(), row_index)) {
-                        let cell_value = cell.get_value();
-                        let row_id = row_ids.get(row_index as usize - 1).ok_or("Row ID not found")?.clone();
-
-                        let mut sheet_manager = sheet_manager.lock().await;
-                        sheet_manager
-                            .set_cell_value(
-                                &sheet_id,
-                                row_id,
-                                column_definitions[col_index as usize - 1].id.clone(),
-                                cell_value.to_string(),
-                            )
-                            .await?;
-                    }
                 }
             }
         }
@@ -559,14 +524,11 @@ impl SheetRustFunctions {
         let create_new_column_tool = RustTool::new(
             "create_new_column_with_values".to_string(),
             "Creates a new column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "values".to_string(),
-                    "string".to_string(),
-                    "The values to populate the new column, separated by commas".to_string(),
-                    true,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("values".to_string(), "string".to_string(), "The values to create the column with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_create_new_column_with_values".to_string(),
@@ -576,20 +538,12 @@ impl SheetRustFunctions {
         let update_column_tool = RustTool::new(
             "update_column_with_values".to_string(),
             "Updates an existing column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "column_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the column to update".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "values".to_string(),
-                    "string".to_string(),
-                    "The values to update the column with, separated by commas".to_string(),
-                    true,
-                ),
-            ],            
+            {
+                let mut params = Parameters::new();
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
+                params.add_property("values".to_string(), "string".to_string(), "The values to update the column with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_update_column_with_values".to_string(),
@@ -599,26 +553,13 @@ impl SheetRustFunctions {
         let replace_value_tool = RustTool::new(
             "replace_value_at_position".to_string(),
             "Replaces the value at the specified column and row position. Example: 'column_position, row_position, new_value'".to_string(),
-            vec![
-                ToolArgument::new(
-                    "column_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the column".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "row_position".to_string(),
-                    "usize".to_string(),
-                    "The position of the row".to_string(),
-                    true,
-                ),
-                ToolArgument::new(
-                    "new_value".to_string(),
-                    "string".to_string(),
-                    "The new value to set".to_string(),
-                    true,
-                ),
-            ],
+            {
+                let mut params = Parameters::new();
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
+                params.add_property("row_position".to_string(), "usize".to_string(), "The position of the row to update".to_string(), true);
+                params.add_property("new_value".to_string(), "string".to_string(), "The new value to replace the value at the specified position with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_replace_value_at_position".to_string(),
@@ -628,12 +569,11 @@ impl SheetRustFunctions {
         let create_new_columns_tool = RustTool::new(
             "create_new_columns_with_csv".to_string(),
             "Creates new columns with the provided CSV data. Example: 'column1;column2\nvalue1;value2' It also supports comma separators.".to_string(),
-            vec![ToolArgument::new(
-                "csv_data".to_string(),
-                "string".to_string(),
-                "The CSV data to populate the new columns".to_string(),
-                true,
-            )],
+            {
+                let mut params = Parameters::new();
+                params.add_property("csv_data".to_string(), "string".to_string(), "The CSV data to create the columns with".to_string(), true);
+                params
+            },
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_create_new_columns_with_csv".to_string(),
@@ -643,7 +583,7 @@ impl SheetRustFunctions {
         let get_table_tool = RustTool::new(
             "get_table".to_string(),
             "Retrieves the entire table in ASCII format.".to_string(),
-            vec![],
+            Parameters::new(),
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_get_table".to_string(),
@@ -666,15 +606,19 @@ mod tests {
     use async_trait::async_trait;
     use futures::Future;
     use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-    
+
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
     use shinkai_sqlite::SqliteManager;
-    use shinkai_vector_resources::{model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference}, utils::hash_string};
+    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
     use tempfile::NamedTempFile;
-    use std::{fs, path::{Path, PathBuf}, sync::Arc};
     use tokio::sync::{Mutex, RwLock};
 
     struct MockJobManager;

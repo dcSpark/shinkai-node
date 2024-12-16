@@ -7,11 +7,8 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffe
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
-    argument::{ToolArgument, ToolOutputArg},
-    deno_tools::DenoTool,
-    network_tool::NetworkTool,
-    python_tools::PythonTool,
-    tool_config::ToolConfig,
+    deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
+    tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
 };
 
 pub type IsEnabled = bool;
@@ -36,7 +33,7 @@ pub struct ShinkaiToolHeader {
     pub author: String,
     pub version: String,
     pub enabled: bool,
-    pub input_args: Vec<ToolArgument>,
+    pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub config: Option<Vec<ToolConfig>>,
     pub usage_type: Option<UsageType>, // includes pricing
@@ -87,6 +84,7 @@ impl ShinkaiTool {
                         ShinkaiTool::Rust(r, _) => r.toolkit_name(),
                         ShinkaiTool::Deno(j, _) => j.toolkit_name.to_string(),
                         ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
+                        ShinkaiTool::Python(p, _) => p.toolkit_name.clone(),
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
@@ -152,7 +150,7 @@ impl ShinkaiTool {
     }
 
     /// Returns the input arguments of the tool
-    pub fn input_args(&self) -> Vec<ToolArgument> {
+    pub fn input_args(&self) -> Parameters {
         match self {
             ShinkaiTool::Rust(r, _) => r.input_args.clone(),
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
@@ -203,22 +201,6 @@ impl ShinkaiTool {
 
     /// Returns the tool formatted as a JSON object for the function call format
     pub fn json_function_call_format(&self) -> Result<serde_json::Value, ToolError> {
-        let mut properties = serde_json::Map::new();
-        let mut required_args = vec![];
-
-        for arg in self.input_args() {
-            properties.insert(
-                arg.name.clone(),
-                serde_json::json!({
-                    "type": "string",
-                    "description": arg.description.clone(),
-                }),
-            );
-            if arg.is_required {
-                required_args.push(arg.name.clone());
-            }
-        }
-
         // Store the tool_router_key in a variable to extend its lifetime
         let tool_router_key = self.tool_router_key().clone();
         let key_parts: Vec<&str> = tool_router_key.split(":::").collect();
@@ -236,11 +218,7 @@ impl ShinkaiTool {
                 "name": tool_name,
                 "description": self.description(),
                 "tool_router_key": tool_router_key,
-                "parameters": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": required_args,
-                },
+                "parameters": self.input_args()
             },
         });
 
@@ -410,8 +388,9 @@ impl From<NetworkTool> for ShinkaiTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::deno_tools::{DenoTool, DenoToolResult};
+    use crate::tools::deno_tools::{DenoTool, ToolResult};
     use serde_json::json;
+    use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
     #[test]
     fn test_gen_router_key() {
@@ -420,7 +399,7 @@ mod tests {
             name: "Shinkai: Download Pages".to_string(),
             toolkit_name: "deno-toolkit".to_string(),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
-            input_args: vec![],
+            input_args: Parameters::new(),
             output_arg: ToolOutputArg { json: "".to_string() },
             config: vec![],
             author: "unknown".to_string(),
@@ -429,7 +408,7 @@ mod tests {
             keywords: vec![],
             activated: false,
             embedding: None,
-            result: DenoToolResult::new(
+            result: ToolResult::new(
                 "object".to_string(),
                 json!({
                     "markdowns": { "type": "array", "items": { "type": "string" } }
@@ -439,6 +418,7 @@ mod tests {
             sql_tables: None,
             sql_queries: None,
             file_inbox: None,
+            oauth: None,
         };
 
         // Create a ShinkaiTool instance
@@ -452,5 +432,83 @@ mod tests {
 
         // Assert that the generated key matches the expected pattern
         assert_eq!(router_key, expected_key);
+    }
+
+    #[test]
+    fn test_set_playground_tool() {
+        let tool_definition = ToolDefinition {
+            id: "shinkai-tool-download-website".to_string(),
+            name: "Download Website".to_string(),
+            description: "Downloads a website and converts its content into Markdown.".to_string(),
+            configurations: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch"
+                    }
+                },
+                "required": ["url"]
+            }),
+            result: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+            author: "@@my_local_ai.arb-sep-shinkai".to_string(),
+            keywords: vec![
+                "Deno".to_string(),
+                "Markdown".to_string(),
+                "HTML to Markdown".to_string(),
+            ],
+            code: Some("import { getHomePath } from './shinkai-local-support.ts';\n\n...".to_string()), // Truncated for brevity
+            embedding_metadata: None,
+        };
+
+        let input_args = Parameters::with_single_property("url", "string", "The URL to fetch", true);
+
+        let deno_tool = DenoTool {
+            toolkit_name: "deno_toolkit".to_string(),
+            name: "shinkai__download_website".to_string(),
+            description: tool_definition.description.clone(),
+            input_args: input_args.clone(),
+            output_arg: ToolOutputArg {
+                json: tool_definition.result.to_string(),
+            },
+            config: vec![],
+            author: tool_definition.author.clone(),
+            js_code: tool_definition.code.clone().unwrap_or_default(),
+            tools: None,
+            keywords: tool_definition.keywords.clone(),
+            activated: false,
+            embedding: None,
+            result: ToolResult::new(
+                "object".to_string(),
+                tool_definition.result["properties"].clone(),
+                vec![],
+            ),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+
+        let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
+        eprintln!("shinkai_tool: {:?}", shinkai_tool);
+
+        eprintln!("shinkai params: {:?}", shinkai_tool.input_args());
+
+        assert_eq!(shinkai_tool.name(), "shinkai__download_website");
+        assert_eq!(
+            shinkai_tool.description(),
+            "Downloads a website and converts its content into Markdown."
+        );
+        assert_eq!(shinkai_tool.tool_type(), "Deno");
+        assert!(shinkai_tool.is_enabled());
     }
 }

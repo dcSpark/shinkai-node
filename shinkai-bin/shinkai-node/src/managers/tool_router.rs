@@ -23,14 +23,16 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::argument::ToolArgument;
-use shinkai_tools_primitives::tools::argument::ToolOutputArg;
+use shinkai_tools_primitives::tools::deno_tools::ToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+use shinkai_tools_primitives::tools::parameters::Parameters;
+use shinkai_tools_primitives::tools::python_tools::PythonTool;
 use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use tokio::sync::RwLock;
@@ -67,15 +69,16 @@ impl ToolRouter {
 
         if is_empty {
             // Add JS tools
-            let _ = self.add_js_tools().await;
+            let _ = self.add_deno_tools().await;
             let _ = self.add_rust_tools().await;
-
+            let _ = self.add_python_tools().await;
             // Add static prompts
             let _ = self.add_static_prompts(&generator).await;
         } else if !has_any_js_tools {
             // Add JS tools
-            let _ = self.add_js_tools().await;
+            let _ = self.add_deno_tools().await;
             let _ = self.add_rust_tools().await;
+            let _ = self.add_python_tools().await;
         }
 
         Ok(())
@@ -83,8 +86,9 @@ impl ToolRouter {
 
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Add JS tools
-        let _ = self.add_js_tools().await;
+        let _ = self.add_deno_tools().await;
         let _ = self.add_rust_tools().await;
+        let _ = self.add_python_tools().await;
         let _ = self.add_static_prompts(generator).await;
 
         Ok(())
@@ -156,7 +160,7 @@ impl ToolRouter {
         Ok(())
     }
 
-    async fn add_js_tools(&self) -> Result<(), ToolError> {
+    async fn add_deno_tools(&self) -> Result<(), ToolError> {
         let start_time = Instant::now(); // Start the timer
 
         let tools = built_in_tools::get_tools();
@@ -214,12 +218,16 @@ impl ToolRouter {
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
-                input_args: vec![ToolArgument {
-                    name: "message".to_string(),
-                    arg_type: "string".to_string(),
-                    description: "".to_string(),
-                    is_required: true,
-                }],
+                input_args: {
+                    let mut params = Parameters::new();
+                    params.add_property(
+                        "message".to_string(),
+                        "string".to_string(),
+                        "The message to echo".to_string(),
+                        true,
+                    );
+                    params
+                },
                 output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
@@ -244,12 +252,11 @@ impl ToolRouter {
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
-                input_args: vec![ToolArgument {
-                    name: "url".to_string(),
-                    arg_type: "string".to_string(),
-                    description: "The URL of the YouTube video".to_string(),
-                    is_required: true,
-                }],
+                input_args: {
+                    let mut params = Parameters::new();
+                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true);
+                    params
+                },
                 output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
@@ -318,6 +325,130 @@ impl ToolRouter {
 
         let duration = start_time.elapsed(); // Calculate the duration
         println!("Time taken to add JS tools: {:?}", duration); // Print the duration
+
+        Ok(())
+    }
+
+    fn generate_google_search_tool() -> PythonTool {
+        // Create parameters for Google search
+        let mut params = Parameters::new();
+        params.add_property(
+            "query".to_string(),
+            "string".to_string(),
+            "The search query to look up".to_string(),
+            true,
+        );
+        params.add_property(
+            "num_results".to_string(),
+            "number".to_string(),
+            "Number of search results to return".to_string(),
+            false,
+        );
+
+        let mut output_arg = ToolOutputArg::empty();
+        output_arg.json = r#"{
+        "query": "string",
+        "results": [
+            {
+                "title": "string",
+                "url": "string", 
+                "description": "string"
+            }
+        ]
+    }"#
+        .to_string();
+
+        let python_tool = PythonTool {
+            toolkit_name: "google_search_shinkai".to_string(),
+            embedding: None,
+            name: "Google Search".to_string(),
+            author: "Shinkai".to_string(),
+            py_code: r#"
+# /// script
+# dependencies = [
+# "googlesearch-python"
+# ]
+# ///
+from googlesearch import search, SearchResult
+from typing import List
+from dataclasses import dataclass
+import json
+
+class CONFIG:
+    pass
+
+class INPUTS:
+    query: str
+    num_results: int = 10
+
+class OUTPUT:
+    results: List[SearchResult]
+    query: str
+
+async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
+    query = p.query
+    if not query:
+        raise ValueError("No search query provided")
+
+    results = []
+    try:
+        results = search(query, num_results=p.num_results, advanced=True)
+    except Exception as e:
+        raise RuntimeError(f"Search failed: {str(e)}")
+
+    output = OUTPUT()
+    output.results = results
+    output.query = query
+    return output
+"#
+            .to_string(),
+            tools: None,
+            config: vec![],
+            description: "Search the web using Google".to_string(),
+            keywords: vec![
+                "web search".to_string(),
+                "google search".to_string(),
+                "internet search".to_string(),
+            ],
+            input_args: params,
+            output_arg,
+            activated: true,
+            result: ToolResult {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({
+                    "query": {"type": "string"},
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "url": {"type": "string"},
+                                "description": {"type": "string"}
+                            },
+                            "required": ["title", "url", "description"]
+                        }
+                    }
+                }),
+                required: vec!["query".to_string(), "results".to_string()],
+            },
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+        };
+        python_tool
+    }
+
+    async fn add_python_tools(&self) -> Result<(), ToolError> {
+        let python_tools = vec![Self::generate_google_search_tool()];
+        let mut sqlite_manager = self.sqlite_manager.write().await;
+        for python_tool in python_tools {
+            sqlite_manager
+                .add_tool(ShinkaiTool::Python(python_tool, true))
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        }
 
         Ok(())
     }
@@ -392,9 +523,57 @@ impl ToolRouter {
         let function_args = function_call.arguments.clone();
 
         match shinkai_tool {
-            ShinkaiTool::Python(_, _) => {
+            ShinkaiTool::Python(python_tool, _) => {
+                let function_config = shinkai_tool.get_config_from_env();
+                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+
+                let node_env = fetch_node_environment();
+                let node_storage_path = node_env
+                    .node_storage_path
+                    .clone()
+                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+                let app_id = context.full_job().job_id().to_string();
+                let tool_id = shinkai_tool.tool_router_key().clone();
+                let tools = python_tool.tools.clone().unwrap_or_default();
+                let support_files =
+                    generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                        .await
+                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                let mut envs = HashMap::new();
+
+                let bearer = context
+                    .db()
+                    .read()
+                    .await
+                    .read_api_v2_key()
+                    .unwrap_or_default()
+                    .unwrap_or_default();
+                let llm_provider = context.agent().clone().get_id().to_string();
+                let uuid = uuid::Uuid::new_v4().to_string();
+                envs.insert("BEARER".to_string(), bearer);
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), format!("call_function-{}", uuid));
+                envs.insert("X_SHINKAI_APP_ID".to_string(), format!("app_id-{}", uuid));
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), format!("instance_id-{}", uuid));
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
+                let result = python_tool
+                    .run(
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        support_files,
+                        function_args,
+                        function_config_vec,
+                        node_storage_path,
+                        app_id,
+                        tool_id,
+                        node_name,
+                        false,
+                    )
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                let result_str = serde_json::to_string(&result)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
-                    response: "Deno!".to_string(),
+                    response: result_str,
                     function_call,
                 });
             }
@@ -433,11 +612,20 @@ impl ToolRouter {
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
-                envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
-                envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
-                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+                let bearer = context
+                    .db()
+                    .read()
+                    .await
+                    .read_api_v2_key()
+                    .unwrap_or_default()
+                    .unwrap_or_default();
+                let uuid = uuid::Uuid::new_v4().to_string();
+                let llm_provider = context.agent().clone().get_id().to_string();
+                envs.insert("BEARER".to_string(), bearer);
+                envs.insert("X_SHINKAI_TOOL_ID".to_string(), format!("call_function-{}", uuid));
+                envs.insert("X_SHINKAI_APP_ID".to_string(), format!("app_id-{}", uuid));
+                envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), format!("instance_id-{}", uuid));
+                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
                 let result = deno_tool
                     .run(
                         envs,
@@ -446,7 +634,6 @@ impl ToolRouter {
                         support_files,
                         function_args,
                         function_config_vec,
-                        vec![],
                         node_storage_path,
                         app_id,
                         tool_id,
@@ -792,7 +979,6 @@ impl ToolRouter {
                 support_files,
                 function_args,
                 function_config_vec,
-                vec![],
                 node_storage_path,
                 app_id,
                 tool_id,
@@ -805,5 +991,78 @@ impl ToolRouter {
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 
         return Ok(result_str);
+    }
+
+    pub async fn combined_tool_search(
+        &self,
+        query: &str,
+        num_of_results: u64,
+        include_disabled: bool,
+        include_network: bool,
+    ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
+        // Sanitize the query to handle special characters
+        let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+
+        // Start the timer for vector search
+        let vector_start_time = Instant::now();
+        let vector_search_result = self
+            .sqlite_manager
+            .read()
+            .await
+            .tool_vector_search(&sanitized_query, num_of_results, include_disabled, include_network)
+            .await;
+        let vector_elapsed_time = vector_start_time.elapsed();
+        println!("Time taken for vector search: {:?}", vector_elapsed_time);
+
+        // Start the timer for FTS search
+        let fts_start_time = Instant::now();
+        let fts_search_result = self.sqlite_manager.read().await.search_tools_fts(&sanitized_query);
+        let fts_elapsed_time = fts_start_time.elapsed();
+        println!("Time taken for FTS search: {:?}", fts_elapsed_time);
+
+        match (vector_search_result, fts_search_result) {
+            (Ok(vector_tools), Ok(fts_tools)) => {
+                let mut combined_tools = Vec::new();
+                let mut seen_ids = std::collections::HashSet::new();
+
+                // Always add the first FTS result if available
+                if let Some(first_fts_tool) = fts_tools.first() {
+                    if seen_ids.insert(first_fts_tool.tool_router_key.clone()) {
+                        combined_tools.push(first_fts_tool.clone());
+                    }
+                }
+
+                // Check if the top vector search result has a score under 0.2
+                if let Some((tool, score)) = vector_tools.first() {
+                    if *score < 0.2 {
+                        if seen_ids.insert(tool.tool_router_key.clone()) {
+                            combined_tools.push(tool.clone());
+                        }
+                    }
+                }
+
+                // Add remaining FTS results
+                for tool in fts_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Add remaining vector search results
+                for (tool, _) in vector_tools.iter().skip(1) {
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
+                    }
+                }
+
+                // Log the result count if LOG_ALL is set to 1
+                if std::env::var("LOG_ALL").unwrap_or_default() == "1" {
+                    println!("Number of combined tool results: {}", combined_tools.len());
+                }
+
+                Ok(combined_tools)
+            }
+            (Err(e), _) | (_, Err(e)) => Err(ToolError::DatabaseError(e.to_string())),
+        }
     }
 }

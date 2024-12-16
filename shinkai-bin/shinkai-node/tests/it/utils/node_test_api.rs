@@ -698,7 +698,6 @@ pub async fn api_execute_tool(
             app_id,
             llm_provider,
             extra_config,
-            oauth,
             res: res_sender,
         })
         .await

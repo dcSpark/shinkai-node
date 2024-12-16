@@ -1,6 +1,6 @@
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType};
 
-use super::{argument::{ToolArgument, ToolOutputArg}, error::ToolError, tool_config::ToolConfig, shinkai_tool::ShinkaiTool};
+use super::{tool_output_arg::ToolOutputArg, error::ToolError, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::ToolConfig};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NetworkTool {
@@ -12,7 +12,7 @@ pub struct NetworkTool {
     pub usage_type: UsageType, // includes pricing
     pub activated: bool,
     pub config: Vec<ToolConfig>,
-    pub input_args: Vec<ToolArgument>,
+    pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub embedding: Option<Vec<f32>>,
     pub restrictions: Option<String>, // Could be a JSON string or a more structured type
@@ -31,7 +31,7 @@ impl NetworkTool {
         usage_type: UsageType,
         activated: bool,
         config: Vec<ToolConfig>,
-        input_args: Vec<ToolArgument>,
+        input_args: Parameters,
         output_arg: ToolOutputArg,
         embedding: Option<Vec<f32>>,
         restrictions: Option<String>,
@@ -55,10 +55,9 @@ impl NetworkTool {
     /// Check if all required config fields are set
     pub fn check_required_config_fields(&self) -> bool {
         for config in &self.config {
-            if let ToolConfig::BasicConfig(basic_config) = config {
-                if basic_config.required && basic_config.key_value.is_none() {
-                    return false;
-                }
+            let ToolConfig::BasicConfig(basic_config) = config;
+            if basic_config.required && basic_config.key_value.is_none() {
+                return false;
             }
         }
         true

@@ -1,10 +1,11 @@
 use super::{
-    argument::ToolArgument,
-    deno_tools::DenoToolResult,
-    tool_config::{BasicConfig, ToolConfig},
+    deno_tools::ToolResult,
+    parameters::Parameters,
+    tool_config::{BasicConfig, OAuth, ToolConfig},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SqlTable {
@@ -26,6 +27,7 @@ pub struct ToolPlayground {
     #[serde(default)]
     pub job_id_history: Vec<String>,
     pub code: String,
+    pub language: CodeLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,9 +38,8 @@ pub struct ToolPlaygroundMetadata {
     pub keywords: Vec<String>,
     #[serde(deserialize_with = "deserialize_configurations")]
     pub configurations: Vec<ToolConfig>,
-    #[serde(deserialize_with = "deserialize_parameters")]
-    pub parameters: Vec<ToolArgument>,
-    pub result: DenoToolResult,
+    pub parameters: Parameters,
+    pub result: ToolResult,
 
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_sql_tables")]
@@ -52,6 +53,7 @@ pub struct ToolPlaygroundMetadata {
     // None -> All tools.
     // Empty vector -> No tools.
     pub tools: Option<Vec<String>>,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 fn deserialize_configurations<'de, D>(deserializer: D) -> Result<Vec<ToolConfig>, D::Error>
@@ -99,53 +101,6 @@ where
             Err(serde::de::Error::custom("Invalid object structure for configurations"))
         }
         _ => Err(serde::de::Error::custom("Invalid type for configurations")),
-    }
-}
-
-fn deserialize_parameters<'de, D>(deserializer: D) -> Result<Vec<ToolArgument>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value: JsonValue = Deserialize::deserialize(deserializer)?;
-    match value {
-        JsonValue::Array(params) => {
-            // If it's already an array, assume it's a list of ToolArgument objects
-            let tool_arguments: Vec<ToolArgument> = params
-                .into_iter()
-                .map(|param| {
-                    // Assuming each param is a valid ToolArgument JSON object
-                    serde_json::from_value(param).map_err(serde::de::Error::custom)
-                })
-                .collect::<Result<_, _>>()?;
-            Ok(tool_arguments)
-        }
-        JsonValue::Object(param_obj) => {
-            if let Some(JsonValue::Object(properties)) = param_obj.get("properties") {
-                let required_keys: Vec<String> = param_obj
-                    .get("required")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                    .unwrap_or_default();
-
-                let arguments = properties
-                    .iter()
-                    .map(|(key, val)| {
-                        let arg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                        let description = val
-                            .get("description")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let is_required = required_keys.contains(key);
-                        ToolArgument::new(key.clone(), arg_type, description, is_required)
-                    })
-                    .collect();
-
-                return Ok(arguments);
-            }
-            Err(serde::de::Error::custom("Invalid object structure for parameters"))
-        }
-        _ => Err(serde::de::Error::custom("Invalid type for parameters")),
     }
 }
 
@@ -202,7 +157,7 @@ mod tests {
                 "author": "Author Name",
                 "keywords": ["example", "test"],
                 "configurations": [],
-                "parameters": [],
+                "parameters": {},
                 "result": {
                     "type": "string",
                     "properties": "{}",
@@ -212,7 +167,8 @@ mod tests {
             "tool_router_key": "example_key",
             "job_id": "job_123",
             "job_id_history": [],
-            "code": "console.log('Hello, world!');"
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
         }
         "#;
 
@@ -287,7 +243,8 @@ mod tests {
             },
             "job_id": "123",
             "job_id_history": [],
-            "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }"
+            "code": "import { shinkaiDownloadPages } from '@shinkai/local-tools'; type CONFIG = {}; type INPUTS = { urls: string[] }; type OUTPUT = { markdowns: string[] }; export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> { const { urls } = inputs; if (!urls || urls.length === 0) { throw new Error('URL list is required'); } return shinkaiDownloadPages(urls); }",
+            "language": "Typescript"
         }
         "#;
 
@@ -316,7 +273,7 @@ mod tests {
                 "author": "Author Name",
                 "keywords": ["sql", "test"],
                 "configurations": [],
-                "parameters": [],
+                "parameters": {},
                 "result": {
                     "type": "string",
                     "properties": "{}",
@@ -339,7 +296,8 @@ mod tests {
             "tool_router_key": "example_key",
             "job_id": "job_123",
             "job_id_history": [],
-            "code": "console.log('Hello, world!');"
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
         }
         "#;
 

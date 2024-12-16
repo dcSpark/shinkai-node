@@ -110,7 +110,7 @@ pub fn generate_typescript_definition(
     typescript_output.push_str(&format!("/**\n * {}\n", tool.description));
 
     // Generate parameter documentation
-    for arg in &tool.input_args {
+    for arg in &tool.input_args.to_deprecated_arguments() {
         typescript_output.push_str(&format!(
             " * @param {} - ({}{}) {}\n",
             arg.name,
@@ -155,6 +155,7 @@ pub fn generate_typescript_definition(
     // Generate function parameters
     let params: Vec<String> = tool
         .input_args
+        .to_deprecated_arguments()
         .iter()
         .map(|arg| {
             let type_str = arg_type_to_typescript(&arg.arg_type);
@@ -201,7 +202,7 @@ pub fn generate_typescript_definition(
         ));
 
         // Parameters
-        for arg in &tool.input_args {
+        for arg in &tool.input_args.to_deprecated_arguments() {
             typescript_output.push_str(&format!("            {}: {},\n", arg.name, arg.name));
         }
 

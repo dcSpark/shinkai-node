@@ -17,7 +17,6 @@ use shinkai_message_primitives::{
         shinkai_message::{NodeApiData, ShinkaiMessage},
         shinkai_message_schemas::WSTopic,
     },
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 use tokio::sync::Mutex;
@@ -578,7 +577,7 @@ impl SqliteManager {
                                         ),
                                         Err(_) => {
                                             // If not found as an LLM provider, check if it exists as an agent
-                                            match self.get_agent(&agent_id) {
+                                            match self.get_agent(&agent_id.to_lowercase()) {
                                                 Ok(Some(agent)) => {
                                                     // Fetch the serialized LLM provider
                                                     if let Ok(Some(serialized_llm_provider)) =

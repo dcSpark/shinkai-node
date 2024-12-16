@@ -2,7 +2,7 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobMessage};
-use shinkai_tools_primitives::tools::{tool_playground::ToolPlayground, shinkai_tool::ShinkaiTool};
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiTool, tool_config::OAuth, tool_playground::ToolPlayground};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
@@ -252,9 +252,7 @@ pub struct ToolExecutionRequest {
     pub llm_provider: String,
     pub parameters: Value,
     #[serde(default = "default_map")]
-    pub extra_config: Value,
-    #[serde(default = "default_map")]
-    pub oauth: Value,
+    pub extra_config: Value
 }
 
 #[utoipa::path(
@@ -286,15 +284,6 @@ pub async fn tool_execution_handler(
         })),
     };
 
-    let oauth = match payload.oauth {
-        Value::Object(map) => map,
-        _ => return Err(warp::reject::custom(APIError {
-            code: 400,
-            error: "Invalid OAuth".to_string(),
-            message: "OAuth must be an object".to_string(),
-        })),
-    };
-
     let extra_config = match payload.extra_config {
         Value::Object(map) => map,
         _ => return Err(warp::reject::custom(APIError {
@@ -314,7 +303,6 @@ pub async fn tool_execution_handler(
             app_id,
             llm_provider: payload.llm_provider.clone(),
             extra_config,
-            oauth,
             res: res_sender,
         })
         .await
@@ -455,7 +443,8 @@ pub async fn tool_metadata_implementation_handler(
     get,
     path = "/v2/search_shinkai_tool",
     params(
-        ("query" = String, Query, description = "Search query for Shinkai tools")
+        ("query" = String, Query, description = "Search query for Shinkai tools"),
+        ("agent_or_llm" = Option<String>, Query, description = "Optional agent or LLM identifier")
     ),
     responses(
         (status = 200, description = "Successfully searched Shinkai tools", body = Value),
@@ -479,11 +468,16 @@ pub async fn search_shinkai_tool_handler(
             })
         })?
         .to_string();
+    
+    // Get the optional agent_or_llm parameter
+    let agent_or_llm = query_params.get("agent_or_llm").cloned();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSearchShinkaiTool {
             bearer,
             query,
+            agent_or_llm,
             res: res_sender,
         })
         .await
@@ -699,7 +693,7 @@ pub async fn set_playground_tool_handler(
     sender
         .send(NodeCommand::V2ApiSetPlaygroundTool {
             bearer,
-            payload,
+            payload, 
             res: res_sender,
         })
         .await
@@ -889,12 +883,18 @@ pub async fn get_tool_implementation_prompt_handler(
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>())
         .unwrap_or_default();
 
+    let code = query_params
+        .get("code")
+        .map_or("", |v| v)  
+        .to_string();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGenerateToolFetchQuery {
             bearer,
             language: language.unwrap(),
             tools,
+            code,
             res: res_sender,
         })
         .await
@@ -921,8 +921,7 @@ pub struct CodeExecutionRequest {
     pub parameters: Value,
     #[serde(default = "default_map")]
     pub extra_config: Value,
-    #[serde(default = "default_map")]
-    pub oauth: Value,
+    pub oauth: Option<Vec<OAuth>>,
     pub llm_provider: String,
     pub tools: Vec<String>,
 }
@@ -963,15 +962,6 @@ pub async fn code_execution_handler(
         })),
     };
 
-    let oauth = match payload.oauth {
-        Value::Object(map) => map,
-        _ => return Err(warp::reject::custom(APIError {
-            code: 400,
-            error: "Invalid OAuth".to_string(),
-            message: "OAuth must be an object".to_string(),
-        })),
-    };
-
     let extra_config = match payload.extra_config {
         Value::Object(map) => map,
         _ => return Err(warp::reject::custom(APIError {
@@ -990,7 +980,7 @@ pub async fn code_execution_handler(
             tools: payload.tools,
             parameters,
             extra_config,
-            oauth,
+            oauth: payload.oauth,
             tool_id: tool_id,
             app_id: app_id,
             llm_provider: payload.llm_provider,

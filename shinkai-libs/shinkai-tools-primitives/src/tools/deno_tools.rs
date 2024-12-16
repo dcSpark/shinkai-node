@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, fs, io, thread};
 
-use super::argument::ToolOutputArg;
-use super::tool_config::ToolConfig;
+use super::tool_output_arg::ToolOutputArg;
+use super::parameters::Parameters;
+use super::tool_config::{OAuth, ToolConfig};
 use super::tool_playground::{SqlQuery, SqlTable};
-use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value as JsonValue};
@@ -31,14 +31,15 @@ pub struct DenoTool {
     pub config: Vec<ToolConfig>,
     pub description: String,
     pub keywords: Vec<String>,
-    pub input_args: Vec<ToolArgument>,
+    pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub activated: bool,
     pub embedding: Option<Vec<f32>>,
-    pub result: DenoToolResult,
+    pub result: ToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 impl DenoTool {
@@ -66,7 +67,6 @@ impl DenoTool {
         support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Vec<ToolConfig>,
-        oauth: Vec<ToolConfig>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
@@ -80,7 +80,6 @@ impl DenoTool {
             support_files,
             parameters,
             extra_config,
-            oauth,
             node_storage_path,
             app_id,
             tool_id,
@@ -97,7 +96,6 @@ impl DenoTool {
         support_files: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
         extra_config: Vec<ToolConfig>,
-        oauth: Vec<ToolConfig>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
@@ -116,24 +114,19 @@ impl DenoTool {
             .config
             .iter()
             .filter_map(|c| {
-                if let ToolConfig::BasicConfig(basic_config) = c {
-                    basic_config
-                        .key_value
-                        .clone()
-                        .map(|value| (basic_config.key_name.clone(), value))
-                } else {
-                    // TODO: add oauth
-                    None
-                }
+                let ToolConfig::BasicConfig(basic_config) = c;
+                basic_config
+                    .key_value
+                    .clone()
+                    .map(|value| (basic_config.key_name.clone(), value))
             })
             .collect();
 
         // Merge extra_config into the config hashmap
         for c in extra_config {
-            if let ToolConfig::BasicConfig(basic_config) = c {
-                if let Some(value) = basic_config.key_value {
-                    config.insert(basic_config.key_name.clone(), value);
-                }
+            let ToolConfig::BasicConfig(basic_config) = c;
+            if let Some(value) = basic_config.key_value {
+                config.insert(basic_config.key_name.clone(), value);
             }
         }
 
@@ -363,7 +356,7 @@ impl DenoTool {
                     });
 
                     // Setup the engine with the code files and config
-                    let mut tool = DenoRunner::new(
+                    let tool = DenoRunner::new(
                         CodeFiles {
                             files: code_files.clone(),
                             entrypoint: "index.ts".to_string(),
@@ -414,10 +407,9 @@ impl DenoTool {
     /// Check if all required config fields are set
     pub fn check_required_config_fields(&self) -> bool {
         for config in &self.config {
-            if let ToolConfig::BasicConfig(basic_config) = config {
-                if basic_config.required && basic_config.key_value.is_none() {
-                    return false;
-                }
+            let ToolConfig::BasicConfig(basic_config) = config;
+            if basic_config.required && basic_config.key_value.is_none() {
+                return false;
             }
         }
         true
@@ -425,13 +417,13 @@ impl DenoTool {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DenoToolResult {
+pub struct ToolResult {
     pub r#type: String,
     pub properties: serde_json::Value,
     pub required: Vec<String>,
 }
 
-impl Serialize for DenoToolResult {
+impl Serialize for ToolResult {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -446,14 +438,14 @@ impl Serialize for DenoToolResult {
     }
 }
 
-impl<'de> Deserialize<'de> for DenoToolResult {
+impl<'de> Deserialize<'de> for ToolResult {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let helper = Helper::deserialize(deserializer)?;
 
-        Ok(DenoToolResult {
+        Ok(ToolResult {
             r#type: helper.result_type,
             properties: helper.properties,
             required: helper.required,
@@ -469,9 +461,9 @@ struct Helper {
     required: Vec<String>,
 }
 
-impl DenoToolResult {
+impl ToolResult {
     pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
-        DenoToolResult {
+        ToolResult {
             r#type: result_type,
             properties,
             required,
@@ -497,7 +489,7 @@ mod tests {
     }
     "#;
 
-        let deserialized: DenoToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
+        let deserialized: ToolResult = serde_json::from_str(json_data).expect("Failed to deserialize JSToolResult");
 
         assert_eq!(deserialized.r#type, "object");
         assert!(deserialized.properties.is_object());

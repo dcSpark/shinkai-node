@@ -20,26 +20,26 @@ use utoipa::ToSchema;
 /// constantly-updating data streams, or any unordered/mutating source data.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ToSchema)]
 pub struct MapVectorResource {
-    name: String,
-    description: Option<String>,
-    source: VRSourceReference,
-    resource_id: String,
-    resource_embedding: Embedding,
-    resource_base_type: VRBaseType,
+    pub name: String,
+    pub description: Option<String>,
+    pub source: VRSourceReference,
+    pub resource_id: String,
+    pub resource_embedding: Embedding,
+    pub resource_base_type: VRBaseType,
     #[schema(value_type = String)]
-    embedding_model_used_string: EmbeddingModelTypeString,
-    embeddings: HashMap<String, Embedding>,
-    node_count: u64,
-    nodes: HashMap<String, Node>,
-    data_tag_index: DataTagIndex,
+    pub embedding_model_used_string: EmbeddingModelTypeString,
+    pub embeddings: HashMap<String, Embedding>,
+    pub node_count: u64,
+    pub nodes: HashMap<String, Node>,
+    pub data_tag_index: DataTagIndex,
     #[schema(value_type = String, format = Date)]
-    created_datetime: DateTime<Utc>,
+    pub created_datetime: DateTime<Utc>,
     #[schema(value_type = String, format = Date)]
-    last_written_datetime: DateTime<Utc>,
-    metadata_index: MetadataIndex,
-    merkle_root: Option<String>,
-    keywords: VRKeywords,
-    distribution_info: DistributionInfo,
+    pub last_written_datetime: DateTime<Utc>,
+    pub metadata_index: MetadataIndex,
+    pub merkle_root: Option<String>,
+    pub keywords: VRKeywords,
+    pub distribution_info: DistributionInfo,
 }
 impl VectorResource for MapVectorResource {}
 impl VectorResourceSearch for MapVectorResource {}
@@ -182,6 +182,10 @@ impl VectorResourceCore for MapVectorResource {
     fn set_resource_embedding(&mut self, embedding: Embedding) {
         self.update_last_written_to_now();
         self.resource_embedding = embedding;
+    }
+
+    fn node_count(&self) -> u64 {
+        self.node_count
     }
 
     fn set_resource_id(&mut self, id: String) {

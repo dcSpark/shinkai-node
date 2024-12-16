@@ -193,7 +193,11 @@ impl Node {
         };
 
         // Validate that data_for_tool contains all the required input_args
-        for arg in required_args.iter().filter(|arg| arg.is_required) {
+        for arg in required_args
+            .to_deprecated_arguments()
+            .iter()
+            .filter(|arg| arg.is_required)
+        {
             if !data_for_tool.get(&arg.name).is_some() {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),

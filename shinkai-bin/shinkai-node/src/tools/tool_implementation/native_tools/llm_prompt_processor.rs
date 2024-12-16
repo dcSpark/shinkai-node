@@ -1,13 +1,9 @@
-
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::{
-    argument::{ToolArgument, ToolOutputArg},
-    error::ToolError,
-    shinkai_tool::ShinkaiToolHeader,
-};
+use shinkai_tools_primitives::tools::parameters::Parameters;
+use shinkai_tools_primitives::tools::{tool_output_arg::ToolOutputArg, error::ToolError, shinkai_tool::ShinkaiToolHeader};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
@@ -50,20 +46,12 @@ This can be used to process complex requests, text analysis, text matching, text
                 author: "Shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
-                input_args: vec![
-                    ToolArgument::new(
-                        "format".to_string(),
-                        "string".to_string(),
-                        "The output format. Only 'text' is supported".to_string(),
-                        true,
-                    ),
-                    ToolArgument::new(
-                        "prompt".to_string(),
-                        "string".to_string(),
-                        "The prompt to process".to_string(),
-                        true,
-                    ),
-                ],
+                input_args: {
+                    let mut params = Parameters::new();
+                    params.add_property("format".to_string(), "string".to_string(), "The format of the prompt".to_string(), true);
+                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to process".to_string(), true);
+                    params
+                },
                 output_arg: ToolOutputArg {
                     json: r#"{"type": "object", "properties": {"message": {"type": "string"}}}"#.to_string(),
                 },

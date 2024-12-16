@@ -10,6 +10,7 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 
+use image::error;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
@@ -190,7 +191,8 @@ impl JobManager {
             .unwrap_or_else(|| ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap())
             .node_name;
 
-        let error_for_frontend = error.to_error_json();
+        let error_json = error.to_error_message();
+        let error_for_frontend = format!("{}", error_json);
 
         let identity_secret_key_clone = clone_signature_secret_key(identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
@@ -357,15 +359,19 @@ impl JobManager {
         // Check for callbacks and add them to the JobManagerQueue if required
         if let Some(callback) = &job_message.callback {
             if let CallbackAction::ImplementationCheck(tool_type, available_tools) = callback.as_ref() {
-                job_callback_manager.lock().await.handle_implementation_check_callback(
-                    db.clone(),
-                    tool_type.clone(),
-                    inference_response_content.to_string(),
-                    available_tools.clone(),
-                    &identity_secret_key,
-                    &user_profile,
-                    &job_id,
-                ).await?;
+                job_callback_manager
+                    .lock()
+                    .await
+                    .handle_implementation_check_callback(
+                        db.clone(),
+                        tool_type.clone(),
+                        inference_response_content.to_string(),
+                        available_tools.clone(),
+                        &identity_secret_key,
+                        &user_profile,
+                        &job_id,
+                    )
+                    .await?;
             }
         }
 

@@ -4,7 +4,7 @@ use crate::{
     network::{node_error::NodeError, Node},
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool},
+        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
         tool_generation::v2_create_and_send_job_message,
         tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
@@ -33,8 +33,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    argument::ToolOutputArg, deno_tools::DenoTool, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
-    tool_playground::ToolPlayground,
+    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::ShinkaiTool, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
@@ -68,12 +67,11 @@ impl Node {
     /// # Returns
     ///
     /// A `Result` indicating success or failure of the search operation.
-    
-    // TODO: we need the search to also takes an agent so it only searches for tools that the agent has access to
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -84,16 +82,42 @@ impl Node {
         // Sanitize the query to handle special characters
         let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
 
+        // Attempt to get the agent's tools if agent_or_llm is provided
+        let allowed_tools = if let Some(agent_id) = agent_or_llm {
+            match db.read().await.get_agent(&agent_id) {
+                Ok(Some(agent)) => Some(agent.tools),
+                Ok(None) | Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         // Start the timer for logging purposes
         let start_time = Instant::now();
 
         // Start the timer for vector search
         let vector_start_time = Instant::now();
-        let vector_search_result = db
-            .read()
-            .await
-            .tool_vector_search(&sanitized_query, 5, false, true)
-            .await;
+
+        // Use different search method based on whether we have allowed_tools
+        let vector_search_result = if let Some(tools) = allowed_tools {
+            // First generate the embedding from the query
+            let embedding = db.read()
+                .await
+                .generate_embeddings(&sanitized_query)
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+            // Then use the embedding with the limited search
+            db.read()
+                .await
+                .tool_vector_search_with_vector_limited(embedding, 5, tools)
+        } else {
+            db.read()
+                .await
+                .tool_vector_search(&sanitized_query, 5, false, true)
+                .await
+        };
+
         let vector_elapsed_time = vector_start_time.elapsed();
         println!("Time taken for vector search: {:?}", vector_elapsed_time);
 
@@ -389,48 +413,95 @@ impl Node {
         // TODO: check that job_id exists
         let mut updated_payload = payload.clone();
 
-        // Create DenoTool
-        let tool = DenoTool {
-            toolkit_name: {
-                let name = format!(
-                    "{}_{}",
-                    payload
-                        .metadata
-                        .name
-                        .to_lowercase()
-                        .replace(" ", "_")
-                        .replace("-", "_")
-                        .replace(":", "_"),
-                    payload
-                        .metadata
-                        .author
-                        .to_lowercase()
-                        .replace(" ", "_")
-                        .replace("-", "_")
-                        .replace(":", "_")
-                );
-                // Use a regex to filter out unwanted characters
-                let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
-                re.replace_all(&name, "").to_string()
-            },
-            name: payload.metadata.name.clone(),
-            author: payload.metadata.author.clone(),
-            js_code: payload.code.clone(),
-            tools: payload.metadata.tools.clone(),
-            config: payload.metadata.configurations.clone(),
-            description: payload.metadata.description.clone(),
-            keywords: payload.metadata.keywords.clone(),
-            input_args: payload.metadata.parameters.clone(),
-            output_arg: ToolOutputArg { json: "".to_string() },
-            activated: false, // TODO: maybe we want to add this as an option in the UI?
-            embedding: None,
-            result: payload.metadata.result,
-            sql_tables: Some(payload.metadata.sql_tables),
-            sql_queries: Some(payload.metadata.sql_queries),
-            file_inbox: None,
+        let shinkai_tool = match payload.language {
+            CodeLanguage::Typescript => {
+                let tool = DenoTool {
+                    toolkit_name: {
+                        let name = format!(
+                            "{}_{}",
+                            payload
+                                .metadata
+                                .name
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_"),
+                            payload
+                                .metadata
+                                .author
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_")
+                        );
+                        // Use a regex to filter out unwanted characters
+                        let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
+                        re.replace_all(&name, "").to_string()
+                    },
+                    name: payload.metadata.name.clone(),
+                    author: payload.metadata.author.clone(),
+                    js_code: payload.code.clone(),
+                    tools: payload.metadata.tools.clone(),
+                    config: payload.metadata.configurations.clone(),
+                    oauth: payload.metadata.oauth.clone(),
+                    description: payload.metadata.description.clone(),
+                    keywords: payload.metadata.keywords.clone(),
+                    input_args: payload.metadata.parameters.clone(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    embedding: None,
+                    result: payload.metadata.result,
+                    sql_tables: Some(payload.metadata.sql_tables),
+                    sql_queries: Some(payload.metadata.sql_queries),
+                    file_inbox: None,
+                };
+                ShinkaiTool::Deno(tool, false)
+            }
+            CodeLanguage::Python => {
+                let tool = PythonTool {
+                    toolkit_name: {
+                        let name = format!(
+                            "{}_{}",
+                            payload
+                                .metadata
+                                .name
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_"),
+                            payload
+                                .metadata
+                                .author
+                                .to_lowercase()
+                                .replace(" ", "_")
+                                .replace("-", "_")
+                                .replace(":", "_")
+                        );
+                        // Use a regex to filter out unwanted characters
+                        let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
+                        re.replace_all(&name, "").to_string()
+                    },
+                    name: payload.metadata.name.clone(),
+                    author: payload.metadata.author.clone(),
+                    py_code: payload.code.clone(),
+                    tools: payload.metadata.tools.clone(),
+                    config: payload.metadata.configurations.clone(),
+                    oauth: payload.metadata.oauth.clone(),
+                    description: payload.metadata.description.clone(),
+                    keywords: payload.metadata.keywords.clone(),
+                    input_args: payload.metadata.parameters.clone(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    embedding: None,
+                    result: payload.metadata.result,
+                    sql_tables: Some(payload.metadata.sql_tables),
+                    sql_queries: Some(payload.metadata.sql_queries),
+                    file_inbox: None,
+                };
+                ShinkaiTool::Python(tool, false)
+            }
         };
 
-        let shinkai_tool = ShinkaiTool::Deno(tool, false); // Same as above
         updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key());
 
         // Function to handle saving metadata and sending response
@@ -688,7 +759,6 @@ impl Node {
         app_id: String,
         llm_provider: String,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -703,11 +773,8 @@ impl Node {
         // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
         let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
 
-        // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
-        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
-
         // Execute the tool directly
-        let result = execute_tool(
+        let result = execute_tool_cmd(
             bearer,
             node_name,
             db,
@@ -718,7 +785,6 @@ impl Node {
             app_id,
             llm_provider,
             tool_configs,
-            oauth_configs,
             identity_manager,
             job_manager,
             encryption_secret_key,
@@ -755,7 +821,7 @@ impl Node {
         tools: Vec<String>,
         parameters: Map<String, Value>,
         extra_config: Map<String, Value>,
-        oauth: Map<String, Value>,
+        oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -770,7 +836,7 @@ impl Node {
         let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
 
         // Convert oauth to Vec<ToolConfig> if you have a similar method for OAuth
-        let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
+        // let oauth_configs = ToolConfig::oauth_from_value(&Value::Object(oauth));
 
         // Execute the tool directly
         let result = execute_code(
@@ -779,7 +845,7 @@ impl Node {
             tools,
             parameters,
             tool_configs,
-            oauth_configs,
+            oauth,
             db,
             tool_id,
             app_id,
@@ -813,6 +879,7 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         language: CodeLanguage,
         tools: Vec<String>,
+        code: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -851,7 +918,7 @@ impl Node {
             };
 
         let metadata_prompt =
-            match tool_metadata_implementation_prompt(language.clone(), "".to_string(), tools.clone()).await {
+            match tool_metadata_implementation_prompt(language.clone(), code.clone(), tools.clone()).await {
                 Ok(prompt) => prompt,
                 Err(err) => {
                     let api_error = APIError {
@@ -977,7 +1044,8 @@ impl Node {
         job_message_clone.content = generate_code_prompt;
 
         if post_check {
-            let callback_action = CallbackAction::ImplementationCheck(language.to_dynamic_tool_type().unwrap(), tools.clone());
+            let callback_action =
+                CallbackAction::ImplementationCheck(language.to_dynamic_tool_type().unwrap(), tools.clone());
             job_message_clone.callback = Some(Box::new(callback_action));
         }
 
@@ -1065,7 +1133,7 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
-            };
+            }
 
             // Handle the last message safely
             if let Some(last_message) = messages.last().and_then(|msg| msg.last()) {

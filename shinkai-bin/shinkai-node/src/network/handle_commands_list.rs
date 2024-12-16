@@ -1485,6 +1485,34 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiAddMessagesGodMode {
+                bearer,
+                job_id,
+                messages,
+                res,
+            } => {
+                let db_clone = self.db.clone();
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_add_messages_god_mode(
+                        db_clone,
+                        node_name_clone,
+                        identity_manager_clone,
+                        bearer,
+                        job_id,
+                        messages,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiGetLastMessagesFromInbox {
                 bearer,
                 inbox_name,
@@ -2388,7 +2416,6 @@ impl Node {
                 app_id,
                 llm_provider,
                 extra_config,
-                oauth,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2412,7 +2439,6 @@ impl Node {
                         app_id,
                         llm_provider,
                         extra_config,
-                        oauth,
                         identity_manager,
                         job_manager,
                         encryption_secret_key,
@@ -2473,12 +2499,13 @@ impl Node {
                 bearer,
                 language,
                 tools,
+                code,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
 
                 tokio::spawn(async move {
-                    let _ = Node::generate_tool_fetch_query(bearer, db_clone, language, tools, res).await;
+                    let _ = Node::generate_tool_fetch_query(bearer, db_clone, language, tools, code, res).await;
                 });
             }
             NodeCommand::V2ApiGenerateToolImplementation {
@@ -2598,11 +2625,37 @@ impl Node {
                 bearer,
                 cron,
                 action,
+                name,
+                description,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_add_cron_task(db_clone, bearer, cron, action, res).await;
+                    let _ = Node::v2_api_add_cron_task(db_clone, bearer, cron, action, name, description, res).await;
+                });
+            }
+            NodeCommand::V2ApiUpdateCronTask {
+                bearer,
+                cron_task_id,
+                cron,
+                action,
+                name,
+                description,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_cron_task(
+                        db_clone,
+                        bearer,
+                        cron_task_id,
+                        cron,
+                        action,
+                        name,
+                        description,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiListAllCronTasks { bearer, res } => {
@@ -2685,10 +2738,10 @@ impl Node {
                     let _ = Node::v2_export_messages_from_inbox(db_clone, bearer, inbox_name, format, res).await;
                 });
             }
-            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, res } => {
+            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, agent_or_llm, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_search_shinkai_tool(db_clone, bearer, query, res).await;
+                    let _ = Node::v2_api_search_shinkai_tool(db_clone, bearer, query, agent_or_llm, res).await;
                 });
             }
             NodeCommand::V2ApiSetPlaygroundTool { bearer, payload, res } => {
@@ -2713,6 +2766,28 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_playground_tool(db_clone, bearer, tool_key, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetOAuthToken {
+                bearer,
+                connection_name,
+                tool_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_oauth_token(db_clone, bearer, connection_name, tool_key, res).await;
+                });
+            }
+            NodeCommand::V2ApiSetOAuthToken {
+                bearer,
+                code,
+                state,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_oauth_token(db_clone, bearer, code, state, res).await;
                 });
             }
             _ => (),

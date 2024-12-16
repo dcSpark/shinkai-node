@@ -1,4 +1,4 @@
-pub mod argument;
+pub mod tool_output_arg;
 pub mod deno_tools;
 pub mod error;
 pub mod js_toolkit;
@@ -9,3 +9,5 @@ pub mod rust_tools;
 pub mod shinkai_tool;
 pub mod tool_config;
 pub mod tool_router_dep;
+pub mod parameters;
+pub mod deprecated_argument;

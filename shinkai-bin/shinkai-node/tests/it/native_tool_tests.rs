@@ -28,6 +28,7 @@ use tokio::runtime::Runtime;
 use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
 use crate::it::utils::vecfs_test_utils::{create_folder, upload_file};
 
+use super::utils::db_handlers::setup_node_storage_path;
 use super::utils::node_test_api::{api_message_job, api_registration_device_node_profile_main};
 use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
@@ -40,6 +41,7 @@ fn setup() {
 
 #[test]
 fn native_tool_test_knowledge() {
+    setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
 
