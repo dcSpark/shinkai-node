@@ -178,6 +178,7 @@ impl LLMService for ShinkaiBackend {
                                         name: fc.name,
                                         arguments,
                                         tool_router_key: None,
+                                        response: None,
                                     }
                                 })
                             });
@@ -209,6 +210,7 @@ impl LLMService for ShinkaiBackend {
                                         name: fc.name,
                                         arguments,
                                         tool_router_key: None,
+                                        response: None,
                                     }
                                 })
                             });
