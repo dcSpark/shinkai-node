@@ -119,7 +119,7 @@ pub async fn run_api(
 
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_methods(vec!["GET", "POST", "OPTIONS", "DELETE"])
         .allow_headers(vec![
             "Content-Type",
             "Authorization",
