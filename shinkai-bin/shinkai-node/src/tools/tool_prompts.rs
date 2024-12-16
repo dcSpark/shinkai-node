@@ -159,7 +159,7 @@ pub async fn generate_code_prompt(
 # ]
 # ///
 
-from typing import Dict, Any, Optional, List
+from typing import Any, Optional, List, Dict
 
 class CONFIG:
     pass
@@ -186,6 +186,7 @@ class INPUTS:
     argN: Optional[str] = None
 
 class OUTPUT:
+    complex_output: List[dict]
     another_sample: str
 ```
 
