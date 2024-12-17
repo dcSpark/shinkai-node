@@ -214,7 +214,7 @@ impl CronManager {
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs
-                for (profile, tasks) in jobs_to_process {
+                for (_time_created, tasks) in jobs_to_process {
                     for (_, cron_task) in tasks {
                         if !is_testing && !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
                             shinkai_log(
@@ -233,7 +233,7 @@ impl CronManager {
                         let node_encryption_pk_clone = node_encryption_pk.clone();
                         let node_profile_name_clone = node_profile_name.clone();
                         let job_processing_fn_clone = Arc::clone(&job_processing_fn);
-                        let profile_clone = profile.clone();
+                        let profile_clone = node_profile_name.clone().get_profile_name_string().unwrap_or_default();
                         let ws_manager = ws_manager.clone();
 
                         let handle = tokio::spawn(async move {
@@ -356,30 +356,42 @@ impl CronManager {
     }
 
     pub fn should_execute_cron_task(cron_task: &CronTask, cron_time_interval: u64) -> bool {
-        // Calculate the current time and the end of the interval
         let now = Utc::now();
-        let now_rounded = now.with_second(0).unwrap().with_nanosecond(0).unwrap();
-        let end_of_interval = now_rounded + chrono::Duration::seconds(cron_time_interval as i64);
+        let end_of_interval = now + chrono::Duration::seconds(cron_time_interval as i64);
 
-        // Parse the cron expression
-        let next_execution_time = match cron_parser::parse(&cron_task.cron, &now_rounded) {
-            Ok(datetime) => datetime,
-            Err(_) => {
-                shinkai_log(
-                    ShinkaiLogOption::CronExecution,
-                    ShinkaiLogLevel::Error,
-                    format!("Invalid cron expression: {}", &cron_task.cron).as_str(),
-                );
+        println!("Evaluating cron task:");
+        println!("  Cron expression: {}", cron_task.cron);
+        println!("  Current time: {}", now);
+        println!("  End of interval: {}", end_of_interval);
+
+        // Validate that the cron expression has exactly 5 fields
+        if cron_task.cron.split_whitespace().count() != 5 {
+            println!("  Invalid cron expression: wrong number of fields");
+            return false;
+        }
+
+        let next_execution_time = match cron_parser::parse(&cron_task.cron, &now) {
+            Ok(datetime) => {
+                println!("  Next execution time: {}", datetime);
+                datetime
+            },
+            Err(e) => {
+                println!("  Failed to parse cron expression: {}", e);
                 return false;
             }
         };
 
-        // Check if the next execution time falls within the range of now and now + cron_time_interval
-        next_execution_time >= now && next_execution_time <= end_of_interval
-    }
-
-    pub fn is_valid_cron_expression(cron_expression: &str) -> bool {
-        cron_parser::parse(cron_expression, &Utc::now()).is_ok()
+        let is_after_now = next_execution_time >= now;
+        let is_before_end = next_execution_time <= end_of_interval;
+        
+        println!("  Conditions:");
+        println!("    Is after current time? {}", is_after_now);
+        println!("    Is before interval end? {}", is_before_end);
+        
+        let result = is_after_now && is_before_end;
+        println!("  Final result: {}", result);
+        
+        result
     }
 
     async fn send_job_message_with_bearer(
@@ -441,5 +453,112 @@ impl CronManager {
         if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, false, Some(error_message)) {
             eprintln!("Failed to log error to SQLite: {}", err);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, TimeZone, Utc, Datelike};
+    use shinkai_message_primitives::schemas::crontab::CronTaskAction;
+
+    fn create_test_cron_task(cron: &str) -> CronTask {
+        let job_message = JobMessage {
+            job_id: "job_id".to_string(),
+            content: "message".to_string(),
+            files_inbox: "".to_string(),
+            parent: None,
+            sheet_job_data: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+        };
+
+        CronTask {
+            name: "Test Task".to_string(),
+            description: Some("Test Description".to_string()),
+            task_id: 1,
+            cron: cron.to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            last_modified: "2024-01-01T00:00:00Z".to_string(),
+            action: CronTaskAction::SendMessageToJob {
+                job_id: "test".to_string(),
+                message: job_message,
+            },
+        }
+    }
+
+    #[test]
+    fn test_should_execute_every_minute() {
+        let task = create_test_cron_task("* * * * *");
+        assert!(CronManager::should_execute_cron_task(&task, 60));
+    }
+
+    #[test]
+    fn test_should_execute_specific_minute() {
+        let now = Utc::now();
+        let next_minute = (now.minute() + 1) % 60;
+        let cron = format!("{} * * * *", next_minute);
+        let task = create_test_cron_task(&cron);
+        
+        // Should execute within the next interval
+        assert!(CronManager::should_execute_cron_task(&task, 120));
+    }
+
+    #[test]
+    fn test_should_not_execute_past_time() {
+        let now = Utc::now();
+        let past_minute = if now.minute() == 0 { 59 } else { now.minute() - 1 };
+        let cron = format!("{} * * * *", past_minute);
+        let task = create_test_cron_task(&cron);
+        
+        // Should not execute as the time has passed
+        assert!(!CronManager::should_execute_cron_task(&task, 60));
+    }
+
+    #[test]
+    fn test_invalid_cron_expression() {
+        // Using an invalid cron expression with only 4 fields instead of 5
+        let task = create_test_cron_task("* * * *"); 
+        
+        // The should_execute_cron_task function should return false for invalid expressions
+        // as it already handles the error case in its implementation
+        assert!(!CronManager::should_execute_cron_task(&task, 60));
+        
+        // We can also test another invalid expression
+        let task_invalid_values = create_test_cron_task("60 24 32 13 8");
+        assert!(!CronManager::should_execute_cron_task(&task_invalid_values, 60));
+    }
+
+    #[test]
+    fn test_should_execute_within_interval() {
+        let now = Utc::now();
+        let next_minute = (now.minute() + 1) % 60;
+        
+        // Create a cron expression for the next minute, any hour/day/month
+        let cron = format!("{} * * * *", next_minute);
+        println!("Current time: {:?}", now);
+        println!("Cron expression: {}", cron);
+        
+        let task = create_test_cron_task(&cron);
+        
+        // Get the next execution time for debugging
+        let next_execution = cron_parser::parse(&cron, &now).unwrap();
+        println!("Next execution time: {:?}", next_execution);
+        println!("Interval end: {:?}", now + chrono::Duration::seconds(120));
+        
+        // Use a 2-minute interval to ensure we catch the next minute
+        assert!(CronManager::should_execute_cron_task(&task, 120));
+    }
+
+    #[test]
+    fn test_should_not_execute_outside_interval() {
+        let now = Utc::now();
+        let future_minute = (now.minute() + 2) % 60;
+        let cron = format!("{} * * * *", future_minute);
+        let task = create_test_cron_task(&cron);
+        
+        // Should not execute as it's outside the interval
+        assert!(!CronManager::should_execute_cron_task(&task, 60));
     }
 }

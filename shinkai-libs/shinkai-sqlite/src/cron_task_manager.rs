@@ -5,7 +5,13 @@ use serde_json;
 use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 
 impl SqliteManager {
-    pub fn add_cron_task(&self, cron: &str, action: &CronTaskAction) -> Result<i64, SqliteManagerError> {
+    pub fn add_cron_task(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        cron: &str,
+        action: &CronTaskAction,
+    ) -> Result<i64, SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -14,8 +20,9 @@ impl SqliteManager {
         let action_json = serde_json::to_string(action)?;
 
         tx.execute(
-            "INSERT INTO cron_tasks (cron, created_at, last_modified, action) VALUES (?1, ?2, ?3, ?4)",
-            params![cron, created_at, last_modified, action_json],
+            "INSERT INTO cron_tasks (name, description, cron, created_at, last_modified, action) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![name, description, cron, created_at, last_modified, action_json],
         )?;
 
         let task_id = tx.last_insert_rowid();
@@ -31,19 +38,24 @@ impl SqliteManager {
 
     pub fn get_cron_task(&self, task_id: i64) -> Result<Option<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("SELECT task_id, cron, created_at, last_modified, action FROM cron_tasks WHERE task_id = ?1")?;
+        let mut stmt = conn.prepare(
+            "SELECT task_id, name, description, cron, created_at, last_modified, action 
+             FROM cron_tasks WHERE task_id = ?1"
+        )?;
         let mut rows = stmt.query(params![task_id])?;
 
         if let Some(row) = rows.next()? {
-            let action_json: String = row.get(4)?;
-            let action: CronTaskAction = serde_json::from_str(&action_json).map_err(SqliteManagerError::JsonError)?;
+            let action_json: String = row.get(6)?;
+            let action: CronTaskAction = serde_json::from_str(&action_json)
+                .map_err(SqliteManagerError::JsonError)?;
 
             Ok(Some(CronTask {
                 task_id: row.get(0)?,
-                cron: row.get(1)?,
-                created_at: row.get(2)?,
-                last_modified: row.get(3)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                cron: row.get(3)?,
+                created_at: row.get(4)?,
+                last_modified: row.get(5)?,
                 action,
             }))
         } else {
@@ -54,6 +66,8 @@ impl SqliteManager {
     pub fn update_cron_task(
         &self,
         task_id: i64,
+        name: &str,
+        description: Option<&str>,
         cron: &str,
         action: &CronTaskAction,
     ) -> Result<(), SqliteManagerError> {
@@ -64,8 +78,10 @@ impl SqliteManager {
         let action_json = serde_json::to_string(action)?;
 
         tx.execute(
-            "UPDATE cron_tasks SET cron = ?1, last_modified = ?2, action = ?3 WHERE task_id = ?4",
-            params![cron, last_modified, action_json, task_id],
+            "UPDATE cron_tasks 
+             SET name = ?1, description = ?2, cron = ?3, last_modified = ?4, action = ?5 
+             WHERE task_id = ?6",
+            params![name, description, cron, last_modified, action_json, task_id],
         )?;
 
         tx.commit()?;
@@ -74,17 +90,22 @@ impl SqliteManager {
 
     pub fn get_all_cron_tasks(&self) -> Result<Vec<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT task_id, cron, created_at, last_modified, action FROM cron_tasks")?;
+        let mut stmt = conn.prepare(
+            "SELECT task_id, name, description, cron, created_at, last_modified, action 
+             FROM cron_tasks"
+        )?;
         let cron_task_iter = stmt.query_map([], |row| {
-            let action_json: String = row.get(4)?;
-            let action: CronTaskAction =
-                serde_json::from_str(&action_json).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            let action_json: String = row.get(6)?;
+            let action: CronTaskAction = serde_json::from_str(&action_json)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
             Ok(CronTask {
                 task_id: row.get(0)?,
-                cron: row.get(1)?,
-                created_at: row.get(2)?,
-                last_modified: row.get(3)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                cron: row.get(3)?,
+                created_at: row.get(4)?,
+                last_modified: row.get(5)?,
                 action,
             })
         })?;
@@ -208,11 +229,15 @@ mod tests {
                 tool_key: None,
             },
         };
+        let name = "Test Task";
+        let description = Some("Test Description");
         let cron = "* * * * *";
 
-        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let task_id = manager.add_cron_task(name, description, cron, &action).unwrap();
         let retrieved_task = manager.get_cron_task(task_id).unwrap().unwrap();
 
+        assert_eq!(retrieved_task.name, name);
+        assert_eq!(retrieved_task.description, description.map(String::from));
         assert_eq!(retrieved_task.cron, cron);
         assert_eq!(retrieved_task.action, action);
     }
@@ -233,9 +258,11 @@ mod tests {
                 tool_key: None,
             },
         };
+        let name = "Test Task";
+        let description = Some("Test Description");
         let cron = "* * * * *";
 
-        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let task_id = manager.add_cron_task(name, description, cron, &action).unwrap();
         manager.remove_cron_task(task_id).unwrap();
         let retrieved_task = manager.get_cron_task(task_id).unwrap();
 
@@ -271,15 +298,20 @@ mod tests {
                 tool_key: None,
             },
         };
+        let name1 = "Task 1";
+        let name2 = "Task 2";
+        let description = Some("Test Description");
         let cron1 = "0 0 * * *";
         let cron2 = "0 12 * * *";
 
-        manager.add_cron_task(cron1, &action1).unwrap();
-        manager.add_cron_task(cron2, &action2).unwrap();
+        manager.add_cron_task(name1, description, cron1, &action1).unwrap();
+        manager.add_cron_task(name2, description, cron2, &action2).unwrap();
 
         let all_tasks = manager.get_all_cron_tasks().unwrap();
         assert_eq!(all_tasks.len(), 2);
+        assert_eq!(all_tasks[0].name, name1);
         assert_eq!(all_tasks[0].cron, cron1);
+        assert_eq!(all_tasks[1].name, name2);
         assert_eq!(all_tasks[1].cron, cron2);
     }
 
@@ -299,10 +331,14 @@ mod tests {
                 tool_key: None,
             },
         };
+        let name = "Initial Task";
+        let description = Some("Initial Description");
         let cron = "* * * * *";
 
-        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let task_id = manager.add_cron_task(name, description, cron, &action).unwrap();
 
+        let updated_name = "Updated Task";
+        let updated_description = Some("Updated Description");
         let updated_cron = "0 0 * * *";
         let updated_action = CronTaskAction::SendMessageToJob {
             job_id: "updated_job_id".to_string(),
@@ -319,10 +355,12 @@ mod tests {
         };
 
         manager
-            .update_cron_task(task_id, updated_cron, &updated_action)
+            .update_cron_task(task_id, updated_name, updated_description, updated_cron, &updated_action)
             .unwrap();
         let updated_task = manager.get_cron_task(task_id).unwrap().unwrap();
 
+        assert_eq!(updated_task.name, updated_name);
+        assert_eq!(updated_task.description, updated_description.map(String::from));
         assert_eq!(updated_task.cron, updated_cron);
         assert_eq!(updated_task.action, updated_action);
     }
@@ -343,9 +381,11 @@ mod tests {
                 tool_key: None,
             },
         };
+        let name = "Test Task";
+        let description = Some("Test Description");
         let cron = "* * * * *";
 
-        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let task_id = manager.add_cron_task(name, description, cron, &action).unwrap();
         let execution_time = chrono::Utc::now().to_rfc3339();
         let success = true;
         let error_message: Option<&str> = None;
@@ -377,9 +417,11 @@ mod tests {
                 tool_key: None,
             },
         };
+        let name = "Test Task";
+        let description = Some("Test Description");
         let cron = "* * * * *";
 
-        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let task_id = manager.add_cron_task(name, description, cron, &action).unwrap();
         let execution_time1 = chrono::Utc::now().to_rfc3339();
         let execution_time2 = chrono::Utc::now().to_rfc3339();
         let success = true;
@@ -412,9 +454,11 @@ mod tests {
                 tool_key: None,
             },
         };
+        let name = "Test Task";
+        let description = Some("Test Description");
         let cron = "* * * * *";
 
-        let task_id = manager.add_cron_task(cron, &action).unwrap();
+        let task_id = manager.add_cron_task(name, description, cron, &action).unwrap();
         let execution_time1 = chrono::Utc::now().to_rfc3339();
         let execution_time2 = chrono::Utc::now().to_rfc3339();
         let success = true;

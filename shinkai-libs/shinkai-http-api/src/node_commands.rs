@@ -565,6 +565,12 @@ pub enum NodeCommand {
         job_message: JobMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     },
+    V2ApiAddMessagesGodMode {
+        bearer: String,
+        job_id: String,
+        messages: Vec<JobMessage>,
+        res: Sender<Result<String, APIError>>,
+    },
     V2ApiForkJobMessages {
         bearer: String,
         job_id: String,
@@ -674,6 +680,7 @@ pub enum NodeCommand {
     V2ApiSearchShinkaiTool {
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiTools {
@@ -1029,6 +1036,11 @@ pub enum NodeCommand {
         url: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiRemoveTool {
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiResolveShinkaiFileProtocol {
         bearer: String,
         shinkai_file_protocol: String,
@@ -1038,6 +1050,8 @@ pub enum NodeCommand {
         bearer: String,
         cron: String,
         action: CronTaskAction,
+        name: String,
+        description: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllCronTasks {
@@ -1057,6 +1071,15 @@ pub enum NodeCommand {
     V2ApiGetCronTaskLogs {
         bearer: String,
         cron_task_id: i64,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiUpdateCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        cron: String,
+        action: CronTaskAction,
+        name: String,
+        description: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiTestLlmProvider {

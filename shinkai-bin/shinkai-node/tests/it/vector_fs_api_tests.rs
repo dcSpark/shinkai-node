@@ -69,6 +69,8 @@ pub fn generate_message_with_payload<T: ToString>(
 fn vector_fs_api_tests() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
+    std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
+
 
     let mut server = Server::new();
 

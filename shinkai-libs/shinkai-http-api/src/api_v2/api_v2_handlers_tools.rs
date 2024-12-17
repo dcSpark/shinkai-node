@@ -189,6 +189,13 @@ pub fn tool_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(delete_tool_asset_handler);
 
+    let remove_tool_route = warp::path("remove_tool")
+        .and(warp::delete())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(remove_tool_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -212,6 +219,7 @@ pub fn tool_routes(
         .or(tool_asset_route)
         .or(list_tool_asset_route)
         .or(delete_tool_asset_route)
+        .or(remove_tool_route)
 }
 
 #[utoipa::path(
@@ -478,7 +486,8 @@ pub async fn tool_metadata_implementation_handler(
     get,
     path = "/v2/search_shinkai_tool",
     params(
-        ("query" = String, Query, description = "Search query for Shinkai tools")
+        ("query" = String, Query, description = "Search query for Shinkai tools"),
+        ("agent_or_llm" = Option<String>, Query, description = "Optional agent or LLM identifier")
     ),
     responses(
         (status = 200, description = "Successfully searched Shinkai tools", body = Value),
@@ -502,11 +511,16 @@ pub async fn search_shinkai_tool_handler(
             })
         })?
         .to_string();
+    
+    // Get the optional agent_or_llm parameter
+    let agent_or_llm = query_params.get("agent_or_llm").cloned();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSearchShinkaiTool {
             bearer,
             query,
+            agent_or_llm,
             res: res_sender,
         })
         .await
@@ -1305,37 +1319,53 @@ pub async fn resolve_shinkai_file_protocol_handler(
     }
 }
 
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        tool_execution_handler,
-        tool_definitions_handler,
-        tool_implementation_handler,
-        tool_metadata_implementation_handler,
-        list_all_shinkai_tools_handler,
-        set_shinkai_tool_handler,
-        get_shinkai_tool_handler,
-        search_shinkai_tool_handler,
-        add_shinkai_tool_handler,
-        set_playground_tool_handler,
-        list_playground_tools_handler,
-        remove_playground_tool_handler,
-        get_playground_tool_handler,
-        get_tool_implementation_prompt_handler,
-        code_execution_handler,
-        undo_to_handler,
+#[utoipa::path(
+    delete,
+    path = "/v2/remove_tool",
+    params(
+        ("tool_key" = String, Query, description = "Key of the tool to remove")
     ),
-    components(
-        schemas(
-            APIError, 
-            ToolExecutionRequest,
-        )
-    ),
-    tags(
-        (name = "tools", description = "Tool API endpoints")
+    responses(
+        (status = 200, description = "Successfully removed tool", body = bool),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
     )
 )]
-pub struct ToolsApiDoc;
+pub async fn remove_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_key = query_params
+        .get("tool_key")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?
+        .to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRemoveTool {
+            bearer,
+            tool_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
 
 #[utoipa::path(
     post,
@@ -1537,3 +1567,42 @@ pub async fn delete_tool_asset_handler(
         )),
     }
 }
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        tool_execution_handler,
+        tool_definitions_handler,
+        tool_implementation_handler,
+        tool_metadata_implementation_handler,
+        list_all_shinkai_tools_handler,
+        set_shinkai_tool_handler,
+        get_shinkai_tool_handler,
+        search_shinkai_tool_handler,
+        add_shinkai_tool_handler,
+        set_playground_tool_handler,
+        list_playground_tools_handler,
+        remove_playground_tool_handler,
+        get_playground_tool_handler,
+        get_tool_implementation_prompt_handler,
+        code_execution_handler,
+        undo_to_handler,
+        remove_tool_handler,
+        export_tool_handler,
+        import_tool_handler,
+        resolve_shinkai_file_protocol_handler,
+        tool_asset_handler,
+        list_tool_asset_handler,
+        delete_tool_asset_handler,
+    ),
+    components(
+        schemas(
+            APIError, 
+            ToolExecutionRequest,
+        )
+    ),
+    tags(
+        (name = "tools", description = "Tool API endpoints")
+    )
+)]
+pub struct ToolsApiDoc;

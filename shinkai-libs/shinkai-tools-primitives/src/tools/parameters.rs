@@ -25,7 +25,13 @@ impl Parameters {
     }
 
     pub fn add_property(&mut self, name: String, property_type: String, description: String, is_required: bool) {
-        self.properties.insert(name.clone(), Property { property_type, description });
+        self.properties.insert(
+            name.clone(),
+            Property {
+                property_type,
+                description,
+            },
+        );
         if is_required {
             self.required.push(name);
         }
@@ -38,7 +44,12 @@ impl Parameters {
             properties: std::collections::HashMap::new(),
             required: Vec::new(),
         };
-        params.add_property(name.to_string(), property_type.to_string(), description.to_string(), is_required);
+        params.add_property(
+            name.to_string(),
+            property_type.to_string(),
+            description.to_string(),
+            is_required,
+        );
         params
     }
 
@@ -54,7 +65,7 @@ impl Parameters {
                     self.required.contains(name),
                 )
             })
-            .collect()
+            .collect::<Vec<_>>()
     }
 }
 
@@ -93,7 +104,9 @@ impl<'de> serde::Deserialize<'de> for Parameters {
                         "type" => schema_type = Some(map.next_value()?),
                         "properties" => properties = Some(map.next_value()?),
                         "required" => required = Some(map.next_value()?),
-                        _ => { let _ = map.next_value::<de::IgnoredAny>()?; }
+                        _ => {
+                            let _ = map.next_value::<de::IgnoredAny>()?;
+                        }
                     }
                 }
 
@@ -118,7 +131,12 @@ mod tests {
     fn test_serialization_deserialization() {
         // Create a Parameters instance
         let mut params = Parameters::new();
-        params.add_property("url".to_string(), "string".to_string(), "The URL to fetch".to_string(), true);
+        params.add_property(
+            "url".to_string(),
+            "string".to_string(),
+            "The URL to fetch".to_string(),
+            true,
+        );
 
         // Serialize the Parameters instance to JSON
         let serialized = serde_json::to_string(&params).unwrap();
@@ -154,7 +172,12 @@ mod tests {
     fn test_to_deprecated_arguments() {
         // Create a Parameters instance
         let mut params = Parameters::new();
-        params.add_property("url".to_string(), "string".to_string(), "The URL to fetch".to_string(), true);
+        params.add_property(
+            "url".to_string(),
+            "string".to_string(),
+            "The URL to fetch".to_string(),
+            true,
+        );
 
         // Convert Parameters to Vec<DeprecatedArgument>
         let deprecated_args = params.to_deprecated_arguments();
@@ -180,7 +203,7 @@ mod tests {
     fn test_deserialize_empty_json() {
         let empty_json = "{}";
         let result: Parameters = serde_json::from_str(empty_json).unwrap();
-        
+
         // Should be equivalent to Parameters::new()
         let expected = Parameters::new();
         assert_eq!(result, expected);

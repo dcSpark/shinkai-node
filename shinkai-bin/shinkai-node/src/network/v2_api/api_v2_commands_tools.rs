@@ -35,6 +35,7 @@ use shinkai_message_primitives::{
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
     deno_tools::DenoTool,
+    error::ToolError,
     python_tools::PythonTool,
     shinkai_tool::ShinkaiTool,
     tool_config::{OAuth, ToolConfig},
@@ -73,12 +74,11 @@ impl Node {
     /// # Returns
     ///
     /// A `Result` indicating success or failure of the search operation.
-
-    // TODO: we need the search to also takes an agent so it only searches for tools that the agent has access to
     pub async fn v2_api_search_shinkai_tool(
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -89,16 +89,43 @@ impl Node {
         // Sanitize the query to handle special characters
         let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
 
+        // Attempt to get the agent's tools if agent_or_llm is provided
+        let allowed_tools = if let Some(agent_id) = agent_or_llm {
+            match db.read().await.get_agent(&agent_id) {
+                Ok(Some(agent)) => Some(agent.tools),
+                Ok(None) | Err(_) => None,
+            }
+        } else {
+            None
+        };
+
         // Start the timer for logging purposes
         let start_time = Instant::now();
 
         // Start the timer for vector search
         let vector_start_time = Instant::now();
-        let vector_search_result = db
-            .read()
-            .await
-            .tool_vector_search(&sanitized_query, 5, false, true)
-            .await;
+
+        // Use different search method based on whether we have allowed_tools
+        let vector_search_result = if let Some(tools) = allowed_tools {
+            // First generate the embedding from the query
+            let embedding = db
+                .read()
+                .await
+                .generate_embeddings(&sanitized_query)
+                .await
+                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+
+            // Then use the embedding with the limited search
+            db.read()
+                .await
+                .tool_vector_search_with_vector_limited(embedding, 5, tools)
+        } else {
+            db.read()
+                .await
+                .tool_vector_search(&sanitized_query, 5, false, true)
+                .await
+        };
+
         let vector_elapsed_time = vector_start_time.elapsed();
         println!("Time taken for vector search: {:?}", vector_elapsed_time);
 
@@ -1780,9 +1807,9 @@ impl Node {
         }
 
         // Parse the shinkai file protocol
-        // Format: shinkai://{user_name}/{app-id}/{full-path}
+        // Format: shinkai://file/{node_name}/{app-id}/{full-path}
         let parts: Vec<&str> = shinkai_file_protocol.split('/').collect();
-        if parts.len() < 4 || !shinkai_file_protocol.starts_with("shinkai://") {
+        if parts.len() < 5 || !shinkai_file_protocol.starts_with("shinkai://file/") {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Invalid Protocol".to_string(),
@@ -1793,9 +1820,9 @@ impl Node {
         }
 
         // TODO This should be verified (?)
-        let user_name = parts[2];
-        let app_id = parts[3];
-        let remaining_path = parts[4..].join("/");
+        let _user_name = parts[3];
+        let app_id = parts[4];
+        let remaining_path = parts[5..].join("/");
 
         // Construct the full file path
         let mut file_path = PathBuf::from(&node_storage_path);
@@ -1879,6 +1906,7 @@ impl Node {
         file_name: String,
         file_data: Vec<u8>,
         node_env: NodeEnvironment,
+
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1975,6 +2003,41 @@ impl Node {
             }
         }
         Ok(())
+    }
+
+    pub async fn v2_api_remove_tool(
+        db: Arc<RwLock<SqliteManager>>,
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        // Acquire a write lock on the database
+        let db_write = db.write().await;
+
+        // Attempt to remove the playground tool first
+        let _ = db_write.remove_tool_playground(&tool_key);
+
+        // Remove the tool from the database
+        match db_write.remove_tool(&tool_key) {
+            Ok(_) => {
+                let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
     }
 }
 

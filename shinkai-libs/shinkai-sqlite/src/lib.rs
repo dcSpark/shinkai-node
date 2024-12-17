@@ -711,6 +711,8 @@ impl SqliteManager {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS cron_tasks (
                 task_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                description TEXT,
                 cron TEXT NOT NULL,
                 created_at TEXT NOT NULL, -- Field to track when the task was created
                 last_modified TEXT NOT NULL,
@@ -1018,7 +1020,7 @@ impl SqliteManager {
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0", "0.9.1"];
+        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions
