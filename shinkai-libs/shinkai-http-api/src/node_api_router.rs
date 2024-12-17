@@ -1,5 +1,6 @@
 use crate::api_v1;
 use crate::api_v2;
+use crate::websocket::ws_routes;
 
 use super::node_commands::NodeCommand;
 use async_channel::Sender;
@@ -13,6 +14,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 use tokio_rustls::rustls::{self, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 use utoipa::ToSchema;
@@ -95,6 +97,7 @@ pub async fn run_api(
     node_name: String,
     private_https_certificate: Option<String>,
     public_https_certificate: Option<String>,
+    ws_manager: Arc<Mutex<crate::websocket::WebSocketManager>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     shinkai_log(
         ShinkaiLogOption::Api,
@@ -141,8 +144,13 @@ pub async fn run_api(
             .with(cors.clone()),
     );
 
+    let ws_routes = ws_routes::ws_route(ws_manager.clone())
+        .recover(handle_rejection)
+        .with(log.clone())
+        .with(cors.clone());
+
     // Combine all routes
-    let routes = v1_routes.or(v2_routes).with(log).with(cors);
+    let routes = v1_routes.or(v2_routes).or(ws_routes).with(log).with(cors);
 
     // Wrap the HTTP server in an async block that returns a Result
     let http_server = async {

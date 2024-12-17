@@ -2,7 +2,7 @@ use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOff
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
 use super::node_error::NodeError;
-use shinkai_http_api::websocket::WebSocketManager;
+use shinkai_http_api::websocket::{WebSocketManager, WSUpdateHandler};
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
@@ -30,7 +30,6 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::retry::RetryMessage;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
