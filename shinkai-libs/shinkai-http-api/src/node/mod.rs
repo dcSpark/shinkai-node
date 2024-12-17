@@ -1,14 +1,29 @@
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use crate::error::APIError;
+use shinkai_message_primitives::schemas::identity::Identity;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_sqlite::SqliteManager;
+use std::sync::Arc;
+use crate::{error::APIError, identity::IdentityManagerTrait};
 
-pub fn validate_message_main_logic(message: &ShinkaiMessage) -> Result<(), APIError> {
-    // Basic validation logic
-    if message.content.is_empty() {
-        return Err(APIError::from("Message content cannot be empty"));
+pub fn validate_message_main_logic(
+    message: &ShinkaiMessage,
+    identity_manager: Arc<tokio::sync::Mutex<dyn IdentityManagerTrait + Send>>,
+    sender_name: &ShinkaiName,
+    original_message: ShinkaiMessage,
+    parent_key: Option<String>,
+) -> Result<(), APIError> {
+    if message.body.is_empty() {
+        return Err(APIError::InvalidMessageContent);
     }
     Ok(())
 }
 
-pub trait Node {
-    fn process_message(&self, message: ShinkaiMessage) -> Result<(), APIError>;
+#[async_trait::async_trait]
+pub trait Node: Send + Sync {
+    async fn has_inbox_access(
+        db: Arc<SqliteManager>,
+        inbox: &InboxName,
+        sender: &Identity,
+    ) -> Result<bool, APIError>;
 }

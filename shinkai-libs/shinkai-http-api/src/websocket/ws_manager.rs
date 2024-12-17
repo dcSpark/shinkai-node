@@ -136,16 +136,17 @@ impl WebSocketManager {
         shinkai_name: ShinkaiName,
         message: &ShinkaiMessage,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
-        let cloned_enc_sk = clone_static_secret_key(&self.encryption_secret_key);
         let identity_manager_clone = self.identity_manager_trait.clone();
         validate_message_main_logic(
-            &cloned_enc_sk,
+            message,
             identity_manager_clone,
-            &shinkai_name.clone(),
+            &shinkai_name,
             message.clone(),
             None,
-        )
-        .await
+        )?;
+
+        let sender_identity = self.get_sender_identity(&shinkai_name).await?;
+        Ok((message.clone(), sender_identity))
     }
 
     pub async fn has_access(&self, shinkai_name: ShinkaiName, topic: WSTopic, subtopic: Option<String>) -> bool {
