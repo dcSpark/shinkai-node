@@ -26,3 +26,17 @@ impl From<&str> for APIError {
         }
     }
 }
+
+impl From<crate::websocket::ws_manager::WebSocketManagerError> for APIError {
+    fn from(error: crate::websocket::ws_manager::WebSocketManagerError) -> Self {
+        APIError {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl APIError {
+    pub const InvalidMessageContent: APIError = APIError {
+        message: "Invalid message content".to_string(),
+    };
+}

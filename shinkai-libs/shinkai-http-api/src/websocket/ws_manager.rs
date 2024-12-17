@@ -143,15 +143,9 @@ impl WebSocketManager {
         message: &ShinkaiMessage,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
         let identity_manager_clone = self.identity_manager_trait.clone();
-        validate_message_main_logic(
-            message,
-            identity_manager_clone,
-            &shinkai_name,
-            message.clone(),
-            None,
-        )?;
+        validate_message_main_logic(message)?;
 
-        let sender_identity = self.get_sender_identity(&shinkai_name).await?;
+        let sender_identity = self.get_sender_identity(shinkai_name).await?;
         Ok((message.clone(), sender_identity))
     }
 
@@ -165,7 +159,7 @@ impl WebSocketManager {
                     Err(_) => return false,
                 };
                 let db_arc = self.shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-                match Node::has_inbox_access(db_arc, &inbox_name, &sender_identity).await {
+                match Node::has_inbox_access(db_arc.as_ref().clone(), &inbox_name, &sender_identity).await {
                     Ok(value) => {
                         if value {
                             shinkai_log(
@@ -448,25 +442,25 @@ impl WebSocketManager {
         for (id, connection) in self.connections.iter() {
             let is_subscribed_to_smart_inboxes = self
                 .subscriptions
-                .get(&connection.id)
-                .map(|subscriptions| subscriptions.contains(&WSTopic::SmartInboxes))
+                .get(id)
+                .map(|subscriptions| subscriptions.contains_key(&format!("{}:::{}", WSTopic::SmartInboxes, "")))
                 .unwrap_or(false);
 
             let is_subscribed_to_sheets = self
                 .subscriptions
-                .get(&connection.id)
-                .map(|subscriptions| subscriptions.contains(&WSTopic::Sheets))
+                .get(id)
+                .map(|subscriptions| subscriptions.contains_key(&format!("{}:::{}", WSTopic::Sheet, "")))
                 .unwrap_or(false);
 
             let is_subscribed_to_topic = self
                 .subscriptions
-                .get(&connection.id)
-                .map(|subscriptions| subscriptions.contains(&topic))
+                .get(id)
+                .map(|subscriptions| subscriptions.contains_key(&topic_subtopic))
                 .unwrap_or(false);
 
             if is_subscribed_to_smart_inboxes
                 || is_subscribed_to_topic
-                || is_subscribed_to_sheets
+                || (is_subscribed_to_sheets && topic == WSTopic::Sheet)
             {
                 // If the user is subscribed to SmartInboxes, check if they have access to the specific inbox
                 if is_subscribed_to_smart_inboxes {
