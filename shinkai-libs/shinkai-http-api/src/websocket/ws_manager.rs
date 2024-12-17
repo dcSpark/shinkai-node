@@ -2,16 +2,15 @@ use aes_gcm::{
     aead::{generic_array::GenericArray, Aead},
     Aes256Gcm, KeyInit,
 };
-use futures_util::stream::{SplitSink, SplitStream};
+use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
-use log::{debug, error, info, warn};
+use log::warn;
 use shinkai_message_primitives::{
     schemas::{
         identity::Identity,
         inbox_name::InboxName,
         shinkai_name::ShinkaiName,
         smart_inbox_name::SmartInboxName,
-        topic::{Topic, WSTopic},
         ws_types::{
             WebSocketManagerError, WSMessageType, WSUpdateHandler,
             MessageQueue, MessageType, WSMessagePayload,
@@ -19,20 +18,17 @@ use shinkai_message_primitives::{
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::WSMessage,
+        shinkai_message_schemas::{WSMessage, WSTopic},
     },
-    shinkai_utils::{
-        encryption::{
-            decrypt_message_with_shared_key, encrypt_message_with_shared_key, generate_shared_key,
-        },
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+    shinkai_utils::shinkai_logging::{
+        shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
     },
 };
 use shinkai_sqlite::SqliteManager;
 use std::{
     collections::{HashMap, VecDeque},
     fmt,
-    sync::Arc,
+    sync::{Arc, RwLock, Weak},
 };
 use tokio::{
     sync::Mutex,
@@ -40,6 +36,7 @@ use tokio::{
 };
 use warp::ws::{Message, WebSocket};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use async_trait::async_trait;
 
 use crate::{
     error::APIError,
