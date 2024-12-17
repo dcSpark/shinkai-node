@@ -6,6 +6,7 @@ authors = { workspace = true }
 
 [dependencies]
 shinkai_message_primitives = { workspace = true }
+shinkai_embedding = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_ocr = { workspace = true }
 bincode = { workspace = true }
@@ -28,6 +29,9 @@ regex = { workspace = true }
 [dependencies.serde]
 workspace = true
 features = ["derive"]
+
+[dev-dependencies]
+tempfile = "3.2"
 
 [[test]]
 name = "pdf_parsing_tests"

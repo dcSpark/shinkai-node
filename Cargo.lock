@@ -6255,9 +6255,11 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "shinkai_embedding",
  "shinkai_message_primitives",
  "shinkai_ocr",
  "shinkai_sqlite",
+ "tempfile",
  "thiserror 2.0.3",
  "utoipa",
 ]

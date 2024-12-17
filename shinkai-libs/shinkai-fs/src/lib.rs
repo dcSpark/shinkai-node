@@ -1,3 +1,3 @@
 // pub mod file_parser;
 pub mod shinkai_fs_error;
-pub mod file_manager;
+pub mod shinkai_file_manager;

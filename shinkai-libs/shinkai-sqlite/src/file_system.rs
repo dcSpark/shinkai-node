@@ -287,6 +287,24 @@ impl SqliteManager {
             Err(e) => Err(SqliteManagerError::DatabaseError(e)),
         }
     }
+
+    pub fn update_folder_paths(&self, old_prefix: &str, new_prefix: &str) -> Result<(), SqliteManagerError> {
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        // Construct a wildcard for the old_prefix
+        let like_pattern = format!("{}%", old_prefix);
+
+        tx.execute(
+            "UPDATE parsed_files
+             SET relative_path = REPLACE(relative_path, ?1, ?2)
+             WHERE relative_path LIKE ?3",
+            params![old_prefix, new_prefix, like_pattern],
+        )?;
+
+        tx.commit()?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -383,5 +401,30 @@ mod tests {
 
         let result = db.remove_parsed_file(999);
         assert!(matches!(result, Err(SqliteManagerError::DataNotFound)));
+    }
+
+    #[test]
+    fn test_update_folder_paths() {
+        let db = setup_test_db();
+
+        let pf1 = create_test_parsed_file(1, "docs/reports/2024/january.txt");
+        let pf2 = create_test_parsed_file(2, "docs/reports/2024/february.txt");
+        let pf3 = create_test_parsed_file(3, "docs/reports/old_stuff/misc.txt");
+        db.add_parsed_file(&pf1).unwrap();
+        db.add_parsed_file(&pf2).unwrap();
+        db.add_parsed_file(&pf3).unwrap();
+
+        // Rename folder "docs/reports/2024/" to "docs/reports/2025/"
+        db.update_folder_paths("docs/reports/2024/", "docs/reports/2025/").unwrap();
+
+        // Check updated files
+        let updated_pf1 = db.get_parsed_file_by_rel_path("docs/reports/2025/january.txt").unwrap().unwrap();
+        let updated_pf2 = db.get_parsed_file_by_rel_path("docs/reports/2025/february.txt").unwrap().unwrap();
+        assert_eq!(updated_pf1.relative_path, "docs/reports/2025/january.txt");
+        assert_eq!(updated_pf2.relative_path, "docs/reports/2025/february.txt");
+
+        // Check that non-matching files are unaffected
+        let unchanged_pf3 = db.get_parsed_file_by_rel_path("docs/reports/old_stuff/misc.txt").unwrap().unwrap();
+        assert_eq!(unchanged_pf3.relative_path, "docs/reports/old_stuff/misc.txt");
     }
 }
