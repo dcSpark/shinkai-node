@@ -96,7 +96,7 @@ fn get_files_after(start_time: u64, files: Vec<DirEntry>) -> Vec<(String, u64)> 
         .collect()
 }
 
-pub fn update_with_modified_files(
+pub fn update_result_with_modified_files(
     result: RunResult,
     start_time: u64,
     home_path: &PathBuf,

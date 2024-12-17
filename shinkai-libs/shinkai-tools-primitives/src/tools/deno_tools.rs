@@ -9,7 +9,7 @@ use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::error::ToolError;
-use crate::tools::shared_execution::update_with_modified_files;
+use crate::tools::shared_execution::update_result_with_modified_files;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -236,7 +236,14 @@ impl DenoTool {
                     if result.is_err() {
                         return result;
                     }
-                    update_with_modified_files(result.unwrap(), start_time, &home_path, &logs_path, &node_name, &app_id)
+                    update_result_with_modified_files(
+                        result.unwrap(),
+                        start_time,
+                        &home_path,
+                        &logs_path,
+                        &node_name,
+                        &app_id,
+                    )
                 })
             })
             .unwrap()
