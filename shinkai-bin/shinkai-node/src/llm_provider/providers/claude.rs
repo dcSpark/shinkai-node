@@ -278,6 +278,7 @@ async fn handle_streaming_response(
                         name,
                         arguments,
                         tool_router_key,
+                        response: None,
                     });
 
                     shinkai_log(
@@ -433,7 +434,12 @@ async fn handle_non_streaming_response(
                                         })
                                     });
 
-                                    function_call = Some(FunctionCall { name, arguments, tool_router_key });
+                                    function_call = Some(FunctionCall {
+                                        name,
+                                        arguments,
+                                        tool_router_key,
+                                        response: None,
+                                    });
 
                                     shinkai_log(
                                         ShinkaiLogOption::JobExecution,

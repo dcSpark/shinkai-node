@@ -239,6 +239,7 @@ async fn handle_streaming_response(
                                                             name: name.as_str().unwrap_or("").to_string(),
                                                             arguments: fc_arguments.clone(),
                                                             tool_router_key, // Set the tool_router_key
+                                                            response: None,
                                                         });
                                                     }
                                                 }
@@ -439,6 +440,7 @@ async fn handle_non_streaming_response(
                                     name: fc.name,
                                     arguments,
                                     tool_router_key, // Set the tool_router_key
+                                    response: None,
                                 }
                             })
                         });
