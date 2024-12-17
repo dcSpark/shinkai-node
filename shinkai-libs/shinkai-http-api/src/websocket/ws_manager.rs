@@ -13,8 +13,11 @@ use shinkai_message_primitives::{
         },
     },
     shinkai_message::shinkai_message::ShinkaiMessage,
-    shinkai_utils::encryption::{
-        decrypt_message_with_shared_key, encrypt_message_with_shared_key, generate_shared_key,
+    shinkai_utils::{
+        encryption::{
+            decrypt_message_with_shared_key, encrypt_message_with_shared_key, generate_shared_key,
+        },
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
     },
 };
 use std::{
@@ -27,7 +30,6 @@ use tokio::{
     time::{sleep, Duration},
 };
 use warp::ws::{Message, WebSocket};
-use x25519_dalek::StaticSecret;
 
 use crate::{
     error::APIError,
