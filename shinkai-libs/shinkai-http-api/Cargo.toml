@@ -21,6 +21,7 @@ reqwest = { workspace = true, features = [
 ] }
 rustls = "0.20"
 rustls-pemfile = "1.0.3"
+serde_json = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
