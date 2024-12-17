@@ -45,7 +45,7 @@ pub fn convert_to_shinkai_file_protocol(node_name: &ShinkaiName, path: &str, app
     "".to_string()
 }
 
-fn get_files_in_directory(directories: Vec<&PathBuf>) -> io::Result<Vec<DirEntry>> {
+fn get_files_in_directories(directories: Vec<&PathBuf>) -> io::Result<Vec<DirEntry>> {
     let mut files = Vec::new();
 
     for directory in directories {
@@ -59,7 +59,7 @@ fn get_files_in_directory(directories: Vec<&PathBuf>) -> io::Result<Vec<DirEntry
                 files.push(entry);
             } else if path.is_dir() {
                 // Recursively get files from subdirectories
-                let sub_files = get_files_in_directory(vec![&path])?;
+                let sub_files = get_files_in_directories(vec![&path])?;
                 files.extend(sub_files);
             }
         }
@@ -107,7 +107,7 @@ pub fn update_result_with_modified_files(
     if let serde_json::Value::Object(ref mut data) = result.clone().data {
         let modified_files = get_files_after(
             start_time,
-            get_files_in_directory(vec![home_path, logs_path]).unwrap_or_default(),
+            get_files_in_directories(vec![home_path, logs_path]).unwrap_or_default(),
         );
         data.insert(
             "__created_files__".to_string(),
