@@ -8,14 +8,13 @@ use crate::{error::APIError, identity::IdentityManagerTrait};
 
 pub fn validate_message_main_logic(
     message: &ShinkaiMessage,
-    identity_manager: Arc<tokio::sync::Mutex<dyn IdentityManagerTrait + Send>>,
-    sender_name: &ShinkaiName,
-    original_message: ShinkaiMessage,
-    parent_key: Option<String>,
+    _identity_manager: Arc<tokio::sync::Mutex<dyn IdentityManagerTrait + Send>>,
+    _sender_name: &ShinkaiName,
+    _original_message: ShinkaiMessage,
+    _parent_key: Option<String>,
 ) -> Result<(), APIError> {
     match &message.body {
         MessageBody::Encrypted(_) | MessageBody::Unencrypted(_) => Ok(()),
-        _ => Err(APIError::invalid_message_content()),
     }
 }
 

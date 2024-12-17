@@ -165,8 +165,7 @@ impl WebSocketManager {
                     Err(_) => return false,
                 };
                 let db_arc = self.shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-                let db_arc = Arc::new(db_arc.read().clone());
-                match Node::has_inbox_access(db_arc, &inbox_name, &sender_identity).await {
+                match Node::has_inbox_access(Arc::clone(&db_arc), &inbox_name, &sender_identity).await {
                     Ok(value) => {
                         if value {
                             shinkai_log(
