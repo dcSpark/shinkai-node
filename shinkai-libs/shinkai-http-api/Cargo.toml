@@ -12,8 +12,10 @@ bytes = "1.7.1"
 chrono = { workspace = true }
 ed25519-dalek = "2.1.0"
 futures = { workspace = true }
+futures-util = "0.3"
 hex = { workspace = true }
 hyper = { version = "0.14.30", features = ["server"] }
+log = "0.4"
 reqwest = { workspace = true, features = [
     "json",
     "tokio-native-tls",
