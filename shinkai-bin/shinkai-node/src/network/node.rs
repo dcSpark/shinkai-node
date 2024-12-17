@@ -2,7 +2,7 @@ use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOff
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
 use super::node_error::NodeError;
-use super::ws_manager::WebSocketManager;
+use shinkai_http_api::websocket::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
@@ -273,23 +273,19 @@ impl Node {
             identity_manager.clone()
         };
 
-        let ws_manager = if ws_address.is_some() {
+        let ws_manager = if let Some(ws_address) = ws_address {
             let manager = WebSocketManager::new(
-                db_weak,
                 node_name.clone(),
+                identity_secret_key.clone(),
+                encryption_secret_key.clone(),
                 identity_manager_trait.clone(),
-                clone_static_secret_key(&encryption_secret_key),
-            )
-            .await;
-            Some(manager)
+            );
+            Some(Arc::new(Mutex::new(manager)))
         } else {
             None
         };
 
-        let ws_manager_trait = ws_manager.clone().map(|manager| {
-            let manager_trait: Arc<Mutex<dyn WSUpdateHandler + Send>> = manager.clone();
-            manager_trait
-        });
+        let ws_manager_trait = ws_manager.clone().map(|m| m as Arc<Mutex<dyn WSUpdateHandler + Send>>);
 
         // Initialize ToolRouter
         let tool_router = ToolRouter::new(db_arc.clone());
