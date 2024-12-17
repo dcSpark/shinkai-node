@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use shinkai_vector_resources::{
-    embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
-    embeddings::Embedding,
-    resource_errors::VRError,
-};
+// use shinkai_vector_resources::{
+//     embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
+//     embeddings::Embedding,
+//     resource_errors::VRError,
+// };
 
 /// Represents an analyzed/parsed initial message which triggered the job to run (aka. user message)
 /// Holds an ordered list of elements, which are pieces of the original user message string with parsed metadata about them

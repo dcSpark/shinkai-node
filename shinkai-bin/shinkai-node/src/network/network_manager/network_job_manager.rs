@@ -18,7 +18,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_k
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -29,6 +29,7 @@ use std::{collections::HashMap, sync::Arc};
 use std::{env, mem};
 use tokio::sync::RwLock;
 use tokio::sync::{Mutex, Semaphore};
+
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use super::network_handlers::{
@@ -81,7 +82,6 @@ impl NetworkJobManager {
     // TODO: change to Weak<Mutex<...>>
     pub async fn new(
         db: Weak<RwLock<SqliteManager>>,
-        vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -116,7 +116,6 @@ impl NetworkJobManager {
         // Start processing the job queue
         let job_queue_handler = NetworkJobManager::process_job_queue(
             db.clone(),
-            vector_fs.clone(),
             my_node_name.clone(),
             clone_static_secret_key(&my_encryption_secret_key),
             clone_signature_secret_key(&my_signature_secret_key),
@@ -129,7 +128,6 @@ impl NetworkJobManager {
             ws_manager.clone(),
             |job,
              db,
-             vector_fs,
              my_node_profile_name,
              my_encryption_secret_key,
              my_signature_secret_key,
@@ -141,7 +139,6 @@ impl NetworkJobManager {
                 Box::pin(NetworkJobManager::process_network_request_queued(
                     job,
                     db,
-                    vector_fs,
                     my_node_profile_name,
                     my_encryption_secret_key,
                     my_signature_secret_key,
@@ -164,7 +161,6 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
         db: Weak<RwLock<SqliteManager>>,
-        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -178,7 +174,6 @@ impl NetworkJobManager {
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                                // job to process
                 Weak<RwLock<SqliteManager>>,                    // db
-                Weak<VectorFS>,                                 // vector_fs
                 ShinkaiName,                                    // my_profile_name
                 EncryptionStaticKey,                            // my_encryption_secret_key
                 SigningKey,                                     // my_signature_secret_key
@@ -195,7 +190,6 @@ impl NetworkJobManager {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let db_clone = db.clone();
-        let vector_fs_clone = vector_fs.clone();
         let my_node_profile_name_clone = my_node_profile_name.clone();
         let my_encryption_sk_clone = clone_static_secret_key(&my_encryption_secret_key);
         let my_signature_sk_clone = clone_signature_secret_key(&my_signature_secret_key);
@@ -256,7 +250,6 @@ impl NetworkJobManager {
                     let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = Arc::clone(&semaphore);
                     let db_clone_2 = db_clone.clone();
-                    let vector_fs_clone_2 = vector_fs_clone.clone();
                     let my_node_profile_name_clone_2 = my_node_profile_name_clone.clone();
                     let my_encryption_sk_clone_2 = clone_static_secret_key(&my_encryption_sk_clone);
                     let my_signature_sk_clone_2 = clone_signature_secret_key(&my_signature_sk_clone);
@@ -297,7 +290,6 @@ impl NetworkJobManager {
                                     let result = job_processing_fn(
                                         job.clone(),
                                         db_clone_2,
-                                        vector_fs_clone_2,
                                         my_node_profile_name_clone_2,
                                         my_encryption_sk_clone_2,
                                         my_signature_sk_clone_2,
@@ -390,7 +382,6 @@ impl NetworkJobManager {
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
         db: Weak<RwLock<SqliteManager>>,
-        vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,

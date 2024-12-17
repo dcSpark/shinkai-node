@@ -23,6 +23,11 @@ impl MinimalJobScope {
     pub fn from_bytes(bytes: &[u8]) -> serde_json::Result<Self> {
         serde_json::from_slice(bytes)
     }
+
+    /// Checks if both vector_fs_items and vector_fs_folders are empty.
+    pub fn is_empty(&self) -> bool {
+        self.vector_fs_items.is_empty() && self.vector_fs_folders.is_empty()
+    }
 }
 
 impl Default for MinimalJobScope {

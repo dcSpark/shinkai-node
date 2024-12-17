@@ -4,8 +4,6 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
-use shinkai_vector_resources::resource_errors::VRError;
 
 use crate::llm_provider::error::LLMProviderError;
 
@@ -40,22 +38,6 @@ impl From<Box<dyn std::error::Error + Send>> for NodeError {
 
 impl From<std::io::Error> for NodeError {
     fn from(err: std::io::Error) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<VectorFSError> for NodeError {
-    fn from(err: VectorFSError) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<VRError> for NodeError {
-    fn from(err: VRError) -> NodeError {
         NodeError {
             message: format!("{}", err),
         }

@@ -170,7 +170,7 @@ impl VectorFS {
                     self.create_new_folder(&writer, "My Subscriptions").await?;
                     self.create_new_folder(&writer, "For Sharing").await?;
 
-                    let my_files = VRPath::from_string("/My Files (Private)").unwrap();
+                    let my_files = ShinkaiPath::from_string("/My Files (Private)").unwrap();
                     let writer = self
                         .new_writer(profile.clone(), my_files.clone(), profile.clone())
                         .await?;

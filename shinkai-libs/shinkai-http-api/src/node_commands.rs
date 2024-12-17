@@ -24,16 +24,13 @@ use shinkai_message_primitives::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
             APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
-            APICreateShareableFolder, APIExportSheetPayload, APIGetLastNotifications, APIGetMySubscribers,
-            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload,
-            APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
-            APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
-            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage,
-            RegistrationCodeType, V2ChatMessage,
+            APIExportSheetPayload, APIImportSheetPayload, APISetSheetUploadedFilesPayload, APIVecFsCopyFolder,
+            APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder,
+            APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
+            ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType,
+            V2ChatMessage,
         },
-    },
-    shinkai_utils::job_scope::JobScope,
+    }, shinkai_utils::job_scope::MinimalJobScope,
 };
 
 use shinkai_tools_primitives::tools::{
@@ -907,7 +904,7 @@ pub enum NodeCommand {
     V2ApiUpdateJobScope {
         bearer: String,
         job_id: String,
-        job_scope: JobScope,
+        job_scope: MinimalJobScope,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetJobScope {

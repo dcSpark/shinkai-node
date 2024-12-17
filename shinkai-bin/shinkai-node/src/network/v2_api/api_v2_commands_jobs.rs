@@ -27,7 +27,9 @@ use shinkai_message_primitives::{
             V2ChatMessage,
         },
     },
-    shinkai_utils::{job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+    },
 };
 
 use shinkai_sqlite::SqliteManager;
@@ -204,7 +206,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_message.job_id, false, false) {
+        let llm_provider = match db.read().await.get_job_with_options(&job_message.job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -661,7 +663,7 @@ impl Node {
 
         // Check if the job exists
         let db_read = db.read().await;
-        match db_read.get_job_with_options(&job_id, false, false) {
+        match db_read.get_job_with_options(&job_id, false) {
             Ok(_) => {
                 drop(db_read);
 
@@ -709,7 +711,7 @@ impl Node {
         // TODO: Get default values for Ollama
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false, false) {
+        match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
                     custom_system_prompt: None,
@@ -996,7 +998,7 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         bearer: String,
         job_id: String,
-        job_scope: JobScope,
+        job_scope: MinimalJobScope,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1005,7 +1007,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false, false) {
+        match db.read().await.get_job_with_options(&job_id, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the job scope
                 match db.write().await.update_job_scope(job_id.clone(), job_scope.clone()) {
@@ -1060,7 +1062,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false, false) {
+        match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 // Job exists, proceed with getting the job scope
                 let job_scope = job.scope();
@@ -1123,7 +1125,7 @@ impl Node {
         };
 
         // Retrieve the job
-        let source_job = match db.read().await.get_job_with_options(&job_id, false, true) {
+        let source_job = match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1208,7 +1210,7 @@ impl Node {
         match db.write().await.create_new_job(
             forked_job_id.clone(),
             source_job.parent_agent_or_llm_provider_id,
-            source_job.scope_with_files.clone().unwrap(),
+            source_job.scope.clone(),
             source_job.is_hidden,
             source_job.associated_ui,
             source_job.config,
@@ -1646,7 +1648,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_id, false, false) {
+        let llm_provider = match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {

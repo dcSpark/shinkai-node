@@ -2,10 +2,10 @@ use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-// use shinkai_vector_resources::vector_resource::RetrievedNode;
+
+use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 use super::{
-    job::JobStepResult,
     llm_message::{DetailedFunctionCall, LlmMessage},
     shinkai_fs::ShinkaiFileChunkCollection,
     subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType},
@@ -252,11 +252,11 @@ impl Prompt {
 
     /// Adds previous results from step history into the Prompt, up to max_tokens
     /// Of note, priority value must be between 0-100.
-    pub fn add_step_history(&mut self, history: Vec<JobStepResult>, priority_value: u8) {
+    pub fn add_step_history(&mut self, history: Vec<ShinkaiMessage>, priority_value: u8) {
         let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
         let sub_prompts_list: Vec<SubPrompt> = history
             .iter()
-            .filter_map(|step| step.get_result_prompt())
+            .filter_map(|step| Some(step.to_prompt()))
             .flat_map(|prompt| prompt.sub_prompts.clone())
             .collect();
         self.add_sub_prompts_with_new_priority(sub_prompts_list, capped_priority_value);

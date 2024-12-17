@@ -981,7 +981,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::from_string("/unpacked/new_root_folder").unwrap(),
+            ShinkaiPath::from_string("/unpacked/new_root_folder").unwrap(),
             &mut vector_fs,
         )
         .await
@@ -1176,7 +1176,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::from_string("/first_folder/second_folder/").unwrap(),
+            ShinkaiPath::from_string("/first_folder/second_folder/").unwrap(),
             &mut vector_fs,
         )
         .await
@@ -1189,7 +1189,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
+            ShinkaiPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
             &mut vector_fs,
         )
         .await

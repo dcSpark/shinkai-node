@@ -1,13 +1,11 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use rusqlite::params;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
-        job::{ForkedJob, Job, JobLike, JobStepResult},
+        job::{ForkedJob, Job, JobLike},
         job_config::JobConfig,
-        prompts::Prompt,
-        subprompts::SubPromptType,
         ws_types::WSUpdateHandler,
     },
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::AssociatedUI},
@@ -47,10 +45,9 @@ impl SqliteManager {
                 parent_agent_or_llm_provider_id,
                 scope,
                 conversation_inbox_name,
-                execution_context,
                 associated_ui,
                 config
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
 
         stmt.execute(params![
@@ -61,9 +58,6 @@ impl SqliteManager {
             llm_provider_id,
             scope_text,
             job_inbox_name.clone(),
-            serde_json::to_vec(&HashMap::<String, String>::new()).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?,
             associated_ui_text,
             config_text,
         ])?;
@@ -117,7 +111,6 @@ impl SqliteManager {
             parent_agent_id,
             conversation_inbox,
             step_history,
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -132,7 +125,6 @@ impl SqliteManager {
             scope,
             conversation_inbox_name: conversation_inbox,
             step_history: step_history.unwrap_or_else(Vec::new),
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -150,39 +142,6 @@ impl SqliteManager {
         self.parse_job_from_row(&row, true)
     }
 
-    pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, SqliteManagerError> {
-        let (
-            scope,
-            is_finished,
-            is_hidden,
-            datetime_created,
-            parent_agent_id,
-            conversation_inbox,
-            _,
-            execution_context,
-            associated_ui,
-            config,
-            forked_jobs,
-        ) = self.get_job_data(job_id, false)?;
-
-        let job = Job {
-            job_id: job_id.to_string(),
-            is_hidden,
-            datetime_created,
-            is_finished,
-            parent_agent_or_llm_provider_id: parent_agent_id,
-            scope,
-            conversation_inbox_name: conversation_inbox,
-            step_history: Vec::new(), // Empty step history for JobLike
-            execution_context,
-            associated_ui,
-            config,
-            forked_jobs,
-        };
-
-        Ok(Box::new(job))
-    }
-
     #[allow(clippy::type_complexity)]
     fn get_job_data(
         &self,
@@ -196,8 +155,7 @@ impl SqliteManager {
             String,
             String,
             InboxName,
-            Option<Vec<JobStepResult>>,
-            HashMap<String, String>,
+            Option<Vec<ShinkaiMessage>>,
             Option<AssociatedUI>,
             Option<JobConfig>,
             Vec<ForkedJob>,
@@ -215,10 +173,9 @@ impl SqliteManager {
             parent_agent_or_llm_provider_id,
             scope,
             conversation_inbox_name,
-            execution_context,
             associated_ui,
             config
-            FROM jobs WHERE job_id = ?1"
+            FROM jobs WHERE job_id = ?1",
         )?;
 
         let mut rows = stmt.query(params![job_id])?;
@@ -233,10 +190,8 @@ impl SqliteManager {
         let inbox_name: String = row.get(6)?;
         let conversation_inbox: InboxName =
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-        let execution_context_bytes: Vec<u8> = row.get(7)?;
-        let execution_context: HashMap<String, String> = serde_json::from_slice(&execution_context_bytes)?;
-        let associated_ui_text: Option<String> = row.get(8)?;
-        let config_text: Option<String> = row.get(9)?;
+        let associated_ui_text: Option<String> = row.get(7)?;
+        let config_text: Option<String> = row.get(8)?;
 
         let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
         let associated_ui = associated_ui_text
@@ -277,7 +232,6 @@ impl SqliteManager {
             parent_agent_id,
             conversation_inbox,
             step_history,
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -326,36 +280,6 @@ impl SqliteManager {
         Ok(jobs)
     }
 
-    pub fn set_job_execution_context(
-        &self,
-        job_id: String,
-        context: HashMap<String, String>,
-        _message_key: Option<String>,
-    ) -> Result<(), SqliteManagerError> {
-        let conn = self.get_connection()?;
-
-        let context_bytes = serde_json::to_vec(&context)?;
-
-        let mut stmt = conn.prepare("UPDATE jobs SET execution_context = ?1 WHERE job_id = ?2")?;
-
-        stmt.execute(params![context_bytes, job_id])?;
-
-        Ok(())
-    }
-
-    pub fn get_job_execution_context(&self, job_id: &str) -> Result<HashMap<String, String>, SqliteManagerError> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT execution_context FROM jobs WHERE job_id = ?1")?;
-        let mut rows = stmt.query(params![job_id])?;
-
-        let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
-
-        let execution_context_bytes: Vec<u8> = row.get(0)?;
-        let execution_context = serde_json::from_slice(&execution_context_bytes)?;
-
-        Ok(execution_context)
-    }
-
     pub fn update_job_to_finished(&self, job_id: &str) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM jobs WHERE job_id = ?1")?;
@@ -371,114 +295,25 @@ impl SqliteManager {
         Ok(())
     }
 
-    pub fn add_step_history(
-        &self,
-        job_id: String,
-        user_message: String,
-        user_files: Option<HashMap<String, String>>,
-        agent_response: String,
-        agent_files: Option<HashMap<String, String>>,
-        message_key: Option<String>,
-    ) -> Result<(), SqliteManagerError> {
-        let message_key = match message_key {
-            Some(key) => key,
-            None => {
-                // Fetch the most recent message from the job's inbox
-                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())
-                    .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e)))?;
-                let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
-                if let Some(message) = last_messages.first() {
-                    if let Some(message) = message.first() {
-                        message.calculate_message_hash_for_pagination()
-                    } else {
-                        return Err(SqliteManagerError::SomeError(
-                            "No messages found in the inbox".to_string(),
-                        ));
-                    }
-                } else {
-                    return Err(SqliteManagerError::SomeError(
-                        "No messages found in the inbox".to_string(),
-                    ));
-                }
-            }
-        };
-
-        // Create prompt & JobStepResult
-        let mut prompt = Prompt::new();
-        let user_files = user_files.unwrap_or_default();
-        let agent_files = agent_files.unwrap_or_default();
-        prompt.add_omni(user_message, user_files, SubPromptType::User, 100);
-        prompt.add_omni(agent_response, agent_files, SubPromptType::Assistant, 100);
-        let mut job_step_result = JobStepResult::new();
-        job_step_result.add_new_step_revision(prompt);
-
-        let step_result_bytes = serde_json::to_vec(&job_step_result)
-            .map_err(|e| SqliteManagerError::SerializationError(format!("Error serializing JobStepResult: {}", e)))?;
-
-        let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("INSERT INTO step_history (message_key, job_id, job_step_result) VALUES (?1, ?2, ?3)")?;
-        stmt.execute(params![message_key, job_id, step_result_bytes])?;
-
-        Ok(())
-    }
-
     pub fn get_step_history(
         &self,
         job_id: &str,
         fetch_step_history: bool,
-    ) -> Result<Option<Vec<JobStepResult>>, SqliteManagerError> {
+    ) -> Result<Option<Vec<ShinkaiMessage>>, SqliteManagerError> {
         if !fetch_step_history {
             return Ok(None);
         }
 
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())
             .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e)))?;
-        let mut step_history: Vec<JobStepResult> = Vec::new();
-        let mut until_offset_key: Option<String> = None;
 
-        let conn = self.get_connection()?;
+        let messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1000, None)?;
 
-        loop {
-            // Note(Nico): changing n to 2 helps a lot to debug potential pagination problems
-            let mut messages =
-                self.get_last_messages_from_inbox(inbox_name.to_string(), 2, until_offset_key.clone())?;
+        // Map and collect the first element of each inner vector
+        let first_messages: Vec<ShinkaiMessage> =
+            messages.into_iter().filter_map(|mut msg_vec| msg_vec.pop()).collect();
 
-            if messages.is_empty() {
-                break;
-            }
-
-            messages.reverse();
-
-            for message_path in &messages {
-                if let Some(message) = message_path.first() {
-                    let message_key = message.calculate_message_hash_for_pagination();
-                    let mut stmt = conn.prepare("SELECT job_step_result FROM step_history WHERE message_key = ?1")?;
-                    let mut rows = stmt.query(params![message_key])?;
-
-                    while let Some(row) = rows.next()? {
-                        let step_result_bytes: Vec<u8> = row.get(0)?;
-                        let step_result: JobStepResult = serde_json::from_slice(&step_result_bytes)?;
-
-                        step_history.push(step_result);
-                    }
-                }
-            }
-
-            if let Some(last_message_path) = messages.last() {
-                if let Some(last_message) = last_message_path.first() {
-                    until_offset_key = Some(last_message.calculate_message_hash_for_pagination());
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-
-        // Reverse the step history before returning
-        step_history.reverse();
-        Ok(Some(step_history))
+        Ok(Some(first_messages))
     }
 
     pub fn is_job_inbox_empty(&self, job_id: &str) -> Result<bool, SqliteManagerError> {
@@ -532,7 +367,6 @@ impl SqliteManager {
             params![inbox_name.to_string()],
         )?;
 
-        tx.execute("DELETE FROM step_history WHERE job_id = ?1", params![job_id])?;
         tx.execute("DELETE FROM jobs WHERE job_id = ?1", params![job_id])?;
 
         tx.commit()?;
@@ -540,11 +374,7 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn parse_job_from_row(
-        &self,
-        row: &rusqlite::Row,
-        fetch_step_history: bool,
-    ) -> Result<Job, SqliteManagerError> {
+    fn parse_job_from_row(&self, row: &rusqlite::Row, fetch_step_history: bool) -> Result<Job, SqliteManagerError> {
         let job_id: String = row.get(0)?;
         let is_hidden: bool = row.get(1)?;
         let datetime_created: String = row.get(2)?;
@@ -554,9 +384,8 @@ impl SqliteManager {
         let inbox_name: String = row.get(6)?;
         let conversation_inbox: InboxName =
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
-        let execution_context_bytes: Option<Vec<u8>> = row.get(7)?;
-        let associated_ui_text: Option<String> = row.get(8)?;
-        let config_text: Option<String> = row.get(9)?;
+        let associated_ui_text: Option<String> = row.get(7)?;
+        let config_text: Option<String> = row.get(8)?;
 
         let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
         let associated_ui = associated_ui_text
@@ -573,8 +402,6 @@ impl SqliteManager {
         } else {
             None
         };
-
-        let execution_context = serde_json::from_slice(&execution_context_bytes.unwrap_or_default())?;
 
         let mut forked_jobs = vec![];
 
@@ -601,7 +428,6 @@ impl SqliteManager {
             scope,
             conversation_inbox_name: conversation_inbox,
             step_history: step_history.unwrap_or_else(Vec::new),
-            execution_context,
             associated_ui,
             config,
             forked_jobs,
@@ -617,14 +443,14 @@ mod tests {
     use shinkai_message_primitives::schemas::identity::StandardIdentity;
     use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::schemas::subprompts::SubPromptType::{Assistant, User};
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
     use shinkai_message_primitives::{
-        schemas::{identity::StandardIdentityType, subprompts::SubPrompt},
+        schemas::identity::StandardIdentityType,
         shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType},
         shinkai_utils::{
             encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod},
             shinkai_message_builder::ShinkaiMessageBuilder,
-            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+            signatures::unsafe_deterministic_signature_keypair,
         },
     };
     use std::{collections::HashSet, path::PathBuf, time::Duration};
@@ -783,61 +609,6 @@ mod tests {
         // Retrieve the job and check that is_finished is set to true
         let job = db.get_job(&job_id.clone()).unwrap();
         assert!(job.is_finished);
-    }
-
-    #[tokio::test]
-    async fn test_update_step_history() {
-        let db = setup_test_db();
-        let job_id = "test_job".to_string();
-
-        let node1_identity_name = "@@node1.shinkai";
-        let node1_subidentity_name = "main_profile_node1";
-        let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-
-        let agent_id = "agent_test".to_string();
-        let scope = MinimalJobScope::default();
-
-        // Create a new job
-        create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
-
-        let message = generate_message_with_text(
-            "Hello World".to_string(),
-            node1_encryption_sk.clone(),
-            clone_signature_secret_key(&node1_identity_sk),
-            node1_encryption_pk,
-            node1_subidentity_name.to_string(),
-            node1_identity_name.to_string(),
-            "2023-07-02T20:53:34.810Z".to_string(),
-        );
-
-        // Insert the ShinkaiMessage into the database
-        db.unsafe_insert_inbox_message(&message, None, None).await.unwrap();
-
-        // Update step history
-        db.add_step_history(
-            job_id.clone(),
-            "What is 10 + 25".to_string(),
-            None,
-            "The answer is 35".to_string(),
-            None,
-            None,
-        )
-        .unwrap();
-        sleep(Duration::from_millis(10)).await;
-        db.add_step_history(
-            job_id.clone(),
-            "2) What is 10 + 25".to_string(),
-            None,
-            "2) The answer is 35".to_string(),
-            None,
-            None,
-        )
-        .unwrap();
-
-        // Retrieve the job and check that step history is updated
-        let job = db.get_job(&job_id.clone()).unwrap();
-        assert_eq!(job.step_history.len(), 2);
     }
 
     #[test]
@@ -1024,320 +795,312 @@ mod tests {
         assert_eq!(job_message_4.content, "Hello World 4".to_string());
     }
 
-    #[tokio::test]
-    async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
-        let db = setup_test_db();
-        let job_id = "job_test".to_string();
-        let agent_id = "agent_test".to_string();
-        let scope = MinimalJobScope::default();
+    // #[tokio::test]
+    // async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
+    //     let db = setup_test_db();
+    //     let job_id = "job_test".to_string();
+    //     let agent_id = "agent_test".to_string();
+    //     let scope = MinimalJobScope::default();
 
-        // Create a new job
-        create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
+    //     // Create a new job
+    //     create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
 
-        let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
+    //     let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
 
-        let mut parent_message_hash: Option<String> = None;
-        let mut parent_message_hash_2: Option<String> = None;
+    //     let mut parent_message_hash: Option<String> = None;
+    //     let mut parent_message_hash_2: Option<String> = None;
 
-        /*
-        The tree that we are creating looks like:
-            1
-            ├── 2
-            │   ├── 4
-            └── 3
-         */
-        let mut current_level = 0;
-        let mut results = Vec::new();
-        for i in 1..=4 {
-            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
-                job_id.clone(),
-                format!("Hello World {}", i),
-                "".to_string(),
-                None,
-                placeholder_signature_sk.clone(),
-                "@@node1.shinkai".to_string(),
-                "@@node1.shinkai".to_string(),
-            )
-            .unwrap();
+    //     /*
+    //     The tree that we are creating looks like:
+    //         1
+    //         ├── 2
+    //         │   ├── 4
+    //         └── 3
+    //      */
+    //     for i in 1..=4 {
+    //         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+    //             job_id.clone(),
+    //             format!("Hello World {}", i),
+    //             "".to_string(),
+    //             None,
+    //             placeholder_signature_sk.clone(),
+    //             "@@node1.shinkai".to_string(),
+    //             "@@node1.shinkai".to_string(),
+    //         )
+    //         .unwrap();
 
-            let parent_hash: Option<String> = match i {
-                2 | 3 => {
-                    current_level += 1;
-                    parent_message_hash.clone()
-                }
-                4 => {
-                    results.pop();
-                    parent_message_hash_2.clone()
-                }
-                _ => None,
-            };
+    //         let parent_hash: Option<String> = match i {
+    //             2 | 3 => parent_message_hash.clone(),
+    //             4 => parent_message_hash_2.clone(),
+    //             _ => None,
+    //         };
 
-            // Add a message to the job
-            let _ = db
-                .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
-                .await;
+    //         // Add a message to the job
+    //         let _ = db
+    //             .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
+    //             .await;
 
-            // Add a step history
-            let result = format!("Result {}", i);
-            db.add_step_history(
-                job_id.clone(),
-                format!("Step {} Level {}", i, current_level),
-                None,
-                result.clone(),
-                None,
-                None,
-            )
-            .unwrap();
+    //         // Update the parent message according to the tree structure
+    //         if i == 1 {
+    //             parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
+    //         } else if i == 2 {
+    //             parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
+    //         }
 
-            // Add the result to the results vector
-            results.push(result);
+    //         // Add user messages using job_message_unencrypted
+    //         let user_message = ShinkaiMessageBuilder::job_message_unencrypted(
+    //             job_id.clone(),
+    //             format!("User Message {}", i),
+    //             "".to_string(),
+    //             parent_hash.clone().unwrap_or_default(),
+    //             placeholder_signature_sk.clone(),
+    //             "@@node1.shinkai".to_string(),
+    //             "@@node1.shinkai".to_string(),
+    //             "@@node1.shinkai".to_string(),
+    //             "@@node1.shinkai".to_string(),
+    //         )
+    //         .unwrap();
 
-            // Set job execution context
-            let mut execution_context = HashMap::new();
-            execution_context.insert("context".to_string(), results.join(", "));
-            db.set_job_execution_context(job_id.clone(), execution_context, None)
-                .unwrap();
+    //         let _ = db
+    //             .add_message_to_job_inbox(&job_id.clone(), &user_message, parent_hash.clone(), None)
+    //             .await;
+    //     }
 
-            // Update the parent message according to the tree structure
-            if i == 1 {
-                parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
-            } else if i == 2 {
-                parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
-            }
-        }
+    //     // Check if the job inbox is not empty after adding a message
+    //     assert!(!db.is_job_inbox_empty(&job_id).unwrap());
 
-        // Check if the job inbox is not empty after adding a message
-        assert!(!db.is_job_inbox_empty(&job_id).unwrap());
+    //     // Get the inbox name
+    //     let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+    //     let inbox_name_value = match inbox_name {
+    //         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    //     };
 
-        // Get the inbox name
-        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-        let inbox_name_value = match inbox_name {
-            InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
-        };
+    //     // Get the messages from the job inbox
+    //     let last_messages_inbox = db
+    //         .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
+    //         .unwrap();
 
-        // Get the messages from the job inbox
-        let last_messages_inbox = db
-            .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
-            .unwrap();
+    //     eprintln!("last_messages_inbox: {:?}", last_messages_inbox);
 
-        // Check the content of the messages
-        assert_eq!(last_messages_inbox.len(), 3);
+    //     // Check the content of the messages
+    //     assert_eq!(last_messages_inbox.len(), 3);
 
-        // Check the content of the first message array
-        assert_eq!(last_messages_inbox[0].len(), 1);
-        let message_content_1 = last_messages_inbox[0][0].clone().get_message_content().unwrap();
-        let job_message_1: JobMessage = serde_json::from_str(&message_content_1).unwrap();
-        assert_eq!(job_message_1.content, "Hello World 1".to_string());
+    //     // Check the content of the first message array
+    //     assert_eq!(last_messages_inbox[0].len(), 1);
+    //     let message_content_1 = last_messages_inbox[0][0].clone().get_message_content().unwrap();
+    //     let job_message_1: JobMessage = serde_json::from_str(&message_content_1).unwrap();
+    //     assert_eq!(job_message_1.content, "Hello World 1".to_string());
 
-        // Check the content of the second message array
-        assert_eq!(last_messages_inbox[1].len(), 2);
-        let message_content_2 = last_messages_inbox[1][0].clone().get_message_content().unwrap();
-        let job_message_2: JobMessage = serde_json::from_str(&message_content_2).unwrap();
-        assert_eq!(job_message_2.content, "Hello World 2".to_string());
+    //     // Check the content of the second message array
+    //     assert_eq!(last_messages_inbox[1].len(), 2);
+    //     let message_content_2 = last_messages_inbox[1][0].clone().get_message_content().unwrap();
+    //     let job_message_2: JobMessage = serde_json::from_str(&message_content_2).unwrap();
+    //     assert_eq!(job_message_2.content, "Hello World 2".to_string());
 
-        let message_content_3 = last_messages_inbox[1][1].clone().get_message_content().unwrap();
-        let job_message_3: JobMessage = serde_json::from_str(&message_content_3).unwrap();
-        assert_eq!(job_message_3.content, "Hello World 3".to_string());
+    //     let message_content_3 = last_messages_inbox[1][1].clone().get_message_content().unwrap();
+    //     let job_message_3: JobMessage = serde_json::from_str(&message_content_3).unwrap();
+    //     assert_eq!(job_message_3.content, "Hello World 3".to_string());
 
-        // Check the content of the third message array
-        assert_eq!(last_messages_inbox[2].len(), 1);
-        let message_content_4 = last_messages_inbox[2][0].clone().get_message_content().unwrap();
-        let job_message_4: JobMessage = serde_json::from_str(&message_content_4).unwrap();
-        assert_eq!(job_message_4.content, "Hello World 4".to_string());
+    //     // Check the content of the third message array
+    //     assert_eq!(last_messages_inbox[2].len(), 1);
+    //     let message_content_4 = last_messages_inbox[2][0].clone().get_message_content().unwrap();
+    //     let job_message_4: JobMessage = serde_json::from_str(&message_content_4).unwrap();
+    //     assert_eq!(job_message_4.content, "Hello World 4".to_string());
 
-        // Check the step history and execution context
-        let job = db.get_job(&job_id.clone()).unwrap();
-        eprintln!("job execution context: {:?}", job.execution_context);
+    //     // Check the step history and execution context
+    //     let job = db.get_job(&job_id.clone()).unwrap();
 
-        // Check the execution context
-        assert_eq!(
-            job.execution_context.get("context").unwrap(),
-            "Result 1, Result 2, Result 4"
-        );
+    //     // Check the step history
+    //     let step1 = &job.step_history[0];
+    //     let step2 = &job.step_history[1];
+    //     let step4 = &job.step_history[2];
 
-        // Check the step history
-        let step1 = &job.step_history[0];
-        let step2 = &job.step_history[1];
-        let step4 = &job.step_history[2];
+    //     // Convert step revisions to prompts for comparison
+    //     let step1_prompt = step1.to_prompt();
+    //     eprintln!("step1_prompt: {:?}", step1_prompt);
+    //     let step2_prompt = step2.to_prompt();
+    //     eprintln!("step2_prompt: {:?}", step2_prompt);
+    //     let step4_prompt = step4.to_prompt();
+    //     eprintln!("step4_prompt: {:?}", step4_prompt);
 
-        assert_eq!(
-            step1.step_revisions[0].sub_prompts[0],
-            SubPrompt::Omni(User, "Step 1 Level 0".to_string(), vec![], 100)
-        );
-        assert_eq!(
-            step1.step_revisions[0].sub_prompts[1],
-            SubPrompt::Omni(Assistant, "Result 1".to_string(), vec![], 100)
-        );
+    //     assert_eq!(
+    //         step1_prompt.sub_prompts[0],
+    //         SubPrompt::Omni(SubPromptType::User, "Step 1 Level 0".to_string(), vec![], 100)
+    //     );
+    //     assert_eq!(
+    //         step1_prompt.sub_prompts[1],
+    //         SubPrompt::Omni(SubPromptType::Assistant, "Result 1".to_string(), vec![], 100)
+    //     );
 
-        assert_eq!(
-            step2.step_revisions[0].sub_prompts[0],
-            SubPrompt::Omni(User, "Step 2 Level 1".to_string(), vec![], 100)
-        );
-        assert_eq!(
-            step2.step_revisions[0].sub_prompts[1],
-            SubPrompt::Omni(Assistant, "Result 2".to_string(), vec![], 100)
-        );
+    //     assert_eq!(
+    //         step2_prompt.sub_prompts[0],
+    //         SubPrompt::Omni(SubPromptType::User, "Step 2 Level 1".to_string(), vec![], 100)
+    //     );
+    //     assert_eq!(
+    //         step2_prompt.sub_prompts[1],
+    //         SubPrompt::Omni(SubPromptType::Assistant, "Result 2".to_string(), vec![], 100)
+    //     );
 
-        assert_eq!(
-            step4.step_revisions[0].sub_prompts[0],
-            SubPrompt::Omni(User, "Step 4 Level 2".to_string(), vec![], 100)
-        );
-        assert_eq!(
-            step4.step_revisions[0].sub_prompts[1],
-            SubPrompt::Omni(Assistant, "Result 4".to_string(), vec![], 100)
-        );
-    }
+    //     assert_eq!(
+    //         step4_prompt.sub_prompts[0],
+    //         SubPrompt::Omni(SubPromptType::User, "Step 4 Level 2".to_string(), vec![], 100)
+    //     );
+    //     assert_eq!(
+    //         step4_prompt.sub_prompts[1],
+    //         SubPrompt::Omni(SubPromptType::Assistant, "Result 4".to_string(), vec![], 100)
+    //     );
+    // }
 
-    #[tokio::test]
-    async fn test_insert_steps_with_simple_tree_structure() {
-        let db = setup_test_db();
+    // #[tokio::test]
+    // async fn test_insert_steps_with_simple_tree_structure() {
+    //     let db = setup_test_db();
 
-        let node1_identity_name = "@@node1.shinkai";
-        let node1_subidentity_name = "main_profile_node1";
-        let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    //     let node1_identity_name = "@@node1.shinkai";
+    //     let node1_subidentity_name = "main_profile_node1";
+    //     let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    //     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-        let job_id = "test_job";
-        let agent_id = "agent_test".to_string();
-        let scope = MinimalJobScope::default();
+    //     let job_id = "test_job";
+    //     let agent_id = "agent_test".to_string();
+    //     let scope = MinimalJobScope::default();
 
-        create_new_job(&db, job_id.to_string(), agent_id.clone(), scope);
+    //     create_new_job(&db, job_id.to_string(), agent_id.clone(), scope);
 
-        eprintln!("Inserting steps...\n\n");
-        let mut parent_message_hash: Option<String> = None;
-        let mut parent_message_hash_2: Option<String> = None;
+    //     eprintln!("Inserting steps...\n\n");
+    //     let mut parent_message_hash: Option<String> = None;
+    //     let mut parent_message_hash_2: Option<String> = None;
 
-        /*
-        The tree that we are creating looks like:
-            1
-            ├── 2
-            │   └── 4
-            └── 3
-         */
-        for i in 1..=4 {
-            let user_message = format!("User message {}", i);
-            let agent_response = format!("Agent response {}", i);
+    //     /*
+    //     The tree that we are creating looks like:
+    //         1
+    //         ├── 2
+    //         │   └── 4
+    //         └── 3
+    //      */
+    //     for i in 1..=4 {
+    //         let user_message = format!("User message {}", i);
+    //         let agent_response = format!("Agent response {}", i);
 
-            // Generate the ShinkaiMessage
-            let message = generate_message_with_text(
-                format!("Hello World {}", i),
-                node1_encryption_sk.clone(),
-                clone_signature_secret_key(&node1_identity_sk),
-                node1_encryption_pk,
-                node1_subidentity_name.to_string(),
-                node1_identity_name.to_string(),
-                format!("2023-07-02T20:53:34.81{}Z", i),
-            );
+    //         // Generate the ShinkaiMessage
+    //         let message = generate_message_with_text(
+    //             format!("Hello World {}", i),
+    //             node1_encryption_sk.clone(),
+    //             clone_signature_secret_key(&node1_identity_sk),
+    //             node1_encryption_pk,
+    //             node1_subidentity_name.to_string(),
+    //             node1_identity_name.to_string(),
+    //             format!("2023-07-02T20:53:34.81{}Z", i),
+    //         );
 
-            eprintln!("Message: {:?}", message);
+    //         eprintln!("Message: {:?}", message);
 
-            let parent_hash: Option<String> = match i {
-                2 | 3 => parent_message_hash.clone(),
-                4 => parent_message_hash_2.clone(),
-                _ => None,
-            };
+    //         let parent_hash: Option<String> = match i {
+    //             2 | 3 => parent_message_hash.clone(),
+    //             4 => parent_message_hash_2.clone(),
+    //             _ => None,
+    //         };
 
-            // Insert the ShinkaiMessage into the database
-            db.unsafe_insert_inbox_message(&message, parent_hash.clone(), None)
-                .await
-                .unwrap();
+    //         // Insert the ShinkaiMessage into the database
+    //         db.unsafe_insert_inbox_message(&message, parent_hash.clone(), None)
+    //             .await
+    //             .unwrap();
 
-            db.add_step_history(job_id.to_string(), user_message, None, agent_response, None, None)
-                .unwrap();
+    //         db.add_step_history(job_id.to_string(), user_message, None, agent_response, None, None)
+    //             .unwrap();
 
-            // Update the parent message hash according to the tree structure
-            if i == 1 {
-                parent_message_hash = Some(message.calculate_message_hash_for_pagination());
-            } else if i == 2 {
-                parent_message_hash_2 = Some(message.calculate_message_hash_for_pagination());
-            }
-        }
+    //         // Update the parent message hash according to the tree structure
+    //         if i == 1 {
+    //             parent_message_hash = Some(message.calculate_message_hash_for_pagination());
+    //         } else if i == 2 {
+    //             parent_message_hash_2 = Some(message.calculate_message_hash_for_pagination());
+    //         }
+    //     }
 
-        eprintln!("\n\n Getting messages...");
-        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap();
-        let last_messages_inbox = db
-            .get_last_messages_from_inbox(inbox_name.to_string(), 3, None)
-            .unwrap();
+    //     eprintln!("\n\n Getting messages...");
+    //     let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap();
+    //     let last_messages_inbox = db
+    //         .get_last_messages_from_inbox(inbox_name.to_string(), 3, None)
+    //         .unwrap();
 
-        let last_messages_content: Vec<Vec<String>> = last_messages_inbox
-            .iter()
-            .map(|message_array| {
-                message_array
-                    .iter()
-                    .map(|message| message.clone().get_message_content().unwrap())
-                    .collect()
-            })
-            .collect();
+    //     let last_messages_content: Vec<Vec<String>> = last_messages_inbox
+    //         .iter()
+    //         .map(|message_array| {
+    //             message_array
+    //                 .iter()
+    //                 .map(|message| message.clone().get_message_content().unwrap())
+    //                 .collect()
+    //         })
+    //         .collect();
 
-        eprintln!("Messages: {:?}", last_messages_content);
+    //     eprintln!("Messages: {:?}", last_messages_content);
 
-        eprintln!("\n\n Getting steps...");
+    //     eprintln!("\n\n Getting steps...");
 
-        let step_history = db.get_step_history(job_id, true).unwrap().unwrap();
+    //     let step_history = db.get_step_history(job_id, true).unwrap().unwrap();
 
-        let step_history_content: Vec<String> = step_history
-            .iter()
-            .map(|step| {
-                let user_message = match &step.step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                };
-                let agent_response = match &step.step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                };
-                format!("{} {}", user_message, agent_response)
-            })
-            .collect();
+    //     let step_history_content: Vec<String> = step_history
+    //         .iter()
+    //         .map(|step| {
+    //             let user_message = match &step.step_revisions[0].sub_prompts[0] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             };
+    //             let agent_response = match &step.step_revisions[0].sub_prompts[1] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             };
+    //             format!("{} {}", user_message, agent_response)
+    //         })
+    //         .collect();
 
-        eprintln!("Step history: {:?}", step_history_content);
+    //     eprintln!("Step history: {:?}", step_history_content);
 
-        assert_eq!(step_history.len(), 3);
+    //     assert_eq!(step_history.len(), 3);
 
-        // Check the content of the steps
-        assert_eq!(
-            format!(
-                "{} {}",
-                match &step_history[0].step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                },
-                match &step_history[0].step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                }
-            ),
-            "User message 1 Agent response 1".to_string()
-        );
-        assert_eq!(
-            format!(
-                "{} {}",
-                match &step_history[1].step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                },
-                match &step_history[1].step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                }
-            ),
-            "User message 2 Agent response 2".to_string()
-        );
-        assert_eq!(
-            format!(
-                "{} {}",
-                match &step_history[2].step_revisions[0].sub_prompts[0] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                },
-                match &step_history[2].step_revisions[0].sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                }
-            ),
-            "User message 4 Agent response 4".to_string()
-        );
-    }
+    //     // Check the content of the steps
+    //     assert_eq!(
+    //         format!(
+    //             "{} {}",
+    //             match &step_history[0].step_revisions[0].sub_prompts[0] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             },
+    //             match &step_history[0].step_revisions[0].sub_prompts[1] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             }
+    //         ),
+    //         "User message 1 Agent response 1".to_string()
+    //     );
+    //     assert_eq!(
+    //         format!(
+    //             "{} {}",
+    //             match &step_history[1].step_revisions[0].sub_prompts[0] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             },
+    //             match &step_history[1].step_revisions[0].sub_prompts[1] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             }
+    //         ),
+    //         "User message 2 Agent response 2".to_string()
+    //     );
+    //     assert_eq!(
+    //         format!(
+    //             "{} {}",
+    //             match &step_history[2].step_revisions[0].sub_prompts[0] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             },
+    //             match &step_history[2].step_revisions[0].sub_prompts[1] {
+    //                 SubPrompt::Omni(_, text, _, _) => text,
+    //                 _ => panic!("Unexpected SubPrompt variant"),
+    //             }
+    //         ),
+    //         "User message 4 Agent response 4".to_string()
+    //     );
+    // }
 
     #[tokio::test]
     async fn test_job_inbox_tree_structure_with_invalid_date() {
@@ -1599,5 +1362,53 @@ mod tests {
             .unwrap();
         assert_eq!(smart_inboxes.len(), 1);
         assert!(smart_inboxes[0].inbox_id != inbox1_name.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_get_job_with_messages() {
+        let db = setup_test_db();
+        let job_id = "job_with_messages".to_string();
+        let agent_id = "agent_test".to_string();
+        let scope = MinimalJobScope::default();
+
+        // Create a new job
+        db.create_new_job(job_id.clone(), agent_id.clone(), scope.clone(), false, None, None)
+            .unwrap();
+
+        let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
+
+        // Create and add messages to the job's inbox
+        let mut messages = Vec::new();
+        for i in 1..=3 {
+            let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+                job_id.clone(),
+                format!("Test Message {}", i),
+                "".to_string(),
+                None,
+                placeholder_signature_sk.clone(),
+                "@@node1.shinkai".to_string(),
+                "@@node1.shinkai".to_string(),
+            )
+            .unwrap();
+            messages.push(shinkai_message.clone());
+
+            db.unsafe_insert_inbox_message(&shinkai_message, None, None)
+                .await
+                .unwrap();
+        }
+
+        // Fetch the job with messages
+        let job = db.get_job_with_options(&job_id, true).unwrap();
+
+        // Verify that the messages are retrieved
+        assert_eq!(job.forked_jobs.len(), 0); // No forked jobs expected
+
+        // Check the messages
+        let job_messages = job.step_history;
+        assert_eq!(job_messages.len(), 3);
+        for (i, message) in job_messages.iter().enumerate() {
+            let message_content: JobMessage = serde_json::from_str(&message.get_message_content().unwrap()).unwrap();
+            assert_eq!(message_content.content, format!("Test Message {}", i + 1));
+        }
     }
 }

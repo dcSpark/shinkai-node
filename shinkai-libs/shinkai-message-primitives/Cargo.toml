@@ -12,7 +12,7 @@ chacha20poly1305 = "0.7.1"
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
 rand = { workspace = true }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
 regex = { workspace = true }
 thiserror = "1.0.44"
 hex = { workspace = true }
@@ -31,6 +31,9 @@ tracing-subscriber = { version = "0.3", optional = true }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[dev-dependencies]
+serial_test = "0.5"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tracing = "0.1.40"

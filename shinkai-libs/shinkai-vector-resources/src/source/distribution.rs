@@ -60,7 +60,7 @@ impl DistributionOrigin {
                 let vr_path_part = parts[1];
                 if let Some(vr_path_index) = vr_path_part.find("/vec_fs") {
                     let vr_path = vr_path_part[vr_path_index..].to_string();
-                    if let Ok(path) = VRPath::from_string(&vr_path) {
+                    if let Ok(path) = ShinkaiPath::from_string(&vr_path) {
                         return Some(DistributionOrigin::ShinkaiNode((name_string, path)));
                     }
                 }

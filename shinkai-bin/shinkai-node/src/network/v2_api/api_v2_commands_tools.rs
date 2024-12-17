@@ -21,7 +21,7 @@ use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType},
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
-        job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
     },
 };
 use shinkai_message_primitives::{
@@ -33,9 +33,14 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::ShinkaiTool, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
+    deno_tools::DenoTool,
+    error::ToolError,
+    python_tools::PythonTool,
+    shinkai_tool::ShinkaiTool,
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::ToolPlayground,
 };
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::{Mutex, RwLock};
 use zip::{write::FileOptions, ZipWriter};
@@ -101,7 +106,8 @@ impl Node {
         // Use different search method based on whether we have allowed_tools
         let vector_search_result = if let Some(tools) = allowed_tools {
             // First generate the embedding from the query
-            let embedding = db.read()
+            let embedding = db
+                .read()
                 .await
                 .generate_embeddings(&sanitized_query)
                 .await
@@ -752,7 +758,7 @@ impl Node {
         bearer: String,
         node_name: ShinkaiName,
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
+        // vector_fs: Arc<VectorFS>,
         tool_router_key: String,
         parameters: Map<String, Value>,
         tool_id: String,
@@ -778,7 +784,7 @@ impl Node {
             bearer,
             node_name,
             db,
-            vector_fs,
+            // vector_fs,
             tool_router_key.clone(),
             parameters,
             tool_id,
@@ -1083,7 +1089,7 @@ impl Node {
         }
 
         // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
-        let job = match db.read().await.get_job_with_options(&job_id, true, true) {
+        let job = match db.read().await.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1356,7 +1362,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_id, false, false) {
+        let llm_provider = match db.read().await.get_job_with_options(&job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {

@@ -10,6 +10,7 @@ use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::{identity::Identity, shinkai_name::ShinkaiName},
@@ -21,15 +22,9 @@ use shinkai_message_primitives::{
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
             APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
         },
-    },
+    }, shinkai_utils::shinkai_path::ShinkaiPath,
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::{
-    embedding_generator::EmbeddingGenerator,
-    source::DistributionInfo,
-    vector_resource::{VRPack, VRPath},
-};
 use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -84,7 +79,6 @@ impl Node {
     // Public function for simplified JSON
     pub async fn api_vec_fs_retrieve_path_simplified_json(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -94,7 +88,6 @@ impl Node {
         Self::retrieve_path_json_common(
             // Pass parameters and false for is_minimal
             _db,
-            vector_fs,
             node_name,
             identity_manager,
             encryption_secret_key,
@@ -109,7 +102,6 @@ impl Node {
     // Public function for minimal JSON
     pub async fn api_vec_fs_retrieve_path_minimal_json(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -119,7 +111,6 @@ impl Node {
         Self::retrieve_path_json_common(
             // Pass parameters and true for is_minimal
             _db,
-            vector_fs,
             node_name,
             identity_manager,
             encryption_secret_key,
@@ -134,7 +125,6 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     async fn retrieve_path_json_common(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -159,7 +149,7 @@ impl Node {
                 }
             };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -213,7 +203,6 @@ impl Node {
 
     pub async fn api_vec_fs_search_items(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -237,7 +226,7 @@ impl Node {
         };
 
         let vr_path = match input_payload.path {
-            Some(path) => match VRPath::from_string(&path) {
+            Some(path) => match ShinkaiPath::from_string(&path) {
                 Ok(path) => path,
                 Err(e) => {
                     let api_error = APIError {
@@ -292,7 +281,6 @@ impl Node {
     // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
     pub async fn api_vec_fs_retrieve_vector_search_simplified_json(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -317,7 +305,7 @@ impl Node {
             };
 
         let vr_path = match input_payload.path {
-            Some(path) => match VRPath::from_string(&path) {
+            Some(path) => match ShinkaiPath::from_string(&path) {
                 Ok(path) => path,
                 Err(e) => {
                     let api_error = APIError {
@@ -393,7 +381,6 @@ impl Node {
 
     pub async fn api_vec_fs_create_folder(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -416,7 +403,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -465,7 +452,6 @@ impl Node {
 
     pub async fn api_vec_fs_move_folder(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -488,7 +474,7 @@ impl Node {
             }
         };
 
-        let folder_path = match VRPath::from_string(&input_payload.origin_path) {
+        let folder_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -500,7 +486,7 @@ impl Node {
                 return Ok(());
             }
         };
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -549,7 +535,6 @@ impl Node {
 
     pub async fn api_vec_fs_copy_folder(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -572,7 +557,7 @@ impl Node {
             }
         };
 
-        let folder_path = match VRPath::from_string(&input_payload.origin_path) {
+        let folder_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -585,7 +570,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -634,7 +619,6 @@ impl Node {
 
     pub async fn api_vec_fs_delete_item(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -657,7 +641,7 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.path) {
+        let item_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -706,7 +690,6 @@ impl Node {
 
     pub async fn api_vec_fs_delete_folder(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -729,7 +712,7 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.path) {
+        let item_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -778,7 +761,6 @@ impl Node {
 
     pub async fn api_vec_fs_move_item(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -801,7 +783,7 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.origin_path) {
+        let item_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -814,7 +796,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -863,7 +845,6 @@ impl Node {
 
     pub async fn api_vec_fs_copy_item(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -886,7 +867,7 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.origin_path) {
+        let item_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -898,7 +879,7 @@ impl Node {
                 return Ok(());
             }
         };
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -947,7 +928,6 @@ impl Node {
 
     pub async fn api_vec_fs_retrieve_vector_resource(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -970,7 +950,7 @@ impl Node {
                     return Ok(());
                 }
             };
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -1031,7 +1011,6 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     pub async fn api_convert_files_and_save_to_folder(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1055,19 +1034,18 @@ impl Node {
                     return Ok(());
                 }
             };
-        Self::process_and_save_files(db, vector_fs, input_payload, requester_name, embedding_generator, res).await
+        Self::process_and_save_files(db, input_payload, requester_name, embedding_generator, res).await
     }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_and_save_files(
         db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         input_payload: APIConvertFilesAndSaveToFolder,
         requester_name: ShinkaiName,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
-        let destination_path = match VRPath::from_string(&input_payload.path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -1196,7 +1174,6 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     pub async fn retrieve_vr_kai(
         _db: Arc<RwLock<SqliteManager>>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1218,7 +1195,7 @@ impl Node {
                 return Ok(());
             }
         };
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -1311,7 +1288,7 @@ impl Node {
                 return Ok(());
             }
         };
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {

@@ -9,6 +9,7 @@ use crate::tools::tool_definitions::definition_generation::{generate_tool_defini
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -34,7 +35,6 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_runner::built_in_tools;
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use tokio::sync::RwLock;
 
 #[derive(Clone)]

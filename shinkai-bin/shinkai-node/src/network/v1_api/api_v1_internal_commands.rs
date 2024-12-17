@@ -18,8 +18,9 @@ use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
-use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
@@ -34,8 +35,6 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::welcome_files::welcome_message::WELCOME_MESSAGE;
-use shinkai_vector_resources::vector_resource::VRPath;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
@@ -447,12 +446,10 @@ impl Node {
                         if !has_job_inbox && welcome_message {
                             let shinkai_folder_fs = VectorFSFolderScopeEntry {
                                 name: "Shinkai".to_string(),
-                                path: VRPath::from_string("/My Files (Private)").unwrap(),
+                                path: ShinkaiPath::from_string("/My Files (Private)").unwrap(),
                             };
 
-                            let job_scope = JobScope {
-                                local_vrkai: vec![],
-                                local_vrpack: vec![],
+                            let job_scope = MinimalJobScope {
                                 vector_fs_items: vec![],
                                 vector_fs_folders: vec![shinkai_folder_fs],
                                 vector_search_mode: vec![],

@@ -1183,7 +1183,7 @@ impl<'de> Deserialize<'de> for VRPath {
     {
         // Deserialize the VRPath from a string
         let s = String::deserialize(deserializer)?;
-        VRPath::from_string(&s).map_err(serde::de::Error::custom)
+        ShinkaiPath::from_string(&s).map_err(serde::de::Error::custom)
     }
 }
 

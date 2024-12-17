@@ -95,7 +95,7 @@
 //             let file_type: String = row.get(3)?;
 //             let distribution_info: Option<Vec<u8>> = row.get(4)?;
 
-//             let vr_path = VRPath::from_string(&vr_path)
+//             let vr_path = ShinkaiPath::from_string(&vr_path)
 //                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::VRError(e))))?;
 //             let file_dir = vr_path.path_ids.join("/");
 //             let file_path = source_files_dir.join(file_dir).join(&file_name);

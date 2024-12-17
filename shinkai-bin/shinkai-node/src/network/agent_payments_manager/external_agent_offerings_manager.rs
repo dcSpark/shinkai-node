@@ -20,7 +20,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;
@@ -106,7 +105,6 @@ impl ExtAgentOfferingsManager {
     /// * `Self` - A new instance of `ExtAgentOfferingsManager`.
     pub async fn new(
         db: Weak<RwLock<SqliteManager>>,
-        vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -131,7 +129,6 @@ impl ExtAgentOfferingsManager {
         let offering_queue_handler = ExtAgentOfferingsManager::process_offerings_queue(
             offerings_queue_manager.clone(),
             db.clone(),
-            vector_fs.clone(),
             node_name.clone(),
             my_signature_secret_key.clone(),
             my_encryption_secret_key.clone(),
@@ -141,7 +138,6 @@ impl ExtAgentOfferingsManager {
             tool_router.clone(),
             |invoice_payment,
              db,
-             vector_fs,
              node_name,
              my_signature_secret_key,
              my_encryption_secret_key,
@@ -151,7 +147,6 @@ impl ExtAgentOfferingsManager {
                 ExtAgentOfferingsManager::process_invoice_payment(
                     invoice_payment,
                     db,
-                    vector_fs,
                     node_name,
                     my_signature_secret_key,
                     my_encryption_secret_key,
@@ -202,7 +197,6 @@ impl ExtAgentOfferingsManager {
     pub async fn process_offerings_queue(
         offering_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
         db: Weak<RwLock<SqliteManager>>,
-        vector_fs: Weak<VectorFS>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -214,7 +208,6 @@ impl ExtAgentOfferingsManager {
         process_job: impl Fn(
                 Invoice,
                 Weak<RwLock<SqliteManager>>,
-                Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
                 EncryptionStaticKey,
@@ -285,7 +278,6 @@ impl ExtAgentOfferingsManager {
                     let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = semaphore.clone();
                     let db = db.clone();
-                    let vector_fs = vector_fs.clone();
                     let node_name = node_name.clone();
                     let my_signature_secret_key = my_signature_secret_key.clone();
                     let my_encryption_secret_key = my_encryption_secret_key.clone();
@@ -303,7 +295,6 @@ impl ExtAgentOfferingsManager {
                             let result = process_job(
                                 invoice.clone(),
                                 db.clone(),
-                                vector_fs.clone(),
                                 node_name.clone(),
                                 my_signature_secret_key.clone(),
                                 my_encryption_secret_key.clone(),
@@ -396,7 +387,6 @@ impl ExtAgentOfferingsManager {
     fn process_invoice_payment(
         _invoice: Invoice,
         _db: Weak<RwLock<SqliteManager>>,
-        _vector_fs: Weak<VectorFS>,
         _node_name: ShinkaiName,
         _my_signature_secret_key: SigningKey,
         _my_encryption_secret_key: EncryptionStaticKey,
@@ -897,11 +887,6 @@ mod tests {
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
         },
-    };
-
-    use shinkai_vector_resources::{
-        embedding_generator::RemoteEmbeddingGenerator,
-        model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference},
     };
 
     #[derive(Clone, Debug)]

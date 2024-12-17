@@ -380,7 +380,7 @@
 //         vec![],
 //     );
 //     assert_eq!(res.len(), 6);
-//     let path = VRPath::from_string("/3/").unwrap();
+//     let path = ShinkaiPath::from_string("/3/").unwrap();
 //     let res = fruit_doc.vector_search_customized(
 //         query_embedding1.clone(),
 //         100,
@@ -390,7 +390,7 @@
 //         vec![],
 //     );
 //     assert_eq!(res.len(), 4);
-//     let path = VRPath::from_string("/3/doc_key/").unwrap();
+//     let path = ShinkaiPath::from_string("/3/doc_key/").unwrap();
 //     let res = fruit_doc.vector_search_customized(
 //         query_embedding1.clone(),
 //         100,
@@ -569,7 +569,7 @@
 //     // At path method tests
 
 //     // Insert/retrieve tests
-//     let path = VRPath::from_string("/doc_key/").unwrap();
+//     let path = ShinkaiPath::from_string("/doc_key/").unwrap();
 //     new_map_resource
 //         .insert_vector_resource_node_at_path(
 //             path,
@@ -579,7 +579,7 @@
 //             new_map_resource.resource_embedding().clone(),
 //         )
 //         .unwrap();
-//     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
+//     let test_path = ShinkaiPath::from_string("/doc_key/4/doc_key/3").unwrap();
 //     let res = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
 //     assert_eq!(res.node.id, "3");
 //     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
@@ -594,18 +594,18 @@
 //         _ => panic!("Node content is not text"),
 //     }
 //     // Proximity retrieval test
-//     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
+//     let test_path = ShinkaiPath::from_string("/doc_key/4/doc_key/3").unwrap();
 //     new_map_resource.print_all_nodes_exhaustive(None, true, false);
 //     let res = new_map_resource
 //         .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
 //         .unwrap();
 //     assert_eq!(res.len(), 2);
-//     let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
+//     let test_path = ShinkaiPath::from_string("/doc_key/4/doc_key/2").unwrap();
 //     let res = new_map_resource
 //         .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
 //         .unwrap();
 //     assert_eq!(res.len(), 3);
-//     let test_path = VRPath::from_string("/doc_key/4/doc_key/1").unwrap();
+//     let test_path = ShinkaiPath::from_string("/doc_key/4/doc_key/1").unwrap();
 //     let res = new_map_resource
 //         .proximity_retrieve_nodes_at_path(test_path.clone(), 1, None)
 //         .unwrap();
@@ -616,13 +616,13 @@
 //     assert_eq!(res.len(), 3);
 
 //     // Check that no node is retrieved after removing it by path
-//     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
+//     let test_path = ShinkaiPath::from_string("/doc_key/4/doc_key/3").unwrap();
 //     let _ = new_map_resource.remove_node_at_path(test_path.clone(), true);
 //     let res = new_map_resource.retrieve_node_at_path(test_path.clone(), None);
 //     assert!(!res.is_ok());
 
 //     // Replace an existing node in a Map Resource and validate it's been changed
-//     let test_path = VRPath::from_string("/doc_key/4/some_key").unwrap();
+//     let test_path = ShinkaiPath::from_string("/doc_key/4/some_key").unwrap();
 //     let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
 //     new_map_resource
 //         .replace_with_text_node_at_path(
@@ -641,7 +641,7 @@
 //     );
 
 //     // Replace an existing node in a Doc Resource and validate it's been changed
-//     let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
+//     let test_path = ShinkaiPath::from_string("/doc_key/4/doc_key/2").unwrap();
 //     let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone(), None).unwrap();
 //     new_map_resource
 //         .replace_with_text_node_at_path(
@@ -661,7 +661,7 @@
 
 //     // Append a node into a Doc Resource and validate it's been added
 //     let mut fruit_doc = fruit_doc.clone();
-//     let path = VRPath::from_string("/3/doc_key/").unwrap();
+//     let path = ShinkaiPath::from_string("/3/doc_key/").unwrap();
 //     fruit_doc
 //         .append_text_node_at_path(
 //             path,
@@ -671,22 +671,22 @@
 //             &vec![],
 //         )
 //         .unwrap();
-//     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
+//     let test_path = ShinkaiPath::from_string("/3/doc_key/4").unwrap();
 //     let res = fruit_doc.retrieve_node_at_path(test_path.clone(), None).unwrap();
 //     assert_eq!(res.node.id, "4");
 //     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 
 //     // Pop the previously appended node
-//     let path = VRPath::from_string("/3/doc_key/").unwrap();
+//     let path = ShinkaiPath::from_string("/3/doc_key/").unwrap();
 //     fruit_doc.pop_node_at_path(path, true).unwrap();
-//     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
+//     let test_path = ShinkaiPath::from_string("/3/doc_key/4").unwrap();
 //     let res = fruit_doc.retrieve_node_at_path(test_path.clone(), None);
 //     assert_eq!(res.is_ok(), false);
 
 //     //
 //     // Merkelization Tests
 //     //
-//     let path = VRPath::from_string("/3/doc_key/2").unwrap();
+//     let path = ShinkaiPath::from_string("/3/doc_key/2").unwrap();
 //     let res = fruit_doc.retrieve_node_at_path(path.clone(), None).unwrap();
 //     let regened_merkle_hash = res.node._generate_merkle_hash().unwrap();
 //     assert_eq!(regened_merkle_hash, res.node.get_merkle_hash().unwrap());
@@ -695,7 +695,7 @@
 //     let original_merkle_hash = fruit_doc.get_merkle_root().unwrap();
 
 //     // Append a node into a Doc Resource
-//     let path = VRPath::from_string("/3/doc_key/").unwrap();
+//     let path = ShinkaiPath::from_string("/3/doc_key/").unwrap();
 //     fruit_doc
 //         .append_text_node_at_path(
 //             path.clone(),

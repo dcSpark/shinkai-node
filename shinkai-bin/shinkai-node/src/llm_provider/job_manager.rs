@@ -8,6 +8,7 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
@@ -23,9 +24,7 @@ use shinkai_message_primitives::{
     shinkai_utils::signatures::clone_signature_secret_key,
 };
 use shinkai_sqlite::SqliteManager;
-// use shinkai_sqlite::SqliteLogger;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+
 use std::collections::HashSet;
 use std::env;
 use std::pin::Pin;
@@ -71,7 +70,6 @@ impl JobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
-        vector_fs: Weak<VectorFS>,
         embedding_generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
@@ -107,7 +105,6 @@ impl JobManager {
         let job_queue_handler = JobManager::process_job_queue(
             job_queue_manager.clone(),
             db.clone(),
-            vector_fs.clone(),
             node_profile_name.clone(),
             thread_number,
             clone_signature_secret_key(&identity_secret_key),
@@ -122,7 +119,6 @@ impl JobManager {
             llm_stopper.clone(),
             |job,
              db,
-             vector_fs,
              node_profile_name,
              identity_sk,
              generator,
@@ -138,7 +134,6 @@ impl JobManager {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
-                    vector_fs,
                     node_profile_name,
                     identity_sk,
                     generator,
@@ -172,7 +167,6 @@ impl JobManager {
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<RwLock<SqliteManager>>,
-        vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
@@ -188,7 +182,6 @@ impl JobManager {
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<RwLock<SqliteManager>>,
-                Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
                 RemoteEmbeddingGenerator,
@@ -209,7 +202,6 @@ impl JobManager {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let db_clone = db.clone();
-        let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
         // let sqlite_logger = sqlite_logger.clone();
@@ -270,7 +262,6 @@ impl JobManager {
                         let processing_jobs = Arc::clone(&processing_jobs);
                         let semaphore = Arc::clone(&semaphore);
                         let db_clone_2 = db_clone.clone();
-                        let vector_fs_clone_2 = vector_fs_clone.clone();
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_processing_fn = Arc::clone(&job_processing_fn);
                         let cloned_generator = generator.clone();
@@ -300,7 +291,6 @@ impl JobManager {
                                         let result = (job_processing_fn)(
                                             job,
                                             db_clone_2,
-                                            vector_fs_clone_2,
                                             node_profile_name,
                                             identity_sk_clone,
                                             cloned_generator,

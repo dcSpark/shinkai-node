@@ -517,7 +517,6 @@ mod tests {
             └── 3
          */
         let mut current_level = 0;
-        let mut results = Vec::new();
         for i in 1..=4 {
             let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
@@ -536,7 +535,6 @@ mod tests {
                     parent_message_hash.clone()
                 }
                 4 => {
-                    results.pop();
                     parent_message_hash_2.clone()
                 }
                 _ => None,
@@ -549,41 +547,12 @@ mod tests {
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
-            // Add a step history
-            let result = format!("Result {}", i);
-            shinkai_db
-                .write()
-                .await
-                .add_step_history(
-                    job_id.clone(),
-                    format!("Step {} Level {}", i, current_level),
-                    None,
-                    result.clone(),
-                    None,
-                    None,
-                )
-                .unwrap();
-
-            // Add the result to the results vector
-            results.push(result);
-
-            // Set job execution context
-            let mut execution_context = HashMap::new();
-            execution_context.insert("context".to_string(), results.join(", "));
-            shinkai_db
-                .write()
-                .await
-                .set_job_execution_context(job_id.clone(), execution_context, None)
-                .unwrap();
-
             // Update the parent message according to the tree structure
             if i == 1 {
                 parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
             } else if i == 2 {
                 parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
             }
-
-            tokio::time::sleep(Duration::from_millis(200)).await;
         }
 
         // Check if the job inbox is not empty after adding a message
@@ -605,68 +574,62 @@ mod tests {
         // Check the content of the messages
         assert_eq!(last_messages_inbox.len(), 3);
 
-        // Check the content of the first message array
-        assert_eq!(last_messages_inbox[0].len(), 1);
-        let message_content_1 = last_messages_inbox[0][0].clone().get_message_content().unwrap();
-        let job_message_1: JobMessage = serde_json::from_str(&message_content_1).unwrap();
-        assert_eq!(job_message_1.content, "Hello World 1".to_string());
+        // Convert messages to prompts and check the content
+        let prompt_1 = last_messages_inbox[0][0].clone().to_prompt();
+        assert_eq!(prompt_1.get_content(), "Hello World 1".to_string());
 
-        // Check the content of the second message array
-        assert_eq!(last_messages_inbox[1].len(), 2);
-        let message_content_2 = last_messages_inbox[1][0].clone().get_message_content().unwrap();
-        let job_message_2: JobMessage = serde_json::from_str(&message_content_2).unwrap();
-        assert_eq!(job_message_2.content, "Hello World 2".to_string());
+        let prompt_2 = last_messages_inbox[1][0].clone().to_prompt();
+        assert_eq!(prompt_2.get_content(), "Hello World 2".to_string());
 
-        let message_content_3 = last_messages_inbox[1][1].clone().get_message_content().unwrap();
-        let job_message_3: JobMessage = serde_json::from_str(&message_content_3).unwrap();
-        assert_eq!(job_message_3.content, "Hello World 3".to_string());
+        let prompt_3 = last_messages_inbox[1][1].clone().to_prompt();
+        assert_eq!(prompt_3.get_content(), "Hello World 3".to_string());
 
-        // Check the content of the third message array
-        assert_eq!(last_messages_inbox[2].len(), 1);
-        let message_content_4 = last_messages_inbox[2][0].clone().get_message_content().unwrap();
-        let job_message_4: JobMessage = serde_json::from_str(&message_content_4).unwrap();
-        assert_eq!(job_message_4.content, "Hello World 4".to_string());
+        let prompt_4 = last_messages_inbox[2][0].clone().to_prompt();
+        assert_eq!(prompt_4.get_content(), "Hello World 4".to_string());
 
-        // Check the step history and execution context
         let job = shinkai_db.read().await.get_job(&job_id.clone()).unwrap();
-        eprintln!("job execution context: {:?}", job.execution_context);
-
-        // Check the execution context
-        assert_eq!(
-            job.execution_context.get("context").unwrap(),
-            "Result 1, Result 2, Result 4"
-        );
 
         // Check the step history
         let step1 = &job.step_history[0];
         let step2 = &job.step_history[1];
         let step4 = &job.step_history[2];
 
+        // Convert step revisions to prompts
+        let step1_prompt = step1.step_revisions[0].to_prompt();
+        let step2_prompt = step2.step_revisions[0].to_prompt();
+        let step4_prompt = step4.step_revisions[0].to_prompt();
+
+        // Extract sub-prompts from the prompts
+        let step1_sub_prompts = step1_prompt.sub_prompts();
+        let step2_sub_prompts = step2_prompt.sub_prompts();
+        let step4_sub_prompts = step4_prompt.sub_prompts();
+
+        // Assert the sub-prompts
         assert_eq!(
-            step1.step_revisions[0].sub_prompts[0],
-            SubPrompt::Omni(User, "Step 1 Level 0".to_string(), vec![], 100)
+            step1_sub_prompts[0],
+            SubPrompt::Omni(SubPromptType::User, "Step 1 Level 0".to_string(), vec![], 100)
         );
         assert_eq!(
-            step1.step_revisions[0].sub_prompts[1],
-            SubPrompt::Omni(Assistant, "Result 1".to_string(), vec![], 100)
+            step1_sub_prompts[1],
+            SubPrompt::Omni(SubPromptType::Assistant, "Result 1".to_string(), vec![], 100)
         );
 
         assert_eq!(
-            step2.step_revisions[0].sub_prompts[0],
-            SubPrompt::Omni(User, "Step 2 Level 1".to_string(), vec![], 100)
+            step2_sub_prompts[0],
+            SubPrompt::Omni(SubPromptType::User, "Step 2 Level 1".to_string(), vec![], 100)
         );
         assert_eq!(
-            step2.step_revisions[0].sub_prompts[1],
-            SubPrompt::Omni(Assistant, "Result 2".to_string(), vec![], 100)
+            step2_sub_prompts[1],
+            SubPrompt::Omni(SubPromptType::Assistant, "Result 2".to_string(), vec![], 100)
         );
 
         assert_eq!(
-            step4.step_revisions[0].sub_prompts[0],
-            SubPrompt::Omni(User, "Step 4 Level 2".to_string(), vec![], 100)
+            step4_sub_prompts[0],
+            SubPrompt::Omni(SubPromptType::User, "Step 4 Level 2".to_string(), vec![], 100)
         );
         assert_eq!(
-            step4.step_revisions[0].sub_prompts[1],
-            SubPrompt::Omni(Assistant, "Result 4".to_string(), vec![], 100)
+            step4_sub_prompts[1],
+            SubPrompt::Omni(SubPromptType::Assistant, "Result 4".to_string(), vec![], 100)
         );
     }
 

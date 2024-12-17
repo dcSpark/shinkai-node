@@ -420,7 +420,7 @@ pub trait VectorResourceCore: Send + Sync {
         let mut retrieved_nodes = Vec::new();
 
         // Iterate through the path, going into each Vector Resource until end of path
-        let mut traversed_path = VRPath::from_string(&(String::from("/") + &path.path_ids[0]))?;
+        let mut traversed_path = ShinkaiPath::from_string(&(String::from("/") + &path.path_ids[0]))?;
         for id in path.path_ids.iter().skip(1) {
             traversed_path.push(id.to_string());
             match &node.content {

@@ -1,8 +1,10 @@
-use crate::{shinkai_message::shinkai_message_schemas::AssociatedUI, shinkai_utils::job_scope::MinimalJobScope};
+use crate::{
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::AssociatedUI},
+    shinkai_utils::job_scope::MinimalJobScope,
+};
 
-use super::{inbox_name::InboxName, job_config::JobConfig, prompts::Prompt};
+use super::{inbox_name::InboxName, job_config::JobConfig};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;
@@ -35,16 +37,11 @@ pub struct Job {
     pub scope: MinimalJobScope,
     // /// (Full version) What VectorResources the Job has access to when performing vector searches, including files
     // pub scope_with_files: Option<MinimalJobScope>,
+    /// A list of messages that were generated as output from the latest Job step
+    pub step_history: Vec<ShinkaiMessage>,
     /// An inbox where messages to the agent from the user and messages from the agent are stored,
     /// enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
-    /// The job's step history (an ordered list of all prompts/outputs from LLM inferencing when processing steps)
-    /// Under the hood this is a tree, but it looks like a simple Vec because we only care about the latest valid path
-    /// based on the last message sent by the user
-    pub step_history: Vec<JobStepResult>,
-    /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
-    /// Same as step_history. Under the hood this is a tree, but everything is automagically filtered and converted to a hashmap.
-    pub execution_context: HashMap<String, String>,
     /// A link to the UI where the user can view the job e.g. Sheet UI
     pub associated_ui: Option<AssociatedUI>,
     /// The job's configuration
@@ -105,50 +102,50 @@ impl JobLike for Job {
     }
 }
 
-/// Result from a Job step, holding user's message and Agent's response.
-/// Includes revisions interface in case of edits.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JobStepResult {
-    /// Datetime of the first message sent from the user that triggered this Job Step
-    pub initial_message_datetime: String,
-    /// List of Prompts that hold User->System sub prompt pairs that denote what the user
-    /// asked, and what the Agent finally responded with. These are the revisions for this
-    /// single step, meaning that if this list has more than one prompt, later ones denote
-    /// edits which were made off of the original message.
-    pub step_revisions: Vec<Prompt>,
-}
+// /// Result from a Job step, holding user's message and Agent's response.
+// /// Includes revisions interface in case of edits.
+// #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// pub struct JobStepResult {
+//     /// Datetime of the first message sent from the user that triggered this Job Step
+//     pub initial_message_datetime: String,
+//     /// List of Prompts that hold User->System sub prompt pairs that denote what the user
+//     /// asked, and what the Agent finally responded with. These are the revisions for this
+//     /// single step, meaning that if this list has more than one prompt, later ones denote
+//     /// edits which were made off of the original message.
+//     pub step_revisions: Vec<Prompt>,
+// }
 
-impl Default for JobStepResult {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl Default for JobStepResult {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
-impl JobStepResult {
-    /// Create a new JobStepResult
-    pub fn new() -> Self {
-        Self {
-            initial_message_datetime: String::new(),
-            step_revisions: Vec::new(),
-        }
-    }
+// impl JobStepResult {
+//     /// Create a new JobStepResult
+//     pub fn new() -> Self {
+//         Self {
+//             initial_message_datetime: String::new(),
+//             step_revisions: Vec::new(),
+//         }
+//     }
 
-    /// Adds a new Prompt into step_revisions, thus denoting that
-    /// this is the latest edit/response.
-    pub fn add_new_step_revision(&mut self, prompt: Prompt) {
-        self.step_revisions.push(prompt);
-    }
+//     /// Adds a new Prompt into step_revisions, thus denoting that
+//     /// this is the latest edit/response.
+//     pub fn add_new_step_revision(&mut self, prompt: Prompt) {
+//         self.step_revisions.push(prompt);
+//     }
 
-    /// Returns the latest revisions of the Job Step Result if one exists
-    pub fn get_result_prompt(&self) -> Option<Prompt> {
-        self.step_revisions.last().cloned()
-    }
+//     /// Returns the latest revisions of the Job Step Result if one exists
+//     pub fn get_result_prompt(&self) -> Option<Prompt> {
+//         self.step_revisions.last().cloned()
+//     }
 
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
-    }
+//     pub fn to_json(&self) -> Result<String, serde_json::Error> {
+//         serde_json::to_string(self)
+//     }
 
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
-    }
-}
+//     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+//         serde_json::from_str(json)
+//     }
+// }
