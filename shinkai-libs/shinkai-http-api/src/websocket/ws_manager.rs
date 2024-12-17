@@ -4,13 +4,12 @@ use aes_gcm::{
 };
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
-use log::warn;
 use shinkai_message_primitives::{
     schemas::{
         identity::Identity,
         inbox_name::InboxName,
         shinkai_name::ShinkaiName,
-        smart_inbox_name::SmartInboxName,
+        smart_inbox::SmartInbox,
         ws_types::{
             WebSocketManagerError, WSMessageType, WSUpdateHandler,
             MessageQueue, MessageType, WSMessagePayload,
@@ -449,22 +448,25 @@ impl WebSocketManager {
         for (id, connection) in self.connections.iter() {
             let is_subscribed_to_smart_inboxes = self
                 .subscriptions
-                .get(id)
-                .unwrap()
-                .get(&format!("{}:::{}", WSTopic::SmartInboxes, ""))
-                .is_some();
-            let is_subscribed_to_topic = self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some();
+                .get(&connection.id)
+                .map(|subscriptions| subscriptions.contains(&WSTopic::SmartInboxes))
+                .unwrap_or(false);
 
             let is_subscribed_to_sheets = self
                 .subscriptions
-                .get(id)
-                .unwrap()
-                .get(&format!("{}:::{}", WSTopic::Sheet, ""))
-                .is_some();
+                .get(&connection.id)
+                .map(|subscriptions| subscriptions.contains(&WSTopic::Sheets))
+                .unwrap_or(false);
+
+            let is_subscribed_to_topic = self
+                .subscriptions
+                .get(&connection.id)
+                .map(|subscriptions| subscriptions.contains(&topic))
+                .unwrap_or(false);
 
             if is_subscribed_to_smart_inboxes
                 || is_subscribed_to_topic
-                || (is_subscribed_to_sheets && topic == WSTopic::Sheet)
+                || is_subscribed_to_sheets
             {
                 // If the user is subscribed to SmartInboxes, check if they have access to the specific inbox
                 if is_subscribed_to_smart_inboxes {
