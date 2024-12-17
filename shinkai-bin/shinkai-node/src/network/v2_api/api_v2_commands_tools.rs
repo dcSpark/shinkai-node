@@ -33,7 +33,13 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::ShinkaiTool, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
+    deno_tools::DenoTool,
+    error::ToolError,
+    python_tools::PythonTool,
+    shinkai_tool::ShinkaiTool,
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
@@ -101,7 +107,8 @@ impl Node {
         // Use different search method based on whether we have allowed_tools
         let vector_search_result = if let Some(tools) = allowed_tools {
             // First generate the embedding from the query
-            let embedding = db.read()
+            let embedding = db
+                .read()
                 .await
                 .generate_embeddings(&sanitized_query)
                 .await
@@ -1668,9 +1675,9 @@ impl Node {
         }
 
         // Parse the shinkai file protocol
-        // Format: shinkai://{user_name}/{app-id}/{full-path}
+        // Format: shinkai://file/{node_name}/{app-id}/{full-path}
         let parts: Vec<&str> = shinkai_file_protocol.split('/').collect();
-        if parts.len() < 4 || !shinkai_file_protocol.starts_with("shinkai://") {
+        if parts.len() < 5 || !shinkai_file_protocol.starts_with("shinkai://file/") {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Invalid Protocol".to_string(),
@@ -1681,9 +1688,9 @@ impl Node {
         }
 
         // TODO This should be verified (?)
-        let user_name = parts[2];
-        let app_id = parts[3];
-        let remaining_path = parts[4..].join("/");
+        let _user_name = parts[3];
+        let app_id = parts[4];
+        let remaining_path = parts[5..].join("/");
 
         // Construct the full file path
         let mut file_path = PathBuf::from(&node_storage_path);
