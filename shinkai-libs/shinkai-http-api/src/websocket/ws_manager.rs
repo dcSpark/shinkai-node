@@ -1,9 +1,14 @@
+use aes_gcm::{
+    aead::{generic_array::GenericArray, Aead},
+    Aes256Gcm, KeyInit,
+};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use shinkai_message_primitives::{
     schemas::{
         identity::Identity,
+        inbox_name::InboxName,
         shinkai_name::ShinkaiName,
         smart_inbox_name::SmartInboxName,
         topic::{Topic, WSTopic},
@@ -12,7 +17,10 @@ use shinkai_message_primitives::{
             MessageQueue, MessageType, WSMessagePayload,
         },
     },
-    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_message::{
+        shinkai_message::ShinkaiMessage,
+        shinkai_message_schemas::WSMessage,
+    },
     shinkai_utils::{
         encryption::{
             decrypt_message_with_shared_key, encrypt_message_with_shared_key, generate_shared_key,
@@ -20,8 +28,9 @@ use shinkai_message_primitives::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
     },
 };
+use shinkai_sqlite::SqliteManager;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fmt,
     sync::Arc,
 };
@@ -30,11 +39,12 @@ use tokio::{
     time::{sleep, Duration},
 };
 use warp::ws::{Message, WebSocket};
+use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
     error::APIError,
     identity::IdentityManagerTrait,
-    node::validate_message_main_logic,
+    node::{validate_message_main_logic, Node},
 };
 
 pub struct WebSocketManager {
