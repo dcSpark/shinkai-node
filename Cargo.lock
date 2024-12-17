@@ -6611,7 +6611,9 @@ dependencies = [
 name = "shinkai_http_api"
 version = "0.9.2"
 dependencies = [
+ "aes-gcm",
  "async-channel 1.9.0",
+ "async-trait",
  "bytes",
  "chrono",
  "ed25519-dalek",
@@ -6621,7 +6623,6 @@ dependencies = [
  "rustls 0.20.9",
  "rustls-pemfile 1.0.4",
  "serde",
- "serde_json",
  "shinkai_message_primitives",
  "shinkai_tools_primitives",
  "tokio",

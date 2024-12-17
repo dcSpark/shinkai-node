@@ -5,29 +5,30 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-utoipa = "4.2.3"
-utoipa-swagger-ui = "7.1.0"
-chrono = { workspace = true }
-bytes = "1.7.1"
-warp = { version = "0.3.7", features = ["compression-gzip", "tls"] }
-serde_json = { workspace = true }
-futures = { workspace = true }
+aes-gcm = "0.10"
 async-channel = "1.6.1"
-x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
+async-trait = "0.1"
+bytes = "1.7.1"
+chrono = { workspace = true }
 ed25519-dalek = "2.1.0"
-shinkai_message_primitives = { workspace = true }
-shinkai_tools_primitives = { workspace = true }
+futures = { workspace = true }
+hyper = { version = "0.14.30", features = ["server"] }
 reqwest = { workspace = true, features = [
     "json",
     "tokio-native-tls",
     "blocking",
     "stream",
 ] }
+rustls = "0.20"
+rustls-pemfile = "1.0.3"
+shinkai_message_primitives = { workspace = true }
+shinkai_tools_primitives = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-rustls = "0.23"
-rustls = "0.20"
-hyper = { version = "0.14.30", features = ["server"] }
-rustls-pemfile = "1.0.3"
+utoipa = "4.2.3"
+utoipa-swagger-ui = "7.1.0"
+warp = { version = "0.3.7", features = ["compression-gzip", "tls"] }
+x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 
 [dependencies.serde]
 workspace = true
