@@ -12,6 +12,7 @@ bytes = "1.7.1"
 chrono = { workspace = true }
 ed25519-dalek = "2.1.0"
 futures = { workspace = true }
+hex = { workspace = true }
 hyper = { version = "0.14.30", features = ["server"] }
 reqwest = { workspace = true, features = [
     "json",
@@ -23,6 +24,7 @@ rustls = "0.20"
 rustls-pemfile = "1.0.3"
 serde_json = { workspace = true }
 shinkai_message_primitives = { workspace = true }
+shinkai_sqlite = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-rustls = "0.23"

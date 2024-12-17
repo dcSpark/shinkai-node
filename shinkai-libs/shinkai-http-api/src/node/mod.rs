@@ -1,4 +1,4 @@
-use shinkai_message_primitives::schemas::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use crate::error::APIError;
 
 pub fn validate_message_main_logic(message: &ShinkaiMessage) -> Result<(), APIError> {
