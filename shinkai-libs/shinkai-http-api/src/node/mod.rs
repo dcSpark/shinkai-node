@@ -14,8 +14,8 @@ pub fn validate_message_main_logic(
     parent_key: Option<String>,
 ) -> Result<(), APIError> {
     match &message.body {
-        MessageBody::Empty => Err(APIError::invalid_message_content()),
-        _ => Ok(()),
+        MessageBody::Encrypted(_) | MessageBody::Unencrypted(_) => Ok(()),
+        _ => Err(APIError::invalid_message_content()),
     }
 }
 
