@@ -143,7 +143,13 @@ impl WebSocketManager {
         message: &ShinkaiMessage,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
         let identity_manager_clone = self.identity_manager_trait.clone();
-        validate_message_main_logic(message)?;
+        validate_message_main_logic(
+            message,
+            identity_manager_clone,
+            &shinkai_name,
+            message.clone(),
+            None,
+        )?;
 
         let sender_identity = self.get_sender_identity(shinkai_name).await?;
         Ok((message.clone(), sender_identity))
@@ -159,7 +165,8 @@ impl WebSocketManager {
                     Err(_) => return false,
                 };
                 let db_arc = self.shinkai_db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-                match Node::has_inbox_access(db_arc.as_ref().clone(), &inbox_name, &sender_identity).await {
+                let db_arc = Arc::new(db_arc.read().await.clone());
+                match Node::has_inbox_access(db_arc, &inbox_name, &sender_identity).await {
                     Ok(value) => {
                         if value {
                             shinkai_log(

@@ -38,7 +38,9 @@ impl From<WebSocketManagerError> for APIError {
 }
 
 impl APIError {
-    pub const InvalidMessageContent: APIError = APIError {
-        message: "Invalid message content".to_string(),
-    };
+    pub fn invalid_message_content() -> Self {
+        APIError {
+            message: "Invalid message content".to_string(),
+        }
+    }
 }

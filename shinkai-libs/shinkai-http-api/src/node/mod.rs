@@ -13,10 +13,10 @@ pub fn validate_message_main_logic(
     original_message: ShinkaiMessage,
     parent_key: Option<String>,
 ) -> Result<(), APIError> {
-    if message.body.is_empty() {
-        return Err(APIError::InvalidMessageContent);
+    match &message.body {
+        MessageBody::Empty => Err(APIError::invalid_message_content()),
+        _ => Ok(()),
     }
-    Ok(())
 }
 
 #[async_trait::async_trait]
