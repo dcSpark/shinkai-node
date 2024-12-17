@@ -54,6 +54,11 @@ pub enum WebSocketManagerError {
     UserValidationFailed(String),
     AccessDenied(String),
     InvalidSharedKey(String),
+    EncryptionError(String),
+    IdentityNotFound(String),
+    IdentityManagerError(String),
+    DatabaseError(String),
+    SerializationError(String),
 }
 
 impl fmt::Display for WebSocketManagerError {
@@ -62,6 +67,11 @@ impl fmt::Display for WebSocketManagerError {
             WebSocketManagerError::UserValidationFailed(msg) => write!(f, "User validation failed: {}", msg),
             WebSocketManagerError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
             WebSocketManagerError::InvalidSharedKey(msg) => write!(f, "Invalid shared key: {}", msg),
+            WebSocketManagerError::EncryptionError(msg) => write!(f, "Encryption error: {}", msg),
+            WebSocketManagerError::IdentityNotFound(msg) => write!(f, "Identity not found: {}", msg),
+            WebSocketManagerError::IdentityManagerError(msg) => write!(f, "Identity manager error: {}", msg),
+            WebSocketManagerError::DatabaseError(msg) => write!(f, "Database error: {}", msg),
+            WebSocketManagerError::SerializationError(msg) => write!(f, "Serialization error: {}", msg),
         }
     }
 }

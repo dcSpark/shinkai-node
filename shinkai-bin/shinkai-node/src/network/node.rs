@@ -23,8 +23,9 @@ use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::RngCore;
-use reqwest::StatusCode;
-use shinkai_http_api::node_api_router::APIError;
+use http::StatusCode;
+use shinkai_http_api::error::APIError;
+use shinkai_http_api::node_api_router::APIError as RouterAPIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::retry::RetryMessage;
@@ -1509,5 +1510,19 @@ impl Drop for Node {
         if let Some(handle) = self.ws_server.take() {
             handle.abort();
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl shinkai_http_api::node::Node for Node {
+    async fn has_inbox_access(
+        &self,
+        db: Arc<SqliteManager>,
+        inbox: &InboxName,
+        sender: &Identity,
+    ) -> Result<bool, APIError> {
+        db.has_inbox_access(inbox, sender)
+            .await
+            .map_err(|e| APIError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
     }
 }

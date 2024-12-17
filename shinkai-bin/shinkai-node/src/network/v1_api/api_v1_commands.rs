@@ -104,9 +104,13 @@ impl Node {
         db: Arc<RwLock<SqliteManager>>,
         inbox_name: &InboxName,
         sender_subidentity: &Identity,
-    ) -> Result<bool, NodeError> {
+    ) -> Result<bool, APIError> {
         let sender_shinkai_name = ShinkaiName::new(sender_subidentity.get_full_identity_name())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: e.to_string(),
+            })?;
 
         let has_creation_permission = inbox_name.has_creation_access(sender_shinkai_name);
         if let Ok(true) = has_creation_permission {
@@ -115,9 +119,23 @@ impl Node {
         }
 
         match sender_subidentity {
-            Identity::Standard(std_identity) => Self::has_standard_identity_access(db, inbox_name, std_identity).await,
-            Identity::Device(std_device) => Self::has_device_identity_access(db, inbox_name, std_device).await,
-            _ => Err(NodeError {
+            Identity::Standard(std_identity) => Self::has_standard_identity_access(db, inbox_name, std_identity)
+                .await
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: e.message,
+                }),
+            Identity::Device(std_device) => Self::has_device_identity_access(db, inbox_name, std_device)
+                .await
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: e.message,
+                }),
+            _ => Err(APIError {
+                code: StatusCode::FORBIDDEN.as_u16(),
+                error: "Forbidden".to_string(),
                 message: format!(
                     "Invalid Identity type. You don't have enough permissions to access the inbox: {}",
                     inbox_name

@@ -21,6 +21,7 @@ pub fn validate_message_main_logic(
 #[async_trait::async_trait]
 pub trait Node: Send + Sync {
     async fn has_inbox_access(
+        &self,
         db: Arc<SqliteManager>,
         inbox: &InboxName,
         sender: &Identity,
