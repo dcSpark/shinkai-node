@@ -1,4 +1,4 @@
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
