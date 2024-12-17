@@ -37,7 +37,7 @@ impl SqliteManager {
                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 agent.name,
-                agent.agent_id,
+                agent.agent_id.to_lowercase(),
                 agent.full_identity_name.full_name,
                 agent.llm_provider_id,
                 agent.ui_description,

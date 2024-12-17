@@ -577,7 +577,7 @@ impl SqliteManager {
                                         ),
                                         Err(_) => {
                                             // If not found as an LLM provider, check if it exists as an agent
-                                            match self.get_agent(&agent_id) {
+                                            match self.get_agent(&agent_id.to_lowercase()) {
                                                 Ok(Some(agent)) => {
                                                     // Fetch the serialized LLM provider
                                                     if let Ok(Some(serialized_llm_provider)) =

@@ -680,6 +680,7 @@ pub enum NodeCommand {
     V2ApiSearchShinkaiTool {
         bearer: String,
         query: String,
+        agent_or_llm: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiTools {
@@ -1035,6 +1036,11 @@ pub enum NodeCommand {
     V2ApiImportTool {
         bearer: String,
         url: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemoveTool {
+        bearer: String,
+        tool_key: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiResolveShinkaiFileProtocol {
