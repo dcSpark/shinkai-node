@@ -6,3 +6,4 @@ pub mod api_v2;
 pub mod websocket;
 pub mod error;
 pub mod node;
+pub mod identity;
