@@ -1432,6 +1432,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let tool2 = DenoTool {
@@ -1452,6 +1453,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let tool3 = DenoTool {
@@ -1472,6 +1474,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         // Add tools to database with specific vectors
