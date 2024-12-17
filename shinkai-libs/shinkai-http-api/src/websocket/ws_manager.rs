@@ -1,41 +1,39 @@
-use aes_gcm::aead::generic_array::GenericArray;
-use aes_gcm::aead::Aead;
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
-use async_trait::async_trait;
-use futures::stream::SplitSink;
-use futures::SinkExt;
-use crate::error::APIError;
-use shinkai_message_primitives::schemas::identity::Identity;
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::ws_types::MessageQueue;
-use shinkai_message_primitives::schemas::ws_types::MessageType;
-use shinkai_message_primitives::schemas::ws_types::WSMessagePayload;
-use shinkai_message_primitives::schemas::ws_types::WSMessageType;
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::schemas::ws_types::WebSocketManagerError;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
-use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_sqlite::SqliteManager;
-use std::collections::VecDeque;
-use std::fmt;
-use std::sync::Weak;
-use std::time::Duration;
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::Mutex;
-use tokio::sync::RwLock;
-use tokio::time::sleep;
-use warp::ws::Message;
-use warp::ws::WebSocket;
-use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use futures_util::stream::{SplitSink, SplitStream};
+use futures_util::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
+use shinkai_message_primitives::{
+    schemas::{
+        identity::Identity,
+        shinkai_name::ShinkaiName,
+        smart_inbox_name::SmartInboxName,
+        topic::{Topic, WSTopic},
+        ws_types::{
+            WebSocketManagerError, WSMessageType, WSUpdateHandler,
+            MessageQueue, MessageType, WSMessagePayload,
+        },
+    },
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::encryption::{
+        decrypt_message_with_shared_key, encrypt_message_with_shared_key, generate_shared_key,
+    },
+};
+use std::{
+    collections::HashMap,
+    fmt,
+    sync::Arc,
+};
+use tokio::{
+    sync::Mutex,
+    time::{sleep, Duration},
+};
+use warp::ws::{Message, WebSocket};
+use x25519_dalek::StaticSecret;
 
-use crate::node::validate_message_main_logic;
-use crate::node::Node;
-use crate::identity::IdentityManagerTrait;
+use crate::{
+    error::APIError,
+    identity::IdentityManagerTrait,
+    node::validate_message_main_logic,
+};
 
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
