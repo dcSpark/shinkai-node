@@ -1,4 +1,6 @@
 use std::fmt;
+use warp::reject::Reject;
+use shinkai_message_primitives::schemas::ws_types::WebSocketManagerError;
 
 #[derive(Debug)]
 pub struct APIError {
@@ -11,13 +13,7 @@ impl fmt::Display for APIError {
     }
 }
 
-impl std::error::Error for APIError {}
-
-impl From<String> for APIError {
-    fn from(message: String) -> Self {
-        APIError { message }
-    }
-}
+impl Reject for APIError {}
 
 impl From<&str> for APIError {
     fn from(message: &str) -> Self {
@@ -27,8 +23,14 @@ impl From<&str> for APIError {
     }
 }
 
-impl From<crate::websocket::ws_manager::WebSocketManagerError> for APIError {
-    fn from(error: crate::websocket::ws_manager::WebSocketManagerError) -> Self {
+impl From<String> for APIError {
+    fn from(message: String) -> Self {
+        APIError { message }
+    }
+}
+
+impl From<WebSocketManagerError> for APIError {
+    fn from(error: WebSocketManagerError) -> Self {
         APIError {
             message: error.to_string(),
         }
