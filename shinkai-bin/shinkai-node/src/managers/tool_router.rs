@@ -436,6 +436,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
         python_tool
     }
@@ -576,6 +577,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         tool_id,
                         node_name,
                         false,
+                        None,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
