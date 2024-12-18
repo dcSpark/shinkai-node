@@ -325,6 +325,7 @@ async fn process_stream(
                                     name: name.clone(),
                                     arguments: arguments.clone(),
                                     tool_router_key,
+                                    response: None,
                                 });
 
                                 shinkai_log(
@@ -509,7 +510,12 @@ async fn handle_non_streaming_response(
                                                     })
                                                 });
 
-                                                Some(FunctionCall { name, arguments, tool_router_key })
+                                                Some(FunctionCall {
+                                                    name,
+                                                    arguments,
+                                                    tool_router_key,
+                                                    response: None,
+                                                })
                                             })
                                         })
                                     })

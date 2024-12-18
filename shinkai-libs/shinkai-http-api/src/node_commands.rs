@@ -993,6 +993,8 @@ pub enum NodeCommand {
     V2ApiSetPlaygroundTool {
         bearer: String,
         payload: ToolPlayground,
+        tool_id: String,
+        app_id: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListPlaygroundTools {
@@ -1029,6 +1031,11 @@ pub enum NodeCommand {
     V2ApiImportTool {
         bearer: String,
         url: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemoveTool {
+        bearer: String,
+        tool_key: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiResolveShinkaiFileProtocol {
@@ -1072,6 +1079,11 @@ pub enum NodeCommand {
         description: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiForceExecuteCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiTestLlmProvider {
         bearer: String,
         provider: SerializedLLMProvider,
@@ -1087,6 +1099,27 @@ pub enum NodeCommand {
         bearer: String,
         code: String,
         state: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiUploadToolAsset {
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        file_name: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListToolAssets {
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
+    V2ApiDeleteToolAsset {
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        file_name: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

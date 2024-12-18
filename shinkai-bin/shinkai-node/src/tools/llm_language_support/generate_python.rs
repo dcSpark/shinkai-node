@@ -2,6 +2,58 @@ use super::language_helpers::to_snake_case;
 use serde_json::Value;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
 
+// Example output:
+/*
+
+from typing import Optional, Any, Dict, List, Union
+import os
+import requests
+async def shinkai_download_pages(input: Dict[str, Any]) -> Dict[str, Any]:
+    """Downloads one or more URLs and converts their HTML content to Markdown
+
+    Args:
+        input: Dict[str, Any]:
+            urls: List[Any] (required) -
+
+    Returns:
+        Dict[str, Any]: {
+            markdowns: List[str]
+        }
+    """
+    _url = os.environ.get('SHINKAI_NODE_LOCATION', '') + '/v2/tool_execution'
+    data = {
+        'tool_router_key': 'local:::shinkai_tool_download_pages:::shinkai__download_pages',
+        'tool_type': 'deno',
+        'llm_provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', ''),
+        'parameters': input
+    }
+    try:
+        response = requests.post(
+            _url,
+            json=data,
+            headers={
+                'Authorization': f"Bearer {os.environ.get('BEARER', '')}",
+                'x-shinkai-tool-id': os.environ.get('X_SHINKAI_TOOL_ID', ''),
+                'x-shinkai-app-id': os.environ.get('X_SHINKAI_APP_ID', ''),
+                'x-shinkai-llm-provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', '')
+            }
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        error_message = '::NETWORK_ERROR:: '
+        if hasattr(e, 'response') and e.response is not None:
+            error_message += f"Status: {e.response.status_code}, "
+            try:
+                error_message += f"Response: {e.response.json()}"
+            except:
+                error_message += f"Response: {e.response.text}"
+        else:
+            error_message += str(e)
+        raise Exception(error_message)
+
+*/
+
 fn json_type_to_python(type_value: &Value, items_value: Option<&Value>) -> String {
     match type_value.as_str() {
         Some("array") => {
@@ -60,28 +112,21 @@ import requests
     .to_string()
 }
 
-fn generate_parameters(tool: &ShinkaiToolHeader, include_defaults: bool) -> String {
-    let mut required_params: Vec<String> = Vec::new();
-    let mut optional_params: Vec<String> = Vec::new();
+fn generate_parameters(tool: &ShinkaiToolHeader) -> String {
+    let mut param_types: Vec<String> = Vec::new();
 
-    for arg in &tool.input_args.to_deprecated_arguments() {
-        let type_str = json_type_to_python(&Value::String(arg.arg_type.clone()), None);
-        let param = if arg.is_required {
-            format!("{}: {}", arg.name, type_str)
-        } else if include_defaults {
-            format!("{}: Optional[{}] = None", arg.name, type_str)
+    for (key, property) in &tool.input_args.properties {
+        let is_required = tool.input_args.required.contains(key);
+        let type_str = json_type_to_python(&Value::String(property.property_type.clone()), None);
+        if is_required {
+            param_types.push(format!("{}: {}", key, type_str));
         } else {
-            format!("{}: Optional[{}]", arg.name, type_str)
-        };
-
-        if arg.is_required {
-            required_params.push(param);
-        } else {
-            optional_params.push(param);
+            param_types.push(format!("{}: Optional[{}] = None", key, type_str));
         }
     }
 
-    [required_params, optional_params].concat().join(", ")
+    // Format as TypeScript-style input object
+    format!("input: Dict[str, Any]")
 }
 
 fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
@@ -90,37 +135,19 @@ fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
     // Main description
     doc.push_str(&format!("{}\"\"\"{}\n\n", indent, tool.description));
 
-    // Example usage
-    doc.push_str(&format!("{}Example Usage:\n", indent));
-    let function_name = create_function_name_set(tool);
-    let mut example_args = Vec::new();
-
-    for arg in &tool.input_args.to_deprecated_arguments() {
-        if arg.is_required {
-            example_args.push(format!("{0} = {0}", arg.name));
-        }
-    }
-
-    doc.push_str(&format!(
-        "{}    result = async {}({})\n\n",
-        indent,
-        function_name,
-        example_args.join(", ")
-    ));
-
-    // Parameter documentation
+    // Input schema documentation
     doc.push_str(&format!("{}Args:\n", indent));
-    for arg in &tool.input_args.to_deprecated_arguments() {
+    doc.push_str(&format!("{}    input: Dict[str, Any]:\n", indent));
+
+    // Document each parameter in the input dictionary
+    for (key, property) in &tool.input_args.properties {
+        let is_required = tool.input_args.required.contains(key);
+
+        let type_str = json_type_to_python(&Value::String(property.property_type.clone()), None);
+        let required_str = if is_required { "required" } else { "optional" };
         doc.push_str(&format!(
-            "{}    {}: {} {}\n",
-            indent,
-            arg.name,
-            if !arg.description.is_empty() {
-                &arg.description
-            } else {
-                "Parameter"
-            },
-            if arg.is_required { "(required)" } else { "(optional)" }
+            "{}        {}: {} ({}) - {}\n",
+            indent, key, type_str, required_str, property.description
         ));
     }
 
@@ -163,7 +190,7 @@ pub fn generate_python_definition(
     if generate_pyi {
         // Generate .pyi stub file
         python_output.push_str(&format!("async def {}(", function_name));
-        python_output.push_str(&generate_parameters(&tool, false));
+        python_output.push_str(&generate_parameters(&tool));
         python_output.push_str(") -> Dict[str, Any]:\n");
 
         // Add docstring to .pyi
@@ -215,7 +242,7 @@ pub fn generate_python_definition(
     } else {
         // Original implementation for .py file
         python_output.push_str(&format!("async def {}(", function_name));
-        python_output.push_str(&generate_parameters(&tool, true));
+        python_output.push_str(&generate_parameters(&tool));
         python_output.push_str(") -> Dict[str, Any]:\n");
         python_output.push_str(&generate_docstring(&tool, "    "));
 
@@ -235,19 +262,14 @@ pub fn generate_python_definition(
         python_output.push_str(
             r#"',
         'llm_provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', ''),
-        'parameters': {
+        'parameters': input
+    }
 "#,
         );
 
-        // Add parameters
-        for arg in &tool.input_args.to_deprecated_arguments() {
-            python_output.push_str(&format!("            '{}': {},\n", arg.name, arg.name));
-        }
-
+        // Rest of implementation...
         python_output.push_str(
-            r#"        }
-    }
-    try:
+            r#"    try:
         response = requests.post(
             _url,
             json=data,

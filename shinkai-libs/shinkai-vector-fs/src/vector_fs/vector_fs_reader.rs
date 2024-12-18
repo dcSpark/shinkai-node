@@ -156,8 +156,6 @@ impl VectorFS {
     pub async fn retrieve_vector_resource(&self, reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
         self.db
-            .read()
-            .await
             .get_resource(&fs_item.resource_db_key(), &reader.profile)
             .map_err(VectorFSError::from)
     }
@@ -167,8 +165,6 @@ impl VectorFS {
     pub async fn retrieve_source_file_map(&self, reader: &VFSReader) -> Result<SourceFileMap, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
         self.db
-            .read()
-            .await
             .get_source_file_map(&fs_item.source_file_map_db_key()?, &reader.profile)
             .map_err(VectorFSError::from)
     }
@@ -176,11 +172,7 @@ impl VectorFS {
     /// Attempts to retrieve a VRKai from the path specified in reader (errors if entry at path is not an item).
     pub async fn retrieve_vrkai(&self, reader: &VFSReader) -> Result<VRKai, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader).await?.as_item()?;
-        let resource = self
-            .db
-            .read()
-            .await
-            .get_resource(&fs_item.resource_db_key(), &reader.profile)?;
+        let resource = self.db.get_resource(&fs_item.resource_db_key(), &reader.profile)?;
         let sfm = self.retrieve_source_file_map(reader).await.ok();
 
         Ok(VRKai::new(resource, sfm))

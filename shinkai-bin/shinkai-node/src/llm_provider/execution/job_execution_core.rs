@@ -35,7 +35,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         node_profile_name: ShinkaiName,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
@@ -162,7 +162,7 @@ impl JobManager {
 
     /// Handle errors by sending an error message to the job inbox
     async fn handle_error(
-        db: &Arc<RwLock<SqliteManager>>,
+        db: &Arc<SqliteManager>,
         user_profile: Option<ShinkaiName>,
         job_id: &str,
         identity_secret_key: &SigningKey,
@@ -194,9 +194,7 @@ impl JobManager {
         )
         .expect("Failed to build error message");
 
-        db.write()
-            .await
-            .add_message_to_job_inbox(job_id, &shinkai_message, None, ws_manager)
+        db.add_message_to_job_inbox(job_id, &shinkai_message, None, ws_manager)
             .await
             .expect("Failed to add error message to job inbox");
 
@@ -207,7 +205,7 @@ impl JobManager {
     /// and then parses + saves the output result to the DB.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
         message_hash_id: Option<String>,
@@ -326,8 +324,7 @@ impl JobManager {
         //     None,
         //     None,
         // )?;
-        db.write()
-            .await
+        db
             .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
 
@@ -355,7 +352,7 @@ impl JobManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_sheet_job(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
         llm_provider_found: Option<ProviderOrAgent>,
@@ -490,7 +487,7 @@ impl JobManager {
 
     /// Helper function to process files and update the job scope.
     async fn process_files_and_update_scope(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         files: Vec<(String, Vec<u8>)>,
         agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
@@ -622,7 +619,7 @@ impl JobManager {
                             }
                         }
                     }
-                    db.write().await.update_job_scope(job_id, scope_with_files.clone())?;
+                    db.update_job_scope(job_id, scope_with_files.clone())?;
                 } else {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
@@ -647,7 +644,7 @@ impl JobManager {
     /// Processes the files sent together with the current job_message into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_files_for_vector_resources(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_message: &JobMessage,
         agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
@@ -665,10 +662,7 @@ impl JobManager {
 
             // Get the files from the DB
             let files = {
-                let files_result = db
-                    .read()
-                    .await
-                    .get_all_files_from_inbox(job_message.files_inbox.clone());
+                let files_result = db.get_all_files_from_inbox(job_message.files_inbox.clone());
                 match files_result {
                     Ok(files) => files,
                     Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
@@ -678,7 +672,6 @@ impl JobManager {
             // Process the files and update the job scope
             Self::process_files_and_update_scope(
                 db,
-                vector_fs,
                 files,
                 agent_found,
                 full_job,
@@ -696,7 +689,7 @@ impl JobManager {
     /// Processes the specified files into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_specified_files_for_vector_resources(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         files_inbox: String,
         file_names: Vec<String>,
         agent_found: Option<ProviderOrAgent>,
@@ -715,7 +708,7 @@ impl JobManager {
 
             // Get the files from the DB
             let files = {
-                let files_result = db.read().await.get_all_files_from_inbox(files_inbox.clone());
+                let files_result = db.get_all_files_from_inbox(files_inbox.clone());
                 match files_result {
                     Ok(files) => files,
                     Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
@@ -747,7 +740,7 @@ impl JobManager {
 
     /// Retrieves image files associated with a job message and converts them to base64
     pub async fn get_image_files_from_message(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_message: &JobMessage,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
         if job_message.files_inbox.is_empty() {
@@ -760,10 +753,7 @@ impl JobManager {
             format!("Retrieving files for job message: {}", job_message.job_id).as_str(),
         );
 
-        let files_vec = db
-            .read()
-            .await
-            .get_all_files_from_inbox(job_message.files_inbox.clone())?;
+        let files_vec = db.get_all_files_from_inbox(job_message.files_inbox.clone())?;
 
         let image_files: HashMap<String, String> = files_vec
             .into_iter()
@@ -792,7 +782,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,
         _profile: ShinkaiName,

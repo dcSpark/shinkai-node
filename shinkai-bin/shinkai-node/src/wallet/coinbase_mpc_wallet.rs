@@ -29,7 +29,7 @@ pub struct CoinbaseMPCWallet {
     pub network: Network,
     pub address: Address,
     pub config: CoinbaseMPCWalletConfig,
-    pub sqlite_manager: Option<Weak<RwLock<SqliteManager>>>,
+    pub sqlite_manager: Option<Weak<SqliteManager>>,
 }
 
 // Note: do we need access to ToolRouter? (maybe not, since we can call the Coinbase SDK directly)
@@ -85,13 +85,13 @@ impl<'de> Deserialize<'de> for CoinbaseMPCWallet {
 }
 
 impl CoinbaseMPCWallet {
-    pub fn update_sqlite_manager(&mut self, sqlite_manager: Arc<RwLock<SqliteManager>>) {
+    pub fn update_sqlite_manager(&mut self, sqlite_manager: Arc<SqliteManager>) {
         self.sqlite_manager = Some(Arc::downgrade(&sqlite_manager));
     }
 
     pub async fn create_wallet(
         network: Network,
-        sqlite_manager: Weak<RwLock<SqliteManager>>, // Changed to Weak
+        sqlite_manager: Weak<SqliteManager>, // Changed to Weak
         config: Option<CoinbaseMPCWalletConfig>,
         node_name: ShinkaiName,
     ) -> Result<Self, WalletError> {
@@ -101,8 +101,6 @@ impl CoinbaseMPCWallet {
             None => {
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = sqlite_manager_strong
-                    .read()
-                    .await
                     .get_tool_by_key(tool_id)
                     .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
 
@@ -190,7 +188,7 @@ impl CoinbaseMPCWallet {
 
     pub async fn restore_wallet(
         network: Network,
-        sqlite_manager: Weak<RwLock<SqliteManager>>,
+        sqlite_manager: Weak<SqliteManager>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
         node_name: ShinkaiName,
@@ -203,8 +201,6 @@ impl CoinbaseMPCWallet {
             None => {
                 let tool_id = ShinkaiToolCoinbase::CreateWallet.definition_id();
                 let shinkai_tool = sqlite_manager_strong
-                    .read()
-                    .await
                     .get_tool_by_key(tool_id)
                     .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
 
@@ -289,7 +285,7 @@ impl CoinbaseMPCWallet {
 
     pub async fn call_function(
         config: CoinbaseMPCWalletConfig,
-        sqlite_manager: Weak<RwLock<SqliteManager>>,
+        sqlite_manager: Weak<SqliteManager>,
         function_name: ShinkaiToolCoinbase,
         params: serde_json::Map<String, Value>,
         node_name: ShinkaiName,
@@ -299,8 +295,6 @@ impl CoinbaseMPCWallet {
             .ok_or(WalletError::SqliteManagerError("SqliteManager not found".to_string()))?;
         let tool_id = function_name.definition_id();
         let shinkai_tool = sqlite_manager_strong
-            .read()
-            .await
             .get_tool_by_key(tool_id)
             .map_err(|e| WalletError::SqliteManagerError(e.to_string()))?;
 
@@ -340,6 +334,7 @@ impl CoinbaseMPCWallet {
                     tool_id,
                     node_name,
                     false,
+                    None,
                 )
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
             let result_str =

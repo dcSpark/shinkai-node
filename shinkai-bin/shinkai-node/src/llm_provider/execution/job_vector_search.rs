@@ -17,7 +17,7 @@ impl JobManager {
     /// Returns the search results and the description/summary text of the VR the highest scored retrieved node is from.
     #[allow(clippy::too_many_arguments)]
     pub async fn keyword_chained_job_scope_vector_search(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_scope: &MinimalJobScope,
         query_text: String,
         user_profile: &ShinkaiName,
@@ -204,7 +204,7 @@ impl JobManager {
     /// Returns the proximity groups of retrieved nodes.
     #[allow(clippy::too_many_arguments)]
     async fn internal_job_scope_vector_search_groups(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         job_scope: &MinimalJobScope,
         query: Embedding,
         query_text: String,

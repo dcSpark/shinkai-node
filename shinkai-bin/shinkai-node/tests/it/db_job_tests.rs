@@ -9,18 +9,13 @@ use shinkai_sqlite::SqliteManager;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
-use tokio::sync::RwLock;
 use tokio::time::{sleep, Duration};
 
 use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-async fn create_new_job(db: &Arc<RwLock<SqliteManager>>, job_id: String, agent_id: String, scope: JobScope) {
-    match db
-        .write()
-        .await
-        .create_new_job(job_id, agent_id, scope, false, None, None)
-    {
+async fn create_new_job(db: &Arc<SqliteManager>, job_id: String, agent_id: String, scope: JobScope) {
+    match db.create_new_job(job_id, agent_id, scope, false, None, None) {
         Ok(_) => (),
         Err(e) => panic!("Failed to create a new job: {}", e),
     }
@@ -101,20 +96,20 @@ mod tests {
         let agent_id = "agent1".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
 
         // Retrieve all jobs
-        let jobs = shinkai_db.read().await.get_all_jobs().unwrap();
+        let jobs = shinkai_db.get_all_jobs().unwrap();
 
         // Check if the job exists
         let job_ids: Vec<String> = jobs.iter().map(|job| job.job_id().to_string()).collect();
         assert!(job_ids.contains(&job_id));
 
         // Check that the job has the correct properties
-        let job = shinkai_db.read().await.get_job(&job_id).unwrap();
+        let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
         assert_eq!(job.parent_agent_or_llm_provider_id, agent_id);
         assert!(!job.is_finished);
@@ -124,7 +119,7 @@ mod tests {
     async fn test_get_agent_jobs() {
         let agent_id = "agent2".to_string();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create new jobs for the agent
         for i in 1..=5 {
@@ -137,7 +132,7 @@ mod tests {
         eprintln!("agent_id: {}", agent_id.clone());
 
         // Get all jobs for the agent
-        let jobs = shinkai_db.read().await.get_agent_jobs(agent_id.clone()).unwrap();
+        let jobs = shinkai_db.get_agent_jobs(agent_id.clone()).unwrap();
 
         // Assert that all jobs are returned
         assert_eq!(jobs.len(), 5);
@@ -155,33 +150,25 @@ mod tests {
         let new_agent_id = "new_agent".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job with the initial agent
         let _ = create_new_job(&shinkai_db, job_id.clone(), initial_agent_id.clone(), scope).await;
 
         // Change the agent of the job
-        shinkai_db
-            .write()
-            .await
-            .change_job_llm_provider(&job_id, &new_agent_id)
-            .unwrap();
+        shinkai_db.change_job_llm_provider(&job_id, &new_agent_id).unwrap();
 
         // Retrieve the job and check that the agent has been updated
-        let job = shinkai_db.read().await.get_job(&job_id).unwrap();
+        let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.parent_agent_or_llm_provider_id, new_agent_id);
 
         // Check that the job is listed under the new agent
-        let new_agent_jobs = shinkai_db.read().await.get_agent_jobs(new_agent_id.clone()).unwrap();
+        let new_agent_jobs = shinkai_db.get_agent_jobs(new_agent_id.clone()).unwrap();
         let job_ids: Vec<String> = new_agent_jobs.iter().map(|job| job.job_id().to_string()).collect();
         assert!(job_ids.contains(&job_id));
 
         // Check that the job is no longer listed under the initial agent
-        let initial_agent_jobs = shinkai_db
-            .read()
-            .await
-            .get_agent_jobs(initial_agent_id.clone())
-            .unwrap();
+        let initial_agent_jobs = shinkai_db.get_agent_jobs(initial_agent_id.clone()).unwrap();
         let initial_job_ids: Vec<String> = initial_agent_jobs.iter().map(|job| job.job_id().to_string()).collect();
         assert!(!initial_job_ids.contains(&job_id));
     }
@@ -195,20 +182,16 @@ mod tests {
         //         .unwrap();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
 
         // Update job to finished
-        shinkai_db
-            .write()
-            .await
-            .update_job_to_finished(&job_id.clone())
-            .unwrap();
+        shinkai_db.update_job_to_finished(&job_id.clone()).unwrap();
 
         // Retrieve the job and check that is_finished is set to true
-        let job = shinkai_db.read().await.get_job(&job_id.clone()).unwrap();
+        let job = shinkai_db.get_job(&job_id.clone()).unwrap();
         assert!(job.is_finished);
     }
 
@@ -216,7 +199,7 @@ mod tests {
     async fn test_update_step_history() {
         let job_id = "test_job".to_string();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         let node1_identity_name = "@@node1.shinkai";
         let node1_subidentity_name = "main_profile_node1";
@@ -241,16 +224,12 @@ mod tests {
 
         // Insert the ShinkaiMessage into the database
         shinkai_db
-            .write()
-            .await
             .unsafe_insert_inbox_message(&message, None, None)
             .await
             .unwrap();
 
         // Update step history
         shinkai_db
-            .write()
-            .await
             .add_step_history(
                 job_id.clone(),
                 "What is 10 + 25".to_string(),
@@ -262,8 +241,6 @@ mod tests {
             .unwrap();
         sleep(Duration::from_millis(10)).await;
         shinkai_db
-            .write()
-            .await
             .add_step_history(
                 job_id.clone(),
                 "2) What is 10 + 25".to_string(),
@@ -275,7 +252,7 @@ mod tests {
             .unwrap();
 
         // Retrieve the job and check that step history is updated
-        let job = shinkai_db.read().await.get_job(&job_id.clone()).unwrap();
+        let job = shinkai_db.get_job(&job_id.clone()).unwrap();
         assert_eq!(job.step_history.len(), 2);
     }
 
@@ -283,8 +260,8 @@ mod tests {
     async fn test_get_non_existent_job() {
         let job_id = "non_existent_job".to_string();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
-        let db_read = shinkai_db.read().await;
+        let shinkai_db = Arc::new(db);
+        let db_read = shinkai_db;
 
         match db_read.get_job(&job_id) {
             Ok(_) => panic!("Expected an error when getting a non-existent job"),
@@ -296,10 +273,10 @@ mod tests {
     async fn test_get_agent_jobs_none_exist() {
         let agent_id = "agent_without_jobs".to_string();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Attempt to get all jobs for the agent
-        let jobs_result = shinkai_db.read().await.get_agent_jobs(agent_id.clone());
+        let jobs_result = shinkai_db.get_agent_jobs(agent_id.clone());
 
         match jobs_result {
             Ok(jobs) => {
@@ -317,8 +294,8 @@ mod tests {
     async fn test_update_non_existent_job() {
         let job_id = "non_existent_job".to_string();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
-        let db_write = shinkai_db.write().await;
+        let shinkai_db = Arc::new(db);
+        let db_write = shinkai_db;
 
         match db_write.update_job_to_finished(&job_id.clone()) {
             Ok(_) => panic!("Expected an error when updating a non-existent job"),
@@ -330,7 +307,7 @@ mod tests {
     async fn test_get_agent_jobs_multiple_jobs() {
         let agent_id = "agent5".to_string();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create new jobs for the agent
         for i in 1..=5 {
@@ -346,7 +323,7 @@ mod tests {
         }
 
         // Get all jobs for the agent
-        let jobs = shinkai_db.read().await.get_agent_jobs(agent_id.clone()).unwrap();
+        let jobs = shinkai_db.get_agent_jobs(agent_id.clone()).unwrap();
 
         // Assert that all jobs are returned
         assert_eq!(jobs.len(), 5);
@@ -362,13 +339,13 @@ mod tests {
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
 
         // Check if the job inbox is empty after creating a new job
-        assert!(shinkai_db.read().await.is_job_inbox_empty(&job_id).unwrap());
+        assert!(shinkai_db.is_job_inbox_empty(&job_id).unwrap());
 
         let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
@@ -384,13 +361,11 @@ mod tests {
 
         // Add a message to the job
         let _ = shinkai_db
-            .write()
-            .await
             .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, None)
             .await;
 
         // Check if the job inbox is not empty after adding a message
-        assert!(!shinkai_db.read().await.is_job_inbox_empty(&job_id).unwrap());
+        assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
     }
 
     #[tokio::test]
@@ -399,7 +374,7 @@ mod tests {
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
@@ -436,8 +411,6 @@ mod tests {
 
             // Add a message to the job
             let _ = shinkai_db
-                .write()
-                .await
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
@@ -452,7 +425,7 @@ mod tests {
         }
 
         // Check if the job inbox is not empty after adding a message
-        assert!(!shinkai_db.read().await.is_job_inbox_empty(&job_id).unwrap());
+        assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
 
         // Get the inbox name
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
@@ -462,8 +435,6 @@ mod tests {
 
         // Get the messages from the job inbox
         let last_messages_inbox = shinkai_db
-            .read()
-            .await
             .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
             .unwrap();
 
@@ -499,7 +470,7 @@ mod tests {
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
@@ -542,8 +513,6 @@ mod tests {
 
             // Add a message to the job
             let _ = shinkai_db
-                .write()
-                .await
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
@@ -556,7 +525,7 @@ mod tests {
         }
 
         // Check if the job inbox is not empty after adding a message
-        assert!(!shinkai_db.read().await.is_job_inbox_empty(&job_id).unwrap());
+        assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
 
         // Get the inbox name
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
@@ -566,8 +535,6 @@ mod tests {
 
         // Get the messages from the job inbox
         let last_messages_inbox = shinkai_db
-            .read()
-            .await
             .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
             .unwrap();
 
@@ -587,7 +554,7 @@ mod tests {
         let prompt_4 = last_messages_inbox[2][0].clone().to_prompt();
         assert_eq!(prompt_4.get_content(), "Hello World 4".to_string());
 
-        let job = shinkai_db.read().await.get_job(&job_id.clone()).unwrap();
+        let job = shinkai_db.get_job(&job_id.clone()).unwrap();
 
         // Check the step history
         let step1 = &job.step_history[0];
@@ -645,7 +612,7 @@ mod tests {
         let scope = JobScope::new_default();
 
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         let _ = create_new_job(&shinkai_db, job_id.to_string(), agent_id.clone(), scope).await;
 
@@ -685,15 +652,11 @@ mod tests {
 
             // Insert the ShinkaiMessage into the database
             shinkai_db
-                .write()
-                .await
                 .unsafe_insert_inbox_message(&message, parent_hash.clone(), None)
                 .await
                 .unwrap();
 
             shinkai_db
-                .write()
-                .await
                 .add_step_history(job_id.to_string(), user_message, None, agent_response, None, None)
                 .unwrap();
 
@@ -710,8 +673,6 @@ mod tests {
         eprintln!("\n\n Getting messages...");
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap();
         let last_messages_inbox = shinkai_db
-            .read()
-            .await
             .get_last_messages_from_inbox(inbox_name.to_string(), 3, None)
             .unwrap();
 
@@ -729,7 +690,7 @@ mod tests {
 
         eprintln!("\n\n Getting steps...");
 
-        let step_history = shinkai_db.read().await.get_step_history(job_id, true).unwrap().unwrap();
+        let step_history = shinkai_db.get_step_history(job_id, true).unwrap().unwrap();
 
         let step_history_content: Vec<String> = step_history
             .iter()
@@ -801,7 +762,7 @@ mod tests {
         let agent_id = "agent_test".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
@@ -836,8 +797,6 @@ mod tests {
         // Add the messages to the job in a specific order to simulate an invalid date scenario
         for i in [0, 2, 1].iter() {
             let _result = shinkai_db
-                .write()
-                .await
                 .add_message_to_job_inbox(&job_id.clone(), &messages[*i], None, None)
                 .await;
 
@@ -845,7 +804,7 @@ mod tests {
         }
 
         // Check if the job inbox is not empty after adding a message
-        assert!(!shinkai_db.read().await.is_job_inbox_empty(&job_id).unwrap());
+        assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
 
         // Get the inbox name
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
@@ -855,8 +814,6 @@ mod tests {
 
         // Get the messages from the job inbox
         let last_messages_inbox = shinkai_db
-            .read()
-            .await
             .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 3, None)
             .unwrap();
 
@@ -888,7 +845,7 @@ mod tests {
         let agent_id = "agent1".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope.clone()).await;
@@ -925,8 +882,6 @@ mod tests {
 
             // Add a message to the job
             let _ = shinkai_db
-                .write()
-                .await
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
 
@@ -946,8 +901,6 @@ mod tests {
 
         // Get the messages from the job inbox
         let last_messages_inbox = shinkai_db
-            .read()
-            .await
             .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
             .unwrap();
 
@@ -977,17 +930,17 @@ mod tests {
             job_id: forked_job2_id.clone(),
             message_id: forked_message2_id.clone(),
         };
-        match shinkai_db.write().await.add_forked_job(&job_id, forked_job1) {
+        match shinkai_db.add_forked_job(&job_id, forked_job1) {
             Ok(_) => {}
             Err(e) => panic!("Error adding forked job: {:?}", e),
         }
-        match shinkai_db.write().await.add_forked_job(&job_id, forked_job2) {
+        match shinkai_db.add_forked_job(&job_id, forked_job2) {
             Ok(_) => {}
             Err(e) => panic!("Error adding forked job: {:?}", e),
         }
 
         // Check that the forked jobs are added
-        let job = shinkai_db.read().await.get_job(&job_id).unwrap();
+        let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.forked_jobs.len(), 2);
         assert_eq!(job.forked_jobs[0].job_id, forked_job1_id);
         assert_eq!(job.forked_jobs[0].message_id, forked_message1_id);
@@ -1002,7 +955,7 @@ mod tests {
         let agent_id = "agent1".to_string();
         let scope = JobScope::new_default();
         let db = setup_test_db();
-        let shinkai_db = Arc::new(RwLock::new(db));
+        let shinkai_db = Arc::new(db);
 
         // Create new jobs
         let _ = create_new_job(&shinkai_db, job1_id.clone(), agent_id.clone(), scope.clone()).await;
@@ -1032,14 +985,12 @@ mod tests {
             IdentityPermissions::Standard,
         );
 
-        let _ = shinkai_db.write().await.insert_profile(node1_profile_identity.clone());
+        let _ = shinkai_db.insert_profile(node1_profile_identity.clone());
 
         let inbox1_name = InboxName::get_job_inbox_name_from_params(job1_id.clone()).unwrap();
         let inbox2_name = InboxName::get_job_inbox_name_from_params(job2_id.clone()).unwrap();
 
         shinkai_db
-            .write()
-            .await
             .add_permission(
                 &inbox1_name.to_string(),
                 &node1_profile_identity,
@@ -1047,8 +998,6 @@ mod tests {
             )
             .unwrap();
         shinkai_db
-            .write()
-            .await
             .add_permission(
                 &inbox2_name.to_string(),
                 &node1_profile_identity,
@@ -1057,25 +1006,21 @@ mod tests {
             .unwrap();
 
         let smart_inboxes = shinkai_db
-            .read()
-            .await
             .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
             .unwrap();
         assert_eq!(smart_inboxes.len(), 2);
 
         // Remove the first job
-        shinkai_db.write().await.remove_job(&job1_id).unwrap();
+        shinkai_db.remove_job(&job1_id).unwrap();
 
         // Check if the job is removed
-        match shinkai_db.read().await.get_job(&job1_id) {
+        match shinkai_db.get_job(&job1_id) {
             Ok(_) => panic!("Expected an error when getting a removed job"),
             Err(e) => assert_eq!(matches!(e, SqliteManagerError::DataNotFound), true),
         }
 
         // Check if the smart_inbox is removed
         let smart_inboxes = shinkai_db
-            .read()
-            .await
             .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
             .unwrap();
         assert_eq!(smart_inboxes.len(), 1);

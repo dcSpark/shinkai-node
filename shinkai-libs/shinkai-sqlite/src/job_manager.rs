@@ -25,42 +25,51 @@ impl SqliteManager {
         associated_ui: Option<AssociatedUI>,
         config: Option<JobConfig>,
     ) -> Result<(), SqliteManagerError> {
-        let conn = self.get_connection()?;
-
-        let current_time = ShinkaiStringTime::generate_time_now();
-        let scope_text = serde_json::to_string(&scope)?;
-        let associated_ui_text = associated_ui.map_or(Ok("".to_string()), |ui| serde_json::to_string(&ui))?;
-        let config_text = match &config {
-            Some(cfg) => serde_json::to_string(cfg)?,
-            None => "{}".to_string(),
-        };
         let job_inbox_name = format!("job_inbox::{}::false", job_id);
 
-        let mut stmt = conn.prepare(
-            "INSERT INTO jobs (
+        {
+            // let conn = self.get_connection()?;
+
+            // let current_time = ShinkaiStringTime::generate_time_now();
+            // let scope_with_files_bytes = scope.to_bytes()?;
+            // let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
+
+            let conn = self.get_connection()?;
+
+            let current_time = ShinkaiStringTime::generate_time_now();
+            let scope_text = serde_json::to_string(&scope)?;
+            let associated_ui_text = associated_ui.map_or(Ok("".to_string()), |ui| serde_json::to_string(&ui))?;
+            let config_text = match &config {
+                Some(cfg) => serde_json::to_string(cfg)?,
+                None => "{}".to_string(),
+            };
+
+            let mut stmt = conn.prepare(
+                "INSERT INTO jobs (
+                    job_id,
+                    is_hidden,
+                    datetime_created,
+                    is_finished,
+                    parent_agent_or_llm_provider_id,
+                    scope,
+                    conversation_inbox_name,
+                    associated_ui,
+                    config
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )?;
+
+            stmt.execute(params![
                 job_id,
                 is_hidden,
-                datetime_created,
-                is_finished,
-                parent_agent_or_llm_provider_id,
-                scope,
-                conversation_inbox_name,
-                associated_ui,
-                config
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        )?;
-
-        stmt.execute(params![
-            job_id,
-            is_hidden,
-            current_time,
-            false,
-            llm_provider_id,
-            scope_text,
-            job_inbox_name.clone(),
-            associated_ui_text,
-            config_text,
-        ])?;
+                current_time,
+                false,
+                llm_provider_id,
+                scope_text,
+                job_inbox_name.clone(),
+                associated_ui_text,
+                config_text,
+            ])?;
+        }
 
         self.create_empty_inbox(job_inbox_name)?;
 
@@ -443,7 +452,6 @@ mod tests {
     use shinkai_message_primitives::schemas::identity::StandardIdentity;
     use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
     use shinkai_message_primitives::{
         schemas::identity::StandardIdentityType,
         shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType},

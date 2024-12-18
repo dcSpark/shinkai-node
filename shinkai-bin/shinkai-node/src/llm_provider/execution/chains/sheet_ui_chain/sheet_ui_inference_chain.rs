@@ -61,13 +61,11 @@ impl InferenceChain for SheetUIInferenceChain {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = SheetUIInferenceChain::start_chain(
             self.context.db.clone(),
-            self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
-            self.context.execution_context.clone(),
             self.context.generator.clone(),
             self.context.user_profile.clone(),
             self.context.max_iterations,
@@ -103,7 +101,7 @@ impl SheetUIInferenceChain {
     // the tool code handling in the future so we can reuse the code
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         full_job: Job,
         user_message: String,
         message_hash_id: Option<String>,
@@ -194,7 +192,6 @@ impl SheetUIInferenceChain {
         if !scope_is_empty {
             let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
                 db.clone(),
-                vector_fs.clone(),
                 &job_scope,
                 user_message.clone(),
                 &user_profile,
@@ -371,14 +368,12 @@ impl SheetUIInferenceChain {
                     let parsed_message = ParsedUserMessage::new(user_message.clone());
                     let context = InferenceChainContext::new(
                         db.clone(),
-                        vector_fs.clone(),
                         full_job.clone(),
                         parsed_message,
                         None, // TODO: hook this up
                         message_hash_id.clone(),
                         image_files.clone(),
                         llm_provider.clone(),
-                        execution_context.clone(),
                         generator.clone(),
                         user_profile.clone(),
                         max_iterations,

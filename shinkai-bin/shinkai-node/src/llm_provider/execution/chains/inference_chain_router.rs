@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage};
 use shinkai_sqlite::SqliteManager;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
@@ -26,7 +26,7 @@ impl JobManager {
     /// Returns the final String result from the inferencing, and a new execution context.
     #[allow(clippy::too_many_arguments)]
     pub async fn inference_chain_router(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         job_message: JobMessage,
@@ -51,8 +51,6 @@ impl JobManager {
                 // If it's an agent, we need to get the LLM provider from the agent
                 let llm_id = llm_provider.get_llm_provider_id();
                 let llm_provider = db
-                    .read()
-                    .await
                     .get_llm_provider(llm_id, &user_profile)
                     .map_err(|e| e.to_string())?
                     .ok_or(LLMProviderError::LLMProviderNotFound)?;

@@ -19,7 +19,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    tool_output_arg::ToolOutputArg, network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader
+    network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
 };
 use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -36,7 +36,7 @@ use crate::{
 use super::external_agent_offerings_manager::AgentOfferingManagerError;
 
 pub struct MyAgentOfferingsManager {
-    pub db: Weak<RwLock<SqliteManager>>,
+    pub db: Weak<SqliteManager>,
     pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -55,7 +55,7 @@ pub struct MyAgentOfferingsManager {
 impl MyAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -117,9 +117,7 @@ impl MyAgentOfferingsManager {
         );
 
         // Store the InternalInvoiceRequest in the database
-        db.write()
-            .await
-            .set_internal_invoice_request(&internal_invoice_request)
+        db.set_internal_invoice_request(&internal_invoice_request)
             .map_err(|e| {
                 AgentOfferingManagerError::OperationFailed(format!("Failed to store internal invoice request: {:?}", e))
             })?;
@@ -206,7 +204,7 @@ impl MyAgentOfferingsManager {
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
         // Try to retrieve the corresponding InternalInvoiceRequest from the database
-        let internal_invoice_request = match db.read().await.get_internal_invoice_request(&invoice.invoice_id) {
+        let internal_invoice_request = match db.get_internal_invoice_request(&invoice.invoice_id) {
             Ok(request) => request,
             Err(_) => {
                 // If no corresponding InternalInvoiceRequest is found, the invoice is invalid
@@ -349,7 +347,7 @@ impl MyAgentOfferingsManager {
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
-        let db_write = db.write().await;
+        let db_write = db;
 
         db_write
             .set_invoice(invoice)
@@ -370,7 +368,7 @@ impl MyAgentOfferingsManager {
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
-        let db_write = db.write().await;
+        let db_write = db;
 
         db_write
             .set_invoice(invoice)
@@ -402,8 +400,6 @@ impl MyAgentOfferingsManager {
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
         let invoice = db
-            .read()
-            .await
             .get_invoice(&invoice_id)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
 
@@ -429,7 +425,7 @@ impl MyAgentOfferingsManager {
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
-        db.write().await.set_invoice(&updated_invoice).map_err(|e| {
+        db.set_invoice(&updated_invoice).map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
         })?;
 
@@ -469,7 +465,7 @@ impl MyAgentOfferingsManager {
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
-        db.write().await.set_invoice(&updated_invoice).map_err(|e| {
+        db.set_invoice(&updated_invoice).map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
         })?;
 

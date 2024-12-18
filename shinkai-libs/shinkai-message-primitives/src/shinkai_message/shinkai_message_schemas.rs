@@ -341,6 +341,7 @@ pub struct FunctionCallMetadata {
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
     pub tool_router_key: Option<String>,
+    pub response: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]

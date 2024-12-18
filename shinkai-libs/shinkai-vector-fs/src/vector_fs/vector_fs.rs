@@ -23,7 +23,7 @@ use tokio::sync::RwLock;
 pub struct VectorFS {
     pub node_name: ShinkaiName,
     pub internals_map: RwLock<HashMap<ShinkaiName, VectorFSInternals>>,
-    pub db: Arc<RwLock<SqliteManager>>,
+    pub db: Arc<SqliteManager>,
     /// Intended to be used only for generating query embeddings for Vector Search
     /// Processing content into Vector Resources should always be done outside of the VectorFS
     /// to prevent locking for long periods of time. (If VR with unsupported model is tried to be added to FS, should error, and regeneration happens externally)
@@ -38,13 +38,13 @@ impl VectorFS {
         embedding_generator: RemoteEmbeddingGenerator,
         supported_embedding_models: Vec<EmbeddingModelType>,
         profile_list: Vec<ShinkaiName>,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
     ) -> Result<Self, VectorFSError> {
         // Read each existing profile's fs internals from fsdb
         let mut internals_map = HashMap::new();
         for profile in &profile_list {
-            match db.read().await.get_profile_fs_internals(profile) {
+            match db.get_profile_fs_internals(profile) {
                 Ok(internals) => {
                     let internals = VectorFSInternals {
                         fs_core_resource: internals.0,
@@ -355,8 +355,6 @@ impl VectorFS {
         profile: &ShinkaiName,
     ) -> Result<(), VectorFSError> {
         self.db
-            .write()
-            .await
             .save_profile_fs_internals(
                 profile,
                 fs_internals.fs_core_resource,
@@ -373,7 +371,7 @@ impl VectorFS {
 
     pub async fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<VectorFSInternals, VectorFSError> {
         let (core_resource, permissions_index, subscription_index, supported_embedding_models, last_read_index) =
-            self.db.read().await.get_profile_fs_internals(profile)?;
+            self.db.get_profile_fs_internals(profile)?;
 
         Ok(VectorFSInternals {
             fs_core_resource: core_resource,

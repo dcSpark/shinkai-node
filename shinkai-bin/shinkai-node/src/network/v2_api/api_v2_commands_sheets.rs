@@ -22,7 +22,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 
 impl Node {
     pub async fn v2_api_import_sheet(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         input_payload: APIImportSheetPayload,
         bearer: String,
@@ -95,7 +95,7 @@ impl Node {
     }
 
     pub async fn v2_api_export_sheet(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         input_payload: APIExportSheetPayload,
         bearer: String,
@@ -155,8 +155,7 @@ impl Node {
     }
 
     pub async fn v2_set_sheet_uploaded_files(
-        db: Arc<RwLock<SqliteManager>>,
-        // vector_fs: Arc<VectorFS>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         sheet_manager: Arc<Mutex<SheetManager>>,
         input_payload: APISetSheetUploadedFilesPayload,

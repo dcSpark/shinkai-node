@@ -33,7 +33,7 @@ use shinkai_message_primitives::{
 };
 
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
@@ -65,7 +65,7 @@ impl Node {
     }
 
     pub async fn v2_create_new_job(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -172,7 +172,7 @@ impl Node {
     }
 
     pub async fn v2_job_message(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -206,7 +206,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_message.job_id, false) {
+        let llm_provider = match db.get_job_with_options(&job_message.job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -285,7 +285,7 @@ impl Node {
                 let message_hash = shinkai_message.calculate_message_hash_for_pagination();
 
                 let parent_key = if !inbox_name.is_empty() {
-                    match db.read().await.get_parent_message_hash(&inbox_name, &message_hash) {
+                    match db.get_parent_message_hash(&inbox_name, &message_hash) {
                         Ok(result) => result,
                         Err(_) => None,
                     }
@@ -316,7 +316,7 @@ impl Node {
     }
 
     pub async fn v2_get_last_messages_from_inbox(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         inbox_name: String,
         limit: usize,
@@ -329,11 +329,7 @@ impl Node {
         }
 
         // Retrieve the last messages from the inbox
-        let messages = match db
-            .read()
-            .await
-            .get_last_messages_from_inbox(inbox_name.clone(), limit, offset_key.clone())
-        {
+        let messages = match db.get_last_messages_from_inbox(inbox_name.clone(), limit, offset_key.clone()) {
             Ok(messages) => messages,
             Err(err) => {
                 let api_error = APIError {
@@ -374,7 +370,7 @@ impl Node {
     }
 
     pub async fn v2_get_last_messages_from_inbox_with_branches(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         inbox_name: String,
         limit: usize,
@@ -387,11 +383,7 @@ impl Node {
         }
 
         // Retrieve the last messages from the inbox
-        let messages = match db
-            .read()
-            .await
-            .get_last_messages_from_inbox(inbox_name.clone(), limit, offset_key.clone())
-        {
+        let messages = match db.get_last_messages_from_inbox(inbox_name.clone(), limit, offset_key.clone()) {
             Ok(messages) => messages,
             Err(err) => {
                 let api_error = APIError {
@@ -432,7 +424,7 @@ impl Node {
     }
 
     pub async fn v2_get_all_smart_inboxes(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
@@ -460,7 +452,7 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile
-        let smart_inboxes = match db.read().await.get_all_smart_inboxes_for_profile(main_identity) {
+        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {
@@ -497,7 +489,7 @@ impl Node {
     }
 
     pub async fn v2_get_available_llm_providers(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         bearer: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
@@ -526,7 +518,7 @@ impl Node {
     }
 
     pub async fn v2_update_smart_inbox_name(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         inbox_name: String,
         custom_name: String,
@@ -538,7 +530,7 @@ impl Node {
         }
 
         // Update the smart inbox name
-        match db.write().await.update_smart_inbox_name(&inbox_name, &custom_name) {
+        match db.update_smart_inbox_name(&inbox_name, &custom_name) {
             Ok(_) => {
                 let _ = res.send(Ok(())).await;
             }
@@ -557,7 +549,7 @@ impl Node {
 
     // TODO: Remove this endpoint. No need to create inboxes in SQLite, they are managed in the VectorFSDB
     pub async fn v2_create_files_inbox(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), APIError> {
@@ -580,7 +572,7 @@ impl Node {
     }
 
     pub async fn v2_add_file_to_inbox(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         file_inbox_name: String,
         filename: String,
         file: Vec<u8>,
@@ -592,11 +584,7 @@ impl Node {
             return Ok(());
         }
 
-        match db
-            .write()
-            .await
-            .add_file_to_files_message_inbox(file_inbox_name, filename, file)
-        {
+        match db.add_file_to_files_message_inbox(file_inbox_name, filename, file) {
             Ok(_) => {
                 let _ = res.send(Ok("File added successfully".to_string())).await;
                 Ok(())
@@ -615,7 +603,7 @@ impl Node {
     }
 
     pub async fn v2_api_change_job_llm_provider(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         payload: APIChangeJobAgentRequest,
         res: Sender<Result<String, APIError>>,
@@ -628,11 +616,7 @@ impl Node {
         // Extract job ID and new agent ID from the payload
         let change_request = payload;
 
-        match db
-            .write()
-            .await
-            .change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id)
-        {
+        match db.change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id) {
             Ok(_) => {
                 let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
                 Ok(())
@@ -650,7 +634,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_job_config(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         job_id: String,
         config: JobConfig,
@@ -662,13 +646,10 @@ impl Node {
         }
 
         // Check if the job exists
-        let db_read = db.read().await;
-        match db_read.get_job_with_options(&job_id, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(_) => {
-                drop(db_read);
-
                 // Job exists, proceed with updating the config
-                match db.write().await.update_job_config(&job_id, config) {
+                match db.update_job_config(&job_id, config) {
                     Ok(_) => {
                         let success_message = format!("Job config updated successfully for job ID: {}", job_id);
                         let _ = res.send(Ok(success_message)).await;
@@ -698,7 +679,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_job_config(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         job_id: String,
         res: Sender<Result<JobConfig, APIError>>,
@@ -711,7 +692,7 @@ impl Node {
         // TODO: Get default values for Ollama
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
                     custom_system_prompt: None,
@@ -741,7 +722,7 @@ impl Node {
     }
 
     pub async fn v2_api_retry_message(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_manager: Arc<Mutex<JobManager>>,
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
@@ -757,7 +738,7 @@ impl Node {
         }
 
         // Retrieve the message from the inbox
-        let message = match db.read().await.fetch_message_and_hash(&message_id) {
+        let message = match db.fetch_message_and_hash(&message_id) {
             Ok(msg) => msg,
             Err(err) => {
                 let api_error = APIError {
@@ -801,7 +782,7 @@ impl Node {
         }
 
         // Retrieve the parent message
-        let parent_message_hash = match db.read().await.get_parent_message_hash(&inbox_name, &message_id) {
+        let parent_message_hash = match db.get_parent_message_hash(&inbox_name, &message_id) {
             Ok(parent_message) => match parent_message {
                 Some(hash) => hash,
                 None => {
@@ -825,7 +806,7 @@ impl Node {
             }
         };
 
-        let original_message = match db.read().await.fetch_message_and_hash(&parent_message_hash) {
+        let original_message = match db.fetch_message_and_hash(&parent_message_hash) {
             Ok(msg) => msg.0,
             Err(err) => {
                 let api_error = APIError {
@@ -920,11 +901,7 @@ impl Node {
         };
 
         let parent_parent_key = if !inbox_name.is_empty() {
-            match db
-                .read()
-                .await
-                .get_parent_message_hash(&inbox_name, &parent_message_hash)
-            {
+            match db.get_parent_message_hash(&inbox_name, &parent_message_hash) {
                 Ok(result) => result,
                 Err(_) => None,
             }
@@ -964,7 +941,7 @@ impl Node {
                 let message_hash = shinkai_message.calculate_message_hash_for_pagination();
 
                 let parent_key = if !inbox_name.is_empty() {
-                    match db.read().await.get_parent_message_hash(&inbox_name, &message_hash) {
+                    match db.get_parent_message_hash(&inbox_name, &message_hash) {
                         Ok(result) => result,
                         Err(_) => None,
                     }
@@ -995,7 +972,7 @@ impl Node {
     }
 
     pub async fn v2_api_update_job_scope(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         job_id: String,
         job_scope: MinimalJobScope,
@@ -1007,10 +984,10 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the job scope
-                match db.write().await.update_job_scope(job_id.clone(), job_scope.clone()) {
+                match db.update_job_scope(job_id.clone(), job_scope.clone()) {
                     Ok(_) => {
                         match serde_json::to_value(&job_scope) {
                             Ok(job_scope_value) => {
@@ -1051,7 +1028,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_job_scope(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         job_id: String,
         res: Sender<Result<Value, APIError>>,
@@ -1062,7 +1039,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.read().await.get_job_with_options(&job_id, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 // Job exists, proceed with getting the job scope
                 let job_scope = job.scope();
@@ -1094,7 +1071,7 @@ impl Node {
     }
 
     pub async fn v2_fork_job_messages(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -1111,7 +1088,7 @@ impl Node {
         }
 
         // Retrieve the message from the inbox
-        let source_message = match db.read().await.fetch_message_and_hash(&message_id) {
+        let source_message = match db.fetch_message_and_hash(&message_id) {
             Ok(msg) => msg.0,
             Err(err) => {
                 let api_error = APIError {
@@ -1125,7 +1102,7 @@ impl Node {
         };
 
         // Retrieve the job
-        let source_job = match db.read().await.get_job_with_options(&job_id, false) {
+        let source_job = match db.get_job_with_options(&job_id, false) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1188,26 +1165,23 @@ impl Node {
 
         // Retrieve the messages from the inbox
         let inbox_name = source_job.conversation_inbox_name.to_string();
-        let last_messages = match db.read().await.get_last_messages_from_inbox(
-            inbox_name.clone(),
-            usize::MAX - 1,
-            Some(message_id.clone()),
-        ) {
-            Ok(messages) => messages,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve messages: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let last_messages =
+            match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, Some(message_id.clone())) {
+                Ok(messages) => messages,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve messages: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         // Create a new job
         let forked_job_id = format!("jobid_{}", uuid::Uuid::new_v4());
-        match db.write().await.create_new_job(
+        match db.create_new_job(
             forked_job_id.clone(),
             source_job.parent_agent_or_llm_provider_id,
             source_job.scope.clone(),
@@ -1286,8 +1260,6 @@ impl Node {
                         );
 
                         match db
-                            .write()
-                            .await
                             .add_message_to_job_inbox(&forked_job_id, &forked_message, job_message.parent.clone(), None)
                             .await
                         {
@@ -1311,7 +1283,7 @@ impl Node {
             job_id: forked_job_id.clone(),
             message_id: message_id.clone(),
         };
-        match db.write().await.add_forked_job(&job_id, forked_job) {
+        match db.add_forked_job(&job_id, forked_job) {
             Ok(_) => {}
             Err(err) => {
                 let api_error = APIError {
@@ -1329,7 +1301,7 @@ impl Node {
     }
 
     pub async fn v2_remove_job(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         job_id: String,
         res: Sender<Result<SendResponseBody, APIError>>,
@@ -1345,11 +1317,7 @@ impl Node {
         };
 
         // Retrieve the messages from the inbox
-        let messages = match db
-            .read()
-            .await
-            .get_last_messages_from_inbox(inbox_name, usize::MAX - 1, None)
-        {
+        let messages = match db.get_last_messages_from_inbox(inbox_name, usize::MAX - 1, None) {
             Ok(messages) => messages,
             Err(err) => {
                 let api_error = APIError {
@@ -1385,7 +1353,7 @@ impl Node {
             .collect::<HashSet<_>>();
 
         // Remove the job
-        match db.write().await.remove_job(&job_id) {
+        match db.remove_job(&job_id) {
             Ok(_) => {}
             Err(err) => {
                 let api_error = APIError {
@@ -1400,7 +1368,7 @@ impl Node {
 
         // Remove the file inboxes
         for file_inbox in file_inboxes {
-            match db.write().await.remove_inbox(&file_inbox) {
+            match db.remove_inbox(&file_inbox) {
                 Ok(_) => {}
                 Err(err) => {
                     let api_error = APIError {
@@ -1425,7 +1393,7 @@ impl Node {
     }
 
     pub async fn v2_export_messages_from_inbox(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         inbox_name: String,
         format: ExportInboxMessagesFormat,
@@ -1437,11 +1405,7 @@ impl Node {
         }
 
         // Retrieve the messages from the inbox
-        let messages = match db
-            .read()
-            .await
-            .get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, None)
-        {
+        let messages = match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, None) {
             Ok(messages) => messages,
             Err(err) => {
                 let api_error = APIError {
@@ -1477,7 +1441,7 @@ impl Node {
         let mut inbox_filenames = HashMap::new();
 
         for inbox in file_inboxes {
-            let files = match db.read().await.get_all_filenames_from_inbox(inbox.clone()) {
+            let files = match db.get_all_filenames_from_inbox(inbox.clone()) {
                 Ok(files) => files,
                 Err(err) => {
                     let api_error = APIError {
@@ -1614,7 +1578,7 @@ impl Node {
     }
 
     pub async fn v2_add_messages_god_mode(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
@@ -1648,7 +1612,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_id, false) {
+        let llm_provider = match db.get_job_with_options(&job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -1719,12 +1683,7 @@ impl Node {
                 };
 
                 // Add the user message to the job inbox
-                if let Err(err) = db
-                    .write()
-                    .await
-                    .add_message_to_job_inbox(&job_id, &shinkai_message, None, None)
-                    .await
-                {
+                if let Err(err) = db.add_message_to_job_inbox(&job_id, &shinkai_message, None, None).await {
                     let api_error = APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
@@ -1749,8 +1708,6 @@ impl Node {
 
                 // Add the AI message to the job inbox
                 if let Err(err) = db
-                    .write()
-                    .await
                     .add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None)
                     .await
                 {

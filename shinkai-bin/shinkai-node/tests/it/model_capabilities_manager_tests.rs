@@ -30,7 +30,7 @@ mod tests {
     #[tokio::test]
     async fn test_has_capability() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let db_weak = Arc::downgrade(&db);
 
         let llm_provider_id = "agent_id1".to_string();
@@ -68,7 +68,7 @@ mod tests {
     #[tokio::test]
     async fn test_gpt_4_vision_preview_capabilities() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let db_weak = Arc::downgrade(&db);
 
         let llm_provider_id = "agent_id2".to_string();
@@ -102,7 +102,7 @@ mod tests {
     #[tokio::test]
     async fn test_fake_gpt_model_capabilities() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let db_weak = Arc::downgrade(&db);
 
         let agent_id = "agent_id3".to_string();

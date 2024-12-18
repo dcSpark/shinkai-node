@@ -28,7 +28,7 @@ mod tests {
     #[tokio::test]
     async fn test_add_and_remove_agent() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo".to_string(),
         };
@@ -45,23 +45,15 @@ mod tests {
         };
 
         // Add a new agent
-        db.write()
-            .await
-            .add_llm_provider(test_agent.clone(), &profile)
+        db.add_llm_provider(test_agent.clone(), &profile)
             .expect("Failed to add new agent");
         let retrieved_agent = db
-            .read()
-            .await
             .get_llm_provider(&test_agent.id, &profile)
             .expect("Failed to get llm provider");
         assert_eq!(test_agent, retrieved_agent.expect("Failed to retrieve agent"));
 
         // Call get_all_llm_providers and check that it returns the right agent
-        let all_llm_providers = db
-            .read()
-            .await
-            .get_all_llm_providers()
-            .expect("Failed to get all llm providers");
+        let all_llm_providers = db.get_all_llm_providers().expect("Failed to get all llm providers");
         assert!(
             all_llm_providers.contains(&test_agent),
             "get_all_llm_providers did not return the added agent"
@@ -69,8 +61,6 @@ mod tests {
 
         // Call get_llm_providers_for_profile and check that it returns the right agent for the profile
         let llm_providers_for_profile = db
-            .read()
-            .await
             .get_llm_providers_for_profile(profile.clone())
             .expect("Failed to get llm providers for profile");
         assert!(
@@ -79,11 +69,11 @@ mod tests {
         );
 
         // Remove the agent
-        let result = db.write().await.remove_llm_provider(&test_agent.id, &profile);
+        let result = db.remove_llm_provider(&test_agent.id, &profile);
         assert!(result.is_ok(), "Failed to remove agent");
 
         // Attempt to get the removed agent, expecting an error
-        let retrieved_agent_result = db.read().await.get_llm_provider(&test_agent.id, &profile);
+        let retrieved_agent_result = db.get_llm_provider(&test_agent.id, &profile);
         match retrieved_agent_result {
             Ok(_) => panic!("Expected error, but got Ok"),
             Err(e) => assert!(
@@ -93,7 +83,7 @@ mod tests {
         }
 
         // Attempt to remove the same agent again, expecting an error
-        let result = db.write().await.remove_llm_provider(&test_agent.id, &profile);
+        let result = db.remove_llm_provider(&test_agent.id, &profile);
         assert!(
             matches!(result, Err(SqliteManagerError::DataNotFound)),
             "Expected SqliteManagerError error"
@@ -103,7 +93,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_agent_profiles_and_toolkits() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
@@ -119,16 +109,11 @@ mod tests {
         };
 
         // Add a new agent
-        db.read()
-            .await
-            .add_llm_provider(test_agent.clone(), &profile)
+        db.add_llm_provider(test_agent.clone(), &profile)
             .expect("Failed to add new agent");
 
         // Get agent profiles with access
-        let profiles = db
-            .read()
-            .await
-            .get_llm_provider_profiles_with_access(&test_agent.id, &profile);
+        let profiles = db.get_llm_provider_profiles_with_access(&test_agent.id, &profile);
         assert!(profiles.is_ok(), "Failed to get agent profiles");
         assert_eq!(vec!["profilename"], profiles.unwrap());
     }

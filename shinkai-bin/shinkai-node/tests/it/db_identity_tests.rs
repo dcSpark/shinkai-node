@@ -29,17 +29,13 @@ fn setup_test_db() -> SqliteManager {
 }
 
 async fn create_local_node_profile(
-    db: &Arc<RwLock<SqliteManager>>,
+    db: &Arc<SqliteManager>,
     node_profile_name: String,
     encryption_public_key: EncryptionPublicKey,
     identity_public_key: VerifyingKey,
 ) {
     let node_profile = ShinkaiName::new(node_profile_name.clone()).unwrap();
-    match db
-        .write()
-        .await
-        .update_local_node_keys(node_profile, encryption_public_key, identity_public_key)
-    {
+    match db.update_local_node_keys(node_profile, encryption_public_key, identity_public_key) {
         Ok(_) => (),
         Err(e) => panic!("Failed to update local node keys: {}", e),
     }
@@ -51,7 +47,7 @@ async fn test_generate_and_use_registration_code_for_specific_profile() {
     let (_, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db = setup_test_db();
-    let shinkai_db = Arc::new(RwLock::new(db));
+    let shinkai_db = Arc::new(db);
 
     // Create a local node profile
     create_local_node_profile(&shinkai_db, node_profile_name.to_string(), encryption_pk, identity_pk).await;
@@ -62,15 +58,11 @@ async fn test_generate_and_use_registration_code_for_specific_profile() {
 
     // Test generate_registration_code_for_specific_profile
     let registration_code = shinkai_db
-        .write()
-        .await
         .generate_registration_new_code(IdentityPermissions::Admin, RegistrationCodeType::Profile)
         .unwrap();
 
     // Test use_registration_code
     shinkai_db
-        .write()
-        .await
         .use_registration_code(
             &registration_code,
             node_profile_name,
@@ -85,7 +77,7 @@ async fn test_generate_and_use_registration_code_for_specific_profile() {
     // check in db
     let profile_name =
         ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile_name.to_string()).unwrap();
-    let permission_in_db: IdentityPermissions = shinkai_db.read().await.get_profile_permission(profile_name).unwrap();
+    let permission_in_db: IdentityPermissions = shinkai_db.get_profile_permission(profile_name).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Admin);
 }
 
@@ -95,7 +87,7 @@ async fn test_generate_and_use_registration_code_for_device() {
     let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db = setup_test_db();
-    let shinkai_db = Arc::new(RwLock::new(db));
+    let shinkai_db = Arc::new(db);
 
     let profile_name = "profile_1";
     let (_profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
@@ -110,12 +102,10 @@ async fn test_generate_and_use_registration_code_for_device() {
 
     // second create a new profile (required to register a device)
     let registration_code = shinkai_db
-        .write()
-        .await
         .generate_registration_new_code(IdentityPermissions::Admin, RegistrationCodeType::Profile)
         .unwrap();
 
-    let _profile_result = shinkai_db.write().await.use_registration_code(
+    let _profile_result = shinkai_db.use_registration_code(
         &registration_code,
         node_profile_name,
         profile_name,
@@ -127,8 +117,6 @@ async fn test_generate_and_use_registration_code_for_device() {
 
     // registration code for device
     let registration_code = shinkai_db
-        .write()
-        .await
         .generate_registration_new_code(
             IdentityPermissions::Standard,
             RegistrationCodeType::Device(profile_name.to_string()),
@@ -137,8 +125,6 @@ async fn test_generate_and_use_registration_code_for_device() {
 
     // Test use_registration_code
     shinkai_db
-        .write()
-        .await
         .use_registration_code(
             &registration_code,
             node_profile_name,
@@ -153,11 +139,7 @@ async fn test_generate_and_use_registration_code_for_device() {
     // check in db
     let profile_name =
         ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), profile_name.to_string()).unwrap();
-    let permission_in_db = shinkai_db
-        .read()
-        .await
-        .get_profile_permission(profile_name.clone())
-        .unwrap();
+    let permission_in_db = shinkai_db.get_profile_permission(profile_name.clone()).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Admin);
 
     // check device permission
@@ -168,7 +150,7 @@ async fn test_generate_and_use_registration_code_for_device() {
         device_name.to_string(),
     )
     .unwrap();
-    let permission_in_db = shinkai_db.read().await.get_device_permission(device_name).unwrap();
+    let permission_in_db = shinkai_db.get_device_permission(device_name).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Standard);
 }
 
@@ -178,7 +160,7 @@ async fn test_generate_and_use_registration_code_for_device_with_main_profile() 
     let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db = setup_test_db();
-    let shinkai_db = Arc::new(RwLock::new(db));
+    let shinkai_db = Arc::new(db);
 
     let (_profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
     let (_profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
@@ -192,8 +174,6 @@ async fn test_generate_and_use_registration_code_for_device_with_main_profile() 
 
     // Generate a registration code for device with main as profile_name
     let registration_code = shinkai_db
-        .write()
-        .await
         .generate_registration_new_code(
             IdentityPermissions::Standard,
             RegistrationCodeType::Device("main".to_string()),
@@ -201,7 +181,7 @@ async fn test_generate_and_use_registration_code_for_device_with_main_profile() 
         .unwrap();
 
     // Use the registration code to create the device and automatically the "main" profile if not exists
-    let _device_result = shinkai_db.write().await.use_registration_code(
+    let _device_result = shinkai_db.use_registration_code(
         &registration_code,
         node_profile_name,
         device_name,
@@ -214,11 +194,7 @@ async fn test_generate_and_use_registration_code_for_device_with_main_profile() 
     // Check if "main" profile exists in db
     let main_profile_name =
         ShinkaiName::from_node_and_profile_names(node_profile_name.to_string(), "main".to_string()).unwrap();
-    let main_permission_in_db = shinkai_db
-        .read()
-        .await
-        .get_profile_permission(main_profile_name.clone())
-        .unwrap();
+    let main_permission_in_db = shinkai_db.get_profile_permission(main_profile_name.clone()).unwrap();
     assert_eq!(main_permission_in_db, IdentityPermissions::Admin);
 
     // Check if device exists in db
@@ -229,15 +205,11 @@ async fn test_generate_and_use_registration_code_for_device_with_main_profile() 
         device_name.to_string(),
     )
     .unwrap();
-    let device_permission_in_db = shinkai_db
-        .read()
-        .await
-        .get_device_permission(device_full_name.clone())
-        .unwrap();
+    let device_permission_in_db = shinkai_db.get_device_permission(device_full_name.clone()).unwrap();
     assert_eq!(device_permission_in_db, IdentityPermissions::Standard);
 
     // Get the device from the database and check that it matches the expected values
-    let device_in_db = shinkai_db.read().await.get_device(device_full_name.clone()).unwrap();
+    let device_in_db = shinkai_db.get_device(device_full_name.clone()).unwrap();
     assert_eq!(device_in_db.device_signature_public_key, device_identity_pk);
     assert_eq!(device_in_db.device_encryption_public_key, device_encryption_pk);
     assert_eq!(device_in_db.permission_type, IdentityPermissions::Standard);
@@ -258,7 +230,7 @@ async fn test_generate_and_use_registration_code_no_associated_profile() {
     let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db = setup_test_db();
-    let shinkai_db = Arc::new(RwLock::new(db));
+    let shinkai_db = Arc::new(db);
 
     let profile_name = "profile_1";
     let (_profile_identity_sk, _profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
@@ -273,8 +245,6 @@ async fn test_generate_and_use_registration_code_no_associated_profile() {
 
     // registration code for device
     let registration_code = shinkai_db
-        .write()
-        .await
         .generate_registration_new_code(
             IdentityPermissions::Standard,
             RegistrationCodeType::Device(profile_name.to_string()),
@@ -282,7 +252,7 @@ async fn test_generate_and_use_registration_code_no_associated_profile() {
         .unwrap();
 
     // Test use_registration_code
-    let result = shinkai_db.write().await.use_registration_code(
+    let result = shinkai_db.use_registration_code(
         &registration_code,
         node_profile_name,
         device_name,
@@ -305,7 +275,7 @@ async fn test_new_load_all_sub_identities() {
     let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db = setup_test_db();
-    let shinkai_db = Arc::new(RwLock::new(db));
+    let shinkai_db = Arc::new(db);
 
     // Create a local node profile
     create_local_node_profile(
@@ -336,16 +306,12 @@ async fn test_new_load_all_sub_identities() {
 
         // check if there was an error and print to console
         shinkai_db
-            .write()
-            .await
             .insert_profile(identity)
             .unwrap_or_else(|e| println!("Error inserting sub-identity: {}", e));
     }
 
     // Test new_load_all_sub_identities
     let identities = shinkai_db
-        .read()
-        .await
         .get_all_profiles(node_profile_name.clone())
         .unwrap_or_else(|e| panic!("Error loading all sub-identities: {}", e));
 
@@ -380,11 +346,11 @@ async fn test_new_insert_profile() {
     let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db = setup_test_db();
-    let shinkai_db = Arc::new(RwLock::new(db));
+    let shinkai_db = Arc::new(db);
 
     // Check if any profile exists before insertion
     assert!(
-        !shinkai_db.read().await.has_any_profile().unwrap(),
+        !shinkai_db.has_any_profile().unwrap(),
         "No profiles should exist before insertion"
     );
 
@@ -404,11 +370,11 @@ async fn test_new_insert_profile() {
     );
 
     // Test insert_profile
-    shinkai_db.write().await.insert_profile(identity.clone()).unwrap();
+    shinkai_db.insert_profile(identity.clone()).unwrap();
 
     // Check if any profile exists after insertion
     assert!(
-        shinkai_db.read().await.has_any_profile().unwrap(),
+        shinkai_db.has_any_profile().unwrap(),
         "A profile should exist after insertion"
     );
 }
@@ -419,7 +385,7 @@ async fn test_remove_profile() {
     let (_identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db = setup_test_db();
-    let shinkai_db = Arc::new(RwLock::new(db));
+    let shinkai_db = Arc::new(db);
 
     let subidentity_name = "subidentity_1";
     let (_subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
@@ -437,8 +403,8 @@ async fn test_remove_profile() {
     );
 
     // Insert identity
-    shinkai_db.write().await.insert_profile(identity.clone()).unwrap();
+    shinkai_db.insert_profile(identity.clone()).unwrap();
 
     // Remove identity
-    shinkai_db.write().await.remove_profile(subidentity_name).unwrap();
+    shinkai_db.remove_profile(subidentity_name).unwrap();
 }

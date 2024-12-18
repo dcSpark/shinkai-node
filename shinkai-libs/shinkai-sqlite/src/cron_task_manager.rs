@@ -151,8 +151,12 @@ impl SqliteManager {
         task_id: i64,
     ) -> Result<Vec<(String, bool, Option<String>)>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("SELECT execution_time, success, error_message FROM cron_task_executions WHERE task_id = ?1")?;
+        let mut stmt = conn.prepare(
+            "SELECT execution_time, success, error_message 
+             FROM cron_task_executions 
+             WHERE task_id = ?1 
+             ORDER BY execution_time DESC"
+        )?;
         let execution_iter = stmt.query_map(params![task_id], |row| {
             Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get(2)?))
         })?;

@@ -607,12 +607,12 @@ mod tests {
     use futures::Future;
     use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
     use shinkai_sqlite::SqliteManager;
-    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -657,7 +657,7 @@ mod tests {
     #[tokio::test]
     async fn test_set_column_with_mock_job_manager() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let node_name = "@@test.arb-sep-shinkai".to_string();
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -738,7 +738,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_column_with_values() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let node_name = "@@test.arb-sep-shinkai".to_string();
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -803,7 +803,7 @@ mod tests {
     #[tokio::test]
     async fn test_replace_value_at_position() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let node_name = "@@test.arb-sep-shinkai".to_string();
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -868,7 +868,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_new_columns_with_csv() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let node_name = "@@test.arb-sep-shinkai".to_string();
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -931,7 +931,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_new_columns_with_large_csv() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let node_name = "@@test.arb-sep-shinkai".to_string();
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1184,7 +1184,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_new_columns_with_semicolon_csv() {
         let db = setup_test_db();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let node_name = "@@test.arb-sep-shinkai".to_string();
         let node_name = ShinkaiName::new(node_name).unwrap();
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;

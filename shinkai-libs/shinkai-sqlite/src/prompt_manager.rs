@@ -5,10 +5,10 @@ use serde_json::Value;
 use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 
 impl SqliteManager {
-    pub async fn add_prompt(&self, prompt: &CustomPrompt) -> Result<CustomPrompt> {
+    pub async fn add_prompt(&self, prompt: &CustomPrompt) -> Result<CustomPrompt, SqliteManagerError> {
         // Generate the embedding from the query string
         let embedding = self.generate_embeddings(&prompt.prompt).await?;
-        self.add_prompt_with_vector(prompt, embedding)
+        Ok(self.add_prompt_with_vector(prompt, embedding)?)
     }
 
     // Adds a CustomPrompt entry to the shinkai_prompts table and its vector to prompt_vec_items
@@ -112,13 +112,13 @@ impl SqliteManager {
         }
     }
 
-    pub async fn update_prompt(&self, prompt: &CustomPrompt) -> Result<()> {
+    pub async fn update_prompt(&self, prompt: &CustomPrompt) -> Result<(), SqliteManagerError> {
         let embedding = self.generate_embeddings(&prompt.prompt).await?;
-        self.update_prompt_with_vector(prompt, embedding)
+        Ok(self.update_prompt_with_vector(prompt, embedding)?)
     }
 
     // Updates or inserts a CustomPrompt and its vector
-    pub fn update_prompt_with_vector(&self, prompt: &CustomPrompt, vector: Vec<f32>) -> Result<()> {
+    pub fn update_prompt_with_vector(&self, prompt: &CustomPrompt, vector: Vec<f32>) -> Result<(), SqliteManagerError> {
         // TODO: add error handling
         // if prompt.rowid.is_none() {
         //     return ;
@@ -268,7 +268,7 @@ impl SqliteManager {
         query: &str,
         num_results: u64,
         include_disabled: bool,
-    ) -> Result<Vec<(CustomPrompt, f64)>> {
+    ) -> Result<Vec<(CustomPrompt, f64)>, SqliteManagerError> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -277,7 +277,7 @@ impl SqliteManager {
         let embedding = self.generate_embeddings(query).await?;
 
         // Use the new function to perform the search
-        self.prompt_vector_search_with_vector(embedding, num_results, include_disabled)
+        Ok(self.prompt_vector_search_with_vector(embedding, num_results, include_disabled)?)
     }
 
     // Retrieves the embedding of a prompt by rowid

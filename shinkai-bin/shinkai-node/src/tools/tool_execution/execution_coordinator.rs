@@ -2,9 +2,10 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
+use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
-use blake3::Hash;
+
 use serde_json::json;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -17,7 +18,7 @@ use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
@@ -31,7 +32,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 pub async fn handle_oauth(
     oauth: &Option<Vec<OAuth>>,
-    db: &Arc<RwLock<SqliteManager>>,
+    db: &Arc<SqliteManager>,
     app_id: String,
     tool_id: String,
     tool_router_key: String,
@@ -41,8 +42,6 @@ pub async fn handle_oauth(
         for o in oauth_vec {
             // Check if OAuth token already exists
             let existing_token = db
-                .write()
-                .await
                 .get_oauth_token(o.name.clone(), tool_router_key.clone())
                 .ok()
                 .unwrap_or(None);
@@ -91,9 +90,7 @@ pub async fn handle_oauth(
                     updated_at: Utc::now(),
                 };
 
-                db.write()
-                    .await
-                    .add_oauth_token(&oauth_token)
+                db.add_oauth_token(&oauth_token)
                     .map_err(|e| ToolError::ExecutionError(format!("Failed to store OAuth token: {}", e)))?;
 
                 uuid
@@ -103,10 +100,10 @@ pub async fn handle_oauth(
             let oauth_login_url = format!(
                 "{}?client_id={}&redirect_uri={}&scope={}&state={}",
                 o.authorization_url,
-                o.client_id,
+                urlencoding::encode(&o.client_id),
                 urlencoding::encode(&o.redirect_url),
-                o.scopes.join(" "),
-                uuid
+                urlencoding::encode(&o.scopes.join(" ")),
+                urlencoding::encode(&uuid)
             );
 
             return Err(ToolError::OAuthError(oauth_login_url));
@@ -118,8 +115,7 @@ pub async fn handle_oauth(
 pub async fn execute_tool_cmd(
     bearer: String,
     node_name: ShinkaiName,
-    db: Arc<RwLock<SqliteManager>>,
-    // vector_fs: Arc<VectorFS>,
+    db: Arc<SqliteManager>,
     tool_router_key: String,
     parameters: Map<String, Value>,
     tool_id: String,
@@ -158,30 +154,21 @@ pub async fn execute_tool_cmd(
     } else {
         // Assume it's a Deno tool if not Rust
         let tool = db
-            .read()
-            .await
             .get_tool_by_key(&tool_router_key)
             .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
-        let mut envs = HashMap::new();
-        envs.insert("BEARER".to_string(), bearer);
-        envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
-        envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
-        envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
-        envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider.clone());
-
         match tool {
             ShinkaiTool::Python(python_tool, _) => {
-                let oauth = handle_oauth(
-                    &python_tool.oauth,
-                    &db,
+                let env = generate_execution_environment(
+                    db.clone(),
+                    llm_provider.clone(),
                     app_id.clone(),
                     tool_id.clone(),
                     tool_router_key.clone(),
+                    "".to_string(), // TODO Pass data from the API
+                    &python_tool.oauth.clone(),
                 )
                 .await?;
-
-                envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
@@ -198,7 +185,7 @@ pub async fn execute_tool_cmd(
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 python_tool
                     .run(
-                        envs,
+                        env,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
                         support_files,
@@ -209,20 +196,21 @@ pub async fn execute_tool_cmd(
                         tool_id.clone(),
                         node_name,
                         true,
+                        Some(tool_router_key),
                     )
                     .map(|result| json!(result.data))
             }
             ShinkaiTool::Deno(deno_tool, _) => {
-                let oauth = handle_oauth(
-                    &deno_tool.oauth,
-                    &db,
+                let env = generate_execution_environment(
+                    db.clone(),
+                    llm_provider.clone(),
                     app_id.clone(),
                     tool_id.clone(),
                     tool_router_key.clone(),
+                    "".to_string(), // TODO Pass data from the API
+                    &deno_tool.oauth.clone(),
                 )
                 .await?;
-
-                envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
@@ -239,7 +227,7 @@ pub async fn execute_tool_cmd(
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 deno_tool
                     .run(
-                        envs,
+                        env,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
                         support_files,
@@ -250,6 +238,7 @@ pub async fn execute_tool_cmd(
                         tool_id.clone(),
                         node_name,
                         true,
+                        Some(tool_router_key),
                     )
                     .map(|result| json!(result.data))
                     .map_err(|e| ToolError::ExecutionError(e.to_string()))
@@ -266,7 +255,7 @@ pub async fn execute_code(
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
     oauth: Option<Vec<OAuth>>,
-    db: Arc<RwLock<SqliteManager>>,
+    db: Arc<SqliteManager>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
@@ -323,7 +312,7 @@ pub async fn check_code(
     tool_id: String,
     app_id: String,
     tools: Vec<String>,
-    sqlite_manager: Arc<RwLock<SqliteManager>>,
+    sqlite_manager: Arc<SqliteManager>,
 ) -> Result<Vec<String>, ToolError> {
     eprintln!("[check_code] tool_type: {}", tool_type);
 

@@ -85,7 +85,7 @@ impl JobCallbackManager {
 
     pub async fn handle_implementation_check_callback(
         &self,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         tool_type: DynamicToolType,
         inference_response_content: String,
         available_tools: Vec<String>,

@@ -41,15 +41,11 @@ pub struct SqliteManager {
     pool: Arc<Pool<SqliteConnectionManager>>,
     fts_pool: Arc<Pool<SqliteConnectionManager>>,
     api_url: String,
-    model_type: EmbeddingModelType,
 }
 
 impl std::fmt::Debug for SqliteManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SqliteManager")
-            .field("api_url", &self.api_url)
-            .field("model_type", &self.model_type)
-            .finish()
+        f.debug_struct("SqliteManager").field("api_url", &self.api_url).finish()
     }
 }
 
@@ -124,7 +120,6 @@ impl SqliteManager {
             pool: Arc::new(pool),
             fts_pool: Arc::new(fts_pool), // Use the in-memory connection pool
             api_url,
-            model_type,
         };
         let fts_sync_result = manager.sync_tools_fts_table();
         if let Err(e) = fts_sync_result {
@@ -135,6 +130,8 @@ impl SqliteManager {
         if let Err(e) = fts_sync_result {
             eprintln!("Error synchronizing Prompts FTS table: {}", e);
         }
+
+        manager.update_default_embedding_model(model_type)?;
 
         Ok(manager)
     }
@@ -175,6 +172,8 @@ impl SqliteManager {
         Self::initialize_oauth_table(conn)?;
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
+        // Initialize the embedding model type table
+        Self::initialize_embedding_model_type_table(conn)?;
         Ok(())
     }
 
@@ -806,6 +805,38 @@ impl SqliteManager {
     //     Ok(())
     // }
 
+    // New method to initialize the embedding model type table
+    fn initialize_embedding_model_type_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS embedding_model_type (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                model_type TEXT NOT NULL UNIQUE
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // New method to update the embedding model type
+    pub fn update_default_embedding_model(&self, model_type: EmbeddingModelType) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        conn.execute("DELETE FROM embedding_model_type;", [])?;
+        conn.execute(
+            "INSERT INTO embedding_model_type (model_type) VALUES (?);",
+            [&model_type.to_string() as &dyn ToSql],
+        )?;
+        Ok(())
+    }
+
+    // New method to get the embedding model type
+    pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        Ok(conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
+            let model_type_str: String = row.get(0)?;
+            EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
+        })?)
+    }
+
     // Returns a connection from the pool
     pub fn get_connection(&self) -> Result<r2d2::PooledConnection<SqliteConnectionManager>> {
         self.pool.get().map_err(|e| {
@@ -832,9 +863,10 @@ impl SqliteManager {
     }
 
     // New method to generate embeddings
-    pub async fn generate_embeddings(&self, prompt: &str) -> Result<Vec<f32>> {
-        let embedding_function = EmbeddingFunction::new(&self.api_url, self.model_type.clone());
-        embedding_function.request_embeddings(prompt).await
+    pub async fn generate_embeddings(&self, prompt: &str) -> Result<Vec<f32>, SqliteManagerError> {
+        let model_type = self.get_default_embedding_model()?;
+        let embedding_function = EmbeddingFunction::new(&self.api_url, model_type);
+        Ok(embedding_function.request_embeddings(prompt).await?)
     }
 
     // Utility function to generate a vector of length 384 filled with a specified value
@@ -842,14 +874,14 @@ impl SqliteManager {
         vec![value; 384]
     }
 
-    pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
-        Ok(self.model_type.clone())
-    }
+    // pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
+    //     Ok(self.model_type.clone())
+    // }
+    // pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
+    //     self.model_type = model;
+    //     Ok(())
+    // }
 
-    pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
-        self.model_type = model;
-        Ok(())
-    }
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
@@ -893,6 +925,7 @@ mod tests {
     use std::sync::{Arc, RwLock};
     use std::thread;
     use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
+    use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
 
     async fn setup_test_db() -> SqliteManager {
@@ -981,5 +1014,96 @@ mod tests {
         for handle in handles {
             handle.join().unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_db_read_lock() {
+        let manager = setup_test_db().await;
+        manager.set_version("1.0.0").unwrap();
+
+        // Wrap the manager in an Arc to allow shared ownership across threads
+        let manager = Arc::new(manager);
+
+        // Start the timer
+        let start_time = Instant::now();
+
+        // Simulate a read operation in a separate thread
+        let manager_clone = Arc::clone(&manager);
+        let handle = thread::spawn(move || {
+            println!("Thread 1: Simulating read operation...");
+            let _conn = manager_clone.get_connection().unwrap();
+            let (version, needs_reset) = manager_clone.get_version().unwrap();
+            assert_eq!(version, "1.0.0");
+            assert!(!needs_reset);
+            println!("Thread 1: Read complete.");
+            thread::sleep(Duration::from_secs(1)); // Simulate a delay
+        });
+
+        // Attempt to read from the database in another thread
+        let manager_clone = Arc::clone(&manager);
+        let read_handle = thread::spawn(move || {
+            println!("Thread 2: Reading version...");
+            let _conn = manager_clone.get_connection().unwrap();
+            let (version, needs_reset) = manager_clone.get_version().unwrap();
+            assert_eq!(version, "1.0.0");
+            assert!(!needs_reset);
+            println!("Thread 2: Read complete.");
+
+            // Measure the elapsed time after the read operation
+            let elapsed_time = start_time.elapsed();
+            println!("Read operation completed in {:?}", elapsed_time);
+
+            // Fail the test if it takes 1 second or more
+            assert!(elapsed_time < Duration::from_secs(1), "Test took too long to complete");
+        });
+
+        // Wait for both threads to complete
+        handle.join().unwrap();
+        read_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_db_write_lock() {
+        let manager = setup_test_db().await;
+        manager.set_version("1.0.0").unwrap();
+
+        // Wrap the manager in an Arc to allow shared ownership across threads
+        let manager = Arc::new(manager);
+
+        // Start the timer
+        let start_time = Instant::now();
+
+        // Simulate a write operation in a separate thread
+        let manager_clone = Arc::clone(&manager);
+        let handle = thread::spawn(move || {
+            println!("Thread 1: Simulating write operation...");
+            let conn = manager_clone.get_connection().unwrap();
+            conn.execute("BEGIN IMMEDIATE TRANSACTION;", []).unwrap();
+            thread::sleep(Duration::from_secs(1)); // Simulate a write operation
+            conn.execute("COMMIT;", []).unwrap();
+            println!("Thread 1: Finished write operation.");
+        });
+
+        // Attempt to read from the database in another thread
+        let manager_clone = Arc::clone(&manager);
+        let read_handle = thread::spawn(move || {
+            println!("Thread 2: Reading version...");
+            let _conn = manager_clone.get_connection().unwrap();
+            let (version, needs_reset) = manager_clone.get_version().unwrap();
+            assert_eq!(version, "1.0.0");
+            assert!(!needs_reset);
+            println!("Thread 2: Read complete.");
+
+            // Measure the elapsed time after the read operation
+            let elapsed_time = start_time.elapsed();
+            println!("Read operation completed in {:?}", elapsed_time);
+
+            // Fail the test if it takes 1 second or more
+            assert!(elapsed_time < Duration::from_secs(1), "Test took too long to complete");
+        });
+
+        // Wait for both threads to complete
+        handle.join().unwrap();
+        read_handle.join().unwrap();
     }
 }

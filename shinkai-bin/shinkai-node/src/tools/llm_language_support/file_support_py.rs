@@ -5,16 +5,22 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "Gets an array of mounted files.",
             "List[str]",
             vec![],
-            "mount_paths = os.environ.get('SHINKAI_MOUNT')\n    if not mount_paths:\n        return []\n    return [path.strip() for path in mount_paths.split(',')]",
-            "Array of files"
+            r#"mount_paths = os.environ.get('SHINKAI_MOUNT')
+    if not mount_paths:
+        return []
+    return [path.strip() for path in mount_paths.split(',') if path.strip()]"#,
+            "Array of files",
         ),
         (
             "get_asset_paths",
             "Gets an array of asset files. These files are read only.",
             "List[str]",
             vec![],
-            "asset_paths = os.environ.get('SHINKAI_ASSETS')\n    if not asset_paths:\n        return []\n    return [path.strip() for path in asset_paths.split(',')]",
-            "Array of files"
+            r#"asset_paths = os.environ.get('SHINKAI_ASSETS')
+    if not asset_paths:
+        return []
+    return [path.strip() for path in asset_paths.split(',') if path.strip()]"#,
+            "Array of files",
         ),
         (
             "get_home_path",
@@ -22,7 +28,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "str",
             vec![],
             "return os.environ.get('SHINKAI_HOME', '')",
-            "Home directory path"
+            "Home directory path",
         ),
         (
             "get_shinkai_node_location",
@@ -30,7 +36,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "str",
             vec![],
             "return os.environ.get('SHINKAI_NODE_LOCATION', '')",
-            "Shinkai Node URL"
+            "Shinkai Node URL",
         ),
         (
             "get_access_token",
@@ -54,7 +60,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
     except Exception as e:
         print(f'Error getting access token: {str(e)}')
         return ''"#,
-            "OAuth access token"
+            "OAuth access token",
         ),
     ];
 

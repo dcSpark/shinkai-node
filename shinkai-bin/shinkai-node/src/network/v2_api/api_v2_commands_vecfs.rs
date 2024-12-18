@@ -13,7 +13,8 @@ use shinkai_message_primitives::{
         APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
         APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
         APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
-    }, shinkai_utils::shinkai_path::ShinkaiPath,
+    },
+    shinkai_utils::shinkai_path::ShinkaiPath,
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::{Mutex, RwLock};
@@ -25,7 +26,7 @@ use crate::{
 
 impl Node {
     pub async fn v2_api_vec_fs_retrieve_path_simplified_json(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrievePathSimplifiedJson,
         bearer: String,
@@ -97,7 +98,7 @@ impl Node {
     }
 
     pub async fn v2_convert_files_and_save_to_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIConvertFilesAndSaveToFolder,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -126,7 +127,7 @@ impl Node {
     }
 
     pub async fn v2_create_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCreateFolder,
         bearer: String,
@@ -198,7 +199,7 @@ impl Node {
     }
 
     pub async fn v2_move_item(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveItem,
         bearer: String,
@@ -282,7 +283,7 @@ impl Node {
     }
 
     pub async fn v2_copy_item(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyItem,
         bearer: String,
@@ -366,7 +367,7 @@ impl Node {
     }
 
     pub async fn v2_move_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveFolder,
         bearer: String,
@@ -450,7 +451,7 @@ impl Node {
     }
 
     pub async fn v2_copy_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyFolder,
         bearer: String,
@@ -534,7 +535,7 @@ impl Node {
     }
 
     pub async fn v2_delete_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteFolder,
         bearer: String,
@@ -605,7 +606,7 @@ impl Node {
     }
 
     pub async fn v2_delete_item(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteItem,
         bearer: String,
@@ -660,7 +661,7 @@ impl Node {
     }
 
     pub async fn v2_search_items(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsSearchItems,
         bearer: String,
@@ -683,7 +684,7 @@ impl Node {
             }
         };
 
-        let search_path_str = input_payload.path.as_deref().unwrap_or("/");
+        let search_path_str = input_payload.path.as_deref().unwrap_or("/").clone();
         let search_path = match ShinkaiPath::from_string(search_path_str) {
             Ok(path) => path,
             Err(e) => {
@@ -736,7 +737,7 @@ impl Node {
     }
 
     pub async fn v2_retrieve_vector_resource(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         path: String,
         bearer: String,
@@ -820,7 +821,7 @@ impl Node {
     }
 
     pub async fn v2_upload_file_to_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         bearer: String,
@@ -886,7 +887,6 @@ impl Node {
 
         match Self::v2_convert_files_and_save_to_folder(
             db,
-            vector_fs,
             identity_manager,
             input_payload,
             embedding_generator,
@@ -938,7 +938,7 @@ impl Node {
     }
 
     pub async fn v2_retrieve_source_file(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrieveSourceFile,
         bearer: String,

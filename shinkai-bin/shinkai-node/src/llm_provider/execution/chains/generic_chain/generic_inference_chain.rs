@@ -101,7 +101,7 @@ impl GenericInferenceChain {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         full_job: Job,
         user_message: String,
         user_tool_selected: Option<String>,
@@ -248,7 +248,7 @@ impl GenericInferenceChain {
                     // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
                         let results = tool_router
-                            .combined_tool_search(&user_message.clone(), 5, false, true)
+                            .combined_tool_search(&user_message.clone(), 4, false, true)
                             .await;
 
                         match results {
@@ -414,6 +414,7 @@ impl GenericInferenceChain {
 
                 let mut function_call_with_router_key = function_call.clone();
                 function_call_with_router_key.tool_router_key = Some(shinkai_tool.tool_router_key());
+                function_call_with_router_key.response = Some(function_response.response.clone());
                 tool_calls_history.push(function_call_with_router_key);
 
                 // Trigger WS update after receiving function_response

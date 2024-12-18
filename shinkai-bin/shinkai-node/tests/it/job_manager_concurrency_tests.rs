@@ -81,7 +81,7 @@ fn node_name() -> ShinkaiName {
     ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
 }
 
-async fn setup_default_vector_fs(db: Arc<RwLock<SqliteManager>>) -> VectorFS {
+async fn setup_default_vector_fs(db: Arc<SqliteManager>) -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
     let profile_list = vec![default_test_profile()];
     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
@@ -97,14 +97,14 @@ async fn setup_default_vector_fs(db: Arc<RwLock<SqliteManager>>) -> VectorFS {
 async fn test_process_job_queue_concurrency() {
     let num_threads = 8;
     let db = utils::db_handlers::setup_test_db();
-    let db = Arc::new(RwLock::new(db));
+    let db = Arc::new(db);
     let vector_fs = Arc::new(setup_default_vector_fs(db.clone()).await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<RwLock<SqliteManager>>,
+                              db: Weak<SqliteManager>,
                               _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,
@@ -136,11 +136,7 @@ async fn test_process_job_queue_concurrency() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let _ = db_arc
-                .write()
-                .await
-                .unsafe_insert_inbox_message(&message.clone(), None, None)
-                .await;
+            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None, None).await;
 
             Ok("Success".to_string())
         })
@@ -231,7 +227,7 @@ async fn test_process_job_queue_concurrency() {
     let long_running_task = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(400)).await;
 
-        let last_messages_all = db.read().await.get_last_messages_from_all(10).unwrap();
+        let last_messages_all = db.get_last_messages_from_all(10).unwrap();
         assert_eq!(last_messages_all.len(), 8);
     });
 
@@ -254,14 +250,14 @@ async fn test_process_job_queue_concurrency() {
 async fn test_sequential_process_for_same_job_id() {
     let num_threads = 8;
     let db = utils::db_handlers::setup_test_db();
-    let db = Arc::new(RwLock::new(db));
+    let db = Arc::new(db);
     let vector_fs = Arc::new(setup_default_vector_fs(db.clone()).await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
-                              db: Weak<RwLock<SqliteManager>>,
+                              db: Weak<SqliteManager>,
                               _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,
@@ -293,11 +289,7 @@ async fn test_sequential_process_for_same_job_id() {
 
             // Write the message to an inbox with the job name
             let db_arc = db.upgrade().unwrap();
-            let _ = db_arc
-                .write()
-                .await
-                .unsafe_insert_inbox_message(&message.clone(), None, None)
-                .await;
+            let _ = db_arc.unsafe_insert_inbox_message(&message.clone(), None, None).await;
 
             Ok("Success".to_string())
         })
@@ -383,7 +375,7 @@ async fn test_sequential_process_for_same_job_id() {
     let long_running_task = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        let last_messages_all = db_copy.read().await.get_last_messages_from_all(10).unwrap();
+        let last_messages_all = db_copy.get_last_messages_from_all(10).unwrap();
         assert_eq!(last_messages_all.len(), 1);
     });
 

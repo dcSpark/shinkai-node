@@ -67,7 +67,7 @@ fn node_name() -> ShinkaiName {
     ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
 }
 
-async fn setup_default_vector_fs(db: Arc<RwLock<SqliteManager>>) -> VectorFS {
+async fn setup_default_vector_fs(db: Arc<SqliteManager>) -> VectorFS {
     let generator = RemoteEmbeddingGenerator::new_default();
     let profile_list = vec![default_test_profile()];
     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
@@ -196,7 +196,7 @@ async fn test_vrkai_vrpack_vector_search() {
 async fn test_vector_fs_initializes_new_profile_automatically() {
     setup();
     let db = utils::db_handlers::setup_test_db();
-    let db = Arc::new(RwLock::new(db));
+    let db = Arc::new(db);
     let vector_fs = setup_default_vector_fs(db.clone()).await;
 
     let fs_internals = vector_fs.get_profile_fs_internals_cloned(&default_test_profile()).await;
@@ -207,7 +207,7 @@ async fn test_vector_fs_initializes_new_profile_automatically() {
 async fn test_vector_fs_saving_reading() {
     setup();
     let db = utils::db_handlers::setup_test_db();
-    let db = Arc::new(RwLock::new(db));
+    let db = Arc::new(db);
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs(db.clone()).await;
 
@@ -581,7 +581,7 @@ async fn test_vector_fs_saving_reading() {
 async fn test_vector_fs_operations() {
     setup();
     let db = utils::db_handlers::setup_test_db();
-    let db = Arc::new(RwLock::new(db));
+    let db = Arc::new(db);
     let generator = RemoteEmbeddingGenerator::new_default();
     let mut vector_fs = setup_default_vector_fs(db.clone()).await;
 
@@ -1205,7 +1205,7 @@ async fn test_vector_fs_operations() {
 async fn test_folder_empty_check_reuse() {
     setup();
     let db = utils::db_handlers::setup_test_db();
-    let db = Arc::new(RwLock::new(db));
+    let db = Arc::new(db);
     let generator = RemoteEmbeddingGenerator::new_default();
     let vector_fs = setup_default_vector_fs(db.clone()).await;
 

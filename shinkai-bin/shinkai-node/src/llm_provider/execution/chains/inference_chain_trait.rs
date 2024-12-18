@@ -57,7 +57,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn update_iteration_count(&mut self, new_iteration_count: u64);
     fn update_message(&mut self, new_message: ParsedUserMessage);
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>>;
+    fn db(&self) -> Arc<SqliteManager>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
     fn message_hash_id(&self) -> Option<String>;
@@ -103,7 +103,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.user_message = new_message;
     }
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>> {
+    fn db(&self) -> Arc<SqliteManager> {
         Arc::clone(&self.db)
     }
     
@@ -188,7 +188,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
 /// using all fields in this struct, but they are available nonetheless.
 #[derive(Clone)]
 pub struct InferenceChainContext {
-    pub db: Arc<RwLock<SqliteManager>>,
+    pub db: Arc<SqliteManager>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
     pub user_tool_selected: Option<String>,
@@ -214,7 +214,7 @@ pub struct InferenceChainContext {
 impl InferenceChainContext {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         full_job: Job,
         user_message: ParsedUserMessage,
         user_tool_selected: Option<String>,
@@ -339,6 +339,7 @@ pub struct FunctionCall {
     pub name: String,
     pub arguments: serde_json::Map<String, serde_json::Value>,
     pub tool_router_key: Option<String>,
+    pub response: Option<String>,
 }
 
 impl FunctionCall {
@@ -347,6 +348,7 @@ impl FunctionCall {
             name: self.name.clone(),
             arguments: self.arguments.clone(),
             tool_router_key: self.tool_router_key.clone(),
+            response: self.response.clone(),
         }
     }
 }
@@ -393,7 +395,7 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).update_message(new_message)
     }
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>> {
+    fn db(&self) -> Arc<SqliteManager> {
         (**self).db()
     }
 
@@ -483,7 +485,7 @@ pub struct MockInferenceChainContext {
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
     pub raw_files: RawFiles,
-    pub db: Option<Arc<RwLock<SqliteManager>>>,
+    pub db: Option<Arc<SqliteManager>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     pub llm_stopper: Arc<LLMStopper>,
@@ -499,7 +501,7 @@ impl MockInferenceChainContext {
         iteration_count: u64,
         max_tokens_in_prompt: usize,
         raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
-        db: Option<Arc<RwLock<SqliteManager>>>,
+        db: Option<Arc<SqliteManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         llm_stopper: Arc<LLMStopper>,
@@ -560,7 +562,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         self.user_message = new_message;
     }
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>> {
+    fn db(&self) -> Arc<SqliteManager> {
         self.db.clone().expect("DB is not set")
     }
 
