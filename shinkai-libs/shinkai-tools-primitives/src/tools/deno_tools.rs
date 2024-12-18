@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 use super::parameters::Parameters;
+use super::shinkai_tool::ShinkaiTool;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
@@ -81,7 +82,7 @@ impl DenoTool {
                 let path = PathBuf::from(&node_storage_path)
                     .join(".tools_storage")
                     .join("tools")
-                    .join(tool_router_key);
+                    .join(ShinkaiTool::convert_to_path(&tool_router_key));
                 self.assets
                     .clone()
                     .unwrap_or(vec![])
