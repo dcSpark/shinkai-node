@@ -334,6 +334,7 @@ impl CoinbaseMPCWallet {
                     tool_id,
                     node_name,
                     false,
+                    None,
                 )
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
             let result_str =

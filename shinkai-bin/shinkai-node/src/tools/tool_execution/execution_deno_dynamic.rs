@@ -1,12 +1,13 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::deno_tools::{DenoTool, ToolResult};
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 
 use super::execution_coordinator::handle_oauth;
 use crate::utils::environment::fetch_node_environment;
@@ -46,6 +47,7 @@ pub async fn execute_deno_tool(
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
+        assets: None,
     };
 
     let mut envs = HashMap::new();
@@ -71,6 +73,27 @@ pub async fn execute_deno_tool(
         .clone()
         .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
 
+    // Get Assets for Playground;
+    // Read all files in the assets directory
+    let assets_path = PathBuf::from(&node_storage_path)
+        .join(".tools_storage")
+        .join("playground")
+        .join(app_id.clone());
+
+    let mut assets_files = Vec::new();
+    if assets_path.exists() {
+        for entry in std::fs::read_dir(assets_path)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+        {
+            let entry =
+                entry.map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
+            let path = entry.path();
+            if path.is_file() {
+                assets_files.push(path);
+            }
+        }
+    }
+
     match tool.run_on_demand(
         envs,
         node_env.api_listen_address.ip().to_string(),
@@ -83,6 +106,7 @@ pub async fn execute_deno_tool(
         tool_id.clone(),
         node_name,
         false,
+        assets_files,
     ) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
@@ -114,6 +138,7 @@ pub fn check_deno_tool(
         sql_tables: None,
         sql_queries: None,
         file_inbox: None,
+        assets: None,
     };
 
     let node_env = fetch_node_environment();

@@ -2591,14 +2591,16 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_export_tool(db_clone, bearer, tool_key_path, res).await;
+                    let _ = Node::v2_api_export_tool(db_clone, bearer, node_env, tool_key_path, res).await;
                 });
             }
             NodeCommand::V2ApiImportTool { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_tool(db_clone, bearer, url, res).await;
+                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, res).await;
                 });
             }
             NodeCommand::V2ApiRemoveTool {
@@ -2765,10 +2767,18 @@ impl Node {
                     let _ = Node::v2_api_search_shinkai_tool(db_clone, bearer, query, agent_or_llm, res).await;
                 });
             }
-            NodeCommand::V2ApiSetPlaygroundTool { bearer, payload, res } => {
+            NodeCommand::V2ApiSetPlaygroundTool {
+                bearer,
+                payload,
+                tool_id,
+                app_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_playground_tool(db_clone, bearer, payload, res).await;
+                    let _ = Node::v2_api_set_playground_tool(db_clone, bearer, payload, node_env, tool_id, app_id, res)
+                        .await;
                 });
             }
             NodeCommand::V2ApiListPlaygroundTools { bearer, res } => {
@@ -2809,6 +2819,49 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_oauth_token(db_clone, bearer, code, state, res).await;
+                });
+            }
+            NodeCommand::V2ApiUploadToolAsset {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                file_data,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_upload_tool_asset(
+                        db_clone, bearer, tool_id, app_id, file_name, file_data, node_env, res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiListToolAssets {
+                bearer,
+                tool_id,
+                app_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_tool_assets(db_clone, bearer, tool_id, app_id, node_env, res).await;
+                });
+            }
+            NodeCommand::V2ApiDeleteToolAsset {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_delete_tool_asset(db_clone, bearer, tool_id, app_id, file_name, node_env, res)
+                        .await;
                 });
             }
             _ => (),

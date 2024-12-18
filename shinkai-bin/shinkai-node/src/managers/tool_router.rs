@@ -425,6 +425,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
         python_tool
     }
@@ -552,6 +553,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         tool_id,
                         node_name,
                         false,
+                        None,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -626,9 +628,10 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         function_config_vec,
                         node_storage_path,
                         app_id,
-                        tool_id,
+                        tool_id.clone(),
                         node_name,
                         false,
+                        Some(tool_id),
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -959,10 +962,11 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 function_config_vec,
                 node_storage_path,
                 app_id,
-                tool_id,
+                tool_id.clone(),
                 // TODO Is this correct?
                 requester_node_name,
                 true,
+                Some(tool_id),
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =

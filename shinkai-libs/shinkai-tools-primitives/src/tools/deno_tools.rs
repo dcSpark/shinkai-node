@@ -41,6 +41,7 @@ pub struct DenoTool {
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
+    pub assets: Option<Vec<String>>,
 }
 
 impl DenoTool {
@@ -73,7 +74,24 @@ impl DenoTool {
         tool_id: String,
         node_name: ShinkaiName,
         is_temporary: bool,
+        files_tool_router_key: Option<String>,
     ) -> Result<RunResult, ToolError> {
+        let assets_files = match files_tool_router_key {
+            Some(tool_router_key) => {
+                let path = PathBuf::from(&node_storage_path)
+                    .join(".tools_storage")
+                    .join("tools")
+                    .join(tool_router_key);
+                self.assets
+                    .clone()
+                    .unwrap_or(vec![])
+                    .iter()
+                    .map(|asset| path.clone().join(asset))
+                    .collect()
+            }
+            None => vec![],
+        };
+
         self.run_on_demand(
             envs,
             api_ip,
@@ -86,6 +104,7 @@ impl DenoTool {
             tool_id,
             node_name,
             is_temporary,
+            assets_files,
         )
     }
 
@@ -102,6 +121,7 @@ impl DenoTool {
         tool_id: String,
         node_name: ShinkaiName,
         is_temporary: bool,
+        assets_files: Vec<PathBuf>,
     ) -> Result<RunResult, ToolError> {
         println!(
             "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
@@ -210,7 +230,7 @@ impl DenoTool {
                                 execution_id: tool_id.clone(),
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
-                                assets_files: vec![],
+                                assets_files,
                                 mount_files: vec![],
                             },
                             deno_binary_path: PathBuf::from(

@@ -736,6 +736,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -799,6 +800,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         let deno_tool_2 = DenoTool {
@@ -819,6 +821,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         let deno_tool_3 = DenoTool {
@@ -839,6 +842,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         let shinkai_tool_1 = ShinkaiTool::Deno(deno_tool_1, true);
@@ -896,6 +900,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         let deno_tool_2 = DenoTool {
@@ -916,6 +921,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         let deno_tool_3 = DenoTool {
@@ -936,6 +942,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -1018,6 +1025,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -1062,6 +1070,7 @@ mod tests {
                 sql_tables: None,
                 sql_queries: None,
                 file_inbox: None,
+                assets: None,
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -1081,6 +1090,7 @@ mod tests {
                 sql_tables: None,
                 sql_queries: None,
                 file_inbox: None,
+                assets: None,
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -1100,6 +1110,7 @@ mod tests {
                 sql_tables: None,
                 sql_queries: None,
                 file_inbox: None,
+                assets: None,
             },
         ];
 
@@ -1161,6 +1172,7 @@ mod tests {
             sql_tables: Some(vec![]),
             sql_queries: Some(vec![]),
             file_inbox: None,
+            assets: None,
             oauth: None,
         };
 
@@ -1182,6 +1194,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         // Add both tools to the database
@@ -1269,6 +1282,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let disabled_non_network_tool = DenoTool {
@@ -1289,6 +1303,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
@@ -1417,6 +1432,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let tool2 = DenoTool {
@@ -1437,6 +1453,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         let tool3 = DenoTool {
@@ -1457,6 +1474,7 @@ mod tests {
             sql_queries: None,
             file_inbox: None,
             oauth: None,
+            assets: None,
         };
 
         // Add tools to database with specific vectors

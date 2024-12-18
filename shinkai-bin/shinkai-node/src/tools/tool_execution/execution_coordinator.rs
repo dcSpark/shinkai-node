@@ -203,6 +203,7 @@ pub async fn execute_tool_cmd(
                         tool_id.clone(),
                         node_name,
                         true,
+                        Some(tool_router_key),
                     )
                     .map(|result| json!(result.data))
             }
@@ -244,6 +245,7 @@ pub async fn execute_tool_cmd(
                         tool_id.clone(),
                         node_name,
                         true,
+                        Some(tool_router_key),
                     )
                     .map(|result| json!(result.data))
                     .map_err(|e| ToolError::ExecutionError(e.to_string()))
