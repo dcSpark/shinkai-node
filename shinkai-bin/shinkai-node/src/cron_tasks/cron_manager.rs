@@ -323,15 +323,19 @@ impl CronManager {
                 config,
                 message,
                 job_creation_info,
+                llm_provider,
             } => {
                 let job_id = job_manager
                     .lock()
                     .await
-                    .process_job_creation(job_creation_info, &shinkai_profile, &cron_job.task_id.to_string())
+                    .process_job_creation(job_creation_info, &shinkai_profile, &llm_provider)
                     .await?;
 
                 // Update the job configuration
                 db.update_job_config(&job_id, config)?;
+
+                let mut job_message = message.clone();
+                job_message.job_id = job_id;
 
                 // Use send_job_message_with_bearer instead of ShinkaiMessageBuilder
                 Self::send_job_message_with_bearer(
@@ -339,7 +343,7 @@ impl CronManager {
                     node_profile_name.clone(),
                     identity_manager.clone(),
                     job_manager.clone(),
-                    message.clone(), // Use the message directly
+                    job_message,
                     node_encryption_sk.clone(),
                     node_encryption_pk.clone(),
                     identity_secret_key.clone(),

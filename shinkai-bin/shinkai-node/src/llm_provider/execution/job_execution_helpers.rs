@@ -15,7 +15,7 @@ use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 impl JobManager {
     /// Inferences the Agent's LLM with the given prompt.
