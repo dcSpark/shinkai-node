@@ -13,6 +13,8 @@ pub struct CronTask {
     pub created_at: String,
     pub last_modified: String,
     pub action: CronTaskAction,
+    #[serde(default)]
+    pub paused: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]

@@ -2653,6 +2653,7 @@ impl Node {
                 action,
                 name,
                 description,
+                paused,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2665,6 +2666,7 @@ impl Node {
                         action,
                         name,
                         description,
+                        paused,
                         res,
                     )
                     .await;

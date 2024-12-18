@@ -1080,6 +1080,7 @@ pub enum NodeCommand {
         action: CronTaskAction,
         name: String,
         description: Option<String>,
+        paused: bool,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiForceExecuteCronTask {

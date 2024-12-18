@@ -541,6 +541,7 @@ mod tests {
                 job_id: "test".to_string(),
                 message: job_message,
             },
+            paused: false,
         }
     }
 

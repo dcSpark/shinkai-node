@@ -20,9 +20,9 @@ impl SqliteManager {
         let action_json = serde_json::to_string(action)?;
 
         tx.execute(
-            "INSERT INTO cron_tasks (name, description, cron, created_at, last_modified, action) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![name, description, cron, created_at, last_modified, action_json],
+            "INSERT INTO cron_tasks (name, description, cron, created_at, last_modified, action, paused) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![name, description, cron, created_at, last_modified, action_json, false],
         )?;
 
         let task_id = tx.last_insert_rowid();
@@ -39,7 +39,7 @@ impl SqliteManager {
     pub fn get_cron_task(&self, task_id: i64) -> Result<Option<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT task_id, name, description, cron, created_at, last_modified, action 
+            "SELECT task_id, name, description, cron, created_at, last_modified, action, paused 
              FROM cron_tasks WHERE task_id = ?1"
         )?;
         let mut rows = stmt.query(params![task_id])?;
@@ -57,6 +57,7 @@ impl SqliteManager {
                 created_at: row.get(4)?,
                 last_modified: row.get(5)?,
                 action,
+                paused: row.get(7)?,
             }))
         } else {
             Ok(None)
@@ -70,6 +71,7 @@ impl SqliteManager {
         description: Option<&str>,
         cron: &str,
         action: &CronTaskAction,
+        paused: bool,
     ) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
@@ -79,9 +81,9 @@ impl SqliteManager {
 
         tx.execute(
             "UPDATE cron_tasks 
-             SET name = ?1, description = ?2, cron = ?3, last_modified = ?4, action = ?5 
-             WHERE task_id = ?6",
-            params![name, description, cron, last_modified, action_json, task_id],
+             SET name = ?1, description = ?2, cron = ?3, last_modified = ?4, action = ?5, paused = ?6 
+             WHERE task_id = ?7",
+            params![name, description, cron, last_modified, action_json, paused, task_id],
         )?;
 
         tx.commit()?;
@@ -91,7 +93,7 @@ impl SqliteManager {
     pub fn get_all_cron_tasks(&self) -> Result<Vec<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT task_id, name, description, cron, created_at, last_modified, action 
+            "SELECT task_id, name, description, cron, created_at, last_modified, action, paused 
              FROM cron_tasks"
         )?;
         let cron_task_iter = stmt.query_map([], |row| {
@@ -107,6 +109,7 @@ impl SqliteManager {
                 created_at: row.get(4)?,
                 last_modified: row.get(5)?,
                 action,
+                paused: row.get(7)?,
             })
         })?;
 
@@ -357,9 +360,10 @@ mod tests {
                 tool_key: None,
             },
         };
+        let updated_paused = true;
 
         manager
-            .update_cron_task(task_id, updated_name, updated_description, updated_cron, &updated_action)
+            .update_cron_task(task_id, updated_name, updated_description, updated_cron, &updated_action, updated_paused)
             .unwrap();
         let updated_task = manager.get_cron_task(task_id).unwrap().unwrap();
 
@@ -367,6 +371,7 @@ mod tests {
         assert_eq!(updated_task.description, updated_description.map(String::from));
         assert_eq!(updated_task.cron, updated_cron);
         assert_eq!(updated_task.action, updated_action);
+        assert_eq!(updated_task.paused, updated_paused);
     }
 
     #[test]

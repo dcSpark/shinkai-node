@@ -85,6 +85,8 @@ pub struct UpdateCronTaskRequest {
     action: CronTaskAction,
     name: String,
     description: Option<String>,
+    #[serde(default)]
+    paused: bool,
 }
 
 #[utoipa::path(
@@ -380,6 +382,7 @@ pub async fn update_cron_task_handler(
             action: payload.action,
             name: payload.name,
             description: payload.description,
+            paused: payload.paused,
             res: res_sender,
         })
         .await
