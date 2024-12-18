@@ -71,6 +71,26 @@ impl ShinkaiTool {
         }
     }
 
+    // Return a folder-safe version of the tool_router_key
+    pub fn tool_router_key_path(&self) -> String {
+        let path = self.tool_router_key();
+        Self::convert_to_path(&path)
+    }
+
+    pub fn convert_to_path(tool_router_key: &str) -> String {
+        tool_router_key
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>()
+            .to_lowercase()
+    }
+
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
         match self {

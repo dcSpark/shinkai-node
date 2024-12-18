@@ -17,6 +17,7 @@ use tokio::runtime::Runtime;
 use super::deno_tools::ToolResult;
 use super::parameters::Parameters;
 use super::shared_execution::update_result_with_modified_files;
+use super::shinkai_tool::ShinkaiTool;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
@@ -80,7 +81,7 @@ impl PythonTool {
                 let path = PathBuf::from(&node_storage_path)
                     .join(".tools_storage")
                     .join("tools")
-                    .join(tool_router_key);
+                    .join(ShinkaiTool::convert_to_path(&tool_router_key));
                 self.assets
                     .clone()
                     .unwrap_or(vec![])
@@ -261,7 +262,14 @@ impl PythonTool {
                     if result.is_err() {
                         return result;
                     }
-                    update_result_with_modified_files(result.unwrap(), start_time, &home_path, &logs_path, &node_name, &app_id)
+                    update_result_with_modified_files(
+                        result.unwrap(),
+                        start_time,
+                        &home_path,
+                        &logs_path,
+                        &node_name,
+                        &app_id,
+                    )
                 })
             })
             .unwrap()
