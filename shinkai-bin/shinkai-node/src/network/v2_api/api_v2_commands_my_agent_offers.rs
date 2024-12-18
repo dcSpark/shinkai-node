@@ -17,7 +17,7 @@ use crate::network::{
 
 impl Node {
     pub async fn v2_api_request_invoice(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         tool_key_name: String,
@@ -31,7 +31,7 @@ impl Node {
 
         // Fetch the tool from lance_db
         let network_tool = {
-            match db.read().await.get_tool_by_key(&tool_key_name) {
+            match db.get_tool_by_key(&tool_key_name) {
                 Ok(tool) => match tool {
                     ShinkaiTool::Network(network_tool, _) => network_tool,
                     _ => {
@@ -99,7 +99,7 @@ impl Node {
     }
 
     pub async fn v2_api_pay_invoice(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
         invoice_id: String,
@@ -113,7 +113,7 @@ impl Node {
         }
 
         // Step 1: Get the invoice from the database
-        let invoice = match db.read().await.get_invoice(&invoice_id) {
+        let invoice = match db.get_invoice(&invoice_id) {
             Ok(invoice) => invoice,
             Err(e) => {
                 let api_error = APIError {
@@ -164,7 +164,7 @@ impl Node {
         // Step 4: Check that the data_for_tool is valid
         let tool_key_name = invoice.shinkai_offering.tool_key.clone();
         let tool = {
-            match db.read().await.get_tool_by_key(&tool_key_name) {
+            match db.get_tool_by_key(&tool_key_name) {
                 Ok(tool) => tool,
                 Err(err) => {
                     let api_error = APIError {
@@ -260,7 +260,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_invoices(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -270,7 +270,7 @@ impl Node {
         }
 
         // Fetch the list of invoices from the database
-        match db.read().await.get_all_invoices() {
+        match db.get_all_invoices() {
             Ok(invoices) => {
                 let invoices_value = match serde_json::to_value(invoices) {
                     Ok(value) => value,

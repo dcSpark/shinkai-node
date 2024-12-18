@@ -80,7 +80,7 @@ pub struct JobQueueManager<T: Debug> {
     queues: Arc<Mutex<HashMap<String, MutexQueue<T>>>>,
     subscribers: Arc<Mutex<HashMap<String, Vec<Subscriber<T>>>>>,
     all_subscribers: Arc<Mutex<Vec<Subscriber<T>>>>,
-    db: Weak<RwLock<SqliteManager>>,
+    db: Weak<SqliteManager>,
     prefix: Option<String>,
 }
 
@@ -88,13 +88,12 @@ pub struct JobQueueManager<T: Debug> {
 static BUFFER_SIZE: usize = 10;
 
 impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> JobQueueManager<T> {
-    pub async fn new(db: Weak<RwLock<SqliteManager>>, prefix: Option<String>) -> Result<Self, SqliteManagerError> {
+    pub async fn new(db: Weak<SqliteManager>, prefix: Option<String>) -> Result<Self, SqliteManagerError> {
         // Lock the db for safe access
         let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        let db_read = db_arc.read().await;
 
         // Call the get_all_queues method to get all queue data from the db
-        match db_read.get_all_queues(prefix.clone()) {
+        match db_arc.get_all_queues(prefix.clone()) {
             Ok(db_queues) => {
                 // Initialize the queues field with Mutex-wrapped Vecs from the db data
                 let manager_queues = db_queues
@@ -129,10 +128,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
 
         // Persist queue to the database
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        db_arc
-            .write()
-            .await
-            .persist_queue(key, &guarded_queue, self.prefix.clone())?;
+        db_arc.persist_queue(key, &guarded_queue, self.prefix.clone())?;
         drop(db_arc);
 
         // Notify subscribers
@@ -177,10 +173,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
 
         // Persist queue to the database
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
-        db_arc
-            .write()
-            .await
-            .persist_queue(key, &guarded_queue, self.prefix.clone())?;
+        db_arc.persist_queue(key, &guarded_queue, self.prefix.clone())?;
 
         Ok(result)
     }
@@ -198,7 +191,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
 
     pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, SqliteManagerError> {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db")?;
-        let mut db_queues: HashMap<_, _> = db_arc.read().await.get_all_queues::<T>(self.prefix.clone())?;
+        let mut db_queues: HashMap<_, _> = db_arc.get_all_queues::<T>(self.prefix.clone())?;
 
         // Sort the keys based on the first element in each queue, falling back to key names
         let mut keys: Vec<_> = db_queues.keys().cloned().collect();
@@ -207,9 +200,9 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
             let b_first = db_queues.get(b).and_then(|q| q.first());
             match (a_first, b_first) {
                 (Some(a), Some(b)) => a.cmp(b),
-                (Some(_), None) => Ordering::Less,  // Consider Some < None
+                (Some(_), None) => Ordering::Less,    // Consider Some < None
                 (None, Some(_)) => Ordering::Greater, // Consider None > Some
-                (None, None) => a.cmp(b), // Fallback to key comparison if both are None
+                (None, None) => a.cmp(b),             // Fallback to key comparison if both are None
             }
         });
 
@@ -285,7 +278,7 @@ mod tests {
     #[tokio::test]
     async fn test_queue_manager() {
         let db = setup();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let db_weak = Arc::downgrade(&db);
 
         let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, None).await.unwrap();
@@ -344,7 +337,7 @@ mod tests {
     #[tokio::test]
     async fn test_queue_manager_consistency() {
         let db = setup();
-        let db_arc = Arc::new(RwLock::new(db));
+        let db_arc = Arc::new(db);
         let db_weak = Arc::downgrade(&db_arc);
         let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), None)
             .await
@@ -421,7 +414,7 @@ mod tests {
     #[tokio::test]
     async fn test_queue_manager_with_jsonvalue() {
         let db = setup();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let db_weak = Arc::downgrade(&db);
         let mut manager = JobQueueManager::<OrdJsonValue>::new(db_weak, None).await.unwrap();
 
@@ -459,7 +452,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_all_elements_interleave() {
         let db = setup();
-        let db = Arc::new(RwLock::new(db));
+        let db = Arc::new(db);
         let db_weak = Arc::downgrade(&db);
         let mut manager = JobQueueManager::<JobForProcessing>::new(db_weak, None).await.unwrap();
 

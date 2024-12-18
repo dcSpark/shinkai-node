@@ -17,7 +17,7 @@ use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName,
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
 pub struct LLMProvider {
@@ -252,7 +252,7 @@ impl LLMProvider {
 
     pub async fn from_provider_or_agent(
         provider_or_agent: ProviderOrAgent,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
     ) -> Result<Self, LLMProviderError> {
         match provider_or_agent {
             ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
@@ -261,8 +261,6 @@ impl LLMProvider {
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
                 let llm_provider = db
-                    .read()
-                    .await
                     .get_llm_provider(llm_id, &agent.full_identity_name)
                     .map_err(|_e| LLMProviderError::AgentNotFound(llm_id.clone()))?;
                 if let Some(llm_provider) = llm_provider {

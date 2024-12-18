@@ -48,7 +48,7 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
@@ -93,7 +93,7 @@ pub struct Node {
     // The manager for subidentities.
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
-    pub db: Arc<RwLock<SqliteManager>>,
+    pub db: Arc<SqliteManager>,
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
@@ -179,24 +179,20 @@ impl Node {
 
         // Initialize SqliteManager
         let embedding_api_url = embedding_generator.api_url.clone();
-        let db_arc = Arc::new(RwLock::new(
+        let db_arc = Arc::new(
             SqliteManager::new(main_db_path.clone(), embedding_api_url, default_embedding_model.clone())
                 .unwrap_or_else(|e| {
                     eprintln!("Error: {:?}", e);
                     panic!("Failed to open database: {}", main_db_path)
                 }),
-        ));
+        );
 
         // Get public keys, and update the local node keys in the db
         let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let node_name = ShinkaiName::new(node_name).unwrap();
         {
-            match db_arc.write().await.update_local_node_keys(
-                node_name.clone(),
-                encryption_public_key,
-                identity_public_key,
-            ) {
+            match db_arc.update_local_node_keys(node_name.clone(), encryption_public_key, identity_public_key) {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
@@ -211,7 +207,7 @@ impl Node {
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
         // Fetch list of existing profiles from the node to push into the VectorFS
-        let profile_list = match db_arc.read().await.get_all_profiles(node_name.clone()) {
+        let profile_list = match db_arc.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
@@ -295,7 +291,7 @@ impl Node {
         let tool_router = ToolRouter::new(db_arc.clone());
 
         // Read wallet_manager from db if it exists, if not, None
-        let mut wallet_manager: Option<WalletManager> = match db_arc.read().await.read_wallet_manager() {
+        let mut wallet_manager: Option<WalletManager> = match db_arc.read_wallet_manager() {
             Ok(manager_value) => match serde_json::from_value::<WalletManager>(manager_value) {
                 Ok(manager) => Some(manager),
                 Err(e) => {
@@ -384,21 +380,15 @@ impl Node {
         // It reads the api_v2_key from env, if not from db and if not, then it generates a new one that gets saved in the db
         let api_v2_key = if let Some(key) = api_v2_key {
             db_arc
-                .write()
-                .await
                 .set_api_v2_key(&key)
                 .expect("Failed to set api_v2_key in the database");
             key
         } else {
-            let db_read = db_arc.read().await;
-            match db_read.read_api_v2_key() {
+            match db_arc.read_api_v2_key() {
                 Ok(Some(key)) => key,
                 Ok(None) | Err(_) => {
-                    std::mem::drop(db_read);
                     let new_key = Node::generate_api_v2_key();
                     db_arc
-                        .write()
-                        .await
                         .set_api_v2_key(&new_key)
                         .expect("Failed to set api_v2_key in the database");
                     new_key
@@ -526,8 +516,7 @@ impl Node {
             let version = env!("CARGO_PKG_VERSION");
 
             // Update the version in the database
-            let sqlite_manager = self.db.write().await;
-            sqlite_manager.set_version(version).expect("Failed to set version");
+            self.db.set_version(version).expect("Failed to set version");
         }
 
         // Call ToolRouter initialization in a new task
@@ -646,19 +635,15 @@ impl Node {
     async fn initialize_embedding_models(&self) -> Result<(), Box<dyn std::error::Error + Send>> {
         // Read the default embedding model from the database
         {
-            let db_read = self.db.read().await;
-            match db_read.get_default_embedding_model() {
+            match self.db.get_default_embedding_model() {
                 Ok(model) => {
                     let mut default_model_guard = self.default_embedding_model.lock().await;
                     *default_model_guard = model;
                 }
                 Err(SqliteManagerError::DataNotFound) => {
-                    std::mem::drop(db_read);
                     // If not found, update the database with the current value
                     let default_model_guard = self.default_embedding_model.lock().await;
                     self.db
-                        .write()
-                        .await
                         .update_default_embedding_model(default_model_guard.clone())
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
                 }
@@ -668,16 +653,12 @@ impl Node {
 
         // Read the supported embedding models from the database
         {
-            let db_read = self.db.read().await;
-            match db_read.get_supported_embedding_models() {
+            match self.db.get_supported_embedding_models() {
                 Ok(models) => {
-                    std::mem::drop(db_read);
                     // If empty, update the database with the current value
                     if models.is_empty() {
                         let supported_models_guard = self.supported_embedding_models.lock().await;
                         self.db
-                            .write()
-                            .await
                             .update_supported_embedding_models(supported_models_guard.clone())
                             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
                     } else {
@@ -686,12 +667,9 @@ impl Node {
                     }
                 }
                 Err(SqliteManagerError::DataNotFound) => {
-                    std::mem::drop(db_read);
                     // If not found, update the database with the current value
                     let supported_models_guard = self.supported_embedding_models.lock().await;
                     self.db
-                        .write()
-                        .await
                         .update_supported_embedding_models(supported_models_guard.clone())
                         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
                 }
@@ -1077,15 +1055,13 @@ impl Node {
     }
 
     async fn retry_messages(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         encryption_secret_key: EncryptionStaticKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
         let messages_to_retry = db
-            .read()
-            .await
             .get_messages_to_retry_before(None)
             .map_err(|e| NodeError::from(e.to_string()))?;
 
@@ -1095,10 +1071,7 @@ impl Node {
             let retry = Some(retry_message.retry_count);
 
             // Remove the message from the retry queue
-            db.write()
-                .await
-                .remove_message_from_retry(&retry_message.message)
-                .unwrap();
+            db.remove_message_from_retry(&retry_message.message).unwrap();
 
             shinkai_log(
                 ShinkaiLogOption::Node,
@@ -1144,7 +1117,7 @@ impl Node {
         my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         save_to_db_flag: bool,
@@ -1219,10 +1192,7 @@ impl Node {
                 // Calculate the delay for the next retry
                 let delay_seconds = 4_u64.pow(retry_count - 1);
                 let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
-                db.write()
-                    .await
-                    .add_message_to_retry(&retry_message, retry_time)
-                    .unwrap();
+                db.add_message_to_retry(&retry_message, retry_time).unwrap();
             }
             let end_time = Utc::now();
             let duration = end_time - start_time;
@@ -1276,7 +1246,7 @@ impl Node {
         am_i_sender: bool,
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> io::Result<()> {
@@ -1359,11 +1329,7 @@ impl Node {
             ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
-        let db_result = db
-            .write()
-            .await
-            .unsafe_insert_inbox_message(&message_to_save, None, ws_manager)
-            .await;
+        let db_result = db.unsafe_insert_inbox_message(&message_to_save, None, ws_manager).await;
         match db_result {
             Ok(_) => (),
             Err(e) => {

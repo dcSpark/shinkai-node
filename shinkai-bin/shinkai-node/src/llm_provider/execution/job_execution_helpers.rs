@@ -26,7 +26,7 @@ impl JobManager {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let llm_provider_cloned = llm_provider.clone();
         let prompt_cloned = filled_prompt.clone();
@@ -53,10 +53,10 @@ impl JobManager {
     /// it may return an outdated node_name
     pub async fn fetch_relevant_job_data(
         job_id: &str,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
     ) -> Result<(Job, Option<ProviderOrAgent>, String, Option<ShinkaiName>), LLMProviderError> {
         // Fetch the job
-        let full_job = { db.read().await.get_job(job_id)? };
+        let full_job = { db.get_job(job_id)? };
 
         // Acquire Agent
         let agent_or_llm_provider_id = full_job.parent_agent_or_llm_provider_id.clone();
@@ -82,10 +82,10 @@ impl JobManager {
     }
 
     pub async fn get_all_agents_and_llm_providers(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
     ) -> Result<Vec<ProviderOrAgent>, SqliteManagerError> {
-        let llm_providers = db.read().await.get_all_llm_providers()?;
-        let agents = db.read().await.get_all_agents()?;
+        let llm_providers = db.get_all_llm_providers()?;
+        let agents = db.get_all_agents()?;
 
         let mut providers_and_agents = Vec::new();
 

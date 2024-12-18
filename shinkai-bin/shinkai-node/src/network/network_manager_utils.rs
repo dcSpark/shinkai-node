@@ -42,7 +42,7 @@ pub async fn get_proxy_builder_info_static(
 
 pub async fn send_message_to_peer(
     message: ShinkaiMessage,
-    db: Weak<RwLock<SqliteManager>>,
+    db: Weak<SqliteManager>,
     receiver_identity: StandardIdentity,
     my_encryption_secret_key: EncryptionStaticKey,
     maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,

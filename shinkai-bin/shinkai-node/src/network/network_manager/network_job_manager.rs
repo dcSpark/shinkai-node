@@ -80,7 +80,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     // TODO: change to Weak<Mutex<...>>
     pub async fn new(
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         my_node_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -95,7 +95,7 @@ impl NetworkJobManager {
         {
             let shinkai_db = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
 
-            let all_jobs = shinkai_db.read().await.get_all_jobs().unwrap();
+            let all_jobs = shinkai_db.get_all_jobs().unwrap();
             let mut jobs = jobs_map.lock().await;
             for job in all_jobs {
                 jobs.insert(job.job_id().to_string(), job);
@@ -163,7 +163,7 @@ impl NetworkJobManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -177,7 +177,7 @@ impl NetworkJobManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 NetworkJobQueue,                                // job to process
-                Weak<RwLock<SqliteManager>>,                    // db
+                Weak<SqliteManager>,                    // db
                 Weak<VectorFS>,                                 // vector_fs
                 ShinkaiName,                                    // my_profile_name
                 EncryptionStaticKey,                            // my_encryption_secret_key
@@ -389,7 +389,7 @@ impl NetworkJobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_network_request_queued(
         job: NetworkJobQueue,
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         my_node_profile_name: ShinkaiName,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -461,7 +461,7 @@ impl NetworkJobManager {
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
-        shinkai_db: Weak<RwLock<SqliteManager>>,
+        shinkai_db: Weak<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
         external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,

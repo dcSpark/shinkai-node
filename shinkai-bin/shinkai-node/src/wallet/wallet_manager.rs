@@ -177,7 +177,7 @@ impl WalletManager {
 
     pub async fn create_coinbase_mpc_wallet_manager(
         network: Network,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        sqlite_manager: Arc<SqliteManager>,
         config: Option<CoinbaseMPCWalletConfig>,
         node_name: ShinkaiName,
     ) -> Result<WalletManager, WalletError> {
@@ -202,7 +202,7 @@ impl WalletManager {
 
     pub async fn recover_coinbase_mpc_wallet_manager(
         network: Network,
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        sqlite_manager: Arc<SqliteManager>,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
         node_name: ShinkaiName,

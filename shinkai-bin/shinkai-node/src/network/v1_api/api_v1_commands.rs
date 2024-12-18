@@ -55,7 +55,7 @@ use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -77,20 +77,18 @@ impl Node {
     }
 
     async fn has_standard_identity_access(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         inbox_name: &InboxName,
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
         let has_permission = db
-            .read()
-            .await
             .has_permission(&inbox_name.to_string(), std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
 
     async fn has_device_identity_access(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         inbox_name: &InboxName,
         std_identity: &DeviceIdentity,
     ) -> Result<bool, NodeError> {
@@ -101,7 +99,7 @@ impl Node {
     }
 
     pub async fn has_inbox_access(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         inbox_name: &InboxName,
         sender_subidentity: &Identity,
     ) -> Result<bool, NodeError> {
@@ -128,7 +126,7 @@ impl Node {
 
     async fn process_last_messages_from_inbox<F, T>(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -245,7 +243,7 @@ impl Node {
 
     pub async fn api_get_last_messages_from_inbox(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -265,7 +263,7 @@ impl Node {
 
     pub async fn api_get_last_messages_from_inbox_with_branches(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -285,7 +283,7 @@ impl Node {
 
     pub async fn api_get_last_unread_messages_from_inbox(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -388,7 +386,7 @@ impl Node {
 
     pub async fn api_create_and_send_registration_code(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -454,7 +452,7 @@ impl Node {
         // permissions: IdentityPermissions,
         // code_type: RegistrationCodeType,
 
-        match db.write().await.generate_registration_new_code(permissions, code_type) {
+        match db.generate_registration_new_code(permissions, code_type) {
             Ok(code) => {
                 let _ = res.send(Ok(code)).await.map_err(|_| ());
             }
@@ -473,7 +471,7 @@ impl Node {
 
     pub async fn api_create_new_job(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
@@ -518,7 +516,7 @@ impl Node {
 
     pub async fn api_mark_as_read_up_to(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -618,7 +616,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_registration_code_usage(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
@@ -734,7 +732,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_registration_code_usage(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         first_device_needs_registration_code: bool,
@@ -778,11 +776,7 @@ impl Node {
             .as_str(),
         );
 
-        let main_profile_exists = match db
-            .read()
-            .await
-            .main_profile_exists(node_name.get_node_name_string().as_str())
-        {
+        let main_profile_exists = match db.main_profile_exists(node_name.get_node_name_string().as_str()) {
             Ok(exists) => exists,
             Err(err) => {
                 let _ = res
@@ -810,7 +804,7 @@ impl Node {
             let code_type = RegistrationCodeType::Device("main".to_string());
             let permissions = IdentityPermissions::Admin;
 
-            match db.write().await.generate_registration_new_code(permissions, code_type) {
+            match db.generate_registration_new_code(permissions, code_type) {
                 Ok(new_code) => {
                     code = new_code;
                 }
@@ -827,8 +821,6 @@ impl Node {
         }
 
         let result = db
-            .write()
-            .await
             .use_registration_code(
                 &code.clone(),
                 node_name.get_node_name_string().as_str(),
@@ -843,7 +835,7 @@ impl Node {
 
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
-        let profile_list = match db.read().await.get_all_profiles(node_name.clone()) {
+        let profile_list = match db.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
@@ -902,7 +894,7 @@ impl Node {
                             permission_type,
                         };
 
-                        let api_v2_key = match db.read().await.read_api_v2_key() {
+                        let api_v2_key = match db.read_api_v2_key() {
                             Ok(Some(api_key)) => api_key,
                             Ok(None) | Err(_) => {
                                 let api_error = APIError {
@@ -960,7 +952,7 @@ impl Node {
                     }
                     IdentityType::Device => {
                         // use get_code_info to get the profile name
-                        let code_info: shinkai_message_primitives::schemas::identity_registration::RegistrationCodeInfo = db.read().await.get_registration_code_info(code.clone().as_str()).unwrap();
+                        let code_info: shinkai_message_primitives::schemas::identity_registration::RegistrationCodeInfo = db.get_registration_code_info(code.clone().as_str()).unwrap();
                         let profile_name = match code_info.code_type {
                             RegistrationCodeType::Device(profile_name) => profile_name,
                             _ => return Err(Box::new(SqliteManagerError::InvalidData)),
@@ -1027,7 +1019,7 @@ impl Node {
                             permission_type,
                         };
 
-                        let api_v2_key = match db.read().await.read_api_v2_key() {
+                        let api_v2_key = match db.read_api_v2_key() {
                             Ok(Some(api_key)) => api_key,
                             Ok(None) | Err(_) => {
                                 let api_error = APIError {
@@ -1119,7 +1111,7 @@ impl Node {
     }
 
     async fn scan_and_add_ollama_models(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         identity_secret_key: SigningKey,
@@ -1172,7 +1164,7 @@ impl Node {
 
     pub async fn api_update_smart_inbox_name(
         encryption_secret_key: EncryptionStaticKey,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1238,8 +1230,6 @@ impl Node {
                     }
                 } else {
                     let has_permission = db
-                        .read()
-                        .await
                         .has_permission(&inbox_name, &std_identity, InboxPermission::Admin)
                         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
                     if has_permission {
@@ -1298,7 +1288,7 @@ impl Node {
     }
 
     pub async fn api_get_all_smart_inboxes_for_profile(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
@@ -1438,7 +1428,7 @@ impl Node {
     }
 
     pub async fn api_get_all_inboxes_for_profile(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
@@ -1584,7 +1574,7 @@ impl Node {
     }
 
     pub async fn api_update_job_to_finished(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1639,7 +1629,7 @@ impl Node {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Update the job to finished in the database
-                    match db.write().await.update_job_to_finished(&job_id) {
+                    match db.update_job_to_finished(&job_id) {
                         Ok(_) => {
                             let _ = res.send(Ok(())).await;
                             Ok(())
@@ -1733,7 +1723,7 @@ impl Node {
     }
 
     pub async fn api_job_message(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1801,7 +1791,7 @@ impl Node {
                 let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
                 let parent_key = if !inbox_name.is_empty() {
-                    match db.read().await.get_parent_message_hash(&inbox_name, &message_hash) {
+                    match db.get_parent_message_hash(&inbox_name, &message_hash) {
                         Ok(result) => result,
                         Err(_) => None,
                     }
@@ -1834,7 +1824,7 @@ impl Node {
     }
 
     pub async fn api_available_llm_providers(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -1957,7 +1947,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_add_ollama_models(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -2054,7 +2044,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_add_agent(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -2159,7 +2149,7 @@ impl Node {
     }
 
     pub async fn api_remove_agent(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2212,7 +2202,7 @@ impl Node {
         };
 
         let mut identity_manager = identity_manager.lock().await;
-        match db.write().await.remove_llm_provider(&llm_provider_id, &profile) {
+        match db.remove_llm_provider(&llm_provider_id, &profile) {
             Ok(_) => match identity_manager.remove_agent_subidentity(&llm_provider_id).await {
                 Ok(_) => {
                     let _ = res.send(Ok("Agent removed successfully".to_string())).await;
@@ -2241,7 +2231,7 @@ impl Node {
     }
 
     pub async fn api_modify_agent(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2265,11 +2255,7 @@ impl Node {
         };
 
         // Check if the profile has access to modify the agent
-        let profiles_with_access = match db
-            .read()
-            .await
-            .get_llm_provider_profiles_with_access(&input_payload.id, &requester_name)
-        {
+        let profiles_with_access = match db.get_llm_provider_profiles_with_access(&input_payload.id, &requester_name) {
             Ok(access_list) => access_list,
             Err(err) => {
                 let api_error = APIError {
@@ -2293,11 +2279,7 @@ impl Node {
             Ok(())
         } else {
             // Modify agent based on the input_payload
-            match db
-                .write()
-                .await
-                .update_llm_provider(input_payload.clone(), &requester_name)
-            {
+            match db.update_llm_provider(input_payload.clone(), &requester_name) {
                 Ok(_) => {
                     let mut identity_manager = identity_manager.lock().await;
                     match identity_manager.modify_llm_provider_subidentity(input_payload).await {
@@ -2330,7 +2312,7 @@ impl Node {
     }
 
     pub async fn api_change_job_agent(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2402,11 +2384,7 @@ impl Node {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Attempt to change the job agent in the job manager
-                    match db
-                        .write()
-                        .await
-                        .change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id)
-                    {
+                    match db.change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id) {
                         Ok(_) => {
                             let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
                             Ok(())
@@ -2423,18 +2401,12 @@ impl Node {
                     }
                 } else {
                     let has_permission = db
-                        .read()
-                        .await
                         .has_permission(&inbox_name, &std_identity, InboxPermission::Admin)
                         .map_err(|e| NodeError {
                             message: format!("Failed to check permissions: {}", e),
                         })?;
                     if has_permission {
-                        match db
-                            .write()
-                            .await
-                            .change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id)
-                        {
+                        match db.change_job_llm_provider(&change_request.job_id, &change_request.new_agent_id) {
                             Ok(_) => {
                                 let _ = res.send(Ok("Job agent changed successfully".to_string())).await;
                                 Ok(())
@@ -2481,7 +2453,7 @@ impl Node {
     }
 
     pub async fn api_create_files_inbox_with_symmetric_key(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2550,7 +2522,7 @@ impl Node {
         }
     }
 
-    pub async fn process_symmetric_key(content: String, db: Arc<RwLock<SqliteManager>>) -> Result<String, APIError> {
+    pub async fn process_symmetric_key(content: String, db: Arc<SqliteManager>) -> Result<String, APIError> {
         // Convert the hex string to bytes
         let private_key_bytes = hex::decode(&content).map_err(|_| APIError {
             code: StatusCode::BAD_REQUEST.as_u16(),
@@ -2574,9 +2546,7 @@ impl Node {
         // Lock the database and perform operations
 
         // Write the symmetric key to the database
-        db.write()
-            .await
-            .write_symmetric_key(&hash_hex, &private_key_array)
+        db.write_symmetric_key(&hash_hex, &private_key_array)
             .map_err(|err| APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Bad Request".to_string(),
@@ -2588,7 +2558,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_get_filenames_in_inbox(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2619,7 +2589,7 @@ impl Node {
         // Extract the content of the message
         let hex_blake3_hash = decrypted_msg.get_message_content()?;
 
-        match db.read().await.get_all_filenames_from_inbox(hex_blake3_hash) {
+        match db.get_all_filenames_from_inbox(hex_blake3_hash) {
             Ok(filenames) => {
                 let _ = res.send(Ok(filenames)).await;
                 Ok(())
@@ -2638,7 +2608,7 @@ impl Node {
     }
 
     pub async fn api_add_file_to_inbox_with_symmetric_key(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         filename: String,
         file_data: Vec<u8>,
         hex_blake3_hash: String,
@@ -2646,7 +2616,7 @@ impl Node {
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let private_key_array = {
-            match db.read().await.read_symmetric_key(&hex_blake3_hash) {
+            match db.read_symmetric_key(&hex_blake3_hash) {
                 Ok(key) => key,
                 Err(_) => {
                     let _ = res
@@ -2697,11 +2667,7 @@ impl Node {
             .as_str(),
         );
 
-        match db
-            .write()
-            .await
-            .add_file_to_files_message_inbox(hex_blake3_hash, filename, decrypted_file)
-        {
+        match db.add_file_to_files_message_inbox(hex_blake3_hash, filename, decrypted_file) {
             Ok(_) => {
                 let _ = res.send(Ok("File added successfully".to_string())).await;
                 Ok(())
@@ -2719,18 +2685,15 @@ impl Node {
         }
     }
 
-    pub async fn api_is_pristine(
-        db: Arc<RwLock<SqliteManager>>,
-        res: Sender<Result<bool, APIError>>,
-    ) -> Result<(), NodeError> {
-        let has_any_profile = db.read().await.has_any_profile().unwrap_or(false);
+    pub async fn api_is_pristine(db: Arc<SqliteManager>, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
+        let has_any_profile = db.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
         Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_search_shinkai_tool(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2809,7 +2772,7 @@ impl Node {
     }
 
     pub async fn api_list_all_shinkai_tools(
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        sqlite_manager: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2845,7 +2808,7 @@ impl Node {
 
         // List all Shinkai tools
         let tools = {
-            match sqlite_manager.read().await.get_all_tool_headers() {
+            match sqlite_manager.get_all_tool_headers() {
                 Ok(tools) => tools,
                 Err(err) => {
                     let api_error = APIError {
@@ -2865,7 +2828,7 @@ impl Node {
     }
 
     pub async fn api_set_shinkai_tool(
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        sqlite_manager: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -2901,7 +2864,7 @@ impl Node {
         }
 
         // Get the full tool from lance_db
-        let existing_tool = match sqlite_manager.read().await.get_tool_by_key(&tool_router_key) {
+        let existing_tool = match sqlite_manager.get_tool_by_key(&tool_router_key) {
             Ok(tool) => tool,
             Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
@@ -2955,12 +2918,12 @@ impl Node {
         };
 
         // Save the tool to the LanceShinkaiDb
-        let save_result = { sqlite_manager.write().await.update_tool(merged_tool).await };
+        let save_result = { sqlite_manager.update_tool(merged_tool).await };
 
         match save_result {
             Ok(_) => {
                 // Fetch the updated tool from the database
-                let updated_tool = { sqlite_manager.read().await.get_tool_by_key(&tool_router_key) };
+                let updated_tool = { sqlite_manager.get_tool_by_key(&tool_router_key) };
 
                 match updated_tool {
                     Ok(tool) => {
@@ -3001,7 +2964,7 @@ impl Node {
     }
 
     pub async fn api_get_shinkai_tool(
-        sqlite_manager: Arc<RwLock<SqliteManager>>,
+        sqlite_manager: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3036,7 +2999,7 @@ impl Node {
         }
 
         // Fetch the tool from the LanceShinkaiDb
-        let tool = match sqlite_manager.read().await.get_tool_by_key(&tool_key) {
+        let tool = match sqlite_manager.get_tool_by_key(&tool_key) {
             Ok(tool) => tool,
             Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
@@ -3064,7 +3027,7 @@ impl Node {
     }
 
     pub async fn api_update_default_embedding_model(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3113,7 +3076,7 @@ impl Node {
         };
 
         // Update the default embedding model in the database
-        match db.write().await.update_default_embedding_model(new_default_model) {
+        match db.update_default_embedding_model(new_default_model) {
             Ok(_) => {
                 let _ = res
                     .send(Ok("Default embedding model updated successfully".to_string()))
@@ -3133,7 +3096,7 @@ impl Node {
     }
 
     pub async fn api_update_supported_embedding_models(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -3175,11 +3138,7 @@ impl Node {
             .collect();
 
         // Update the supported embedding models in the database
-        if let Err(err) = db
-            .write()
-            .await
-            .update_supported_embedding_models(new_supported_models.clone())
-        {
+        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
@@ -3316,7 +3275,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_send_onionized_message(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -3388,9 +3347,7 @@ impl Node {
                                 Err(_) => None,
                             };
 
-                            db.write()
-                                .await
-                                .unsafe_insert_inbox_message(&msg.clone(), parent_message_id, ws_manager.clone())
+                            db.unsafe_insert_inbox_message(&msg.clone(), parent_message_id, ws_manager.clone())
                                 .await
                                 .map_err(|e| {
                                     shinkai_log(
@@ -3497,7 +3454,7 @@ impl Node {
             let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
 
             let parent_key = if !inbox_name.is_empty() {
-                match db.read().await.get_parent_message_hash(&inbox_name, &message_hash) {
+                match db.get_parent_message_hash(&inbox_name, &message_hash) {
                     Ok(result) => result,
                     Err(_) => None,
                 }

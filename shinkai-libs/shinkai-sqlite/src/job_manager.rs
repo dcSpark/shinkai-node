@@ -28,48 +28,51 @@ impl SqliteManager {
         associated_ui: Option<AssociatedUI>,
         config: Option<JobConfig>,
     ) -> Result<(), SqliteManagerError> {
-        let conn = self.get_connection()?;
-
-        let current_time = ShinkaiStringTime::generate_time_now();
-        let scope_with_files_bytes = scope.to_bytes()?;
-        let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
         let job_inbox_name = format!("job_inbox::{}::false", job_id);
 
-        let mut stmt = conn.prepare(
-            "INSERT INTO jobs (
+        {
+            let conn = self.get_connection()?;
+
+            let current_time = ShinkaiStringTime::generate_time_now();
+            let scope_with_files_bytes = scope.to_bytes()?;
+            let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
+    
+            let mut stmt = conn.prepare(
+                "INSERT INTO jobs (
+                    job_id,
+                    is_hidden,
+                    datetime_created,
+                    is_finished,
+                    parent_agent_or_llm_provider_id,
+                    scope,
+                    scope_with_files,
+                    conversation_inbox_name,
+                    execution_context,
+                    associated_ui,
+                    config
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            )?;
+    
+            stmt.execute(params![
                 job_id,
                 is_hidden,
-                datetime_created,
-                is_finished,
-                parent_agent_or_llm_provider_id,
-                scope,
-                scope_with_files,
-                conversation_inbox_name,
-                execution_context,
-                associated_ui,
-                config
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        )?;
-
-        stmt.execute(params![
-            job_id,
-            is_hidden,
-            current_time,
-            false,
-            llm_provider_id,
-            scope_bytes,
-            scope_with_files_bytes,
-            job_inbox_name.clone(),
-            serde_json::to_vec(&HashMap::<String, String>::new()).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?,
-            serde_json::to_vec(&associated_ui).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?,
-            serde_json::to_vec(&config).map_err(|e| {
-                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
-            })?,
-        ])?;
+                current_time,
+                false,
+                llm_provider_id,
+                scope_bytes,
+                scope_with_files_bytes,
+                job_inbox_name.clone(),
+                serde_json::to_vec(&HashMap::<String, String>::new()).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
+                })?,
+                serde_json::to_vec(&associated_ui).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
+                })?,
+                serde_json::to_vec(&config).map_err(|e| {
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
+                })?,
+            ])?;
+        }
 
         self.create_empty_inbox(job_inbox_name)?;
 

@@ -27,7 +27,7 @@ use crate::{
 
 impl Node {
     pub async fn v2_api_vec_fs_retrieve_path_simplified_json(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrievePathSimplifiedJson,
@@ -100,7 +100,7 @@ impl Node {
     }
 
     pub async fn v2_convert_files_and_save_to_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIConvertFilesAndSaveToFolder,
@@ -130,7 +130,7 @@ impl Node {
     }
 
     pub async fn v2_create_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCreateFolder,
@@ -203,7 +203,7 @@ impl Node {
     }
 
     pub async fn v2_move_item(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveItem,
@@ -288,7 +288,7 @@ impl Node {
     }
 
     pub async fn v2_copy_item(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyItem,
@@ -373,7 +373,7 @@ impl Node {
     }
 
     pub async fn v2_move_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveFolder,
@@ -458,7 +458,7 @@ impl Node {
     }
 
     pub async fn v2_copy_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyFolder,
@@ -543,7 +543,7 @@ impl Node {
     }
 
     pub async fn v2_delete_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteFolder,
@@ -615,7 +615,7 @@ impl Node {
     }
 
     pub async fn v2_delete_item(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteItem,
@@ -687,7 +687,7 @@ impl Node {
     }
 
     pub async fn v2_search_items(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsSearchItems,
@@ -764,7 +764,7 @@ impl Node {
     }
 
     pub async fn v2_retrieve_vector_resource(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         path: String,
@@ -849,7 +849,7 @@ impl Node {
     }
 
     pub async fn v2_upload_file_to_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -968,7 +968,7 @@ impl Node {
     }
 
     pub async fn v2_retrieve_source_file(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrieveSourceFile,
