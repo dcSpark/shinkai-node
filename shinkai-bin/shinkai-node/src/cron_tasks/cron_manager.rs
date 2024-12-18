@@ -214,6 +214,7 @@ impl CronManager {
                         .get_all_cron_tasks()
                         .unwrap_or_default()
                         .into_iter()
+                        .filter(|task| !task.paused)
                         .map(|task| (task.created_at.clone(), vec![(task.task_id.to_string(), task)]))
                         .collect()
                 };
