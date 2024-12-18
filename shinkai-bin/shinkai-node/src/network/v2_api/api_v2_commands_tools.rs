@@ -1609,7 +1609,7 @@ impl Node {
     }
 
     async fn v2_api_import_tool_internal(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         url: String,
     ) -> Result<Value, APIError> {
@@ -1864,7 +1864,7 @@ impl Node {
     }
 
     pub async fn v2_api_upload_tool_asset(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         _tool_id: String,
         app_id: String,
@@ -1901,7 +1901,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_tool_assets(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_id: String,
         app_id: String,
@@ -1931,7 +1931,7 @@ impl Node {
     }
 
     pub async fn v2_api_delete_tool_asset(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_id: String,
         app_id: String,
