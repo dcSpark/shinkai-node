@@ -1,13 +1,14 @@
 use std::collections::HashMap;
+use serde_json::json;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
-use serde_json::json;
-use shinkai_message_primitives::schemas::job::JobStepResult;
+
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 impl JobPromptGenerator {
     /// A basic generic prompt generator
@@ -18,9 +19,9 @@ impl JobPromptGenerator {
         custom_user_prompt: Option<String>,
         user_message: String,
         image_files: HashMap<String, String>,
-        ret_nodes: Vec<RetrievedNode>,
+        ret_nodes: Vec<ShinkaiFileChunkCollection>, // TODO: is this correct to be Vec?
         _summary_text: Option<String>,
-        job_step_history: Option<Vec<JobStepResult>>,
+        job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<ToolCallFunctionResponse>,
     ) -> Prompt {

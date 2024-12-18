@@ -8,3 +8,7 @@ pub mod signatures;
 pub mod utils;
 pub mod file_encryption;
 pub mod shinkai_logging;
+pub mod shinkai_time;
+pub mod search_mode;
+pub mod shinkai_path;
+pub mod shinkai_message_to_prompt;

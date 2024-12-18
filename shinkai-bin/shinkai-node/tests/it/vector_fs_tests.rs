@@ -27,7 +27,7 @@ use shinkai_vector_fs::vector_fs::vector_fs_permissions::{ReadPermission, WriteP
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, SourceFileType};
 use shinkai_vector_resources::vector_resource::{simplified_fs_types::*, VRPack};
@@ -981,7 +981,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::from_string("/unpacked/new_root_folder").unwrap(),
+            ShinkaiPath::from_string("/unpacked/new_root_folder").unwrap(),
             &mut vector_fs,
         )
         .await
@@ -1176,7 +1176,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::from_string("/first_folder/second_folder/").unwrap(),
+            ShinkaiPath::from_string("/first_folder/second_folder/").unwrap(),
             &mut vector_fs,
         )
         .await
@@ -1189,7 +1189,7 @@ async fn test_vector_fs_operations() {
 
     let reader = orig_writer
         .new_reader_copied_data(
-            VRPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
+            ShinkaiPath::from_string("/first_folder/second_folder/shinkai_intro").unwrap(),
             &mut vector_fs,
         )
         .await

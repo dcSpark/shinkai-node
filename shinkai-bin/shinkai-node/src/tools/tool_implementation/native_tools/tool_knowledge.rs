@@ -76,7 +76,6 @@ impl ToolExecutor for KnowledgeTool {
         _tool_id: String,
         _app_id: String,
         db_clone: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         _identity_manager_clone: Arc<Mutex<IdentityManager>>,
         _job_manager: Arc<Mutex<JobManager>>,

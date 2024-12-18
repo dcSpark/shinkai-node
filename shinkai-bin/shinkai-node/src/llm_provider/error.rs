@@ -6,8 +6,6 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::{error::ToolError, rust_tools::RustToolError};
-use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
-use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
 
@@ -27,13 +25,11 @@ pub enum LLMProviderError {
     MessageTypeParseFailed,
     IO(String),
     ShinkaiDB(SqliteManagerError),
-    VectorFS(VectorFSError),
     ShinkaiNameError(ShinkaiNameError),
     LLMProviderNotFound,
     ContentParseFailed,
     InferenceJSONResponseMissingField(String),
     JSONSerializationError(String),
-    VectorResource(VRError),
     InvalidSubidentity(ShinkaiNameError),
     InvalidProfileSubidentity(String),
     SerdeError(serde_json::Error),
@@ -313,12 +309,6 @@ impl From<serde_json::Error> for LLMProviderError {
     }
 }
 
-impl From<VRError> for LLMProviderError {
-    fn from(error: VRError) -> Self {
-        LLMProviderError::VectorResource(error)
-    }
-}
-
 impl From<JoinError> for LLMProviderError {
     fn from(err: JoinError) -> LLMProviderError {
         LLMProviderError::TaskJoinError(err.to_string())
@@ -340,12 +330,6 @@ impl From<InboxNameError> for LLMProviderError {
 impl From<ModelCapabilitiesManagerError> for LLMProviderError {
     fn from(error: ModelCapabilitiesManagerError) -> Self {
         LLMProviderError::LLMProviderCapabilitiesManagerError(error)
-    }
-}
-
-impl From<VectorFSError> for LLMProviderError {
-    fn from(err: VectorFSError) -> LLMProviderError {
-        LLMProviderError::VectorFS(err)
     }
 }
 

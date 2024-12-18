@@ -10,8 +10,9 @@ use shinkai_http_api::{
     node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::job_scope::JobScope,
+    schemas::ws_types::WSUpdateHandler,
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -1258,6 +1259,11 @@ impl Node {
                 .map_or(existing_agent.knowledge.clone(), |v| {
                     v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
                 }),
+            scope: partial_agent
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .map(|s| serde_json::from_str::<MinimalJobScope>(s).unwrap_or(existing_agent.scope.clone()))
+                .unwrap_or(existing_agent.scope.clone()),
             storage_path: partial_agent
                 .get("storage_path")
                 .and_then(|v| v.as_str())

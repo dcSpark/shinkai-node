@@ -4,15 +4,17 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::shinkai_utils::shinkai_path::ShinkaiPath;
+
 use super::{shinkai_name::ShinkaiName, shinkai_subscription_req::SubscriptionPayment};
-use shinkai_vector_resources::vector_resource::VRPath;
+// use shinkai_vector_resources::vector_resource::VRPath;
 
 // TODO: This should have the fields stored separate, and just have get unique id build the id string. Moves validation to from_unique_id as it should be.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, ToSchema)]
 pub struct SubscriptionId {
     pub unique_id: String,
-    pub include_folders: Option<Vec<VRPath>>,
-    pub exclude_folders: Option<Vec<VRPath>>,
+    pub include_folders: Option<Vec<ShinkaiPath>>,
+    pub exclude_folders: Option<Vec<ShinkaiPath>>,
 }
 
 impl SubscriptionId {
@@ -140,12 +142,12 @@ impl SubscriptionId {
     }
 
     // Method to update include_folders
-    pub fn update_include_folders(&mut self, folders: Vec<VRPath>) {
+    pub fn update_include_folders(&mut self, folders: Vec<ShinkaiPath>) {
         self.include_folders = Some(folders);
     }
 
     // Method to update exclude_folders
-    pub fn update_exclude_folders(&mut self, folders: Vec<VRPath>) {
+    pub fn update_exclude_folders(&mut self, folders: Vec<ShinkaiPath>) {
         self.exclude_folders = Some(folders);
     }
 }
