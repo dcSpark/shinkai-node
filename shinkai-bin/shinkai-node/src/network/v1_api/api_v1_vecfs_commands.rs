@@ -83,7 +83,7 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     // Public function for simplified JSON
     pub async fn api_vec_fs_retrieve_path_simplified_json(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -108,7 +108,7 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     // Public function for minimal JSON
     pub async fn api_vec_fs_retrieve_path_minimal_json(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -133,7 +133,7 @@ impl Node {
     // Private method to abstract common logic
     #[allow(clippy::too_many_arguments)]
     async fn retrieve_path_json_common(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -212,7 +212,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_search_items(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -291,7 +291,7 @@ impl Node {
 
     // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
     pub async fn api_vec_fs_retrieve_vector_search_simplified_json(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -392,7 +392,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_create_folder(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -464,7 +464,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_move_folder(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -548,7 +548,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_copy_folder(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -633,7 +633,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_delete_item(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -705,7 +705,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_delete_folder(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -777,7 +777,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_move_item(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -862,7 +862,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_copy_item(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -946,7 +946,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_retrieve_vector_resource(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1030,7 +1030,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn api_convert_files_and_save_to_folder(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1060,7 +1060,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_and_save_files(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         input_payload: APIConvertFilesAndSaveToFolder,
         requester_name: ShinkaiName,
@@ -1081,11 +1081,7 @@ impl Node {
         };
 
         let files = {
-            match db
-                .read()
-                .await
-                .get_all_files_from_inbox(input_payload.file_inbox.clone())
-            {
+            match db.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
                 Ok(files) => files,
                 Err(err) => {
                     let _ = res
@@ -1195,7 +1191,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn retrieve_vr_kai(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1288,7 +1284,7 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn retrieve_vr_pack(
-        _db: Arc<RwLock<SqliteManager>>,
+        _db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,

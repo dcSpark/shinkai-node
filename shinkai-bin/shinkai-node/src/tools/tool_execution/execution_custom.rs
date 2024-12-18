@@ -29,7 +29,7 @@ pub async fn execute_custom_tool(
     app_id: String,
     _extra_config: Vec<ToolConfig>,
     bearer: String,
-    db: Arc<RwLock<SqliteManager>>,
+    db: Arc<SqliteManager>,
     vector_fs: Arc<VectorFS>,
     llm_provider: String,
     node_name: ShinkaiName,

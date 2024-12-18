@@ -1,10 +1,11 @@
 use std::{
     collections::HashMap,
+    fmt,
     pin::Pin,
     sync::{Arc, Weak},
 };
 
-use chrono::{Timelike, Utc};
+use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
@@ -21,7 +22,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
@@ -69,21 +70,33 @@ impl From<NodeError> for CronManagerError {
     }
 }
 
+impl fmt::Display for CronManagerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CronManagerError::SomeError(msg) => write!(f, "SomeError: {}", msg),
+            CronManagerError::JobCreationError(msg) => write!(f, "JobCreationError: {}", msg),
+            CronManagerError::StrError(msg) => write!(f, "StrError: {}", msg),
+            CronManagerError::DBError(err) => write!(f, "DBError: {}", err),
+            CronManagerError::InboxError(err) => write!(f, "InboxError: {}", err),
+        }
+    }
+}
+
 pub struct CronManager {
-    pub db: Weak<RwLock<SqliteManager>>,
+    pub db: Weak<SqliteManager>,
     pub node_profile_name: ShinkaiName,
     pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub node_encryption_sk: EncryptionStaticKey,
     pub node_encryption_pk: EncryptionPublicKey,
-    pub cron_processing_task: Option<tokio::task::JoinHandle<()>>,
+    pub _cron_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 impl CronManager {
     pub async fn new(
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
@@ -135,7 +148,7 @@ impl CronManager {
             identity_manager,
             node_encryption_sk,
             node_encryption_pk,
-            cron_processing_task: Some(cron_processing_task),
+            _cron_processing_task: Some(cron_processing_task),
             ws_manager,
         }
     }
@@ -149,7 +162,7 @@ impl CronManager {
 
     #[allow(clippy::too_many_arguments)]
     pub fn process_job_queue(
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         node_profile_name: ShinkaiName,
         identity_sk: SigningKey,
         cron_time_interval: u64,
@@ -160,7 +173,7 @@ impl CronManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 CronTask,
-                Weak<RwLock<SqliteManager>>,
+                Weak<SqliteManager>,
                 SigningKey,
                 Arc<Mutex<JobManager>>,
                 Arc<Mutex<IdentityManager>>,
@@ -197,8 +210,8 @@ impl CronManager {
                         return;
                     }
                     let db_arc = db_arc.unwrap();
-                    let db = db_arc.read().await;
-                    db.get_all_cron_tasks()
+                    db_arc
+                        .get_all_cron_tasks()
                         .unwrap_or_default()
                         .into_iter()
                         .map(|task| (task.created_at.clone(), vec![(task.task_id.to_string(), task)]))
@@ -280,7 +293,7 @@ impl CronManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         cron_job: CronTask,
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -300,7 +313,6 @@ impl CronManager {
         // Update the last executed time
         {
             let current_time = Utc::now().to_rfc3339();
-            let db = db.read().await;
             db.update_cron_task_last_executed(cron_job.task_id.into(), &current_time)?;
         }
 
@@ -311,15 +323,19 @@ impl CronManager {
                 config,
                 message,
                 job_creation_info,
+                llm_provider,
             } => {
                 let job_id = job_manager
                     .lock()
                     .await
-                    .process_job_creation(job_creation_info, &shinkai_profile, &cron_job.task_id.to_string())
+                    .process_job_creation(job_creation_info, &shinkai_profile, &llm_provider)
                     .await?;
 
                 // Update the job configuration
-                db.write().await.update_job_config(&job_id, config)?;
+                db.update_job_config(&job_id, config)?;
+
+                let mut job_message = message.clone();
+                job_message.job_id = job_id;
 
                 // Use send_job_message_with_bearer instead of ShinkaiMessageBuilder
                 Self::send_job_message_with_bearer(
@@ -327,7 +343,7 @@ impl CronManager {
                     node_profile_name.clone(),
                     identity_manager.clone(),
                     job_manager.clone(),
-                    message.clone(), // Use the message directly
+                    job_message,
                     node_encryption_sk.clone(),
                     node_encryption_pk.clone(),
                     identity_secret_key.clone(),
@@ -374,7 +390,7 @@ impl CronManager {
             Ok(datetime) => {
                 println!("  Next execution time: {}", datetime);
                 datetime
-            },
+            }
             Err(e) => {
                 println!("  Failed to parse cron expression: {}", e);
                 return false;
@@ -383,19 +399,27 @@ impl CronManager {
 
         let is_after_now = next_execution_time >= now;
         let is_before_end = next_execution_time <= end_of_interval;
-        
+
         println!("  Conditions:");
         println!("    Is after current time? {}", is_after_now);
         println!("    Is before interval end? {}", is_before_end);
-        
+
         let result = is_after_now && is_before_end;
         println!("  Final result: {}", result);
-        
+
         result
     }
 
+    async fn log_success_to_sqlite(db: &Arc<SqliteManager>, task_id: i64) {
+        let execution_time = chrono::Utc::now().to_rfc3339();
+        let db = db;
+        if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, true, None) {
+            eprintln!("Failed to log success to SQLite: {}", err);
+        }
+    }
+
     async fn send_job_message_with_bearer(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -406,7 +430,7 @@ impl CronManager {
         task_id: i64,
     ) -> Result<(), NodeError> {
         // Retrieve the bearer token from the database
-        let bearer = match db.read().await.read_api_v2_key() {
+        let bearer = match db.read_api_v2_key() {
             Ok(Some(token)) => token,
             Ok(None) => {
                 Self::log_error_to_sqlite(&db, task_id, "Bearer token not found").await;
@@ -437,29 +461,61 @@ impl CronManager {
         .await
         {
             Self::log_error_to_sqlite(&db, task_id, &format!("Failed to send job message: {}", err)).await;
+            return Ok(());
         }
 
-        // Handle the response
+        // Handle the response only if sending was successful
         if let Err(err) = res_rx.recv().await {
             Self::log_error_to_sqlite(&db, task_id, &format!("Failed to receive response: {}", err)).await;
+        } else {
+            // Log success if the response is received successfully
+            Self::log_success_to_sqlite(&db, task_id).await;
         }
 
         Ok(())
     }
 
-    async fn log_error_to_sqlite(db: &Arc<RwLock<SqliteManager>>, task_id: i64, error_message: &str) {
+    async fn log_error_to_sqlite(db: &Arc<SqliteManager>, task_id: i64, error_message: &str) {
         let execution_time = chrono::Utc::now().to_rfc3339();
-        let db = db.write().await;
+        let db = db;
         if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, false, Some(error_message)) {
             eprintln!("Failed to log error to SQLite: {}", err);
         }
+    }
+
+    pub async fn execute_cron_task_immediately(&self, cron_task: CronTask) -> Result<(), CronManagerError> {
+        let db = self.db.clone();
+        let identity_secret_key = self.identity_secret_key.clone();
+        let job_manager = self.job_manager.clone();
+        let identity_manager = self.identity_manager.clone();
+        let node_encryption_sk = self.node_encryption_sk.clone();
+        let node_encryption_pk = self.node_encryption_pk.clone();
+        let node_profile_name = self.node_profile_name.clone();
+        let profile = node_profile_name.get_profile_name_string().unwrap_or_default();
+        let ws_manager = self.ws_manager.clone();
+
+        CronManager::process_job_message_queued(
+            cron_task,
+            db,
+            identity_secret_key,
+            job_manager,
+            identity_manager,
+            node_encryption_sk,
+            node_encryption_pk,
+            node_profile_name,
+            profile,
+            ws_manager,
+        )
+        .await?;
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{DateTime, TimeZone, Utc, Datelike};
+    use chrono::{Timelike, Utc};
     use shinkai_message_primitives::schemas::crontab::CronTaskAction;
 
     fn create_test_cron_task(cron: &str) -> CronTask {
@@ -500,7 +556,7 @@ mod tests {
         let next_minute = (now.minute() + 1) % 60;
         let cron = format!("{} * * * *", next_minute);
         let task = create_test_cron_task(&cron);
-        
+
         // Should execute within the next interval
         assert!(CronManager::should_execute_cron_task(&task, 120));
     }
@@ -511,7 +567,7 @@ mod tests {
         let past_minute = if now.minute() == 0 { 59 } else { now.minute() - 1 };
         let cron = format!("{} * * * *", past_minute);
         let task = create_test_cron_task(&cron);
-        
+
         // Should not execute as the time has passed
         assert!(!CronManager::should_execute_cron_task(&task, 60));
     }
@@ -519,12 +575,12 @@ mod tests {
     #[test]
     fn test_invalid_cron_expression() {
         // Using an invalid cron expression with only 4 fields instead of 5
-        let task = create_test_cron_task("* * * *"); 
-        
+        let task = create_test_cron_task("* * * *");
+
         // The should_execute_cron_task function should return false for invalid expressions
         // as it already handles the error case in its implementation
         assert!(!CronManager::should_execute_cron_task(&task, 60));
-        
+
         // We can also test another invalid expression
         let task_invalid_values = create_test_cron_task("60 24 32 13 8");
         assert!(!CronManager::should_execute_cron_task(&task_invalid_values, 60));
@@ -534,19 +590,19 @@ mod tests {
     fn test_should_execute_within_interval() {
         let now = Utc::now();
         let next_minute = (now.minute() + 1) % 60;
-        
+
         // Create a cron expression for the next minute, any hour/day/month
         let cron = format!("{} * * * *", next_minute);
         println!("Current time: {:?}", now);
         println!("Cron expression: {}", cron);
-        
+
         let task = create_test_cron_task(&cron);
-        
+
         // Get the next execution time for debugging
         let next_execution = cron_parser::parse(&cron, &now).unwrap();
         println!("Next execution time: {:?}", next_execution);
         println!("Interval end: {:?}", now + chrono::Duration::seconds(120));
-        
+
         // Use a 2-minute interval to ensure we catch the next minute
         assert!(CronManager::should_execute_cron_task(&task, 120));
     }
@@ -557,7 +613,7 @@ mod tests {
         let future_minute = (now.minute() + 2) % 60;
         let cron = format!("{} * * * *", future_minute);
         let task = create_test_cron_task(&cron);
-        
+
         // Should not execute as it's outside the interval
         assert!(!CronManager::should_execute_cron_task(&task, 60));
     }

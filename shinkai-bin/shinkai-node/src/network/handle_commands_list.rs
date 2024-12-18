@@ -2670,6 +2670,17 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiForceExecuteCronTask {
+                bearer,
+                cron_task_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let cron_manager_clone = self.cron_manager.clone().unwrap();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_force_execute_cron_task(db_clone, cron_manager_clone, bearer, cron_task_id, res).await;
+                });
+            }
             NodeCommand::V2ApiListAllCronTasks { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {

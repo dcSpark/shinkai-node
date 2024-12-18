@@ -7,7 +7,7 @@ use std::collections::HashSet;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
-    pub async fn add_tool(&mut self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
+    pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
             Some(embedding) => embedding.vector,
@@ -18,7 +18,7 @@ impl SqliteManager {
     }
 
     pub fn add_tool_with_vector(
-        &mut self,
+        &self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
@@ -271,7 +271,7 @@ impl SqliteManager {
 
     // Updates a ShinkaiTool entry in the shinkai_tools table with a new embedding
     pub fn update_tool_with_vector(
-        &mut self,
+        &self,
         tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
@@ -360,7 +360,7 @@ impl SqliteManager {
     }
 
     /// Updates a ShinkaiTool entry by generating a new embedding
-    pub async fn update_tool(&mut self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
+    pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
             Some(embedding) => embedding.vector,

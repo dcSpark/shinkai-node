@@ -4,7 +4,7 @@ use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
-use blake3::Hash;
+
 use serde_json::json;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -17,7 +17,7 @@ use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
@@ -31,7 +31,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 pub async fn handle_oauth(
     oauth: &Option<Vec<OAuth>>,
-    db: &Arc<RwLock<SqliteManager>>,
+    db: &Arc<SqliteManager>,
     app_id: String,
     tool_id: String,
     tool_router_key: String,
@@ -41,8 +41,6 @@ pub async fn handle_oauth(
         for o in oauth_vec {
             // Check if OAuth token already exists
             let existing_token = db
-                .write()
-                .await
                 .get_oauth_token(o.name.clone(), tool_router_key.clone())
                 .ok()
                 .unwrap_or(None);
@@ -91,9 +89,7 @@ pub async fn handle_oauth(
                     updated_at: Utc::now(),
                 };
 
-                db.write()
-                    .await
-                    .add_oauth_token(&oauth_token)
+                db.add_oauth_token(&oauth_token)
                     .map_err(|e| ToolError::ExecutionError(format!("Failed to store OAuth token: {}", e)))?;
 
                 uuid
@@ -118,7 +114,7 @@ pub async fn handle_oauth(
 pub async fn execute_tool_cmd(
     bearer: String,
     node_name: ShinkaiName,
-    db: Arc<RwLock<SqliteManager>>,
+    db: Arc<SqliteManager>,
     vector_fs: Arc<VectorFS>,
     tool_router_key: String,
     parameters: Map<String, Value>,
@@ -158,8 +154,6 @@ pub async fn execute_tool_cmd(
     } else {
         // Assume it's a Deno tool if not Rust
         let tool = db
-            .read()
-            .await
             .get_tool_by_key(&tool_router_key)
             .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
@@ -268,7 +262,7 @@ pub async fn execute_code(
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
     oauth: Option<Vec<OAuth>>,
-    db: Arc<RwLock<SqliteManager>>,
+    db: Arc<SqliteManager>,
     tool_id: String,
     app_id: String,
     llm_provider: String,
@@ -325,7 +319,7 @@ pub async fn check_code(
     tool_id: String,
     app_id: String,
     tools: Vec<String>,
-    sqlite_manager: Arc<RwLock<SqliteManager>>,
+    sqlite_manager: Arc<SqliteManager>,
 ) -> Result<Vec<String>, ToolError> {
     eprintln!("[check_code] tool_type: {}", tool_type);
 

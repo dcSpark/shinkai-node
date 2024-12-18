@@ -305,7 +305,7 @@ impl VectorFS {
             .await;
         self._update_fs_internals(writer.profile.clone(), internals.clone())
             .await?;
-        self.db.write().await.delete_resource(&ref_string)?;
+        self.db.delete_resource(&ref_string)?;
         self.save_profile_fs_internals(internals, &writer.profile).await?;
         Ok(write_batch)
     }
@@ -399,15 +399,9 @@ impl VectorFS {
 
         // Save fs internals, new VR, and new SFM to the DB
         if let Some(sfm) = source_file_map {
-            self.db
-                .write()
-                .await
-                .save_source_file_map(&sfm, &source_db_key, &writer.profile)?;
+            self.db.save_source_file_map(&sfm, &source_db_key, &writer.profile)?;
         }
-        self.db
-            .write()
-            .await
-            .save_resource(&vector_resource, &write_batch.profile_name)?;
+        self.db.save_resource(&vector_resource, &write_batch.profile_name)?;
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
         self.save_profile_fs_internals(internals, &writer.profile).await?;
 
@@ -983,8 +977,6 @@ impl VectorFS {
             if existing_vr_ref != Some(resource.as_trait_object().reference_string()) {
                 if let Ok(_r) = self
                     .db
-                    .read()
-                    .await
                     .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
                 {
                     resource.as_trait_object_mut().generate_and_update_resource_id();
@@ -1060,15 +1052,9 @@ impl VectorFS {
             // Finally saving the resource, the source file (if it was provided), and the FSInternals into the FSDB
             let write_batch = writer.new_write_batch()?;
             if let Some(sfm) = source_file_map {
-                self.db
-                    .write()
-                    .await
-                    .save_source_file_map(&sfm, &source_db_key, &writer.profile)?;
+                self.db.save_source_file_map(&sfm, &source_db_key, &writer.profile)?;
             }
-            self.db
-                .write()
-                .await
-                .save_resource(&resource, &write_batch.profile_name)?;
+            self.db.save_resource(&resource, &write_batch.profile_name)?;
             let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
             self.save_profile_fs_internals(internals, &writer.profile).await?;
 
@@ -1148,8 +1134,6 @@ impl VectorFS {
         // Finally saving the the source file map and the FSInternals into the FSDB
         let write_batch = writer.new_write_batch()?;
         self.db
-            .write()
-            .await
             .save_source_file_map(&source_file_map, &source_db_key, &writer.profile)?;
         let internals = self.get_profile_fs_internals_cloned(&writer.profile).await?;
         self.save_profile_fs_internals(internals, &writer.profile).await?;

@@ -44,7 +44,7 @@ use shinkai_tools_primitives::tools::{
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -75,7 +75,7 @@ impl Node {
     ///
     /// A `Result` indicating success or failure of the search operation.
     pub async fn v2_api_search_shinkai_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         query: String,
         agent_or_llm: Option<String>,
@@ -91,7 +91,7 @@ impl Node {
 
         // Attempt to get the agent's tools if agent_or_llm is provided
         let allowed_tools = if let Some(agent_id) = agent_or_llm {
-            match db.read().await.get_agent(&agent_id) {
+            match db.get_agent(&agent_id) {
                 Ok(Some(agent)) => Some(agent.tools),
                 Ok(None) | Err(_) => None,
             }
@@ -109,21 +109,14 @@ impl Node {
         let vector_search_result = if let Some(tools) = allowed_tools {
             // First generate the embedding from the query
             let embedding = db
-                .read()
-                .await
                 .generate_embeddings(&sanitized_query)
                 .await
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
             // Then use the embedding with the limited search
-            db.read()
-                .await
-                .tool_vector_search_with_vector_limited(embedding, 5, tools)
+            db.tool_vector_search_with_vector_limited(embedding, 5, tools)
         } else {
-            db.read()
-                .await
-                .tool_vector_search(&sanitized_query, 5, false, true)
-                .await
+            db.tool_vector_search(&sanitized_query, 5, false, true).await
         };
 
         let vector_elapsed_time = vector_start_time.elapsed();
@@ -131,7 +124,7 @@ impl Node {
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = db.read().await.search_tools_fts(&sanitized_query);
+        let fts_search_result = db.search_tools_fts(&sanitized_query);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
 
@@ -198,7 +191,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_all_shinkai_tools(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -208,7 +201,7 @@ impl Node {
         }
 
         // List all tools
-        match db.read().await.get_all_tool_headers() {
+        match db.get_all_tool_headers() {
             Ok(tools) => {
                 let response = json!(tools);
                 let _ = res.send(Ok(response)).await;
@@ -227,7 +220,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_shinkai_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_router_key: String,
         input_value: Value,
@@ -239,7 +232,7 @@ impl Node {
         }
 
         // Get the full tool from db
-        let existing_tool = match db.read().await.get_tool_by_key(&tool_router_key) {
+        let existing_tool = match db.get_tool_by_key(&tool_router_key) {
             Ok(tool) => tool,
             Err(SqliteManagerError::ToolNotFound(_)) => {
                 let api_error = APIError {
@@ -293,7 +286,7 @@ impl Node {
         };
 
         // Save the tool to the LanceShinkaiDb
-        let save_result = db.write().await.update_tool(merged_tool).await;
+        let save_result = db.update_tool(merged_tool).await;
 
         match save_result {
             Ok(tool) => {
@@ -313,7 +306,7 @@ impl Node {
     }
 
     pub async fn v2_api_add_shinkai_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         new_tool: ShinkaiTool,
         res: Sender<Result<Value, APIError>>,
@@ -324,7 +317,7 @@ impl Node {
         }
 
         // Save the new tool to the LanceShinkaiDb
-        let save_result = db.write().await.add_tool(new_tool).await;
+        let save_result = db.add_tool(new_tool).await;
 
         match save_result {
             Ok(tool) => {
@@ -346,7 +339,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_shinkai_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         payload: String,
         res: Sender<Result<Value, APIError>>,
@@ -357,7 +350,7 @@ impl Node {
         }
 
         // Get the tool from the database using get_tool_by_key
-        match db.read().await.get_tool_by_key(&payload) {
+        match db.get_tool_by_key(&payload) {
             Ok(tool) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;
@@ -408,7 +401,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_playground_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         payload: ToolPlayground,
         node_env: NodeEnvironment,
@@ -563,13 +556,13 @@ impl Node {
 
         // Function to handle saving metadata and sending response
         async fn save_metadata_and_respond(
-            db: Arc<RwLock<SqliteManager>>,
+            db: Arc<SqliteManager>,
             res: &Sender<Result<Value, APIError>>,
             updated_payload: ToolPlayground,
             tool: ShinkaiTool,
         ) -> Result<(), NodeError> {
             // Acquire a write lock on the db
-            let db_write = db.write().await;
+            let db_write = db;
 
             if let Err(err) = db_write.set_tool_playground(&updated_payload) {
                 let api_error = APIError {
@@ -603,19 +596,12 @@ impl Node {
         }
 
         // Create a longer-lived binding for the db clone
-        let db_clone = db.clone();
-        let db_read = db_clone.read().await;
 
-        match db_read.tool_exists(&shinkai_tool.tool_router_key()) {
+        match db.tool_exists(&shinkai_tool.tool_router_key()) {
             Ok(true) => {
-                std::mem::drop(db_read);
                 // Tool already exists, update it
-                let mut db_write = db.write().await;
-                match db_write.update_tool(shinkai_tool).await {
-                    Ok(tool) => {
-                        std::mem::drop(db_write);
-                        save_metadata_and_respond(db, &res, updated_payload, tool).await
-                    }
+                match db.update_tool(shinkai_tool).await {
+                    Ok(tool) => save_metadata_and_respond(db, &res, updated_payload, tool).await,
                     Err(err) => {
                         let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -629,13 +615,8 @@ impl Node {
             }
             Ok(false) => {
                 // Add the tool to the LanceShinkaiDb
-                std::mem::drop(db_read);
-                let mut db_write = db.write().await;
-                match db_write.add_tool(shinkai_tool.clone()).await {
-                    Ok(tool) => {
-                        std::mem::drop(db_write);
-                        save_metadata_and_respond(db, &res, updated_payload, tool).await
-                    }
+                match db.add_tool(shinkai_tool.clone()).await {
+                    Ok(tool) => save_metadata_and_respond(db, &res, updated_payload, tool).await,
                     Err(err) => {
                         let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -660,7 +641,7 @@ impl Node {
     }
 
     pub async fn v2_api_list_playground_tools(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -670,7 +651,7 @@ impl Node {
         }
 
         // List all playground tools
-        match db.read().await.get_all_tool_playground() {
+        match db.get_all_tool_playground() {
             Ok(tools) => {
                 let response = json!(tools);
                 let _ = res.send(Ok(response)).await;
@@ -689,7 +670,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_playground_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_key: String,
         res: Sender<Result<Value, APIError>>,
@@ -700,7 +681,7 @@ impl Node {
         }
 
         // Remove the playground tool from the SqliteManager
-        let db_write = db.write().await;
+        let db_write = db;
         match db_write.remove_tool_playground(&tool_key) {
             Ok(_) => {
                 // Also remove the underlying tool from the SqliteManager
@@ -735,7 +716,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_playground_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_key: String,
         res: Sender<Result<Value, APIError>>,
@@ -746,7 +727,7 @@ impl Node {
         }
 
         // Get the playground tool
-        match db.read().await.get_tool_playground(&tool_key) {
+        match db.get_tool_playground(&tool_key) {
             Ok(tool) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;
@@ -779,7 +760,7 @@ impl Node {
 
     pub async fn get_tool_definitions(
         bearer: String,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         language: CodeLanguage,
         tools: Vec<String>,
         res: Sender<Result<Value, APIError>>,
@@ -808,7 +789,7 @@ impl Node {
     pub async fn execute_tool(
         bearer: String,
         node_name: ShinkaiName,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         tool_router_key: String,
         parameters: Map<String, Value>,
@@ -872,7 +853,7 @@ impl Node {
 
     pub async fn run_execute_code(
         bearer: String,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         tool_type: DynamicToolType,
         code: String,
         tools: Vec<String>,
@@ -933,7 +914,7 @@ impl Node {
 
     pub async fn generate_tool_fetch_query(
         bearer: String,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         language: CodeLanguage,
         tools: Vec<String>,
         code: String,
@@ -1028,7 +1009,7 @@ impl Node {
 
     pub async fn generate_tool_implementation(
         bearer: String,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_message: JobMessage,
         language: CodeLanguage,
         tools: Vec<String>,
@@ -1126,7 +1107,7 @@ impl Node {
         job_id: String,
         language: CodeLanguage,
         tools: Vec<String>,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -1140,7 +1121,7 @@ impl Node {
         }
 
         // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
-        let job = match db.read().await.get_job_with_options(&job_id, true, true) {
+        let job = match db.get_job_with_options(&job_id, true, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1166,11 +1147,7 @@ impl Node {
 
         let last_message = {
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
-            let messages = match db
-                .read()
-                .await
-                .get_last_messages_from_inbox(inbox_name.to_string(), 2, None)
-            {
+            let messages = match db.get_last_messages_from_inbox(inbox_name.to_string(), 2, None) {
                 Ok(messages) => messages,
                 Err(err) => {
                     let api_error = APIError {
@@ -1268,7 +1245,7 @@ impl Node {
 
     pub async fn v2_api_tool_implementation_undo_to(
         bearer: String,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         message_hash: String,
         job_id: String,
         res: Sender<Result<Value, APIError>>,
@@ -1279,7 +1256,7 @@ impl Node {
         }
 
         // Use the fetch_message_and_hash method to retrieve the message
-        let (message, _hash) = match db.read().await.fetch_message_and_hash(&message_hash) {
+        let (message, _hash) = match db.fetch_message_and_hash(&message_hash) {
             Ok(result) => result,
             Err(err) => {
                 let api_error = APIError {
@@ -1321,7 +1298,7 @@ impl Node {
         };
 
         // Add the message as a response to the job inbox
-        let parent_hash = match db.read().await.get_parent_message_hash(&inbox_name, &message_hash) {
+        let parent_hash = match db.get_parent_message_hash(&inbox_name, &message_hash) {
             Ok(hash) => {
                 if let Some(hash) = hash {
                     hash
@@ -1347,8 +1324,6 @@ impl Node {
         };
 
         let undo_result = db
-            .write()
-            .await
             .add_message_to_job_inbox(&job_id, &new_message, Some(parent_hash), None)
             .await;
 
@@ -1372,7 +1347,7 @@ impl Node {
 
     pub async fn v2_api_tool_implementation_code_update(
         bearer: String,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_id: String,
         code: String,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1413,7 +1388,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.read().await.get_job_with_options(&job_id, false, false) {
+        let llm_provider = match db.get_job_with_options(&job_id, false, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -1492,11 +1467,7 @@ impl Node {
         };
 
         // Add the Shinkai message to the job inbox
-        let add_message_result = db
-            .write()
-            .await
-            .add_message_to_job_inbox(&job_id, &shinkai_message, None, None)
-            .await;
+        let add_message_result = db.add_message_to_job_inbox(&job_id, &shinkai_message, None, None).await;
 
         if let Err(err) = add_message_result {
             let api_error = APIError {
@@ -1526,8 +1497,6 @@ impl Node {
 
         // Add the AI message to the job inbox
         let add_ai_message_result = db
-            .write()
-            .await
             .add_message_to_job_inbox(&job_id, &ai_shinkai_message, None, None)
             .await;
 
@@ -1549,7 +1518,7 @@ impl Node {
     }
 
     pub async fn v2_api_export_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         node_env: NodeEnvironment,
         tool_key_path: String,
@@ -1560,7 +1529,7 @@ impl Node {
             return Ok(());
         }
 
-        let sqlite_manager_read = db.read().await;
+        let sqlite_manager_read = db;
         match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
             Ok(tool) => {
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
@@ -1616,7 +1585,7 @@ impl Node {
     }
 
     pub async fn v2_api_import_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         node_env: NodeEnvironment,
         url: String,
@@ -1720,7 +1689,7 @@ impl Node {
         };
 
         // Save the tool to the database
-        let mut db_write = db.write().await;
+        let mut db_write = db;
         match db_write.add_tool(tool).await {
             Ok(tool) => {
                 let archive_clone = archive.clone();
@@ -1796,7 +1765,7 @@ impl Node {
 
     pub async fn v2_api_resolve_shinkai_file_protocol(
         bearer: String,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         shinkai_file_protocol: String,
         node_storage_path: String,
         res: Sender<Result<Vec<u8>, APIError>>,
@@ -1848,11 +1817,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn disable_tools_for_job(
-        db: Arc<RwLock<SqliteManager>>,
-        bearer: String,
-        job_id: String,
-    ) -> Result<(), String> {
+    pub async fn disable_tools_for_job(db: Arc<SqliteManager>, bearer: String, job_id: String) -> Result<(), String> {
         // Get the current job config
         let (config_res_sender, config_res_receiver) = async_channel::bounded(1);
 
@@ -2006,7 +1971,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_tool(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_key: String,
         res: Sender<Result<Value, APIError>>,
@@ -2016,7 +1981,7 @@ impl Node {
             return Ok(());
         }
         // Acquire a write lock on the database
-        let db_write = db.write().await;
+        let db_write = db;
 
         // Attempt to remove the playground tool first
         let _ = db_write.remove_tool_playground(&tool_key);
