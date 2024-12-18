@@ -42,7 +42,7 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         identity_secret_key: SigningKey,
@@ -174,7 +174,7 @@ impl JobManager {
 
     /// Handle errors by sending an error message to the job inbox
     async fn handle_error(
-        db: &Arc<RwLock<SqliteManager>>,
+        db: &Arc<SqliteManager>,
         user_profile: Option<ShinkaiName>,
         job_id: &str,
         identity_secret_key: &SigningKey,
@@ -206,9 +206,7 @@ impl JobManager {
         )
         .expect("Failed to build error message");
 
-        db.write()
-            .await
-            .add_message_to_job_inbox(job_id, &shinkai_message, None, ws_manager)
+        db.add_message_to_job_inbox(job_id, &shinkai_message, None, ws_manager)
             .await
             .expect("Failed to add error message to job inbox");
 
@@ -219,7 +217,7 @@ impl JobManager {
     /// and then parses + saves the output result to the DB.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_inference_chain(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         identity_secret_key: SigningKey,
         job_message: JobMessage,
@@ -340,7 +338,7 @@ impl JobManager {
         );
 
         // Save response data to DB
-        db.write().await.add_step_history(
+        db.add_step_history(
             job_message.job_id.clone(),
             job_message.content,
             Some(image_files),
@@ -348,13 +346,9 @@ impl JobManager {
             None,
             None,
         )?;
-        db.write()
-            .await
-            .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
+        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
-        db.write()
-            .await
-            .set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
+        db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         // Check for callbacks and add them to the JobManagerQueue if required
         if let Some(callback) = &job_message.callback {
@@ -380,7 +374,7 @@ impl JobManager {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn process_sheet_job(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         message_hash_id: Option<String>,
@@ -519,7 +513,7 @@ impl JobManager {
 
     /// Helper function to process files and update the job scope.
     async fn process_files_and_update_scope(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         files: Vec<(String, Vec<u8>)>,
         agent_found: Option<ProviderOrAgent>,
@@ -653,7 +647,7 @@ impl JobManager {
                             }
                         }
                     }
-                    db.write().await.update_job_scope(job_id, scope_with_files.clone())?;
+                    db.update_job_scope(job_id, scope_with_files.clone())?;
                 } else {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
@@ -678,7 +672,7 @@ impl JobManager {
     /// Processes the files sent together with the current job_message into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_files_for_vector_resources(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         job_message: &JobMessage,
         agent_found: Option<ProviderOrAgent>,
@@ -697,10 +691,7 @@ impl JobManager {
 
             // Get the files from the DB
             let files = {
-                let files_result = db
-                    .read()
-                    .await
-                    .get_all_files_from_inbox(job_message.files_inbox.clone());
+                let files_result = db.get_all_files_from_inbox(job_message.files_inbox.clone());
                 match files_result {
                     Ok(files) => files,
                     Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
@@ -728,7 +719,7 @@ impl JobManager {
     /// Processes the specified files into Vector Resources.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_specified_files_for_vector_resources(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         files_inbox: String,
         file_names: Vec<String>,
@@ -748,7 +739,7 @@ impl JobManager {
 
             // Get the files from the DB
             let files = {
-                let files_result = db.read().await.get_all_files_from_inbox(files_inbox.clone());
+                let files_result = db.get_all_files_from_inbox(files_inbox.clone());
                 match files_result {
                     Ok(files) => files,
                     Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
@@ -781,7 +772,7 @@ impl JobManager {
 
     /// Retrieves image files associated with a job message and converts them to base64
     pub async fn get_image_files_from_message(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         job_message: &JobMessage,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
         if job_message.files_inbox.is_empty() {
@@ -794,10 +785,7 @@ impl JobManager {
             format!("Retrieving files for job message: {}", job_message.job_id).as_str(),
         );
 
-        let files_vec = db
-            .read()
-            .await
-            .get_all_files_from_inbox(job_message.files_inbox.clone())?;
+        let files_vec = db.get_all_files_from_inbox(job_message.files_inbox.clone())?;
 
         let image_files: HashMap<String, String> = files_vec
             .into_iter()
@@ -826,7 +814,7 @@ impl JobManager {
     /// Else, the files will be returned as LocalScopeEntries and thus held inside.
     #[allow(clippy::too_many_arguments)]
     pub async fn process_files_inbox(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         _vector_fs: Arc<VectorFS>,
         agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,

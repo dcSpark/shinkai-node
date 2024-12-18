@@ -13,7 +13,7 @@ use crate::network::{node_error::NodeError, Node};
 
 impl Node {
     pub async fn v2_api_get_tool_offering(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -24,7 +24,7 @@ impl Node {
         }
 
         // Fetch the tool offering
-        match db.read().await.get_tool_offering(&tool_key_name) {
+        match db.get_tool_offering(&tool_key_name) {
             Ok(tool_offering) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }
@@ -42,7 +42,7 @@ impl Node {
     }
 
     pub async fn v2_api_remove_tool_offering(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -53,7 +53,7 @@ impl Node {
         }
 
         // Attempt to get the tool offering before removing it
-        let tool_offering = match db.read().await.get_tool_offering(&tool_key_name) {
+        let tool_offering = match db.get_tool_offering(&tool_key_name) {
             Ok(tool_offering) => tool_offering,
             Err(err) => {
                 let api_error = APIError {
@@ -67,7 +67,7 @@ impl Node {
         };
 
         // Remove the tool offering
-        match db.write().await.remove_tool_offering(&tool_key_name) {
+        match db.remove_tool_offering(&tool_key_name) {
             Ok(_) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }
@@ -85,7 +85,7 @@ impl Node {
     }
 
     pub async fn v2_api_get_all_tool_offering(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Vec<ShinkaiToolHeader>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -95,7 +95,7 @@ impl Node {
         }
 
         // Fetch all tool offerings
-        let tool_offerings = match db.read().await.get_all_tool_offerings() {
+        let tool_offerings = match db.get_all_tool_offerings() {
             Ok(tool_offerings) => tool_offerings,
             Err(err) => {
                 let api_error = APIError {
@@ -112,7 +112,7 @@ impl Node {
         let mut detailed_tool_headers = Vec::new();
         for tool_offering in tool_offerings {
             let tool_key = &tool_offering.tool_key;
-            match db.read().await.get_tool_by_key(tool_key) {
+            match db.get_tool_by_key(tool_key) {
                 Ok(tool) => {
                     let mut tool_header = tool.to_header();
                     tool_header.sanitize_config();
@@ -146,7 +146,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_tool_offering(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         tool_offering: ShinkaiToolOffering,
         res: Sender<Result<ShinkaiToolOffering, APIError>>,
@@ -157,7 +157,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match db.read().await.tool_exists(&tool_offering.tool_key) {
+        match db.tool_exists(&tool_offering.tool_key) {
             Ok(exists) => {
                 if !exists {
                     let api_error = APIError {
@@ -181,7 +181,7 @@ impl Node {
         }
 
         // Save the tool offering
-        match db.write().await.set_tool_offering(tool_offering.clone()) {
+        match db.set_tool_offering(tool_offering.clone()) {
             Ok(_) => {
                 let _ = res.send(Ok(tool_offering)).await;
             }

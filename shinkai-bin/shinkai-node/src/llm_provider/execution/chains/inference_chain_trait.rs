@@ -58,7 +58,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn update_iteration_count(&mut self, new_iteration_count: u64);
     fn update_message(&mut self, new_message: ParsedUserMessage);
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>>;
+    fn db(&self) -> Arc<SqliteManager>;
     fn vector_fs(&self) -> Arc<VectorFS>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
@@ -106,7 +106,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.user_message = new_message;
     }
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>> {
+    fn db(&self) -> Arc<SqliteManager> {
         Arc::clone(&self.db)
     }
 
@@ -199,7 +199,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
 /// using all fields in this struct, but they are available nonetheless.
 #[derive(Clone)]
 pub struct InferenceChainContext {
-    pub db: Arc<RwLock<SqliteManager>>,
+    pub db: Arc<SqliteManager>,
     pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
@@ -227,7 +227,7 @@ pub struct InferenceChainContext {
 impl InferenceChainContext {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
@@ -426,7 +426,7 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).update_message(new_message)
     }
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>> {
+    fn db(&self) -> Arc<SqliteManager> {
         (**self).db()
     }
 
@@ -525,7 +525,7 @@ pub struct MockInferenceChainContext {
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
     pub raw_files: RawFiles,
-    pub db: Option<Arc<RwLock<SqliteManager>>>,
+    pub db: Option<Arc<SqliteManager>>,
     pub vector_fs: Option<Arc<VectorFS>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -543,7 +543,7 @@ impl MockInferenceChainContext {
         iteration_count: u64,
         max_tokens_in_prompt: usize,
         raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
-        db: Option<Arc<RwLock<SqliteManager>>>,
+        db: Option<Arc<SqliteManager>>,
         vector_fs: Option<Arc<VectorFS>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -609,7 +609,7 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         self.user_message = new_message;
     }
 
-    fn db(&self) -> Arc<RwLock<SqliteManager>> {
+    fn db(&self) -> Arc<SqliteManager> {
         self.db.clone().expect("DB is not set")
     }
 

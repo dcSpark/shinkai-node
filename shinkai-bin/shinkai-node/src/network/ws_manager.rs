@@ -42,7 +42,7 @@ pub struct WebSocketManager {
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
     subscriptions: HashMap<String, HashMap<String, bool>>,
     shared_keys: HashMap<String, String>,
-    shinkai_db: Weak<RwLock<SqliteManager>>,
+    shinkai_db: Weak<SqliteManager>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
     encryption_secret_key: EncryptionStaticKey,
@@ -78,7 +78,7 @@ impl fmt::Debug for WebSocketManager {
 
 impl WebSocketManager {
     pub async fn new(
-        shinkai_db: Weak<RwLock<SqliteManager>>,
+        shinkai_db: Weak<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         encryption_secret_key: EncryptionStaticKey,

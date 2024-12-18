@@ -49,7 +49,7 @@ pub struct TestEnvironment {
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
     pub node1_vecfs: Arc<VectorFS>,
-    pub node1_db: Arc<RwLock<SqliteManager>>,
+    pub node1_db: Arc<SqliteManager>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
     pub node1_tool_router: Option<Arc<ToolRouter>>,

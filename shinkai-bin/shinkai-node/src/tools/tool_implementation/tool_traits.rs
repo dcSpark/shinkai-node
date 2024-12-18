@@ -17,7 +17,7 @@ pub trait ToolExecutor {
         bearer: String,
         tool_id: String,
         app_id: String,
-        db_clone: Arc<RwLock<SqliteManager>>,
+        db_clone: Arc<SqliteManager>,
         vector_fs_clone: Arc<VectorFS>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,

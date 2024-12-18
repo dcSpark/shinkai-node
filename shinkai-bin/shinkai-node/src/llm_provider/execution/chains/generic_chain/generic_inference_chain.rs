@@ -102,7 +102,7 @@ impl GenericInferenceChain {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,

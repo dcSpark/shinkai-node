@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use chrono::{Timelike, Utc};
+use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
@@ -22,7 +22,7 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
@@ -83,7 +83,7 @@ impl fmt::Display for CronManagerError {
 }
 
 pub struct CronManager {
-    pub db: Weak<RwLock<SqliteManager>>,
+    pub db: Weak<SqliteManager>,
     pub node_profile_name: ShinkaiName,
     pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
@@ -96,7 +96,7 @@ pub struct CronManager {
 
 impl CronManager {
     pub async fn new(
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
@@ -162,7 +162,7 @@ impl CronManager {
 
     #[allow(clippy::too_many_arguments)]
     pub fn process_job_queue(
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         node_profile_name: ShinkaiName,
         identity_sk: SigningKey,
         cron_time_interval: u64,
@@ -173,7 +173,7 @@ impl CronManager {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         job_processing_fn: impl Fn(
                 CronTask,
-                Weak<RwLock<SqliteManager>>,
+                Weak<SqliteManager>,
                 SigningKey,
                 Arc<Mutex<JobManager>>,
                 Arc<Mutex<IdentityManager>>,
@@ -210,8 +210,8 @@ impl CronManager {
                         return;
                     }
                     let db_arc = db_arc.unwrap();
-                    let db = db_arc.read().await;
-                    db.get_all_cron_tasks()
+                    db_arc
+                        .get_all_cron_tasks()
                         .unwrap_or_default()
                         .into_iter()
                         .map(|task| (task.created_at.clone(), vec![(task.task_id.to_string(), task)]))
@@ -293,7 +293,7 @@ impl CronManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn process_job_message_queued(
         cron_job: CronTask,
-        db: Weak<RwLock<SqliteManager>>,
+        db: Weak<SqliteManager>,
         identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -313,7 +313,6 @@ impl CronManager {
         // Update the last executed time
         {
             let current_time = Utc::now().to_rfc3339();
-            let db = db.read().await;
             db.update_cron_task_last_executed(cron_job.task_id.into(), &current_time)?;
         }
 
@@ -332,7 +331,7 @@ impl CronManager {
                     .await?;
 
                 // Update the job configuration
-                db.write().await.update_job_config(&job_id, config)?;
+                db.update_job_config(&job_id, config)?;
 
                 // Use send_job_message_with_bearer instead of ShinkaiMessageBuilder
                 Self::send_job_message_with_bearer(
@@ -407,16 +406,16 @@ impl CronManager {
         result
     }
 
-    async fn log_success_to_sqlite(db: &Arc<RwLock<SqliteManager>>, task_id: i64) {
+    async fn log_success_to_sqlite(db: &Arc<SqliteManager>, task_id: i64) {
         let execution_time = chrono::Utc::now().to_rfc3339();
-        let db = db.write().await;
+        let db = db;
         if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, true, None) {
             eprintln!("Failed to log success to SQLite: {}", err);
         }
     }
 
     async fn send_job_message_with_bearer(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -427,7 +426,7 @@ impl CronManager {
         task_id: i64,
     ) -> Result<(), NodeError> {
         // Retrieve the bearer token from the database
-        let bearer = match db.read().await.read_api_v2_key() {
+        let bearer = match db.read_api_v2_key() {
             Ok(Some(token)) => token,
             Ok(None) => {
                 Self::log_error_to_sqlite(&db, task_id, "Bearer token not found").await;
@@ -472,9 +471,9 @@ impl CronManager {
         Ok(())
     }
 
-    async fn log_error_to_sqlite(db: &Arc<RwLock<SqliteManager>>, task_id: i64, error_message: &str) {
+    async fn log_error_to_sqlite(db: &Arc<SqliteManager>, task_id: i64, error_message: &str) {
         let execution_time = chrono::Utc::now().to_rfc3339();
-        let db = db.write().await;
+        let db = db;
         if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, false, Some(error_message)) {
             eprintln!("Failed to log error to SQLite: {}", err);
         }
@@ -512,7 +511,7 @@ impl CronManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use chrono::{Timelike, Utc};
     use shinkai_message_primitives::schemas::crontab::CronTaskAction;
 
     fn create_test_cron_task(cron: &str) -> CronTask {

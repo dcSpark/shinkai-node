@@ -14,7 +14,7 @@ use shinkai_http_api::node_api_router::APIError;
 
 impl Node {
     pub async fn v2_api_get_oauth_token(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         connection_name: String,
         tool_key: String,
@@ -26,7 +26,7 @@ impl Node {
         }
 
         // Get the OAuth token
-        match db.read().await.get_oauth_token(connection_name, tool_key) {
+        match db.get_oauth_token(connection_name, tool_key) {
             Ok(Some(token)) => match serde_json::to_value(token) {
                 Ok(response) => {
                     let _ = res.send(Ok(response)).await;
@@ -61,7 +61,7 @@ impl Node {
     }
 
     pub async fn v2_api_set_oauth_token(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         bearer: String,
         code: String,
         state: String,
@@ -84,11 +84,11 @@ impl Node {
     }
 
     async fn v2_api_set_oauth_token_cmd(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         code: String,
         state: String,
     ) -> Result<(), APIError> {
-        let oauth_data = db.read().await.get_oauth_token_by_state(&state);
+        let oauth_data = db.get_oauth_token_by_state(&state);
         if oauth_data.is_err() {
             return Err(APIError {
                 code: StatusCode::NOT_FOUND.as_u16(),
@@ -149,7 +149,7 @@ impl Node {
             oauth_data.scope = Some(scope.to_string());
         }
 
-        let update_result = db.read().await.update_oauth_token(&oauth_data.clone());
+        let update_result = db.update_oauth_token(&oauth_data.clone());
         if update_result.is_err() {
             return Err(APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

@@ -94,7 +94,7 @@ impl ToolExecutor for SQLProcessorTool {
         _bearer: String,
         tool_id: String,
         app_id: String,
-        _db_clone: Arc<RwLock<SqliteManager>>,
+        _db_clone: Arc<SqliteManager>,
         _vector_fs_clone: Arc<VectorFS>,
         _node_name_clone: ShinkaiName,
         _identity_manager_clone: Arc<Mutex<IdentityManager>>,
