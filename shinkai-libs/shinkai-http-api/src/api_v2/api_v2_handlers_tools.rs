@@ -295,7 +295,8 @@ pub struct ToolExecutionRequest {
     pub llm_provider: String,
     pub parameters: Value,
     #[serde(default = "default_map")]
-    pub extra_config: Value
+    pub extra_config: Value,
+    pub mounts: Option<Vec<String>>,
 }
 
 #[utoipa::path(
@@ -346,6 +347,7 @@ pub async fn tool_execution_handler(
             app_id,
             llm_provider: payload.llm_provider.clone(),
             extra_config,
+            mounts: payload.mounts,
             res: res_sender,
         })
         .await
@@ -971,6 +973,7 @@ pub struct CodeExecutionRequest {
     pub oauth: Option<Vec<OAuth>>,
     pub llm_provider: String,
     pub tools: Vec<String>,
+    pub mounts: Option<Vec<String>>,
 }
 
 // Define a custom default function for oauth
@@ -1031,6 +1034,7 @@ pub async fn code_execution_handler(
             tool_id: tool_id,
             app_id: app_id,
             llm_provider: payload.llm_provider,
+            mounts: payload.mounts,
             res: res_sender,
         })
         .await
@@ -1605,4 +1609,5 @@ pub async fn delete_tool_asset_handler(
         (name = "tools", description = "Tool API endpoints")
     )
 )]
+
 pub struct ToolsApiDoc;

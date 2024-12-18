@@ -268,7 +268,10 @@ impl ToolRouter {
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            match self.sqlite_manager.get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo") {
+            match self
+                .sqlite_manager
+                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
+            {
                 Ok(shinkai_tool) => {
                     if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
                         js_tool.name = "network__echo".to_string();
@@ -554,6 +557,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         None,
+                        None,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -598,11 +602,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
-                let bearer = context
-                    .db()
-                    .read_api_v2_key()
-                    .unwrap_or_default()
-                    .unwrap_or_default();
+                let bearer = context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default();
                 let llm_provider = context.agent().clone().get_id().to_string();
                 envs.insert("BEARER".to_string(), bearer);
                 envs.insert(
@@ -632,6 +632,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         Some(tool_id),
+                        None,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -967,6 +968,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 requester_node_name,
                 true,
                 Some(tool_id),
+                None,
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =
