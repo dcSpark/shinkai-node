@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use chrono::Utc;
+use chrono::{Local, TimeZone, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
@@ -373,13 +373,13 @@ impl CronManager {
     }
 
     pub fn should_execute_cron_task(cron_task: &CronTask, cron_time_interval: u64) -> bool {
-        let now = Utc::now();
+        let now = Local::now();
         let end_of_interval = now + chrono::Duration::seconds(cron_time_interval as i64);
 
         println!("Evaluating cron task:");
         println!("  Cron expression: {}", cron_task.cron);
-        println!("  Current time: {}", now);
-        println!("  End of interval: {}", end_of_interval);
+        println!("  Current time: {}", now.to_rfc3339());
+        println!("  End of interval: {}", end_of_interval.to_rfc3339());
 
         // Validate that the cron expression has exactly 5 fields
         if cron_task.cron.split_whitespace().count() != 5 {
@@ -412,7 +412,7 @@ impl CronManager {
     }
 
     async fn log_success_to_sqlite(db: &Arc<SqliteManager>, task_id: i64) {
-        let execution_time = chrono::Utc::now().to_rfc3339();
+        let execution_time = Local::now().to_rfc3339();
         let db = db;
         if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, true, None) {
             eprintln!("Failed to log success to SQLite: {}", err);
@@ -477,7 +477,7 @@ impl CronManager {
     }
 
     async fn log_error_to_sqlite(db: &Arc<SqliteManager>, task_id: i64, error_message: &str) {
-        let execution_time = chrono::Utc::now().to_rfc3339();
+        let execution_time = Local::now().to_rfc3339();
         let db = db;
         if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, false, Some(error_message)) {
             eprintln!("Failed to log error to SQLite: {}", err);
@@ -510,6 +510,83 @@ impl CronManager {
         .await?;
 
         Ok(())
+    }
+
+    /// Returns a schedule of when each active cron task is approximately going to be executed next.
+    ///
+    /// We do this by:
+    /// 1. Fetching all active (non-paused) cron tasks from the DB.
+    /// 2. For each task, parse the cron expression to find the next scheduled time after "now".
+    /// 3. We then find the iteration interval in which this next scheduled time falls.
+    ///    If a task is scheduled to run within the next `cron_interval_time` seconds from some iteration,
+    ///    it will actually be executed at the start of that iteration (due to how we batch checks).
+    ///
+    /// Note: This will only approximate when tasks are executed since they only run at discrete intervals.
+    pub async fn get_cron_schedule(&self) -> Result<Vec<(CronTask, chrono::DateTime<Local>)>, CronManagerError> {
+        let cron_time_interval = Self::cron_interval_time();
+        let now = Local::now();
+
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| CronManagerError::SomeError("DB reference lost".to_string()))?;
+
+        // Fetch all cron tasks
+        let tasks = db.get_all_cron_tasks().map_err(CronManagerError::DBError)?;
+
+        let mut schedule = Vec::new();
+
+        for task in tasks {
+            if task.paused {
+                continue;
+            }
+
+            // Parse the cron expression to find the next scheduled time
+            let parsed_next_time = cron_parser::parse(&task.cron, &now);
+            let next_time = match parsed_next_time {
+                Ok(t) => t,
+                Err(_) => {
+                    // If we fail to parse or determine next time, skip
+                    continue;
+                }
+            };
+
+            // The cron might be scheduled right now or in the future. If the next_time is
+            // in the future, we need to find the iteration window in which it falls.
+            // Our iteration runs every `cron_time_interval` seconds.
+            //
+            // Essentially, on each iteration (starting at `now`), we check tasks that are due
+            // within the next `cron_time_interval` seconds. If `next_time` is within that
+            // window, the task will run at the start of that iteration. If not, we check
+            // subsequent intervals until we find the one that includes `next_time`.
+
+            // We'll find the first iteration `k` where:
+            // iteration_start = now + k * cron_time_interval
+            // iteration_end   = iteration_start + cron_time_interval
+            // and next_time is in [iteration_start, iteration_end]
+
+            let mut iteration_count = 0;
+            let approximate_run_time = loop {
+                let iteration_start = now + chrono::Duration::seconds((iteration_count * cron_time_interval) as i64);
+                let iteration_end = iteration_start + chrono::Duration::seconds(cron_time_interval as i64);
+
+                if next_time >= iteration_start && next_time <= iteration_end {
+                    // The task will run at iteration_start, since we only run tasks at iteration boundaries.
+                    break iteration_start;
+                }
+
+                iteration_count += 1;
+                // Safety break to avoid infinite loop in abnormal situations
+                if iteration_count > 1_000 {
+                    // If we can't find a match within some large number of iterations, skip.
+                    break now;
+                }
+            };
+
+            schedule.push((task, approximate_run_time.with_timezone(&Local)));
+        }
+
+        Ok(schedule)
     }
 }
 

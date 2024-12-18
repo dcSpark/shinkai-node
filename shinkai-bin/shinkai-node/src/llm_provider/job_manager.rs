@@ -23,7 +23,6 @@ use shinkai_message_primitives::{
     shinkai_utils::signatures::clone_signature_secret_key,
 };
 use shinkai_sqlite::SqliteManager;
-// use shinkai_sqlite::SqliteLogger;
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::collections::HashSet;
@@ -32,7 +31,7 @@ use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, Semaphore};
 
 const NUM_THREADS: usize = 4;
 
@@ -79,7 +78,6 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
-        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
