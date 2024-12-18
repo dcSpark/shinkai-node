@@ -25,5 +25,6 @@ pub enum CronTaskAction {
         config: JobConfig,
         message: JobMessage,
         job_creation_info: JobCreationInfo,
+        llm_provider: String,
     },
 }

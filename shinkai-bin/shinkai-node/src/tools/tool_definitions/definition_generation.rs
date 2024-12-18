@@ -6,7 +6,6 @@ use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use crate::tools::llm_language_support::file_support_py::generate_file_support_py;
 use crate::tools::llm_language_support::file_support_ts::generate_file_support_ts;
@@ -23,8 +22,8 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     custom_tools
 }
 
-pub async fn get_all_deno_tools(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Vec<ShinkaiToolHeader> {
-    let mut all_tools = match sqlite_manager.read().await.get_all_tool_headers() {
+pub async fn get_all_deno_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeader> {
+    let mut all_tools = match sqlite_manager.get_all_tool_headers() {
         Ok(data) => data,
         Err(_) => Vec::new(),
     };
@@ -53,7 +52,7 @@ pub async fn get_all_deno_tools(sqlite_manager: Arc<RwLock<SqliteManager>>) -> V
 pub async fn generate_tool_definitions(
     tools: Vec<String>,
     language: CodeLanguage,
-    sqlite_manager: Arc<RwLock<SqliteManager>>,
+    sqlite_manager: Arc<SqliteManager>,
     only_headers: bool,
 ) -> Result<HashMap<String, String>, APIError> {
     let mut support_files = HashMap::new();
@@ -105,7 +104,7 @@ pub async fn generate_tool_definitions(
 
     for tool in all_tools {
         let tool_playground: Option<ToolPlayground> =
-            match sqlite_manager.read().await.get_tool_playground(&tool.tool_router_key) {
+            match sqlite_manager.get_tool_playground(&tool.tool_router_key) {
                 Ok(tool_playground) => Some(tool_playground),
                 Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
                 Err(e) => return Err(APIError::from(e.to_string())),

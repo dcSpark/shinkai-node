@@ -17,7 +17,7 @@ use tokio::sync::{Mutex, RwLock};
 
 pub async fn execute_deno_tool(
     bearer: String,
-    db: Arc<RwLock<SqliteManager>>,
+    db: Arc<SqliteManager>,
     node_name: ShinkaiName,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,

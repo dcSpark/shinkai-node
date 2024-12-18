@@ -94,14 +94,14 @@ pub enum ModelPrivacy {
 
 // Struct for ModelCapabilitiesManager
 pub struct ModelCapabilitiesManager {
-    pub db: Weak<RwLock<SqliteManager>>,
+    pub db: Weak<SqliteManager>,
     pub profile: ShinkaiName,
     pub llm_providers: Vec<SerializedLLMProvider>,
 }
 
 impl ModelCapabilitiesManager {
     // Constructor
-    pub async fn new(db: Weak<RwLock<SqliteManager>>, profile: ShinkaiName) -> Self {
+    pub async fn new(db: Weak<SqliteManager>, profile: ShinkaiName) -> Self {
         let db_arc = db.upgrade().unwrap();
         let llm_providers = Self::get_llm_providers(&db_arc, profile.clone()).await;
         Self {
@@ -112,8 +112,8 @@ impl ModelCapabilitiesManager {
     }
 
     // Function to get all llm providers from the database for a profile
-    async fn get_llm_providers(db: &Arc<RwLock<SqliteManager>>, profile: ShinkaiName) -> Vec<SerializedLLMProvider> {
-        db.read().await.get_llm_providers_for_profile(profile).unwrap()
+    async fn get_llm_providers(db: &Arc<SqliteManager>, profile: ShinkaiName) -> Vec<SerializedLLMProvider> {
+        db.get_llm_providers_for_profile(profile).unwrap()
     }
 
     // Static method to get capability of an agent
@@ -638,7 +638,7 @@ impl ModelCapabilitiesManager {
     /// Returns whether the given model supports tool/function calling capabilities
     pub async fn has_tool_capabilities_for_provider_or_agent(
         provider_or_agent: ProviderOrAgent,
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         stream: Option<bool>,
     ) -> bool {
         match provider_or_agent {
@@ -647,7 +647,7 @@ impl ModelCapabilitiesManager {
             }
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
-                if let Some(llm_provider) = db.read().await.get_llm_provider(llm_id, &agent.full_identity_name).ok() {
+                if let Some(llm_provider) = db.get_llm_provider(llm_id, &agent.full_identity_name).ok() {
                     if let Some(model) = llm_provider {
                         ModelCapabilitiesManager::has_tool_capabilities(&model.model, stream)
                     } else {

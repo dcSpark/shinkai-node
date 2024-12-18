@@ -103,7 +103,7 @@ impl SheetUIInferenceChain {
     // the tool code handling in the future so we can reuse the code
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
-        db: Arc<RwLock<SqliteManager>>,
+        db: Arc<SqliteManager>,
         vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,

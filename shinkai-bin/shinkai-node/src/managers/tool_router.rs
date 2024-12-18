@@ -35,11 +35,10 @@ use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_runner::built_in_tools;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct ToolRouter {
-    pub sqlite_manager: Arc<RwLock<SqliteManager>>,
+    pub sqlite_manager: Arc<SqliteManager>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -49,7 +48,7 @@ pub struct ToolCallFunctionResponse {
 }
 
 impl ToolRouter {
-    pub fn new(sqlite_manager: Arc<RwLock<SqliteManager>>) -> Self {
+    pub fn new(sqlite_manager: Arc<SqliteManager>) -> Self {
         ToolRouter { sqlite_manager }
     }
 
@@ -57,12 +56,13 @@ impl ToolRouter {
         let is_empty;
         let has_any_js_tools;
         {
-            let sqlite_manager = self.sqlite_manager.read().await;
-            is_empty = sqlite_manager
+            is_empty = self
+                .sqlite_manager
                 .is_empty()
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
-            has_any_js_tools = sqlite_manager
+            has_any_js_tools = self
+                .sqlite_manager
                 .has_any_js_tools()
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
@@ -118,8 +118,7 @@ impl ToolRouter {
 
         // Use the add_prompts_from_json_values method
         {
-            let sqlite_manager = self.sqlite_manager.write().await;
-            sqlite_manager
+            self.sqlite_manager
                 .add_prompts_from_json_values(json_array)
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
@@ -132,8 +131,7 @@ impl ToolRouter {
     }
 
     pub async fn add_network_tool(&self, network_tool: NetworkTool) -> Result<(), ToolError> {
-        let mut sqlite_manager = self.sqlite_manager.write().await;
-        sqlite_manager
+        self.sqlite_manager
             .add_tool(ShinkaiTool::Network(network_tool, true))
             .await
             .map(|_| ())
@@ -142,7 +140,6 @@ impl ToolRouter {
 
     async fn add_rust_tools(&self) -> Result<(), ToolError> {
         let rust_tools = get_rust_tools();
-        let mut sqlite_manager = self.sqlite_manager.write().await;
         for tool in rust_tools {
             let rust_tool = RustTool::new(
                 tool.name,
@@ -152,7 +149,7 @@ impl ToolRouter {
                 None,
                 tool.tool_router_key,
             );
-            sqlite_manager
+            self.sqlite_manager
                 .add_tool(ShinkaiTool::Rust(rust_tool, true))
                 .await
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -178,7 +175,6 @@ impl ToolRouter {
         ];
 
         {
-            let mut sqlite_manager = self.sqlite_manager.write().await;
             for (name, definition) in tools {
                 if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
                     continue; // Skip tools that are not in the allowed list
@@ -188,7 +184,7 @@ impl ToolRouter {
                 let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
                 for tool in toolkit.tools {
                     let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-                    sqlite_manager
+                    self.sqlite_manager
                         .add_tool(shinkai_tool)
                         .await
                         .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -233,10 +229,9 @@ impl ToolRouter {
                 restrictions: None,
             };
             {
-                let mut sqlite_manager = self.sqlite_manager.write().await;
                 let shinkai_tool = ShinkaiTool::Network(network_tool, true);
 
-                sqlite_manager
+                self.sqlite_manager
                     .add_tool(shinkai_tool)
                     .await
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -264,8 +259,7 @@ impl ToolRouter {
 
             {
                 let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
-                let mut sqlite_manager = self.sqlite_manager.write().await;
-                sqlite_manager
+                self.sqlite_manager
                     .add_tool(shinkai_tool)
                     .await
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -274,15 +268,15 @@ impl ToolRouter {
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            let sqlite_manager_read = self.sqlite_manager.read().await;
-            match sqlite_manager_read.get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo") {
+            match self
+                .sqlite_manager
+                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
+            {
                 Ok(shinkai_tool) => {
                     if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        std::mem::drop(sqlite_manager_read);
                         js_tool.name = "network__echo".to_string();
                         let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        let mut sqlite_manager = self.sqlite_manager.write().await;
-                        sqlite_manager
+                        self.sqlite_manager
                             .add_tool(modified_tool)
                             .await
                             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -297,17 +291,15 @@ impl ToolRouter {
                 }
             }
 
-            let sqlite_manager_read = self.sqlite_manager.read().await;
-            match sqlite_manager_read
+            match self
+                .sqlite_manager
                 .get_tool_by_key("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
             {
                 Ok(shinkai_tool) => {
                     if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        std::mem::drop(sqlite_manager_read);
                         js_tool.name = "youtube_transcript_with_timestamps".to_string();
                         let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        let mut sqlite_manager = self.sqlite_manager.write().await;
-                        sqlite_manager
+                        self.sqlite_manager
                             .add_tool(modified_tool)
                             .await
                             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -443,9 +435,8 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
 
     async fn add_python_tools(&self) -> Result<(), ToolError> {
         let python_tools = vec![Self::generate_google_search_tool()];
-        let mut sqlite_manager = self.sqlite_manager.write().await;
         for python_tool in python_tools {
-            sqlite_manager
+            self.sqlite_manager
                 .add_tool(ShinkaiTool::Python(python_tool, true))
                 .await
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -455,7 +446,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
     }
 
     pub async fn get_tool_by_name(&self, name: &str) -> Result<Option<ShinkaiTool>, ToolError> {
-        match self.sqlite_manager.read().await.get_tool_by_key(name) {
+        match self.sqlite_manager.get_tool_by_key(name) {
             Ok(tool) => Ok(Some(tool)),
             Err(SqliteManagerError::ToolNotFound(_)) => Ok(None),
             Err(e) => Err(ToolError::DatabaseError(e.to_string())),
@@ -469,8 +460,6 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
-            .read()
-            .await
             .tool_vector_search(query, num_of_results, false, false)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -486,8 +475,6 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
-            .read()
-            .await
             .tool_vector_search(query, num_of_results, false, true)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -503,8 +490,6 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
-            .read()
-            .await
             .tool_vector_search(query, num_of_results, true, true)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
@@ -542,13 +527,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
 
-                let bearer = context
-                    .db()
-                    .read()
-                    .await
-                    .read_api_v2_key()
-                    .unwrap_or_default()
-                    .unwrap_or_default();
+                let bearer = context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default();
                 let llm_provider = context.agent().clone().get_id().to_string();
                 envs.insert("BEARER".to_string(), bearer);
                 envs.insert(
@@ -623,13 +602,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 let mut envs = HashMap::new();
-                let bearer = context
-                    .db()
-                    .read()
-                    .await
-                    .read_api_v2_key()
-                    .unwrap_or_default()
-                    .unwrap_or_default();
+                let bearer = context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default();
                 let llm_provider = context.agent().clone().get_id().to_string();
                 envs.insert("BEARER".to_string(), bearer);
                 envs.insert(
@@ -767,12 +740,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     }
 
                     // Check if the invoice is paid
-                    match context
-                        .db()
-                        .read()
-                        .await
-                        .get_invoice(&internal_invoice_request.unique_id.clone())
-                    {
+                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
                         Ok(invoice) => {
                             eprintln!("invoice found: {:?}", invoice);
 
@@ -786,8 +754,6 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                             // If invoice is not found, check for InvoiceNetworkError
                             match context
                                 .db()
-                                .read()
-                                .await
                                 .get_invoice_network_error(&internal_invoice_request.unique_id.clone())
                             {
                                 Ok(network_error) => {
@@ -900,12 +866,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     }
 
                     // Check if the invoice is paid
-                    match context
-                        .db()
-                        .read()
-                        .await
-                        .get_invoice(&internal_invoice_request.unique_id.clone())
-                    {
+                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
                         Ok(invoice) => {
                             if invoice.status == InvoiceStatusEnum::Processed {
                                 invoice_result = invoice;
@@ -1030,8 +991,6 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
         let vector_start_time = Instant::now();
         let vector_search_result = self
             .sqlite_manager
-            .read()
-            .await
             .tool_vector_search(&sanitized_query, num_of_results, include_disabled, include_network)
             .await;
         let vector_elapsed_time = vector_start_time.elapsed();
@@ -1039,7 +998,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = self.sqlite_manager.read().await.search_tools_fts(&sanitized_query);
+        let fts_search_result = self.sqlite_manager.search_tools_fts(&sanitized_query);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
 

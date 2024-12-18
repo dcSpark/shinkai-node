@@ -54,12 +54,20 @@ pub fn cron_routes(
         .and(warp::body::json())
         .and_then(update_cron_task_handler);
 
+    let force_execute_cron_task_route = warp::path("force_execute_cron_task")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(force_execute_cron_task_handler);
+
     add_cron_task_route
         .or(list_all_cron_tasks_route)
         .or(get_specific_cron_task_route)
         .or(remove_cron_task_route)
         .or(get_cron_task_logs_route)
         .or(update_cron_task_route)
+        .or(force_execute_cron_task_route)
 }
 
 #[derive(Deserialize)]
@@ -390,6 +398,68 @@ pub async fn update_cron_task_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/force_execute_cron_task",
+    params(
+        ("cron_task_id" = String, Query, description = "Cron task ID to force execute")
+    ),
+    responses(
+        (status = 200, description = "Successfully forced execution of cron task", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn force_execute_cron_task_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    // Extract cron_task_id from query parameters
+    let cron_task_id_str = query_params
+        .get("cron_task_id")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid.".to_string(),
+            })
+        })?;
+
+    // Parse cron_task_id to i64
+    let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The cron_task_id must be a valid integer.".to_string(),
+        })
+    })?;
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiForceExecuteCronTask {
+            bearer,
+            cron_task_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -399,6 +469,7 @@ pub async fn update_cron_task_handler(
         remove_cron_task_handler,
         get_cron_task_logs_handler,
         update_cron_task_handler,
+        force_execute_cron_task_handler,
     ),
     components(
         schemas(CronTask, CronTaskAction, APIError)

@@ -1572,7 +1572,6 @@ pub async fn delete_tool_asset_handler(
     }
 }
 
-
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1596,6 +1595,9 @@ pub async fn delete_tool_asset_handler(
         export_tool_handler,
         import_tool_handler,
         resolve_shinkai_file_protocol_handler,
+        tool_asset_handler,
+        list_tool_asset_handler,
+        delete_tool_asset_handler,
     ),
     components(
         schemas(
