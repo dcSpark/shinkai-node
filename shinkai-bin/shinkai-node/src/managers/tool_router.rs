@@ -7,6 +7,7 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
+use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -315,7 +316,10 @@ impl ToolRouter {
 
         // Check if ADD_TESTING_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            match self.sqlite_manager.get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo") {
+            match self
+                .sqlite_manager
+                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
+            {
                 Ok(shinkai_tool) => {
                     if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
                         js_tool.name = "network__echo".to_string();
@@ -569,24 +573,19 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-                let mut envs = HashMap::new();
 
-                let bearer = context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default();
-                let llm_provider = context.agent().clone().get_id().to_string();
-                envs.insert("BEARER".to_string(), bearer);
-                envs.insert(
-                    "X_SHINKAI_TOOL_ID".to_string(),
-                    format!("jid-{}", context.full_job().job_id()),
-                );
-                envs.insert(
-                    "X_SHINKAI_APP_ID".to_string(),
-                    format!("jid-{}", context.full_job().job_id()),
-                );
-                envs.insert(
-                    "X_SHINKAI_INSTANCE_ID".to_string(),
-                    format!("jid-{}", context.full_job().job_id()),
-                );
-                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
+                let envs = generate_execution_environment(
+                    context.db(),
+                    context.agent().clone().get_id().to_string(),
+                    format!("jid-{}", tool_id),
+                    format!("jid-{}", app_id),
+                    shinkai_tool.tool_router_key().clone(),
+                    format!("jid-{}", app_id),
+                    &python_tool.oauth,
+                )
+                .await
+                .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
                 let result = python_tool
                     .run(
                         envs,
@@ -644,27 +643,18 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-                let mut envs = HashMap::new();
-                let bearer = context
-                        .db()
-                        .read_api_v2_key()
-                        .unwrap_or_default()
-                        .unwrap_or_default();
-                let llm_provider = context.agent().clone().get_id().to_string();
-                envs.insert("BEARER".to_string(), bearer);
-                envs.insert(
-                    "X_SHINKAI_TOOL_ID".to_string(),
-                    format!("jid-{}", context.full_job().job_id()),
-                );
-                envs.insert(
-                    "X_SHINKAI_APP_ID".to_string(),
-                    format!("jid-{}", context.full_job().job_id()),
-                );
-                envs.insert(
-                    "X_SHINKAI_INSTANCE_ID".to_string(),
-                    format!("jid-{}", context.full_job().job_id()),
-                );
-                envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
+                let envs = generate_execution_environment(
+                    context.db(),
+                    context.agent().clone().get_id().to_string(),
+                    format!("jid-{}", app_id),
+                    format!("jid-{}", tool_id),
+                    shinkai_tool.tool_router_key().clone(),
+                    format!("jid-{}", app_id),
+                    &deno_tool.oauth,
+                )
+                .await
+                .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
                 let result = deno_tool
                     .run(
                         envs,
@@ -992,16 +982,29 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
             generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-        let mut envs = HashMap::new();
-        envs.insert("BEARER".to_string(), "".to_string()); // TODO (How do we get the bearer?)
-        envs.insert("X_SHINKAI_TOOL_ID".to_string(), "".to_string()); // TODO Pass data from the API
-        envs.insert("X_SHINKAI_APP_ID".to_string(), "".to_string()); // TODO Pass data from the API
-        envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
-        envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), "".to_string()); // TODO Pass data from the API
+
+        let oauth = match shinkai_tool.clone() {
+            ShinkaiTool::Deno(deno_tool, _) => deno_tool.oauth.clone(),
+            ShinkaiTool::Python(python_tool, _) => python_tool.oauth.clone(),
+            _ => return Err(LLMProviderError::FunctionNotFound(js_tool_name.to_string())),
+        };
+
+        let env = generate_execution_environment(
+            self.sqlite_manager.clone(),
+            "".to_string(),
+            format!("xid-{}", app_id),
+            format!("xid-{}", tool_id),
+            shinkai_tool.tool_router_key().clone(),
+            // TODO: Pass data from the API
+            "".to_string(),
+            &oauth,
+        )
+        .await
+        .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
         let result = js_tool
             .run(
-                HashMap::new(),
+                env,
                 node_env.api_listen_address.ip().to_string(),
                 node_env.api_listen_address.port(),
                 support_files,
