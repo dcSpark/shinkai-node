@@ -1608,7 +1608,7 @@ impl Node {
         Ok(())
     }
 
-    async fn v2_api_import_tool_internal(
+    pub async fn v2_api_import_tool_internal(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         url: String,

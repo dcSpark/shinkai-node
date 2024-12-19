@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
+use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::utils::environment::fetch_node_environment;
@@ -66,6 +67,52 @@ impl ToolRouter {
                 .sqlite_manager
                 .has_any_js_tools()
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+        }
+
+        // Import tools
+        async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
+            let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
+                .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
+
+            let response = reqwest::get(url)
+                .await
+                .map_err(|e| ToolError::RequestError(e))?;
+
+            if response.status() != 200 {
+                return Err(ToolError::ExecutionError(format!("Import tools request returned a non OK status: {}", response.status())));
+            }
+
+            let tools: Vec<serde_json::Value> = response
+                .json()
+                .await
+                .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
+
+            for tool in tools {
+                let tool_url = tool["file"]
+                    .as_str()
+                    .ok_or_else(|| ToolError::ParseError("Missing or invalid file URL in tool definition".to_string()))?;
+                
+                let tool_name = tool["name"]
+                    .as_str()
+                    .unwrap_or("unknown");
+
+                match Node::v2_api_import_tool_internal(
+                    db.clone(),
+                    fetch_node_environment(),
+                    tool_url.to_string(),
+                )
+                .await
+                {
+                    Ok(_) => println!("Successfully imported tool {}", tool_name),
+                    Err(e) => eprintln!("Failed to import tool {}: {:#?}", tool_name, e),
+                }
+            }
+
+            Ok(())
+        }
+
+        if let Err(e) = import_tools_from_directory(self.sqlite_manager.clone()).await {
+            eprintln!("Error importing tools from directory: {}", e);
         }
 
         if is_empty {
