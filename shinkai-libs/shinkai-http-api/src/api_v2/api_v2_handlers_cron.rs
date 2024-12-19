@@ -61,6 +61,12 @@ pub fn cron_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(force_execute_cron_task_handler);
 
+    let get_cron_schedule_route = warp::path("get_cron_schedule")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_cron_schedule_handler);
+
     add_cron_task_route
         .or(list_all_cron_tasks_route)
         .or(get_specific_cron_task_route)
@@ -68,6 +74,7 @@ pub fn cron_routes(
         .or(get_cron_task_logs_route)
         .or(update_cron_task_route)
         .or(force_execute_cron_task_route)
+        .or(get_cron_schedule_route)
 }
 
 #[derive(Deserialize)]
@@ -463,6 +470,42 @@ pub async fn force_execute_cron_task_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/get_cron_schedule",
+    responses(
+        (status = 200, description = "Successfully retrieved cron schedule", body = Vec<CronTask>),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_cron_schedule_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetCronSchedule {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -473,6 +516,7 @@ pub async fn force_execute_cron_task_handler(
         get_cron_task_logs_handler,
         update_cron_task_handler,
         force_execute_cron_task_handler,
+        get_cron_schedule_handler,
     ),
     components(
         schemas(CronTask, CronTaskAction, APIError)

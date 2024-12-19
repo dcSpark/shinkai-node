@@ -10,6 +10,7 @@ use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
+use chrono::{Utc, Local};
 
 impl Node {
     pub async fn v2_api_add_cron_task(
@@ -274,5 +275,34 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn v2_api_get_cron_schedule(
+        db: Arc<SqliteManager>,
+        cron_manager: Arc<Mutex<CronManager>>,
+        bearer: String,
+        res: Sender<Result<Vec<(CronTask, chrono::DateTime<Local>)>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the cron schedule
+        match cron_manager.lock().await.get_cron_schedule().await {
+            Ok(schedule) => {
+                let _ = res.send(Ok(schedule)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get cron schedule: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
     }
 }
