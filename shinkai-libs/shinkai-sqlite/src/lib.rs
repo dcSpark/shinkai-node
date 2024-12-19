@@ -716,7 +716,8 @@ impl SqliteManager {
                 created_at TEXT NOT NULL, -- Field to track when the task was created
                 last_modified TEXT NOT NULL,
                 last_executed TEXT, -- Field to track the last execution time
-                action TEXT NOT NULL -- Store serialized CronTaskAction
+                action TEXT NOT NULL, -- Store serialized CronTaskAction
+                paused INTEGER NOT NULL DEFAULT 0 -- New field to track if the task is paused
             );",
             [],
         )?;

@@ -199,6 +199,7 @@ impl Node {
         action: CronTaskAction,
         name: String,
         description: Option<String>,
+        paused: bool,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -207,7 +208,7 @@ impl Node {
         }
 
         // Update the cron task
-        match db.update_cron_task(task_id, &name, description.as_deref(), &cron, &action) {
+        match db.update_cron_task(task_id, &name, description.as_deref(), &cron, &action, paused) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Cron task updated successfully" });
                 let _ = res.send(Ok(response)).await;
