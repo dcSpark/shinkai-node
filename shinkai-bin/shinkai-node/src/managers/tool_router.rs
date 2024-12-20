@@ -74,12 +74,13 @@ impl ToolRouter {
             let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
                 .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
 
-            let response = reqwest::get(url)
-                .await
-                .map_err(|e| ToolError::RequestError(e))?;
+            let response = reqwest::get(url).await.map_err(|e| ToolError::RequestError(e))?;
 
             if response.status() != 200 {
-                return Err(ToolError::ExecutionError(format!("Import tools request returned a non OK status: {}", response.status())));
+                return Err(ToolError::ExecutionError(format!(
+                    "Import tools request returned a non OK status: {}",
+                    response.status()
+                )));
             }
 
             let tools: Vec<serde_json::Value> = response
@@ -88,20 +89,14 @@ impl ToolRouter {
                 .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
 
             for tool in tools {
-                let tool_url = tool["file"]
-                    .as_str()
-                    .ok_or_else(|| ToolError::ParseError("Missing or invalid file URL in tool definition".to_string()))?;
-                
-                let tool_name = tool["name"]
-                    .as_str()
-                    .unwrap_or("unknown");
+                let tool_url = tool["file"].as_str().ok_or_else(|| {
+                    ToolError::ParseError("Missing or invalid file URL in tool definition".to_string())
+                })?;
 
-                match Node::v2_api_import_tool_internal(
-                    db.clone(),
-                    fetch_node_environment(),
-                    tool_url.to_string(),
-                )
-                .await
+                let tool_name = tool["name"].as_str().unwrap_or("unknown");
+
+                match Node::v2_api_import_tool_internal(db.clone(), fetch_node_environment(), tool_url.to_string())
+                    .await
                 {
                     Ok(_) => println!("Successfully imported tool {}", tool_name),
                     Err(e) => eprintln!("Failed to import tool {}: {:#?}", tool_name, e),
@@ -600,6 +595,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         None,
+                        None,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -643,6 +639,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
                 let envs = generate_execution_environment(
                     context.db(),
                     context.agent().clone().get_id().to_string(),
@@ -669,6 +666,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         Some(tool_id),
+                        None,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -1017,6 +1015,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 requester_node_name,
                 true,
                 Some(tool_id),
+                None,
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =

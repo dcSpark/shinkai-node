@@ -1,3 +1,4 @@
+pub mod api_v2_handlers_app_files;
 pub mod api_v2_handlers_cron;
 pub mod api_v2_handlers_ext_agent_offers;
 pub mod api_v2_handlers_general;
