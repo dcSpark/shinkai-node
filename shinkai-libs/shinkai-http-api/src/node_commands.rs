@@ -1,7 +1,7 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use async_channel::Sender;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use ed25519_dalek::VerifyingKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
@@ -1077,12 +1077,17 @@ pub enum NodeCommand {
         action: CronTaskAction,
         name: String,
         description: Option<String>,
+        paused: bool,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiForceExecuteCronTask {
         bearer: String,
         cron_task_id: i64,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetCronSchedule {
+        bearer: String,
+        res: Sender<Result<Vec<(CronTask, chrono::DateTime<Local>)>, APIError>>,
     },
     V2ApiTestLlmProvider {
         bearer: String,
