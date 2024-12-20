@@ -1,9 +1,9 @@
 use super::file_parser::ShinkaiFileParser;
 use super::file_parser_types::TextGroup;
-use crate::embedding_generator::EmbeddingGenerator;
 use crate::shinkai_fs_error::ShinkaiFsError;
 use keyphrases::KeyPhraseExtractor;
 use regex::Regex;
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use std::collections::HashMap;
 use std::{future::Future, pin::Pin};
 

@@ -9,6 +9,8 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
 
 use crate::shinkai_fs_error::ShinkaiFsError;
+use crate::file_parser::ShinkaiFileParser;
+use crate::embedding_generator::EmbeddingGenerator;
 
 pub struct ShinkaiFileManager;
 
@@ -30,11 +32,12 @@ pub enum FileProcessingMode {
 impl ShinkaiFileManager {
     /// Process file: If not in DB, add it. If supported, generate chunks.
     /// If already processed, consider checking if file changed (not implemented here).
-    pub fn process_file(
+    pub async fn process_file(
         path: ShinkaiPath,
         base_dir: &Path,
         sqlite_manager: &SqliteManager,
         mode: FileProcessingMode,
+        generator: &dyn EmbeddingGenerator,
     ) -> Result<(), ShinkaiFsError> {
         let rel_path = Self::compute_relative_path(&path, base_dir)?;
         let parsed_file = if let Some(pf) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
@@ -67,9 +70,18 @@ impl ShinkaiFileManager {
         match mode {
             FileProcessingMode::Auto => {
                 // Implement logic for Auto mode
+                let file_buffer = fs::read(path.as_path())?;
+                let text_groups = ShinkaiFileParser::process_file_into_text_groups(
+                    file_buffer,
+                    rel_path.clone(),
+                    1024, // Example max_node_text_size
+                    VRSourceReference::from_file(&rel_path, TextChunkingStrategy::V1)?,
+                ).await?;
+                // Further processing...
             }
             FileProcessingMode::NoParsing => {
-                // Implement logic for NoParsing mode
+                // NoParsing mode: Skip parsing logic
+                // You might still want to update metadata or perform other tasks
             }
             FileProcessingMode::MustParse => {
                 // Implement logic for MustParse mode

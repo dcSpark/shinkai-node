@@ -234,11 +234,9 @@ impl ShinkaiFileManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::fs::{self, File};
     use std::io::Read;
-    use std::path::PathBuf;
-    use tempfile::{tempdir, NamedTempFile};
+    use tempfile::tempdir;
 
     #[test]
     fn test_remove_empty_folder() {

@@ -1,7 +1,8 @@
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
+
 use super::file_parser_types::TextGroup;
 use super::local_parsing::LocalFileParser;
 
-use crate::embedding_generator::EmbeddingGenerator;
 use crate::shinkai_fs_error::ShinkaiFsError;
 use std::{future::Future, pin::Pin};
 

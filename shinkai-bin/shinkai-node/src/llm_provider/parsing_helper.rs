@@ -2,6 +2,7 @@ use super::error::LLMProviderError;
 use super::execution::prompts::general_prompts::JobPromptGenerator;
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
