@@ -241,8 +241,27 @@ pub async fn tool_metadata_implementation_prompt(
     code: String,
     tools: Vec<String>,
 ) -> Result<String, APIError> {
-    let has_oauth = (language == CodeLanguage::Typescript && code.contains("getAccessToken"))
-        || (language == CodeLanguage::Python && code.contains("get_access_token"));
+    // code might be json string as {
+    //  "job_id":"jobid_c7c5c9f5-e3a3-4667-ba67-e8b838c2f5db",
+    //  "content":"```typescript\ ..console.log.. ```",
+    //  "files_inbox":"",
+    //  "parent":null,
+    //  "sheet_job_data":null,
+    //  "callback":null,
+    //  "metadata":{"tps":null,"duration_ms":"2824","function_calls":[]},
+    // "tool_key":null}
+    // we need to extract the code from the json string
+    let json = serde_json::from_str::<serde_json::Value>(&code);
+    let mut final_code = code;
+    if let Ok(json) = json {
+        let code = json.get("content");
+        if let Some(code) = code {
+            final_code = code.to_string();
+        }
+    }
+
+    let has_oauth = (language == CodeLanguage::Typescript && final_code.contains("getAccessToken"))
+        || (language == CodeLanguage::Python && final_code.contains("get_access_token"));
     let oauth_example = if has_oauth {
         r#"[
       {{
@@ -266,11 +285,11 @@ pub async fn tool_metadata_implementation_prompt(
         r#"[]"#
     };
     let oauth_explain = if has_oauth {
-        r#"\
-    * OAuth is required. For each get_access_token or getAccessToken function you must provide an OAuth configuration.
-    * getAccessToken(name) must match the metadata oauth name field.
-    * OAuth version 1.0 or 2.0 is supported, if possible prefer 1.0 over 2.0.
-    * Leave refreshToken and accessToken empty, they will be filled later on.\
+        r#"
+  * OAuth is required. For each get_access_token or getAccessToken in the input_command tag you must provide an OAuth configuration.
+  * getAccessToken(name) must match the metadata oauth name field.
+  * OAuth version 1.0 or 2.0 is supported, if possible prefer 1.0 over 2.0.
+  * Leave refreshToken and accessToken empty, they will be filled later on.
 "#
     } else {
         r#""#
@@ -559,7 +578,8 @@ pub async fn tool_metadata_implementation_prompt(
     "tools": [
       "local:::rust_toolkit:::shinkai_sqlite_query_executor",
       "local:::shinkai_tool_echo:::shinkai_echo"
-    ]
+    ],
+    "oauth": {oauth_example}
   }};
   ```
 
@@ -644,7 +664,6 @@ pub async fn tool_metadata_implementation_prompt(
 </input_command>
 
 "####,
-        tools,
-        code.clone()
+        tools, final_code
     ))
 }

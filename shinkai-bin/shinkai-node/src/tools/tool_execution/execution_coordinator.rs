@@ -2,6 +2,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
+use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
 
@@ -99,10 +100,10 @@ pub async fn handle_oauth(
             let oauth_login_url = format!(
                 "{}?client_id={}&redirect_uri={}&scope={}&state={}",
                 o.authorization_url,
-                o.client_id,
+                urlencoding::encode(&o.client_id),
                 urlencoding::encode(&o.redirect_url),
-                o.scopes.join(" "),
-                uuid
+                urlencoding::encode(&o.scopes.join(" ")),
+                urlencoding::encode(&uuid)
             );
 
             return Err(ToolError::OAuthError(oauth_login_url));
@@ -158,25 +159,18 @@ pub async fn execute_tool_cmd(
             .get_tool_by_key(&tool_router_key)
             .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
-        let mut envs = HashMap::new();
-        envs.insert("BEARER".to_string(), bearer);
-        envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
-        envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
-        envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), "".to_string()); // TODO Pass data from the API
-        envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider.clone());
-
         match tool {
             ShinkaiTool::Python(python_tool, _) => {
-                let oauth = handle_oauth(
-                    &python_tool.oauth,
-                    &db,
+                let env = generate_execution_environment(
+                    db.clone(),
+                    llm_provider.clone(),
                     app_id.clone(),
                     tool_id.clone(),
                     tool_router_key.clone(),
+                    "".to_string(), // TODO Pass data from the API
+                    &python_tool.oauth.clone(),
                 )
                 .await?;
-
-                envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
@@ -193,7 +187,7 @@ pub async fn execute_tool_cmd(
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 python_tool
                     .run(
-                        envs,
+                        env,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
                         support_files,
@@ -210,16 +204,16 @@ pub async fn execute_tool_cmd(
                     .map(|result| json!(result.data))
             }
             ShinkaiTool::Deno(deno_tool, _) => {
-                let oauth = handle_oauth(
-                    &deno_tool.oauth,
-                    &db,
+                let env = generate_execution_environment(
+                    db.clone(),
+                    llm_provider.clone(),
                     app_id.clone(),
                     tool_id.clone(),
                     tool_router_key.clone(),
+                    "".to_string(), // TODO Pass data from the API
+                    &deno_tool.oauth.clone(),
                 )
                 .await?;
-
-                envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
@@ -236,7 +230,7 @@ pub async fn execute_tool_cmd(
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
                 deno_tool
                     .run(
-                        envs,
+                        env,
                         node_env.api_listen_address.ip().to_string(),
                         node_env.api_listen_address.port(),
                         support_files,

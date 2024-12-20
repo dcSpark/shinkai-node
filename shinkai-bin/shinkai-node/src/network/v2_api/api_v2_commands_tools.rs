@@ -516,7 +516,7 @@ impl Node {
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
-        perm_file_path.push(shinkai_tool.tool_router_key());
+        perm_file_path.push(shinkai_tool.tool_router_key_path());
         if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -1547,7 +1547,7 @@ impl Node {
                 let assets = PathBuf::from(&node_env.node_storage_path.unwrap_or_default())
                     .join(".tools_storage")
                     .join("tools")
-                    .join(tool.tool_router_key());
+                    .join(tool.tool_router_key_path());
                 if assets.exists() {
                     for entry in std::fs::read_dir(assets).unwrap() {
                         let entry = entry.unwrap();
@@ -1612,7 +1612,7 @@ impl Node {
         Ok(())
     }
 
-    async fn v2_api_import_tool_internal(
+    pub async fn v2_api_import_tool_internal(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         url: String,
@@ -1730,7 +1730,7 @@ impl Node {
                     let mut file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
                         .join(".tools_storage")
                         .join("tools")
-                        .join(tool.tool_router_key());
+                        .join(tool.tool_router_key_path());
                     if !file_path.exists() {
                         let s = std::fs::create_dir_all(&file_path);
                         if s.is_err() {
