@@ -476,8 +476,6 @@ impl SqliteManager {
             )));
         }
 
-        let profile_name = profile_name_identity.full_identity_name.to_string();
-
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT inbox_name FROM inboxes")?;
         let mut rows = stmt.query([])?;
@@ -486,16 +484,7 @@ impl SqliteManager {
         while let Some(row) = rows.next()? {
             let inbox_name: String = row.get(0)?;
 
-            if inbox_name.contains(&profile_name) {
-                inboxes.push(inbox_name);
-            } else {
-                // Check if the identity has read permission for the inbox
-                if let Ok(has_perm) = self.has_permission(&inbox_name, &profile_name_identity, InboxPermission::Read) {
-                    if has_perm {
-                        inboxes.push(inbox_name);
-                    }
-                }
-            }
+            inboxes.push(inbox_name);
         }
 
         Ok(inboxes)

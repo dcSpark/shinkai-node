@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use chrono::{Local, TimeZone, Utc};
+use chrono::{Local, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
