@@ -22,7 +22,7 @@ use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType},
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
-        job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
     },
 };
 use shinkai_message_primitives::{
@@ -42,7 +42,6 @@ use shinkai_tools_primitives::tools::{
     tool_output_arg::ToolOutputArg,
     tool_playground::ToolPlayground,
 };
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
@@ -790,7 +789,6 @@ impl Node {
         bearer: String,
         node_name: ShinkaiName,
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         tool_router_key: String,
         parameters: Map<String, Value>,
         tool_id: String,
@@ -816,7 +814,7 @@ impl Node {
             bearer,
             node_name,
             db,
-            vector_fs,
+            // vector_fs,
             tool_router_key.clone(),
             parameters,
             tool_id,
@@ -1121,7 +1119,7 @@ impl Node {
         }
 
         // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
-        let job = match db.get_job_with_options(&job_id, true, true) {
+        let job = match db.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1208,7 +1206,7 @@ impl Node {
 
         // We auto create a new job with the same configuration as the one from job_id
         let job_creation_info = JobCreationInfo {
-            scope: job.scope_with_files().cloned().unwrap_or(JobScope::new_default()),
+            scope: job.scope().clone(),
             is_hidden: Some(job.is_hidden()),
             associated_ui: None,
         };
@@ -1388,7 +1386,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job_with_options(&job_id, false, false) {
+        let llm_provider = match db.get_job_with_options(&job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -1689,8 +1687,7 @@ impl Node {
         };
 
         // Save the tool to the database
-        let mut db_write = db;
-        match db_write.add_tool(tool).await {
+        match db.add_tool(tool).await {
             Ok(tool) => {
                 let archive_clone = archive.clone();
                 let files = archive_clone.file_names();

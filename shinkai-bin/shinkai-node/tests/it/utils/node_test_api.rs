@@ -454,7 +454,7 @@ pub async fn api_create_job(
     sender_subidentity: &str,
     recipient_subidentity: &str,
 ) -> String {
-    let job_scope = JobScope::new_default();
+    let job_scope = MinimalJobScope::default();
     api_create_job_with_scope(
         node_commands_sender,
         subidentity_encryption_sk,

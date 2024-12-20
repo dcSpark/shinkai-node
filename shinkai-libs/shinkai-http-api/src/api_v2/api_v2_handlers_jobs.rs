@@ -20,9 +20,7 @@ use shinkai_message_primitives::{
             JobMessage, SheetJobAction, SheetManagerAction, V2ChatMessage,
         },
     },
-    shinkai_utils::job_scope::{
-        JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry, VectorFSFolderScopeEntry, VectorFSItemScopeEntry,
-    },
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
@@ -894,7 +892,7 @@ pub async fn get_job_config_handler(
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateJobScopeRequest {
     pub job_id: String,
-    pub job_scope: JobScope,
+    pub job_scope: MinimalJobScope,
 }
 
 #[utoipa::path(
@@ -1216,8 +1214,7 @@ pub async fn add_messages_god_mode_handler(
         schemas(AddFileToInboxRequest, V2SmartInbox, APIChangeJobAgentRequest, CreateJobRequest, JobConfig,
             JobMessageRequest, GetLastMessagesRequest, V2ChatMessage, GetLastMessagesWithBranchesRequest,
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
-            JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, JobScope, LocalScopeVRKaiEntry, LocalScopeVRPackEntry,
-            VectorFSItemScopeEntry, VectorFSFolderScopeEntry, CallbackAction, ShinkaiName,
+            JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, MinimalJobScope, CallbackAction, ShinkaiName,
             LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest, ExportInboxMessagesFormat, ExportInboxMessagesRequest,
             ShinkaiSubidentityType, OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
             SheetJobAction, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)

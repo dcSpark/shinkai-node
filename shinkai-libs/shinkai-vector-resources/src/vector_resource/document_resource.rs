@@ -603,7 +603,7 @@ impl DocumentVectorResource {
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
     ) -> Result<(), VRError> {
-        let path = VRPath::from_string("/")?;
+        let path = ShinkaiPath::from_string("/")?;
         self.append_vector_resource_node_at_path(path, resource, metadata, embedding)
     }
 
@@ -640,7 +640,7 @@ impl DocumentVectorResource {
         embedding: Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) -> Result<(), VRError> {
-        let path = VRPath::from_string("/")?;
+        let path = ShinkaiPath::from_string("/")?;
         self.append_text_node_at_path(path, text, metadata, embedding, parsing_tags)
     }
 
@@ -667,7 +667,7 @@ impl DocumentVectorResource {
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
     ) -> Result<(), VRError> {
-        let path = VRPath::from_string("/")?;
+        let path = ShinkaiPath::from_string("/")?;
         self.append_external_content_node_at_path(path, external_content, metadata, embedding)
     }
 
@@ -691,7 +691,7 @@ impl DocumentVectorResource {
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
     ) -> Result<(), VRError> {
-        let path = VRPath::from_string("/")?;
+        let path = ShinkaiPath::from_string("/")?;
         self.append_vr_header_node_at_path(path, vr_header, metadata, embedding)
     }
 
@@ -718,7 +718,7 @@ impl DocumentVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_string() + &id.to_string()))?;
+        let path = ShinkaiPath::from_string(&("/".to_string() + &id.to_string()))?;
         self.replace_with_vector_resource_node_at_path(path, new_resource, new_metadata, embedding)
     }
 
@@ -747,7 +747,7 @@ impl DocumentVectorResource {
         embedding: Embedding,
         parsing_tags: Vec<DataTag>, // List of datatags you want to parse the new data with.
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_string() + &id.to_string()))?;
+        let path = ShinkaiPath::from_string(&("/".to_string() + &id.to_string()))?;
         self.replace_with_text_node_at_path(path, new_text, new_metadata, embedding, parsing_tags)
     }
 
@@ -777,7 +777,7 @@ impl DocumentVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_string() + &id.to_string()))?;
+        let path = ShinkaiPath::from_string(&("/".to_string() + &id.to_string()))?;
         self.replace_with_external_content_node_at_path(path, new_external_content, new_metadata, embedding)
     }
 
@@ -802,7 +802,7 @@ impl DocumentVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_string() + &id.to_string()))?;
+        let path = ShinkaiPath::from_string(&("/".to_string() + &id.to_string()))?;
         self.replace_with_vr_header_node_at_path(path, new_vr_header, new_metadata, embedding)
     }
 
@@ -822,7 +822,7 @@ impl DocumentVectorResource {
 
     /// Pops and returns the last node and associated embedding.
     pub fn pop_node(&mut self) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string("/")?;
+        let path = ShinkaiPath::from_string("/")?;
         self.pop_node_at_path(path, true)
     }
 

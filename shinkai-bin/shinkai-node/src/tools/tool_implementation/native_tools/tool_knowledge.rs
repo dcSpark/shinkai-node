@@ -76,7 +76,6 @@ impl ToolExecutor for KnowledgeTool {
         _tool_id: String,
         _app_id: String,
         db_clone: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         _identity_manager_clone: Arc<Mutex<IdentityManager>>,
         _job_manager: Arc<Mutex<JobManager>>,
@@ -90,7 +89,7 @@ impl ToolExecutor for KnowledgeTool {
         // TODO: how do we use app_id here? is it linked to a job somehow?
         // TODO: create e2e test using this fn so we can test it with some real data
 
-        let mut scope = JobScope::new_default();
+        let mut scope = MinimalJobScope::default();
 
         // Checks if job_id is provided in the parameters
         if let Some(job_id_value) = parameters.get("job_id") {

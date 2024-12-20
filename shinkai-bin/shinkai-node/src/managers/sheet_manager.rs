@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSUpdateHandl
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
 };
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
 use shinkai_sheet::sheet::{Sheet, SheetUpdate};
 use shinkai_sqlite::errors::SqliteManagerError;
@@ -209,7 +209,7 @@ impl SheetManager {
 
         for job_data in jobs {
             let job_creation_info = JobCreationInfo {
-                scope: JobScope::new_default(),
+                scope: MinimalJobScope::default(),
                 is_hidden: Some(true),
                 associated_ui: None,
             };

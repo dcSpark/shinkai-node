@@ -14,11 +14,10 @@ use shinkai_message_primitives::{
         APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
         APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
     },
+    shinkai_utils::shinkai_path::ShinkaiPath,
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, source::SourceFile, vector_resource::VRPath};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{
     managers::IdentityManager,
@@ -28,7 +27,6 @@ use crate::{
 impl Node {
     pub async fn v2_api_vec_fs_retrieve_path_simplified_json(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrievePathSimplifiedJson,
         bearer: String,
@@ -52,7 +50,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -101,7 +99,6 @@ impl Node {
 
     pub async fn v2_convert_files_and_save_to_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIConvertFilesAndSaveToFolder,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -126,12 +123,11 @@ impl Node {
             }
         };
 
-        Self::process_and_save_files(db, vector_fs, input_payload, requester_name, embedding_generator, res).await
+        Self::process_and_save_files(db, input_payload, requester_name, embedding_generator, res).await
     }
 
     pub async fn v2_create_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCreateFolder,
         bearer: String,
@@ -155,7 +151,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -204,7 +200,6 @@ impl Node {
 
     pub async fn v2_move_item(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveItem,
         bearer: String,
@@ -227,7 +222,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -240,7 +235,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -289,7 +284,6 @@ impl Node {
 
     pub async fn v2_copy_item(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyItem,
         bearer: String,
@@ -312,7 +306,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -325,7 +319,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -374,7 +368,6 @@ impl Node {
 
     pub async fn v2_move_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveFolder,
         bearer: String,
@@ -397,7 +390,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -410,7 +403,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -459,7 +452,6 @@ impl Node {
 
     pub async fn v2_copy_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyFolder,
         bearer: String,
@@ -482,7 +474,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -495,7 +487,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -544,7 +536,6 @@ impl Node {
 
     pub async fn v2_delete_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteFolder,
         bearer: String,
@@ -567,7 +558,7 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.path) {
+        let item_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -616,7 +607,6 @@ impl Node {
 
     pub async fn v2_delete_item(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteItem,
         bearer: String,
@@ -639,29 +629,13 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.path) {
+        let item_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
                     message: format!("Failed to convert item path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let writer = match vector_fs
-            .new_writer(requester_name.clone(), item_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
@@ -688,7 +662,6 @@ impl Node {
 
     pub async fn v2_search_items(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsSearchItems,
         bearer: String,
@@ -711,8 +684,8 @@ impl Node {
             }
         };
 
-        let search_path_str = input_payload.path.as_deref().unwrap_or("/");
-        let search_path = match VRPath::from_string(search_path_str) {
+        let search_path_str = input_payload.path.as_deref().unwrap_or("/").to_string();
+        let search_path = match ShinkaiPath::from_string(search_path_str) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -765,7 +738,6 @@ impl Node {
 
     pub async fn v2_retrieve_vector_resource(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         path: String,
         bearer: String,
@@ -789,7 +761,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&path) {
+        let vr_path = match ShinkaiPath::from_string(&path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -850,7 +822,6 @@ impl Node {
 
     pub async fn v2_upload_file_to_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         bearer: String,
@@ -916,7 +887,6 @@ impl Node {
 
         match Self::v2_convert_files_and_save_to_folder(
             db,
-            vector_fs,
             identity_manager,
             input_payload,
             embedding_generator,
@@ -969,7 +939,6 @@ impl Node {
 
     pub async fn v2_retrieve_source_file(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrieveSourceFile,
         bearer: String,
@@ -992,7 +961,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {

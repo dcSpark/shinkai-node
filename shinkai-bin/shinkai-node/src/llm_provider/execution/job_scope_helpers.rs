@@ -1,36 +1,36 @@
 use crate::llm_provider::job_manager::JobManager;
 use futures::stream::Stream;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::errors::SqliteManagerError;
-use shinkai_vector_fs::vector_fs::{vector_fs::VectorFS, vector_fs_error::VectorFSError};
-use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
+// use shinkai_vector_fs::vector_fs::{vector_fs::VectorFS, vector_fs_error::VectorFSError};
+// use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRPath};
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 
-struct ResourceStream {
-    receiver: mpsc::Receiver<BaseVectorResource>,
-}
+// struct ResourceStream {
+//     receiver: mpsc::Receiver<BaseVectorResource>,
+// }
 
-impl Stream for ResourceStream {
-    type Item = BaseVectorResource;
+// impl Stream for ResourceStream {
+//     type Item = BaseVectorResource;
 
-    /// Polls the next BaseVectorResource from the stream
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut self.receiver).poll_recv(cx)
-    }
-}
+//     /// Polls the next BaseVectorResource from the stream
+//     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+//         Pin::new(&mut self.receiver).poll_recv(cx)
+//     }
+// }
 
 impl JobManager {
     /// Retrieves all resources in the given job scope, returning them as a stream. Starts with VRKai, then VRPacks, then VectorFS items, then VectorFS folders.
     /// For VectorFS items/folders, only fetches 5 at a time, to save on memory + for it to be more agile.
     pub async fn retrieve_all_resources_in_job_scope_stream(
-        vector_fs: Arc<VectorFS>,
-        scope: &JobScope,
+        // vector_fs: Arc<VectorFS>,
+        scope: &MinimalJobScope,
         profile: &ShinkaiName,
     ) -> impl Stream<Item = BaseVectorResource> {
         let (tx, rx) = mpsc::channel(5);
@@ -227,7 +227,7 @@ impl JobManager {
     /// but instead have a deep vector search performed on them via the VectorFS itself separately.
     pub async fn fetch_job_scope_direct_resources(
         vector_fs: Arc<VectorFS>,
-        job_scope: &JobScope,
+        scope: &MinimalJobScope,
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, SqliteManagerError> {
         let mut resources = Vec::new();

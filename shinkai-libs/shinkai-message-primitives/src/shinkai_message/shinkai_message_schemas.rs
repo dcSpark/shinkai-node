@@ -2,7 +2,7 @@ use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
-use crate::shinkai_utils::job_scope::JobScope;
+use crate::shinkai_utils::job_scope::MinimalJobScope;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -299,7 +299,7 @@ pub enum AssociatedUI {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct JobCreationInfo {
-    pub scope: JobScope,
+    pub scope: MinimalJobScope,
     pub is_hidden: Option<bool>,
     pub associated_ui: Option<AssociatedUI>,
 }

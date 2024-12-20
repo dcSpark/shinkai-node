@@ -11,7 +11,7 @@ use shinkai_http_api::{
 };
 use shinkai_message_primitives::{
     schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::job_scope::JobScope,
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -33,10 +33,6 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::{
-    embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
-};
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -1258,6 +1254,11 @@ impl Node {
                 .map_or(existing_agent.knowledge.clone(), |v| {
                     v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
                 }),
+            scope: partial_agent
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .map(|s| serde_json::from_str::<MinimalJobScope>(s).unwrap_or(existing_agent.scope.clone()))
+                .unwrap_or(existing_agent.scope.clone()),
             storage_path: partial_agent
                 .get("storage_path")
                 .and_then(|v| v.as_str())
@@ -1444,7 +1445,7 @@ impl Node {
                 match tool_generation::v2_create_and_send_job_message(
                     bearer.clone(),
                     JobCreationInfo {
-                        scope: JobScope::new_default(),
+                        scope: MinimalJobScope::default(),
                         is_hidden: Some(true),
                         associated_ui: None,
                     },

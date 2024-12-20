@@ -235,7 +235,7 @@ mod tests {
         llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI},
         shinkai_name::ShinkaiName,
     };
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 

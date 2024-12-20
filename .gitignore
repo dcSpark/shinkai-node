@@ -100,6 +100,7 @@ ocrs
 .nx/installation
 .nx/cache
 .nx/workspace-data
+storage_testing_debug_my_local_ai
 shinkai-bin/shinkai-node/files/zeko_mini.vrkai
 shinkai-bin/shinkai-node/files/short_story.md
 shinkai-bin/shinkai-node/files/shinkai_intro.vrkai
