@@ -17,7 +17,7 @@ use shinkai_message_primitives::{
     shinkai_utils::shinkai_path::ShinkaiPath,
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{
     managers::IdentityManager,
@@ -684,7 +684,7 @@ impl Node {
             }
         };
 
-        let search_path_str = input_payload.path.as_deref().unwrap_or("/").clone();
+        let search_path_str = input_payload.path.as_deref().unwrap_or("/").to_string();
         let search_path = match ShinkaiPath::from_string(search_path_str) {
             Ok(path) => path,
             Err(e) => {

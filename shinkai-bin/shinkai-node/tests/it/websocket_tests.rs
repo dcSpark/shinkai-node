@@ -261,7 +261,7 @@ async fn test_websocket() {
         };
 
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
@@ -562,7 +562,7 @@ async fn test_websocket_smart_inbox() {
         };
 
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),

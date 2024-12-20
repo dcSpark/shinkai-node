@@ -10,8 +10,7 @@ use shinkai_http_api::{
     node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler,
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo},
+    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo,
     shinkai_utils::job_scope::MinimalJobScope,
 };
 use shinkai_message_primitives::{
@@ -34,10 +33,6 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::{
-    embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
-};
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -1450,7 +1445,7 @@ impl Node {
                 match tool_generation::v2_create_and_send_job_message(
                     bearer.clone(),
                     JobCreationInfo {
-                        scope: JobScope::new_default(),
+                        scope: MinimalJobScope::default(),
                         is_hidden: Some(true),
                         associated_ui: None,
                     },

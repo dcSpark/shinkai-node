@@ -89,7 +89,7 @@ impl ToolExecutor for LmPromptProcessorTool {
         let response = v2_create_and_send_job_message(
             bearer.clone(),
             JobCreationInfo {
-                scope: JobScope::new_default(),
+                scope: MinimalJobScope::default(),
                 is_hidden: Some(true),
                 associated_ui: None,
             },

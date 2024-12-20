@@ -305,6 +305,42 @@ impl SqliteManager {
         tx.commit()?;
         Ok(())
     }
+
+    pub fn get_processed_files_in_directory(&self, directory_path: &str) -> Result<Vec<ParsedFile>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, relative_path, original_extension, description, source, embedding_model_used, keywords,
+                    distribution_info, created_time, tags, total_tokens, total_characters
+             FROM parsed_files
+             WHERE relative_path LIKE ? AND relative_path NOT LIKE ?",
+        )?;
+
+        let like_pattern = format!("{}%", directory_path);
+        let not_like_pattern = format!("{}%/%", directory_path);
+
+        let rows = stmt.query_map(params![like_pattern, not_like_pattern], |row| {
+            Ok(ParsedFile {
+                id: row.get(0)?,
+                relative_path: row.get(1)?,
+                original_extension: row.get(2)?,
+                description: row.get(3)?,
+                source: row.get(4)?,
+                embedding_model_used: row.get(5)?,
+                keywords: row.get(6)?,
+                distribution_info: row.get(7)?,
+                created_time: row.get(8)?,
+                tags: row.get(9)?,
+                total_tokens: row.get(10)?,
+                total_characters: row.get(11)?,
+            })
+        })?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -426,5 +462,30 @@ mod tests {
         // Check that non-matching files are unaffected
         let unchanged_pf3 = db.get_parsed_file_by_rel_path("docs/reports/old_stuff/misc.txt").unwrap().unwrap();
         assert_eq!(unchanged_pf3.relative_path, "docs/reports/old_stuff/misc.txt");
+    }
+
+    #[test]
+    fn test_get_files_in_directory() {
+        let db = setup_test_db();
+
+        // Add parsed files with different relative paths
+        let pf1 = create_test_parsed_file(1, "docs/reports/2024/january.txt");
+        let pf2 = create_test_parsed_file(2, "docs/reports/2024/february.txt");
+        let pf3 = create_test_parsed_file(3, "docs/reports/2024/march/summary.txt");
+        let pf4 = create_test_parsed_file(4, "docs/reports/old_stuff/misc.txt");
+        db.add_parsed_file(&pf1).unwrap();
+        db.add_parsed_file(&pf2).unwrap();
+        db.add_parsed_file(&pf3).unwrap();
+        db.add_parsed_file(&pf4).unwrap();
+
+        // Retrieve files directly under "docs/reports/2024/"
+        let files_in_directory = db.get_processed_files_in_directory("docs/reports/2024/").unwrap();
+
+        // Check that only pf1 and pf2 are returned
+        assert_eq!(files_in_directory.len(), 2);
+        assert!(files_in_directory.iter().any(|pf| pf.relative_path == "docs/reports/2024/january.txt"));
+        assert!(files_in_directory.iter().any(|pf| pf.relative_path == "docs/reports/2024/february.txt"));
+        assert!(!files_in_directory.iter().any(|pf| pf.relative_path == "docs/reports/2024/march/summary.txt"));
+        assert!(!files_in_directory.iter().any(|pf| pf.relative_path == "docs/reports/old_stuff/misc.txt"));
     }
 }

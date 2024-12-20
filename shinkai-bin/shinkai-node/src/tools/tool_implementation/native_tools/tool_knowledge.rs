@@ -89,7 +89,7 @@ impl ToolExecutor for KnowledgeTool {
         // TODO: how do we use app_id here? is it linked to a job somehow?
         // TODO: create e2e test using this fn so we can test it with some real data
 
-        let mut scope = JobScope::new_default();
+        let mut scope = MinimalJobScope::default();
 
         // Checks if job_id is provided in the parameters
         if let Some(job_id_value) = parameters.get("job_id") {

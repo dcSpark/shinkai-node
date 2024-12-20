@@ -1206,7 +1206,7 @@ impl Node {
 
         // We auto create a new job with the same configuration as the one from job_id
         let job_creation_info = JobCreationInfo {
-            scope: job.scope_with_files().cloned().unwrap_or(JobScope::new_default()),
+            scope: job.scope().clone(),
             is_hidden: Some(job.is_hidden()),
             associated_ui: None,
         };
@@ -1687,8 +1687,7 @@ impl Node {
         };
 
         // Save the tool to the database
-        let mut db_write = db;
-        match db_write.add_tool(tool).await {
+        match db.add_tool(tool).await {
             Ok(tool) => {
                 let archive_clone = archive.clone();
                 let files = archive_clone.file_names();

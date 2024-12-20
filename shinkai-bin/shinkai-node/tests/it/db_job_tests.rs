@@ -94,7 +94,7 @@ mod tests {
     async fn test_create_new_job() {
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -125,7 +125,7 @@ mod tests {
         for i in 1..=5 {
             let job_id = format!("job{}", i);
             eprintln!("job_id: {}", job_id.clone());
-            let scope = JobScope::new_default();
+            let scope = MinimalJobScope::default();
             let _ = create_new_job(&shinkai_db, job_id, agent_id.clone(), scope).await;
         }
 
@@ -148,7 +148,7 @@ mod tests {
         let job_id = "job_to_change_agent".to_string();
         let initial_agent_id = "initial_agent".to_string();
         let new_agent_id = "new_agent".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -180,7 +180,7 @@ mod tests {
         // let inbox_name =
         //     InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
         //         .unwrap();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -207,7 +207,7 @@ mod tests {
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         // Create a new job
         let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
@@ -318,7 +318,7 @@ mod tests {
             // let inbox_names = vec![inbox_name];
             // let documents = vec!["document1".to_string(), "document2".to_string()];
 
-            let scope = JobScope::new_default();
+            let scope = MinimalJobScope::default();
             let _ = create_new_job(&shinkai_db, job_id, agent_id.clone(), scope).await;
         }
 
@@ -337,7 +337,7 @@ mod tests {
     async fn test_job_inbox_empty() {
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -372,7 +372,7 @@ mod tests {
     async fn test_job_inbox_tree_structure() {
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -468,7 +468,7 @@ mod tests {
     async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -609,7 +609,7 @@ mod tests {
 
         let job_id = "test_job";
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
 
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
@@ -760,7 +760,7 @@ mod tests {
     async fn test_job_inbox_tree_structure_with_invalid_date() {
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -843,7 +843,7 @@ mod tests {
     async fn test_add_forked_job() {
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
@@ -953,7 +953,7 @@ mod tests {
         let job1_id = "job1".to_string();
         let job2_id = "job2".to_string();
         let agent_id = "agent1".to_string();
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         let db = setup_test_db();
         let shinkai_db = Arc::new(db);
 
