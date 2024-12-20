@@ -168,6 +168,7 @@ impl Node {
                     .into_iter()
                     .map(|log| {
                         json!({
+                            "job_id": log.3.as_ref().map_or("", |j| j),
                             "task_id": task_id.to_string(),
                             "execution_time": log.0,
                             "success": log.1,

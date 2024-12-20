@@ -32,7 +32,13 @@ impl SqliteManager {
 
     pub fn remove_cron_task(&self, task_id: i64) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
+        
+        // First, delete all related execution records
+        conn.execute("DELETE FROM cron_task_executions WHERE task_id = ?1", params![task_id])?;
+        
+        // Then, delete the cron task
         conn.execute("DELETE FROM cron_tasks WHERE task_id = ?1", params![task_id])?;
+        
         Ok(())
     }
 
