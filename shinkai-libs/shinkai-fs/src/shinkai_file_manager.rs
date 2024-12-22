@@ -1,16 +1,16 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
-use std::collections::HashMap;
 
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
+use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
-use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
-
 use crate::shinkai_fs_error::ShinkaiFsError;
-use crate::file_parser::ShinkaiFileParser;
-use crate::embedding_generator::EmbeddingGenerator;
+use crate::simple_parser::simple_parser::SimpleParser;
+use crate::simple_parser::text_group::TextGroup;
 
 pub struct ShinkaiFileManager;
 
@@ -23,6 +23,7 @@ pub struct FileInfo {
     pub has_embeddings: bool,
 }
 
+#[derive(PartialEq)]
 pub enum FileProcessingMode {
     Auto,
     NoParsing,
@@ -39,56 +40,52 @@ impl ShinkaiFileManager {
         mode: FileProcessingMode,
         generator: &dyn EmbeddingGenerator,
     ) -> Result<(), ShinkaiFsError> {
-        let rel_path = Self::compute_relative_path(&path, base_dir)?;
-        let parsed_file = if let Some(pf) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
-            pf
-        } else {
-            let original_extension = path
-                .as_path()
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|s| s.to_string());
+        // let rel_path = Self::compute_relative_path(&path, base_dir)?;
+        // let parsed_file = if let Some(pf) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
+        //     pf
+        // } else {
+        //     let original_extension = path
+        //         .as_path()
+        //         .extension()
+        //         .and_then(|ext| ext.to_str())
+        //         .map(|s| s.to_string());
 
-            let pf = ParsedFile {
-                id: 0,
-                relative_path: rel_path.clone(),
-                original_extension,
-                description: None,
-                source: None,
-                embedding_model_used: None,
-                keywords: None,
-                distribution_info: None,
-                created_time: Some(Self::current_timestamp()),
-                tags: None,
-                total_tokens: None,
-                total_characters: None,
-            };
-            sqlite_manager.add_parsed_file(&pf)?;
-            sqlite_manager.get_parsed_file_by_rel_path(&rel_path)?.unwrap()
-        };
+        //     let pf = ParsedFile {
+        //         id: 0,
+        //         relative_path: rel_path.clone(),
+        //         original_extension,
+        //         description: None,
+        //         source: None,
+        //         embedding_model_used: None,
+        //         keywords: None,
+        //         distribution_info: None,
+        //         created_time: Some(Self::current_timestamp()),
+        //         tags: None,
+        //         total_tokens: None,
+        //         total_characters: None,
+        //     };
+        //     sqlite_manager.add_parsed_file(&pf)?;
+        //     sqlite_manager.get_parsed_file_by_rel_path(&rel_path)?.unwrap()
+        // };
 
-        match mode {
-            FileProcessingMode::Auto => {
-                // Implement logic for Auto mode
-                let file_buffer = fs::read(path.as_path())?;
-                let text_groups = ShinkaiFileParser::process_file_into_text_groups(
-                    file_buffer,
-                    rel_path.clone(),
-                    1024, // Example max_node_text_size
-                    VRSourceReference::from_file(&rel_path, TextChunkingStrategy::V1)?,
-                ).await?;
-                // Further processing...
-            }
-            FileProcessingMode::NoParsing => {
-                // NoParsing mode: Skip parsing logic
-                // You might still want to update metadata or perform other tasks
-            }
-            FileProcessingMode::MustParse => {
-                // Implement logic for MustParse mode
-            }
+        /*
+        File Processing:
+
+        - we need to be able to read a file
+        - create the chunks
+        - create the embedding
+        - create the vector resource
+        - add the vector resource to the db
+        - add the parsed file to the db
+
+        */
+
+        if mode == FileProcessingMode::NoParsing {
+            return Ok(());
         }
 
-        // TODO: Implement embedding checking with sqlite_manager
+        let max_node_text_size = generator.model_type().max_input_token_count();
+        let text_groups = SimpleParser::parse_file(path, max_node_text_size.try_into().unwrap())?;
 
         Ok(())
     }
@@ -143,6 +140,7 @@ impl ShinkaiFileManager {
 mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
     use std::fs::{self, File};
     use std::io::Write;
     use std::path::PathBuf;

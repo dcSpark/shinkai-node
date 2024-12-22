@@ -1,6 +1,6 @@
 use super::file_parser_types::TextGroup;
 use super::local_parsing::LocalFileParser;
-#[cfg(feature = "desktop-only")]
+
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
@@ -9,20 +9,20 @@ use crate::source::DistributionInfo;
 use crate::source::TextChunkingStrategy;
 use crate::source::VRSourceReference;
 use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResourceCore};
-#[cfg(feature = "desktop-only")]
+
 use std::{future::Future, pin::Pin};
 
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
-    #[cfg(feature = "desktop-only")]
+    
     pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
         use shinkai_ocr::image_parser::ImageParser;
 
         ImageParser::check_and_download_dependencies().await
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes the input file into a BaseVectorResource.
     pub async fn process_file_into_resource(
         file_buffer: Vec<u8>,
@@ -51,7 +51,7 @@ impl ShinkaiFileParser {
         .await
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes the input file into a BaseVectorResource.
     pub fn process_file_into_resource_blocking(
         file_buffer: Vec<u8>,
@@ -84,7 +84,7 @@ impl ShinkaiFileParser {
         )
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
     pub async fn process_file_into_text_groups(
         file_buffer: Vec<u8>,
@@ -95,7 +95,7 @@ impl ShinkaiFileParser {
         LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes the input file into a list of `TextGroup` with no embedding generated yet.
     pub fn process_file_into_text_groups_blocking(
         file_buffer: Vec<u8>,
@@ -106,7 +106,7 @@ impl ShinkaiFileParser {
         LocalFileParser::process_file_into_grouped_text(file_buffer, file_name, max_node_text_size, source)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource
     pub async fn process_groups_into_resource(
         text_groups: Vec<TextGroup>,
@@ -132,7 +132,7 @@ impl ShinkaiFileParser {
         .await
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
     pub fn process_groups_into_resource_blocking(
         text_groups: Vec<TextGroup>,
@@ -157,7 +157,7 @@ impl ShinkaiFileParser {
         )
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes an ordered list of `TextGroup`s into a ready-to-go BaseVectorResource.
     /// Allows specifying a custom collection function.
     pub async fn process_groups_into_resource_with_custom_collection(
@@ -194,7 +194,7 @@ impl ShinkaiFileParser {
         Ok(resource)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Processes an ordered list of `TextGroup`s into a
     /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
     pub fn process_groups_into_resource_blocking_with_custom_collection(
@@ -234,7 +234,7 @@ impl ShinkaiFileParser {
         Ok(resource)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Recursively processes all text groups & their sub groups into DocumentResources.
     /// This method assumes your text groups already have embeddings generated for them.
     fn process_new_doc_resource_with_embeddings_already_generated<'a>(
@@ -303,7 +303,7 @@ impl ShinkaiFileParser {
         })
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Recursively processes all text groups & their sub groups into DocumentResources.
     /// This method assumes your text groups already have embeddings generated for them.
     fn process_new_doc_resource_blocking_with_embeddings_already_generated(

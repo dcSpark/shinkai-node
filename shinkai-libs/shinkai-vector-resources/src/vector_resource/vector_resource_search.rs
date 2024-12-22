@@ -1,7 +1,7 @@
 use super::VectorResourceCore;
-#[cfg(feature = "desktop-only")]
+
 use crate::embedding_generator::EmbeddingGenerator;
-#[cfg(feature = "desktop-only")]
+
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::file_parser::file_parser::ShinkaiFileParser;
@@ -19,7 +19,7 @@ use std::vec;
 
 #[async_trait]
 pub trait VectorResourceSearch: VectorResourceCore {
-    #[cfg(feature = "desktop-only")]
+    
     /// Fetches percent_to_verify (between 0.0 - 1.0) of random nodes from within the VectorResource
     /// and validates that said node's included embeddings in the VectorResource are correct.
     async fn verify_internal_embeddings_coherence(
@@ -192,7 +192,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         }
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
     /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
     /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
@@ -214,7 +214,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         .await
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
     /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
     /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.

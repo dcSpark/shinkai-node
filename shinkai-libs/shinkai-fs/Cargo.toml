@@ -15,12 +15,15 @@ rand = { workspace = true }
 blake3 = { workspace = true }
 # tokio = { workspace = true, features = ["full"] }
 chrono = { workspace = true }
+comrak = { version = "0.22.0", default-features = true }
 thiserror = "2.0.3"
 reqwest = { workspace = true }
 lazy_static = "1.5.0"
 async-trait = { workspace = true }
 keyphrases = { workspace = true }
 futures = { workspace = true }
+scraper = "0.19.0"
+urlencoding = "2.1.0"
 
 csv = "1.1.6"
 utoipa = "4.2.3"

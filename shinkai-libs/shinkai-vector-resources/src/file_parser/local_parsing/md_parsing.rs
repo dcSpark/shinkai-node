@@ -1,4 +1,4 @@
-#[cfg(feature = "desktop-only")]
+
 use comrak::{
     nodes::{AstNode, ListDelimType, ListType, NodeValue},
     parse_document, Arena, Options,
@@ -12,7 +12,7 @@ use crate::{
 use super::LocalFileParser;
 
 impl LocalFileParser {
-    #[cfg(feature = "desktop-only")]
+    
     pub fn process_md_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
         let md_string = String::from_utf8(file_buffer).map_err(|_| VRError::FailedMDParsing)?;
 

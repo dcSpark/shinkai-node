@@ -1,4 +1,4 @@
-use crate::{file_parser::{file_parser::ShinkaiFileParser, file_parser_types::TextGroup}, shinkai_fs_error::ShinkaiFsError};
+use crate::{shinkai_fs_error::ShinkaiFsError, simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup}};
 
 use super::LocalFileParser;
 

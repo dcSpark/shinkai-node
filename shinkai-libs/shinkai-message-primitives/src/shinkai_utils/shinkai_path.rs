@@ -77,6 +77,11 @@ impl ShinkaiPath {
             self.as_str()
         }
     }
+
+    /// Returns the extension of the path, if any.
+    pub fn extension(&self) -> Option<&str> {
+        self.path.extension().and_then(|ext| ext.to_str())
+    }
 }
 
 // Implement Display for ShinkaiPath to easily print it
@@ -134,5 +139,15 @@ mod tests {
         // Not under /Users/Nico/my_path, so relative_path() returns full path.
         assert_eq!(absolute_outside.relative_path(), "/some/other/path");
         env::remove_var("NODE_STORAGE_PATH");
+    }
+
+    #[test]
+    #[serial]
+    fn test_extension() {
+        let path_with_extension = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
+        assert_eq!(path_with_extension.extension(), Some("docx"));
+
+        let path_without_extension = ShinkaiPath::from_string("word_files/christmas".to_string());
+        assert_eq!(path_without_extension.extension(), None);
     }
 }

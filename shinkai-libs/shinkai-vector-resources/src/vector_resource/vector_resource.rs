@@ -1,9 +1,9 @@
 pub use super::vector_resource_search::VectorResourceSearch;
 use super::OrderedVectorResource;
 use crate::data_tags::DataTagIndex;
-#[cfg(feature = "desktop-only")]
+
 use crate::embedding_generator::EmbeddingGenerator;
-#[cfg(feature = "desktop-only")]
+
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
@@ -206,7 +206,7 @@ pub trait VectorResourceCore: Send + Sync {
         self.set_merkle_root(root_hash.to_hex().to_string())
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
     /// If keyword_list is None, will use the resource's set keywords (enables flexibility of which keywords get added to which embedding)
     async fn update_resource_embedding(
@@ -221,7 +221,7 @@ pub trait VectorResourceCore: Send + Sync {
         Ok(())
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Regenerates and updates the resource's embedding using the name/description/source and the provided keywords.
     /// If keyword_list is None, will use the resource's set keywords (enables flexibility of which keywords get added to which embedding)
     fn update_resource_embedding_blocking(
@@ -251,7 +251,7 @@ pub trait VectorResourceCore: Send + Sync {
         self.set_resource_id(hashed_string)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Initializes a `RemoteEmbeddingGenerator` that is compatible with this VectorResource
     /// (targets the same model and interface for embedding generation). Of note, you need
     /// to make sure the api_url/api_key match for the model used.

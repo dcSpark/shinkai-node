@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use super::LocalFileParser;
 use crate::file_parser::file_parser::ShinkaiFileParser;
 use crate::file_parser::file_parser_types::TextGroup;
-use crate::resource_errors::VRError;
+use crate::shinkai_fs_error::ShinkaiFsError;
 use serde_json::Value as JsonValue;
 
 impl LocalFileParser {
     /// Attempts to process the provided json file into a list of TextGroups.
-    pub fn process_json_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, VRError> {
-        let json_string = String::from_utf8(file_buffer.clone()).map_err(|_| VRError::FailedJSONParsing)?;
+    pub fn process_json_file(file_buffer: Vec<u8>, max_node_text_size: u64) -> Result<Vec<TextGroup>, ShinkaiFsError> {
+        let json_string = String::from_utf8(file_buffer.clone()).map_err(|_| ShinkaiFsError::FailedJSONParsing)?;
         let json: JsonValue = serde_json::from_str(&json_string)?;
 
         let text_groups = Self::process_container_json_value(&json, max_node_text_size);
