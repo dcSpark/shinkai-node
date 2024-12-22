@@ -168,7 +168,7 @@ impl LLMService for Gemini {
                     || std::env::var("LOG_ALL").unwrap_or_default() == "1"
                 {
                     match serde_json::to_string_pretty(&payload) {
-                        Ok(pretty_json) => eprintln!("Payload: {}", pretty_json),
+                        Ok(pretty_json) => eprintln!("cURL Payload: {}", pretty_json),
                         Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                     };
                 }

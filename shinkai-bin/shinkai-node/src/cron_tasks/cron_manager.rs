@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use chrono::{Local, TimeZone, Utc};
+use chrono::{Local, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
@@ -326,10 +326,16 @@ impl CronManager {
                 job_creation_info,
                 llm_provider,
             } => {
+                // Clone job_creation_info and set is_hidden to true if not defined
+                let mut job_creation_info_clone = job_creation_info.clone();
+                if job_creation_info_clone.is_hidden.is_none() {
+                    job_creation_info_clone.is_hidden = Some(true);
+                }
+
                 let job_id = job_manager
                     .lock()
                     .await
-                    .process_job_creation(job_creation_info, &shinkai_profile, &llm_provider)
+                    .process_job_creation(job_creation_info_clone, &shinkai_profile, &llm_provider)
                     .await?;
 
                 // Update the job configuration
@@ -411,10 +417,10 @@ impl CronManager {
         result
     }
 
-    async fn log_success_to_sqlite(db: &Arc<SqliteManager>, task_id: i64) {
+    async fn log_success_to_sqlite(db: &Arc<SqliteManager>, task_id: i64, job_id: Option<String>) {
         let execution_time = Local::now().to_rfc3339();
         let db = db;
-        if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, true, None) {
+        if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, true, None, job_id) {
             eprintln!("Failed to log success to SQLite: {}", err);
         }
     }
@@ -434,11 +440,12 @@ impl CronManager {
         let bearer = match db.read_api_v2_key() {
             Ok(Some(token)) => token,
             Ok(None) => {
-                Self::log_error_to_sqlite(&db, task_id, "Bearer token not found").await;
+                Self::log_error_to_sqlite(&db, task_id, "Bearer token not found", None).await;
                 return Ok(());
             }
             Err(err) => {
-                Self::log_error_to_sqlite(&db, task_id, &format!("Failed to retrieve bearer token: {}", err)).await;
+                Self::log_error_to_sqlite(&db, task_id, &format!("Failed to retrieve bearer token: {}", err), None)
+                    .await;
                 return Ok(());
             }
         };
@@ -453,7 +460,7 @@ impl CronManager {
             identity_manager_clone,
             job_manager_clone,
             bearer,
-            job_message_clone,
+            job_message_clone.clone(),
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
@@ -461,25 +468,37 @@ impl CronManager {
         )
         .await
         {
-            Self::log_error_to_sqlite(&db, task_id, &format!("Failed to send job message: {}", err)).await;
+            Self::log_error_to_sqlite(
+                &db,
+                task_id,
+                &format!("Failed to send job message: {}", err),
+                Some(job_message_clone.job_id),
+            )
+            .await;
             return Ok(());
         }
 
         // Handle the response only if sending was successful
         if let Err(err) = res_rx.recv().await {
-            Self::log_error_to_sqlite(&db, task_id, &format!("Failed to receive response: {}", err)).await;
+            Self::log_error_to_sqlite(
+                &db,
+                task_id,
+                &format!("Failed to receive response: {}", err),
+                Some(job_message_clone.job_id),
+            )
+            .await;
         } else {
             // Log success if the response is received successfully
-            Self::log_success_to_sqlite(&db, task_id).await;
+            Self::log_success_to_sqlite(&db, task_id, Some(job_message_clone.job_id)).await;
         }
 
         Ok(())
     }
 
-    async fn log_error_to_sqlite(db: &Arc<SqliteManager>, task_id: i64, error_message: &str) {
+    async fn log_error_to_sqlite(db: &Arc<SqliteManager>, task_id: i64, error_message: &str, job_id: Option<String>) {
         let execution_time = Local::now().to_rfc3339();
         let db = db;
-        if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, false, Some(error_message)) {
+        if let Err(err) = db.add_cron_task_execution(task_id, &execution_time, false, Some(error_message), job_id) {
             eprintln!("Failed to log error to SQLite: {}", err);
         }
     }
@@ -631,7 +650,7 @@ mod tests {
 
     #[test]
     fn test_should_execute_specific_minute() {
-        let now = Utc::now();
+        let now = Local::now();
         let next_minute = (now.minute() + 1) % 60;
         let cron = format!("{} * * * *", next_minute);
         let task = create_test_cron_task(&cron);
@@ -642,7 +661,7 @@ mod tests {
 
     #[test]
     fn test_should_not_execute_past_time() {
-        let now = Utc::now();
+        let now = Local::now();
         let past_minute = if now.minute() == 0 { 59 } else { now.minute() - 1 };
         let cron = format!("{} * * * *", past_minute);
         let task = create_test_cron_task(&cron);
@@ -667,7 +686,7 @@ mod tests {
 
     #[test]
     fn test_should_execute_within_interval() {
-        let now = Utc::now();
+        let now = Local::now();
         let next_minute = (now.minute() + 1) % 60;
 
         // Create a cron expression for the next minute, any hour/day/month
@@ -688,7 +707,7 @@ mod tests {
 
     #[test]
     fn test_should_not_execute_outside_interval() {
-        let now = Utc::now();
+        let now = Local::now();
         let future_minute = (now.minute() + 2) % 60;
         let cron = format!("{} * * * *", future_minute);
         let task = create_test_cron_task(&cron);

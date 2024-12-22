@@ -32,7 +32,13 @@ impl SqliteManager {
 
     pub fn remove_cron_task(&self, task_id: i64) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
+        
+        // First, delete all related execution records
+        conn.execute("DELETE FROM cron_task_executions WHERE task_id = ?1", params![task_id])?;
+        
+        // Then, delete the cron task
         conn.execute("DELETE FROM cron_tasks WHERE task_id = ?1", params![task_id])?;
+        
         Ok(())
     }
 
@@ -125,22 +131,23 @@ impl SqliteManager {
         execution_time: &str,
         success: bool,
         error_message: Option<&str>,
+        job_id: Option<String>,
     ) -> Result<i64, SqliteManagerError> {
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO cron_task_executions (task_id, execution_time, success, error_message) VALUES (?1, ?2, ?3, ?4)",
-            params![task_id, execution_time, success as i32, error_message],
+            "INSERT INTO cron_task_executions (task_id, execution_time, success, error_message, job_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![task_id, execution_time, success as i32, error_message, job_id.as_deref()],
         )?;
         Ok(conn.last_insert_rowid())
     }
 
     // Get all execution records
-    pub fn get_all_cron_task_executions(&self) -> Result<Vec<(i64, String, bool, Option<String>)>, SqliteManagerError> {
+    pub fn get_all_cron_task_executions(&self) -> Result<Vec<(i64, String, bool, Option<String>, Option<String>)>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
-            conn.prepare("SELECT task_id, execution_time, success, error_message FROM cron_task_executions")?;
+            conn.prepare("SELECT task_id, execution_time, success, error_message, job_id FROM cron_task_executions")?;
         let execution_iter = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get::<_, i32>(2)? != 0, row.get(3)?))
+            Ok((row.get(0)?, row.get(1)?, row.get::<_, i32>(2)? != 0, row.get(3)?, row.get(4)?))
         })?;
 
         execution_iter
@@ -152,16 +159,16 @@ impl SqliteManager {
     pub fn get_cron_task_executions(
         &self,
         task_id: i64,
-    ) -> Result<Vec<(String, bool, Option<String>)>, SqliteManagerError> {
+    ) -> Result<Vec<(String, bool, Option<String>, Option<String>)>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT execution_time, success, error_message 
+            "SELECT execution_time, success, error_message, job_id 
              FROM cron_task_executions 
              WHERE task_id = ?1 
              ORDER BY execution_time DESC"
         )?;
         let execution_iter = stmt.query_map(params![task_id], |row| {
-            Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get(2)?))
+            Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get(2)?, row.get(3)?))
         })?;
 
         execution_iter
@@ -173,10 +180,10 @@ impl SqliteManager {
     pub fn get_cron_task_execution(
         &self,
         execution_id: i64,
-    ) -> Result<Option<(i64, String, bool, Option<String>)>, SqliteManagerError> {
+    ) -> Result<Option<(i64, String, bool, Option<String>, Option<String>)>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT task_id, execution_time, success, error_message FROM cron_task_executions WHERE execution_id = ?1",
+            "SELECT task_id, execution_time, success, error_message, job_id FROM cron_task_executions WHERE execution_id = ?1",
         )?;
         let mut rows = stmt.query(params![execution_id])?;
 
@@ -186,6 +193,7 @@ impl SqliteManager {
                 row.get(1)?,
                 row.get::<_, i32>(2)? != 0,
                 row.get(3)?,
+                row.get(4)?,
             )))
         } else {
             Ok(None)
@@ -398,9 +406,10 @@ mod tests {
         let execution_time = chrono::Utc::now().to_rfc3339();
         let success = true;
         let error_message: Option<&str> = None;
+        let job_id = Some("test_job_id".to_string());
 
         let execution_id = manager
-            .add_cron_task_execution(task_id, &execution_time, success, error_message)
+            .add_cron_task_execution(task_id, &execution_time, success, error_message, job_id.clone())
             .unwrap();
         let execution_record = manager.get_cron_task_execution(execution_id).unwrap().unwrap();
 
@@ -408,6 +417,7 @@ mod tests {
         assert_eq!(execution_record.1, execution_time);
         assert_eq!(execution_record.2, success);
         assert_eq!(execution_record.3, error_message.map(|s| s.to_string()));
+        assert_eq!(execution_record.4, job_id.map(|s| s.to_string()));
     }
 
     #[test]
@@ -435,16 +445,19 @@ mod tests {
         let execution_time2 = chrono::Utc::now().to_rfc3339();
         let success = true;
         let error_message = None;
+        let job_id = Some("test_job_id".to_string());
 
         manager
-            .add_cron_task_execution(task_id, &execution_time1, success, error_message)
+            .add_cron_task_execution(task_id, &execution_time1, success, error_message, job_id.clone())
             .unwrap();
         manager
-            .add_cron_task_execution(task_id, &execution_time2, success, error_message)
+            .add_cron_task_execution(task_id, &execution_time2, success, error_message, job_id.clone())
             .unwrap();
 
         let all_executions = manager.get_all_cron_task_executions().unwrap();
         assert_eq!(all_executions.len(), 2);
+        assert_eq!(all_executions[0].4, job_id.clone().map(|s| s.to_string()));
+        assert_eq!(all_executions[1].4, job_id.map(|s| s.to_string()));
     }
 
     #[test]
@@ -472,15 +485,18 @@ mod tests {
         let execution_time2 = chrono::Utc::now().to_rfc3339();
         let success = true;
         let error_message = None;
+        let job_id = Some("test_job_id".to_string());
 
         manager
-            .add_cron_task_execution(task_id, &execution_time1, success, error_message)
+            .add_cron_task_execution(task_id, &execution_time1, success, error_message, job_id.clone())
             .unwrap();
         manager
-            .add_cron_task_execution(task_id, &execution_time2, success, error_message)
+            .add_cron_task_execution(task_id, &execution_time2, success, error_message, job_id.clone())
             .unwrap();
 
         let task_executions = manager.get_cron_task_executions(task_id).unwrap();
         assert_eq!(task_executions.len(), 2);
+        assert_eq!(task_executions[0].3, job_id.clone().map(|s| s.to_string()));
+        assert_eq!(task_executions[1].3, job_id.clone().map(|s| s.to_string()));
     }
 }
