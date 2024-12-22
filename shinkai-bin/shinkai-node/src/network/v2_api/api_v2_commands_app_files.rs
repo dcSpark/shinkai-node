@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use shinkai_http_api::node_api_router::APIError;
 
-fn get_app_folder_path(node_env: NodeEnvironment, app_id: String) -> PathBuf {
+pub fn get_app_folder_path(node_env: NodeEnvironment, app_id: String) -> PathBuf {
     let mut origin_path: PathBuf = PathBuf::from(node_env.node_storage_path.clone().unwrap_or_default());
     origin_path.push("app_files");
     origin_path.push(app_id);
@@ -143,6 +143,24 @@ impl Node {
             return Ok(());
         }
         let app_folder_path = get_app_folder_path(node_env, app_id);
+        let result = Self::v2_api_list_app_files_internal(app_folder_path);
+        match result {
+            Ok(file_list) => {
+                let _ = res
+                    .send(Ok(Value::Array(
+                        file_list.iter().map(|file| Value::String(file.clone())).collect(),
+                    )))
+                    .await;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub fn v2_api_list_app_files_internal(app_folder_path: PathBuf) -> Result<Vec<String>, APIError> {
         let files = std::fs::read_dir(&app_folder_path);
         if let Err(err) = files {
             let api_error = APIError {
@@ -150,19 +168,18 @@ impl Node {
                 error: "Internal Server Error".to_string(),
                 message: format!("Failed to read directory: {}", err),
             };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
+            return Err(api_error);
         }
         let mut file_list = Vec::new();
+
         let files = files.unwrap();
         for file in files {
             if let Ok(file) = file {
                 let file_name = file.file_name().to_string_lossy().to_string();
-                file_list.push(Value::String(file_name));
+                file_list.push(file_name);
             }
         }
-        let _ = res.send(Ok(Value::Array(file_list))).await;
-        Ok(())
+        Ok(file_list)
     }
 
     pub async fn v2_api_delete_app_file(
