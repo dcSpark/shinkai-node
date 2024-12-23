@@ -70,44 +70,7 @@ impl ToolRouter {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
-        // Import tools
-        async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
-            let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-                .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
-
-            let response = reqwest::get(url).await.map_err(|e| ToolError::RequestError(e))?;
-
-            if response.status() != 200 {
-                return Err(ToolError::ExecutionError(format!(
-                    "Import tools request returned a non OK status: {}",
-                    response.status()
-                )));
-            }
-
-            let tools: Vec<serde_json::Value> = response
-                .json()
-                .await
-                .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
-
-            for tool in tools {
-                let tool_url = tool["file"].as_str().ok_or_else(|| {
-                    ToolError::ParseError("Missing or invalid file URL in tool definition".to_string())
-                })?;
-
-                let tool_name = tool["name"].as_str().unwrap_or("unknown");
-
-                match Node::v2_api_import_tool_internal(db.clone(), fetch_node_environment(), tool_url.to_string())
-                    .await
-                {
-                    Ok(_) => println!("Successfully imported tool {}", tool_name),
-                    Err(e) => eprintln!("Failed to import tool {}: {:#?}", tool_name, e),
-                }
-            }
-
-            Ok(())
-        }
-
-        if let Err(e) = import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
 
