@@ -7,7 +7,7 @@ impl SqliteManager {
         // parsed_files table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS parsed_files (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 relative_path TEXT NOT NULL UNIQUE,
                 original_extension TEXT,
                 description TEXT,
@@ -31,7 +31,7 @@ impl SqliteManager {
         // chunks table
         conn.execute(
             "CREATE TABLE IF NOT EXISTS chunks (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 parsed_file_id INTEGER NOT NULL REFERENCES parsed_files(id) ON DELETE CASCADE,
                 position INTEGER NOT NULL,
                 chunk TEXT NOT NULL,
@@ -218,7 +218,7 @@ impl SqliteManager {
         )?;
         let rows = stmt.query_map([parsed_file_id], |row| {
             Ok(ShinkaiFileChunk {
-                chunk_id: row.get(0)?,
+                chunk_id: Some(row.get(0)?),
                 parsed_file_id: row.get(1)?,
                 position: row.get(2)?,
                 content: row.get(3)?,
@@ -362,7 +362,7 @@ mod tests {
 
     fn create_test_parsed_file(id: i64, relative_path: &str) -> ParsedFile {
         ParsedFile {
-            id,
+            id: Some(id),
             relative_path: relative_path.to_string(),
             original_extension: None,
             description: None,
@@ -487,5 +487,32 @@ mod tests {
         assert!(files_in_directory.iter().any(|pf| pf.relative_path == "docs/reports/2024/february.txt"));
         assert!(!files_in_directory.iter().any(|pf| pf.relative_path == "docs/reports/2024/march/summary.txt"));
         assert!(!files_in_directory.iter().any(|pf| pf.relative_path == "docs/reports/old_stuff/misc.txt"));
+    }
+
+    #[test]
+    fn test_add_chunk_auto_id() {
+        let db = setup_test_db();
+
+        // Create and add a parsed file to associate with the chunk
+        let parsed_file = create_test_parsed_file(1, "file.txt");
+        db.add_parsed_file(&parsed_file).unwrap();
+
+        // Create a chunk without specifying an id
+        let chunk = ShinkaiFileChunk {
+            chunk_id: None, // No id specified
+            parsed_file_id: parsed_file.id.unwrap(),
+            position: 1,
+            content: "This is a test chunk.".to_string(),
+        };
+
+        // Add the chunk to the database
+        let result = db.add_chunk(&chunk);
+        assert!(result.is_ok());
+
+        // Retrieve the chunk to verify it was added and has an auto-generated id
+        let chunks = db.get_chunks_for_parsed_file(parsed_file.id.unwrap()).unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert!(chunks[0].chunk_id.is_some()); // Check that the id is auto-generated
+        assert_eq!(chunks[0].content, "This is a test chunk.");
     }
 }

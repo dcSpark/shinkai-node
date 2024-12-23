@@ -39,7 +39,11 @@ impl ShinkaiFileManager {
         // Update DB
         let rel_path = Self::compute_relative_path(&path, base_dir)?;
         if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
-            sqlite_manager.remove_parsed_file(parsed_file.id)?;
+            if let Some(parsed_file_id) = parsed_file.id {
+                sqlite_manager.remove_parsed_file(parsed_file_id)?;
+            } else {
+                return Err(ShinkaiFsError::FailedToRetrieveParsedFileID);
+            }
         } else {
             return Err(ShinkaiFsError::FileNotFoundInDatabase);
         }

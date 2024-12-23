@@ -6648,6 +6648,7 @@ dependencies = [
  "shinkai_sqlite",
  "tempfile",
  "thiserror 2.0.3",
+ "tokio",
  "urlencoding",
  "utoipa",
 ]

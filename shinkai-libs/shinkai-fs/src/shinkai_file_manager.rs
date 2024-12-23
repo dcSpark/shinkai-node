@@ -4,13 +4,12 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
-use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
+use shinkai_message_primitives::schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
 use crate::shinkai_fs_error::ShinkaiFsError;
 use crate::simple_parser::simple_parser::SimpleParser;
-use crate::simple_parser::text_group::TextGroup;
 
 pub struct ShinkaiFileManager;
 
@@ -33,59 +32,75 @@ pub enum FileProcessingMode {
 impl ShinkaiFileManager {
     /// Process file: If not in DB, add it. If supported, generate chunks.
     /// If already processed, consider checking if file changed (not implemented here).
-    pub async fn process_file(
+    pub async fn process_embeddings_for_file(
         path: ShinkaiPath,
         base_dir: &Path,
         sqlite_manager: &SqliteManager,
-        mode: FileProcessingMode,
+        mode: FileProcessingMode, // TODO: maybe we dont need this?
         generator: &dyn EmbeddingGenerator,
     ) -> Result<(), ShinkaiFsError> {
-        // let rel_path = Self::compute_relative_path(&path, base_dir)?;
-        // let parsed_file = if let Some(pf) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
-        //     pf
-        // } else {
-        //     let original_extension = path
-        //         .as_path()
-        //         .extension()
-        //         .and_then(|ext| ext.to_str())
-        //         .map(|s| s.to_string());
-
-        //     let pf = ParsedFile {
-        //         id: 0,
-        //         relative_path: rel_path.clone(),
-        //         original_extension,
-        //         description: None,
-        //         source: None,
-        //         embedding_model_used: None,
-        //         keywords: None,
-        //         distribution_info: None,
-        //         created_time: Some(Self::current_timestamp()),
-        //         tags: None,
-        //         total_tokens: None,
-        //         total_characters: None,
-        //     };
-        //     sqlite_manager.add_parsed_file(&pf)?;
-        //     sqlite_manager.get_parsed_file_by_rel_path(&rel_path)?.unwrap()
-        // };
-
-        /*
-        File Processing:
-
-        - we need to be able to read a file
-        - create the chunks
-        - create the embedding
-        - create the vector resource
-        - add the vector resource to the db
-        - add the parsed file to the db
-
-        */
-
         if mode == FileProcessingMode::NoParsing {
             return Ok(());
         }
 
+        // Compute the relative path
+        let rel_path = Self::compute_relative_path(&path, base_dir)?;
+
+        // Check if the file is already processed
+        if let Some(_parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
+            // TODO: check if the file has changed since last processing
+            return Ok(());
+        }
+
+        // Steps to process a file:
+        // 1. Read the file content to ensure accessibility.
+        // 2. Divide the file content into manageable chunks.
+        // 3. Generate embeddings for each chunk using the specified model.
+        // 4. Construct a ParsedFile object and associate it with its chunks.
+        // 5. Persist the ParsedFile and its chunks into the database.
+
+        // 1- Parse the file
         let max_node_text_size = generator.model_type().max_input_token_count();
-        let text_groups = SimpleParser::parse_file(path, max_node_text_size.try_into().unwrap())?;
+        let mut text_groups = SimpleParser::parse_file(path.clone(), max_node_text_size.try_into().unwrap())?;
+
+        // Generate embeddings for each text group and assign them directly
+        for text_group in &mut text_groups {
+            let embedding = generator.generate_embedding_default(&text_group.text).await?;
+            text_group.embedding = Some(embedding);
+        }
+
+        // Add the parsed file to the database
+        let parsed_file = ParsedFile {
+            id: None, // Expected. The DB will auto-generate the id.
+            relative_path: rel_path.clone(),
+            original_extension: path.extension().map(|s| s.to_string()),
+            description: None, // TODO: connect this
+            source: None, // TODO: connect this
+            embedding_model_used: Some(generator.model_type().to_string()),
+            keywords: None, // TODO: connect this
+            distribution_info: None, // TODO: connect this
+            created_time: Some(Self::current_timestamp()),
+            tags: None, // TODO: connect this
+            total_tokens: None, // TODO: connect this
+            total_characters: None, // TODO: connect this
+        };
+        sqlite_manager.add_parsed_file(&parsed_file)?;
+
+        // Retrieve the parsed file ID
+        let parsed_file_id = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)?
+            .ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?
+            .id.unwrap();
+
+        // Create and add chunks to the database
+        for (position, text_group) in text_groups.iter().enumerate() {
+            let chunk = ShinkaiFileChunk {
+                chunk_id: None,
+                parsed_file_id,
+                position: position as i64,
+                content: text_group.text.clone(),
+            };
+            sqlite_manager.add_chunk(&chunk)?;
+        }
 
         Ok(())
     }
@@ -134,11 +149,32 @@ impl ShinkaiFileManager {
 
         Ok(contents)
     }
+
+    /// Save a file to disk and process it for embeddings based on the mode.
+    pub async fn save_and_process_file(
+        dest_path: ShinkaiPath,
+        data: Vec<u8>,
+        base_dir: &Path,
+        sqlite_manager: &SqliteManager,
+        mode: FileProcessingMode,
+        generator: &dyn EmbeddingGenerator,
+    ) -> Result<(), ShinkaiFsError> {
+        // Save the file to disk
+        Self::add_file(dest_path.clone(), data)?;
+
+        // Process the file for embeddings if the mode is not NoParsing
+        if mode != FileProcessingMode::NoParsing {
+            Self::process_embeddings_for_file(dest_path, base_dir, sqlite_manager, mode, generator).await?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_embedding::mock_generator::MockGenerator;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
     use std::fs::{self, File};
@@ -158,7 +194,7 @@ mod tests {
 
     fn create_test_parsed_file(id: i64, relative_path: &str) -> ParsedFile {
         ParsedFile {
-            id,
+            id: Some(id),
             relative_path: relative_path.to_string(),
             original_extension: None,
             description: None,
@@ -171,6 +207,40 @@ mod tests {
             total_tokens: None,
             total_characters: None,
         }
+    }
+
+    // Helper function to set up a test environment
+    fn setup_test_environment() -> (SqliteManager, tempfile::TempDir, ShinkaiPath, MockGenerator) {
+        let db = setup_test_db();
+
+        // Initialize the database tables
+        let conn = db.get_connection().unwrap();
+        SqliteManager::initialize_filesystem_tables(&conn).unwrap();
+
+        // Create a temporary directory and file path
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test_file.txt");
+
+        // Create a mock embedding generator
+        let model_type = EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+        let generator = MockGenerator::new(model_type, 128); // 128 is the number of floats in the mock embedding
+
+        (db, dir, ShinkaiPath::from_string(file_path.to_str().unwrap().to_string()), generator)
+    }
+
+    // Helper function to write large content to a file
+    fn write_large_content(file: &mut File) {
+        let large_content = [
+            "This is the first part of the test file. It contains some initial text to start the file processing. ",
+            "Here is the second part of the test file. It adds more content to ensure the file is large enough. ",
+            "Finally, this is the third part of the test file. It completes the content needed for multiple chunks. ",
+            "Additional content to ensure the file is sufficiently large for testing purposes. This should help in generating multiple chunks. ",
+            "More content to further increase the size of the file. This should definitely ensure multiple chunks are created. ",
+            "Even more content to make sure we exceed the threshold for chunking. This is important for testing the chunking logic. ",
+            "Continuing to add content to ensure the file is large enough. This should be more than sufficient for the test. ",
+            "Final addition of content to make sure we have enough text. This should cover all bases for the chunking test."
+        ].join("");
+        writeln!(file, "{}", large_content).unwrap();
     }
 
     #[test]
@@ -276,5 +346,75 @@ mod tests {
         assert!(found_february, "File 'february.txt' should be found.");
         assert!(found_march, "File 'march.txt' should be found.");
         assert!(found_subdir, "Directory 'subdir' should be found.");
+    }
+
+    #[tokio::test]
+    async fn test_process_file() {
+        let (db, dir, shinkai_path, generator) = setup_test_environment();
+
+        // Create and write to the file
+        let mut file = File::create(shinkai_path.as_path()).unwrap();
+        write_large_content(&mut file);
+
+        // Call the process_embeddings_for_file function
+        let result = ShinkaiFileManager::process_embeddings_for_file(
+            shinkai_path.clone(),
+            dir.path(),
+            &db,
+            FileProcessingMode::Auto,
+            &generator,
+        ).await;
+
+        // Assert the result is Ok
+        assert!(result.is_ok());
+
+        // Verify the file is added to the database
+        let parsed_file = db.get_parsed_file_by_rel_path("test_file.txt").unwrap();
+        assert!(parsed_file.is_some());
+
+        // Verify the chunks are added to the database
+        let parsed_file_id = parsed_file.unwrap().id.unwrap();
+        let chunks = db.get_chunks_for_parsed_file(parsed_file_id).unwrap();
+        println!("chunks: {:?}", chunks); // Debugging output
+        assert!(chunks.len() >= 2, "Expected at least 2 chunks, found {}", chunks.len());
+
+        // Clean up
+        dir.close().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_save_and_process_file() {
+        let (db, dir, shinkai_path, generator) = setup_test_environment();
+
+        // Prepare the data to be written
+        let mut file = File::create(shinkai_path.as_path()).unwrap();
+        write_large_content(&mut file);
+        let data = std::fs::read(shinkai_path.as_path()).unwrap();
+
+        // Call the save_and_process_file function
+        let result = ShinkaiFileManager::save_and_process_file(
+            shinkai_path.clone(),
+            data,
+            dir.path(),
+            &db,
+            FileProcessingMode::Auto,
+            &generator,
+        ).await;
+
+        // Assert the result is Ok
+        assert!(result.is_ok());
+
+        // Verify the file is added to the database
+        let parsed_file = db.get_parsed_file_by_rel_path("test_file.txt").unwrap();
+        assert!(parsed_file.is_some());
+
+        // Verify the chunks are added to the database
+        let parsed_file_id = parsed_file.unwrap().id.unwrap();
+        let chunks = db.get_chunks_for_parsed_file(parsed_file_id).unwrap();
+        println!("chunks: {:?}", chunks); // Debugging output
+        assert!(chunks.len() >= 2, "Expected at least 2 chunks, found {}", chunks.len());
+
+        // Clean up
+        dir.close().unwrap();
     }
 }

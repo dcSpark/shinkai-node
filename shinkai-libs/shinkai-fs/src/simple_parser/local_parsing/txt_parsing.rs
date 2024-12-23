@@ -149,3 +149,28 @@ impl LocalFileParser {
         sentences
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_txt_file_multiple_text_groups() {
+        let input_text = "This is a test sentence. This is another test sentence.";
+        let file_buffer = input_text.as_bytes().to_vec();
+        let max_node_text_size = 10; // Low max node text size to force multiple text groups
+
+        let result = LocalFileParser::process_txt_file(file_buffer, max_node_text_size);
+
+        assert!(result.is_ok());
+        let text_groups = result.unwrap();
+        
+        // We expect more than one text group due to the low max_node_text_size
+        assert!(text_groups.len() > 1);
+
+        // Optionally, check the content of the text groups
+        for text_group in text_groups {
+            println!("TextGroup: {}", text_group.text);
+        }
+    }
+}

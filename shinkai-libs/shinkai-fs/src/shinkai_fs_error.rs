@@ -103,6 +103,12 @@ pub enum ShinkaiFsError {
     VRPackEmbeddingModelError(String),
     #[error("Unsupported file type: {0}")]
     UnsupportedFileType(String),
+    #[error("Failed to retrieve parsed file ID")]
+    FailedToRetrieveParsedFileID,
+    #[error("Failed to add parsed file to database")]
+    FailedToAddParsedFileToDatabase,
+    #[error("Failed to add chunks to database")]
+    FailedToAddChunksToDatabase,
 }
 
 impl From<SerdeError> for ShinkaiFsError {

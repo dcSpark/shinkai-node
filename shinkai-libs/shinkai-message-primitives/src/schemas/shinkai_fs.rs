@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedFile {
     /// Unique identifier for the parsed file entry.
-    pub id: i64,
+    pub id: Option<i64>,
     /// The file's path relative to some base directory (e.g., "docs/manual.txt").
     pub relative_path: String,
     /// The original file extension (e.g., "txt", "md", "pdf").
@@ -35,7 +35,7 @@ pub struct ParsedFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShinkaiFileChunk {
     /// Unique identifier for the file chunk.
-    pub chunk_id: i64,
+    pub chunk_id: Option<i64>,
     /// Identifier of the parsed file this chunk is associated with.
     pub parsed_file_id: i64,
     /// Sequence number of the chunk, indicating its order within the file.

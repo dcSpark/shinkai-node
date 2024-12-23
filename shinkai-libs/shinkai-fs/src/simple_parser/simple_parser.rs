@@ -86,7 +86,9 @@ impl SimpleParser {
         let file_buffer = fs::read(&filepath.as_path()).map_err(|e| ShinkaiFsError::FailedIO(e.to_string()))?;
 
         // call the new function based on the file extension
-        SimpleParser::process_file_by_extension(file_buffer, file_type, max_node_text_size)
+        let text_groups = SimpleParser::process_file_by_extension(file_buffer, file_type, max_node_text_size)?;
+
+        Ok(text_groups)
     }
 
     fn process_file_by_extension(file_buffer: Vec<u8>, file_type: SupportedFileType, max_node_text_size: u64) -> Result<Vec<TextGroup>, ShinkaiFsError> {
@@ -100,5 +102,73 @@ impl SimpleParser {
             _ => Err(ShinkaiFsError::UnsupportedFileType(file_type.to_string())),
             // SupportedFileType::Xlsx | SupportedFileType::Xls => LocalFileParser::process_xlsx_file(file_buffer, max_node_text_size),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_parse_csv_file() {
+        // Create a temporary directory
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("test.csv");
+
+        // Write a simple CSV content to the file
+        let mut file = fs::File::create(&file_path).unwrap();
+        writeln!(file, "header1,header2").unwrap();
+        writeln!(file, "value1,value2").unwrap();
+
+        // Convert the path to ShinkaiPath
+        let shinkai_path = ShinkaiPath::from_string(file_path.to_str().unwrap().to_string());
+
+        // Call the parse_file function
+        let result = SimpleParser::parse_file(shinkai_path, 1024);
+        eprintln!("result: {:?}", result);
+
+        // Assert the result is Ok and contains expected data
+        assert!(result.is_ok());
+        let text_groups = result.unwrap();
+        assert!(!text_groups.is_empty());
+
+        // Clean up
+        dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_parse_large_csv_file() {
+        // Create a temporary directory
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("large_test.csv");
+
+        // Write a larger CSV content to the file
+        let mut file = fs::File::create(&file_path).unwrap();
+        writeln!(file, "header1,header2,header3").unwrap();
+        for i in 0..100 {
+            writeln!(file, "value1_{},value2_{},value3_{}", i, i, i).unwrap();
+        }
+
+        // Convert the path to ShinkaiPath
+        let shinkai_path = ShinkaiPath::from_string(file_path.to_str().unwrap().to_string());
+
+        // Call the parse_file function with a smaller max_node_text_size
+        let result = SimpleParser::parse_file(shinkai_path, 20);
+        eprintln!("result: {:?}", result);
+
+        // Assert the result is Ok and contains expected data     
+        assert!(result.is_ok());
+        let text_groups = result.unwrap();
+
+        eprintln!("length: {:?}", text_groups.len());
+           
+        
+        assert!(!text_groups.is_empty());
+
+        // Clean up
+        dir.close().unwrap();
     }
 }
