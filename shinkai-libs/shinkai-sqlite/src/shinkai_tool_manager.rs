@@ -47,7 +47,6 @@ impl SqliteManager {
         let mut tool_clone = tool.clone();
         tool_clone.set_embedding(Embedding::new("", embedding.clone()));
 
-
         // Determine if the tool can be enabled
         let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
         if tool_clone.is_enabled() && !tool_clone.can_be_enabled() {
