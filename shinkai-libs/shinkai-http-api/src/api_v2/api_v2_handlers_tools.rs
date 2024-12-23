@@ -7,9 +7,8 @@ use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
 use std::collections::HashMap;
-use bytes::Bytes;
 use futures::TryStreamExt;
-use warp::multipart::{FormData, Part};
+use warp::multipart::{FormData};
 use bytes::Buf;
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
@@ -52,7 +51,6 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
         .and_then(add_shinkai_tool_handler);
-
 
     let tool_execution_route = warp::path("tool_execution")
         .and(warp::post())
@@ -222,6 +220,20 @@ pub fn tool_routes(
         .or(remove_tool_route)
 }
 
+pub fn safe_folder_name(tool_router_key: &str) -> String {
+    tool_router_key
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .to_lowercase()
+}
+
 #[utoipa::path(
     get,
     path = "/v2/tool_definitions",
@@ -343,8 +355,8 @@ pub async fn tool_execution_handler(
             bearer,
             tool_router_key: payload.tool_router_key.clone(),
             parameters,
-            tool_id,
-            app_id,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
             llm_provider: payload.llm_provider.clone(),
             extra_config,
             mounts: payload.mounts,
@@ -741,8 +753,8 @@ pub async fn set_playground_tool_handler(
         .send(NodeCommand::V2ApiSetPlaygroundTool {
             bearer,
             payload, 
-            tool_id,
-            app_id,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
             res: res_sender,
         })
         .await
@@ -1031,8 +1043,8 @@ pub async fn code_execution_handler(
             parameters,
             extra_config,
             oauth: payload.oauth,
-            tool_id: tool_id,
-            app_id: app_id,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
             llm_provider: payload.llm_provider,
             mounts: payload.mounts,
             res: res_sender,
@@ -1447,8 +1459,8 @@ pub async fn tool_asset_handler(
     sender
         .send(NodeCommand::V2ApiUploadToolAsset {
             bearer,
-            tool_id,
-            app_id,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
             file_name,
             file_data,
             res: res_sender,
@@ -1492,8 +1504,8 @@ pub async fn list_tool_asset_handler(
     sender
         .send(NodeCommand::V2ApiListToolAssets {
             bearer,
-            tool_id,
-            app_id,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
             res: res_sender,
         })
         .await
@@ -1550,8 +1562,8 @@ pub async fn delete_tool_asset_handler(
     sender
         .send(NodeCommand::V2ApiDeleteToolAsset {
             bearer,
-            tool_id,
-            app_id,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
             file_name,
             res: res_sender,
         })
