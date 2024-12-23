@@ -221,6 +221,13 @@ impl DenoTool {
                         code_files.insert(format!("{}.ts", file_name), file_code.clone());
                     });
 
+                    let mount_files = mounts
+                        .clone()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|mount| PathBuf::from(mount))
+                        .collect();
+
                     // Setup the engine with the code files and config
                     let tool = DenoRunner::new(
                         CodeFiles {
@@ -235,12 +242,7 @@ impl DenoTool {
                                 code_id: "".to_string(),
                                 storage: full_path.clone(),
                                 assets_files,
-                                mount_files: mounts
-                                    .clone()
-                                    .unwrap_or_default()
-                                    .iter()
-                                    .map(|mount| PathBuf::from(mount))
-                                    .collect(),
+                                mount_files,
                             },
                             deno_binary_path: PathBuf::from(
                                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")

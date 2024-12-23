@@ -6,6 +6,7 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_sqlite::SqliteManager;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use shinkai_http_api::node_api_router::APIError;
 pub fn get_app_folder_path(node_env: NodeEnvironment, app_id: String) -> PathBuf {
     let mut origin_path: PathBuf = PathBuf::from(node_env.node_storage_path.clone().unwrap_or_default());
     origin_path.push("app_files");
-    origin_path.push(app_id);
+    origin_path.push(ShinkaiTool::convert_to_path(&app_id));
     origin_path
 }
 
@@ -143,7 +144,7 @@ impl Node {
             return Ok(());
         }
         let app_folder_path = get_app_folder_path(node_env, app_id);
-        let result = Self::v2_api_list_app_files_internal(app_folder_path);
+        let result = Self::v2_api_list_app_files_internal(app_folder_path, false);
         match result {
             Ok(file_list) => {
                 let _ = res
@@ -160,7 +161,7 @@ impl Node {
         }
     }
 
-    pub fn v2_api_list_app_files_internal(app_folder_path: PathBuf) -> Result<Vec<String>, APIError> {
+    pub fn v2_api_list_app_files_internal(app_folder_path: PathBuf, absolute: bool) -> Result<Vec<String>, APIError> {
         let files = std::fs::read_dir(&app_folder_path);
         if let Err(err) = files {
             let api_error = APIError {
@@ -175,8 +176,17 @@ impl Node {
         let files = files.unwrap();
         for file in files {
             if let Ok(file) = file {
-                let file_name = file.file_name().to_string_lossy().to_string();
-                file_list.push(file_name);
+                if absolute {
+                    file_list.push(
+                        file.path()
+                            .canonicalize()
+                            .unwrap_or(file.path())
+                            .to_string_lossy()
+                            .to_string(),
+                    );
+                } else {
+                    file_list.push(file.file_name().to_string_lossy().to_string());
+                }
             }
         }
         Ok(file_list)

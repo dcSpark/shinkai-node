@@ -31,8 +31,8 @@ pub fn app_files_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(get_file_handler);
 
-    let update_file_route = warp::path("app_file")
-        .and(warp::patch())
+    let update_file_route = warp::path("patch_app_file")
+        .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::header::<String>("x-shinkai-tool-id"))
@@ -156,8 +156,8 @@ pub async fn upload_file_handler(
 // }
 
 #[utoipa::path(
-    patch,
-    path = "/v2/app_file",
+    post,
+    path = "/v2/patch_app_file",
     request_body = UpdateFileRequest,
     responses(
         (status = 200, description = "Successfully updated file", body = Value),
