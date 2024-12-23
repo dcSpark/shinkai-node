@@ -3,22 +3,18 @@ use super::execution::prompts::general_prompts::JobPromptGenerator;
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
+use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
+use shinkai_fs::simple_parser::text_group::TextGroup;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
-// use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-// use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-// use shinkai_vector_resources::file_parser::file_parser_types::TextGroup;
-// use shinkai_vector_resources::source::{DistributionInfo, SourceFile, SourceFileMap, TextChunkingStrategy};
-// use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType, VRKai, VRPath};
-// use shinkai_vector_resources::{data_tags::DataTag, source::VRSourceReference};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 pub struct ParsingHelper {}
 
 impl ParsingHelper {
+    // TODO: maybe rescue this one
     /// Given a list of TextGroup, generates a description using the Agent's LLM
     pub async fn generate_description(
         text_groups: &Vec<TextGroup>,
@@ -69,116 +65,116 @@ impl ParsingHelper {
         }
     }
 
-    ///  Processes the file buffer through our hierarchical structuring algo,
-    ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
-    ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
-    /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
-    #[allow(clippy::too_many_arguments)]
-    pub async fn process_file_into_resource_gen_desc(
-        file_buffer: Vec<u8>,
-        generator: &dyn EmbeddingGenerator,
-        file_name: String,
-        parsing_tags: &Vec<DataTag>,
-        agent: Option<ProviderOrAgent>,
-        max_node_text_size: u64,
-        distribution_info: DistributionInfo,
-        db: Arc<SqliteManager>,
-    ) -> Result<BaseVectorResource, LLMProviderError> {
-        let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
-        let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
-        let text_groups = ShinkaiFileParser::process_file_into_text_groups(
-            file_buffer,
-            file_name,
-            max_node_text_size,
-            source.clone(),
-        )
-        .await?;
+    // ///  Processes the file buffer through our hierarchical structuring algo,
+    // ///  generates all embeddings, uses LLM to generate desc and improve overall structure quality,
+    // ///  and returns a finalized BaseVectorResource. If no agent is provided, description defaults to first text in elements.
+    // /// Note: Requires file_name to include the extension ie. `*.pdf` or url `http://...`
+    // #[allow(clippy::too_many_arguments)]
+    // pub async fn process_file_into_resource_gen_desc(
+    //     file_buffer: Vec<u8>,
+    //     generator: &dyn EmbeddingGenerator,
+    //     file_name: String,
+    //     parsing_tags: &Vec<DataTag>,
+    //     agent: Option<ProviderOrAgent>,
+    //     max_node_text_size: u64,
+    //     distribution_info: DistributionInfo,
+    //     db: Arc<SqliteManager>,
+    // ) -> Result<BaseVectorResource, LLMProviderError> {
+    //     let cleaned_name = ShinkaiFileParser::clean_name(&file_name);
+    //     let source = VRSourceReference::from_file(&file_name, TextChunkingStrategy::V1)?;
+    //     let text_groups = ShinkaiFileParser::process_file_into_text_groups(
+    //         file_buffer,
+    //         file_name,
+    //         max_node_text_size,
+    //         source.clone(),
+    //     )
+    //     .await?;
 
-        let mut desc = None;
-        if let Some(actual_agent) = agent {
-            desc = Some(Self::generate_description(&text_groups, actual_agent, max_node_text_size, db.clone()).await?);
-        } else {
-            let description_text = ShinkaiFileParser::process_groups_into_description(
-                &text_groups,
-                max_node_text_size as usize,
-                max_node_text_size.checked_div(2).unwrap_or(100) as usize,
-            );
-            if !description_text.trim().is_empty() {
-                desc = Some(description_text);
-            }
-        }
+    //     let mut desc = None;
+    //     if let Some(actual_agent) = agent {
+    //         desc = Some(Self::generate_description(&text_groups, actual_agent, max_node_text_size, db.clone()).await?);
+    //     } else {
+    //         let description_text = ShinkaiFileParser::process_groups_into_description(
+    //             &text_groups,
+    //             max_node_text_size as usize,
+    //             max_node_text_size.checked_div(2).unwrap_or(100) as usize,
+    //         );
+    //         if !description_text.trim().is_empty() {
+    //             desc = Some(description_text);
+    //         }
+    //     }
 
-        Ok(ShinkaiFileParser::process_groups_into_resource(
-            text_groups,
-            generator,
-            cleaned_name,
-            desc,
-            source,
-            parsing_tags,
-            max_node_text_size,
-            distribution_info,
-        )
-        .await?)
-    }
+    //     Ok(ShinkaiFileParser::process_groups_into_resource(
+    //         text_groups,
+    //         generator,
+    //         cleaned_name,
+    //         desc,
+    //         source,
+    //         parsing_tags,
+    //         max_node_text_size,
+    //         distribution_info,
+    //     )
+    //     .await?)
+    // }
 
-    /// Processes the list of files into VRKai structs ready to be used/saved/etc.
-    /// Supports both `.vrkai` files, and standard doc/html/etc which get generated into VRs.
-    pub async fn process_files_into_vrkai(
-        files: Vec<(String, Vec<u8>, DistributionInfo)>,
-        generator: &dyn EmbeddingGenerator,
-        agent: Option<ProviderOrAgent>,
-        db: Arc<SqliteManager>,
-    ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
-        #[allow(clippy::type_complexity)]
-        let (vrkai_files, other_files): (
-            Vec<(String, Vec<u8>, DistributionInfo)>,
-            Vec<(String, Vec<u8>, DistributionInfo)>,
-        ) = files
-            .into_iter()
-            .partition(|(name, _, _dist_info)| name.ends_with(".vrkai"));
-        let mut processed_vrkais = vec![];
+    // /// Processes the list of files into VRKai structs ready to be used/saved/etc.
+    // /// Supports both `.vrkai` files, and standard doc/html/etc which get generated into VRs.
+    // pub async fn process_files_into_vrkai(
+    //     files: Vec<(String, Vec<u8>, DistributionInfo)>,
+    //     generator: &dyn EmbeddingGenerator,
+    //     agent: Option<ProviderOrAgent>,
+    //     db: Arc<SqliteManager>,
+    // ) -> Result<Vec<(String, VRKai)>, LLMProviderError> {
+    //     #[allow(clippy::type_complexity)]
+    //     let (vrkai_files, other_files): (
+    //         Vec<(String, Vec<u8>, DistributionInfo)>,
+    //         Vec<(String, Vec<u8>, DistributionInfo)>,
+    //     ) = files
+    //         .into_iter()
+    //         .partition(|(name, _, _dist_info)| name.ends_with(".vrkai"));
+    //     let mut processed_vrkais = vec![];
 
-        // Parse the `.vrkai` files
-        for vrkai_file in vrkai_files {
-            let filename = vrkai_file.0;
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                &format!("Processing file: {}", filename),
-            );
+    //     // Parse the `.vrkai` files
+    //     for vrkai_file in vrkai_files {
+    //         let filename = vrkai_file.0;
+    //         shinkai_log(
+    //             ShinkaiLogOption::JobExecution,
+    //             ShinkaiLogLevel::Debug,
+    //             &format!("Processing file: {}", filename),
+    //         );
 
-            processed_vrkais.push((filename, VRKai::from_bytes(&vrkai_file.1)?))
-        }
+    //         processed_vrkais.push((filename, VRKai::from_bytes(&vrkai_file.1)?))
+    //     }
 
-        // Parse the other files by generating a Vector Resource from scratch
-        for file in other_files {
-            let filename = file.0.clone();
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                &format!("Processing file: {}", filename),
-            );
+    //     // Parse the other files by generating a Vector Resource from scratch
+    //     for file in other_files {
+    //         let filename = file.0.clone();
+    //         shinkai_log(
+    //             ShinkaiLogOption::JobExecution,
+    //             ShinkaiLogLevel::Debug,
+    //             &format!("Processing file: {}", filename),
+    //         );
 
-            let resource = ParsingHelper::process_file_into_resource_gen_desc(
-                file.1.clone(),
-                generator,
-                filename.clone(),
-                &vec![],
-                agent.clone(),
-                (generator.model_type().max_input_token_count() - 20) as u64,
-                file.2.clone(),
-                db.clone(),
-            )
-            .await?;
+    //         let resource = ParsingHelper::process_file_into_resource_gen_desc(
+    //             file.1.clone(),
+    //             generator,
+    //             filename.clone(),
+    //             &vec![],
+    //             agent.clone(),
+    //             (generator.model_type().max_input_token_count() - 20) as u64,
+    //             file.2.clone(),
+    //             db.clone(),
+    //         )
+    //         .await?;
 
-            let file_type = SourceFileType::detect_file_type(&file.0)?;
-            let source = SourceFile::new_standard_source_file(file.0, file_type, file.1, None);
-            let mut source_map = SourceFileMap::new(HashMap::new());
-            source_map.add_source_file(VRPath::root(), source);
+    //         let file_type = SourceFileType::detect_file_type(&file.0)?;
+    //         let source = SourceFile::new_standard_source_file(file.0, file_type, file.1, None);
+    //         let mut source_map = SourceFileMap::new(HashMap::new());
+    //         source_map.add_source_file(VRPath::root(), source);
 
-            processed_vrkais.push((filename, VRKai::new(resource, Some(source_map))))
-        }
+    //         processed_vrkais.push((filename, VRKai::new(resource, Some(source_map))))
+    //     }
 
-        Ok(processed_vrkais)
-    }
+    //     Ok(processed_vrkais)
+    // }
 }

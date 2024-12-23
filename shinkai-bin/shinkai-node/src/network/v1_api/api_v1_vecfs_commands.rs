@@ -1,16 +1,16 @@
 use std::{env, fs, path::Path, sync::Arc};
 
 use crate::{
-    llm_provider::parsing_helper::ParsingHelper,
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
+use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::{identity::Identity, shinkai_name::ShinkaiName},
@@ -22,10 +22,11 @@ use shinkai_message_primitives::{
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
             APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
         },
-    }, shinkai_utils::shinkai_path::ShinkaiPath,
+    },
+    shinkai_utils::shinkai_path::ShinkaiPath,
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 impl Node {
@@ -124,13 +125,13 @@ impl Node {
     // Private method to abstract common logic
     #[allow(clippy::too_many_arguments)]
     async fn retrieve_path_json_common(
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<Value, APIError>>,
-        is_minimal: bool, // Determines which JSON representation to retrieve
+        _is_minimal: bool, // TODO: to remove
     ) -> Result<(), NodeError> {
         let (input_payload, requester_name) =
             match Self::validate_and_extract_payload::<APIVecFsRetrievePathSimplifiedJson>(
@@ -149,60 +150,31 @@ impl Node {
                 }
             };
 
-        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                // Immediately send the error and return from the function
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let reader = match vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await
-        {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                // Immediately send the error and return from the function
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let vr_path = ShinkaiPath::from_string(input_payload.path);
 
-        let result = if is_minimal {
-            vector_fs.retrieve_fs_path_minimal_json_value(&reader).await
-        } else {
-            vector_fs.retrieve_fs_path_simplified_json_value(&reader).await
-        };
+        // Use list_directory_contents to get directory contents
+        let directory_contents = ShinkaiFileManager::list_directory_contents(vr_path, &db);
 
-        match result {
-            Ok(result) => {
-                let _ = res.send(Ok(result)).await.map_err(|_| ());
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve fs path json: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
+        if let Err(e) = directory_contents {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to retrieve directory contents: {}", e),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
         }
+
+        // Convert directory contents to JSON
+        let json_contents = serde_json::to_value(directory_contents.unwrap()).map_err(|e| NodeError::from(e))?;
+
+        // Send the directory contents as a response
+        let _ = res.send(Ok(json_contents)).await.map_err(|_| ());
         Ok(())
     }
 
     pub async fn api_vec_fs_search_items(
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -305,38 +277,13 @@ impl Node {
             };
 
         let vr_path = match input_payload.path {
-            Some(path) => match ShinkaiPath::from_string(&path) {
-                Ok(path) => path,
-                Err(e) => {
-                    let api_error = APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: format!("Failed to convert path to VRPath: {}", e),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            },
-            None => VRPath::root(),
-        };
-        let reader = vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await;
-        let reader = match reader {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
+            Some(path) => ShinkaiPath::from_string(path),
+            None => ShinkaiPath::from_str(""),
         };
 
         let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
         let max_results = input_payload.max_results.unwrap_or(100) as u64;
+        
         let search_results = match vector_fs
             .deep_vector_search(
                 &reader,
@@ -1045,18 +992,7 @@ impl Node {
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Vec<Value>, APIError>>,
     ) -> Result<(), NodeError> {
-        let destination_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let destination_path = ShinkaiPath::from_string(input_payload.path);
 
         let files = {
             match db.get_all_files_from_inbox(input_payload.file_inbox.clone()) {
@@ -1081,89 +1017,33 @@ impl Node {
         let (vr_packs, other_files): (FileDataVec, FileDataVec) =
             files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
 
-        let mut dist_files = vec![];
-        for file in other_files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, input_payload.file_datetime);
-            dist_files.push((file.0, file.1, distribution_info));
-        }
+        for (filename, data) in other_files {
+            let file_path = destination_path.join(&filename);
+            let result = ShinkaiFileManager::save_and_process_file(
+                file_path,
+                data,
+                Path::new("/base/dir"), // Replace with actual base directory path
+                &db,
+                FileProcessingMode::Auto,
+                &*embedding_generator,
+            )
+            .await;
 
-        // TODO: provide a default agent so that an LLM can be used to generate description of the VR for document files
-        let processed_vrkais =
-            ParsingHelper::process_files_into_vrkai(dist_files, &*embedding_generator, None, db.clone()).await?;
-
-        // Save the vrkais into VectorFS
-        let mut success_messages = Vec::new();
-        for (filename, vrkai) in processed_vrkais {
-            let folder_path = destination_path.clone();
-            let writer = vector_fs
-                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
-                .await?;
-
-            let save_result = vector_fs.save_vrkai_in_folder(&writer, vrkai).await;
-            let fs_item = match save_result {
-                Ok(fs_item) => fs_item,
-                Err(e) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Error saving '{}' in folder: {}", filename, e),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            };
-
-            #[derive(Serialize, Debug)]
-            struct VectorResourceInfo {
-                name: String,
-                path: String,
-                merkle_hash: String,
-            }
-
-            let resource_info = VectorResourceInfo {
-                name: filename.to_string(),
-                path: fs_item.path.to_string(),
-                merkle_hash: fs_item.merkle_hash,
-            };
-
-            let success_message = match serde_json::to_value(&resource_info) {
-                Ok(json) => json,
-                Err(e) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to convert vector resource info to JSON: {}", e),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
-            success_messages.push(success_message);
-        }
-
-        // Extract the vrpacks into the VectorFS
-        for (filename, vrpack_bytes) in vr_packs {
-            let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
-
-            let folder_path = destination_path.clone();
-            let writer = vector_fs
-                .new_writer(requester_name.clone(), folder_path.clone(), requester_name.clone())
-                .await?;
-
-            if let Err(e) = vector_fs.extract_vrpack_in_folder(&writer, vrpack).await {
+            if let Err(e) = result {
                 let _ = res
                     .send(Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
-                        message: format!("Error extracting/saving '{}' into folder: {}", filename, e),
+                        message: format!("Error processing file '{}': {}", filename, e),
                     }))
                     .await;
                 return Ok(());
             }
         }
 
-        let _ = res.send(Ok(success_messages)).await.map_err(|_| ());
+        // Handle vr_packs if necessary
+        // ...
+
         Ok(())
     }
 
@@ -1262,7 +1142,6 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     pub async fn retrieve_vr_pack(
         _db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,

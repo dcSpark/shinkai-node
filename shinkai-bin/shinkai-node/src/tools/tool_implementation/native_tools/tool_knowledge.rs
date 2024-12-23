@@ -1,11 +1,10 @@
 use futures::StreamExt;
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::subprompts::SubPrompt;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
@@ -21,7 +20,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 
@@ -101,13 +100,7 @@ impl ToolExecutor for KnowledgeTool {
                     Err(e) => return Err(ToolError::ExecutionError(format!("Failed to fetch job data: {}", e))),
                 };
 
-                if let Some(scope_with_files) = full_job.scope_with_files().clone() {
-                    scope = scope_with_files.clone();
-                } else {
-                    return Err(ToolError::ExecutionError(
-                        "Failed to extract scope with files".to_string(),
-                    ));
-                }
+                scope = full_job.scope().clone();
             }
         }
 
@@ -118,12 +111,7 @@ impl ToolExecutor for KnowledgeTool {
                     // TODO: if scope empty then return an error?
 
                     let resource_stream = {
-                        // Note(Nico): in the future we will get rid of this old fashion way to do embeddings
-                        let user_profile =
-                            ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string()).unwrap();
-
-                        JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, &user_profile)
-                            .await
+                        JobManager::retrieve_all_resources_in_job_scope_stream(&scope).await
                     };
 
                     let mut chunks = resource_stream.chunks(5);

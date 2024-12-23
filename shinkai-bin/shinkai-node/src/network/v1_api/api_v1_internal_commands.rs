@@ -425,10 +425,7 @@ impl Node {
                         };
 
                         if !has_job_inbox && welcome_message {
-                            let shinkai_folder_fs = VectorFSFolderScopeEntry {
-                                name: "Shinkai".to_string(),
-                                path: ShinkaiPath::from_string("/My Files (Private)").unwrap(),
-                            };
+                            let shinkai_folder_fs = ShinkaiPath::from_string("/My Files (Private)".to_string());
 
                             let job_scope = MinimalJobScope {
                                 vector_fs_items: vec![],
@@ -471,24 +468,25 @@ impl Node {
                                 "Welcome to Shinkai! Brief onboarding here.",
                             )?;
 
-                            {
-                                // Add Two Message from "Agent"
-                                let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+                            // TODO: add back later
+                            // {
+                            //     // Add Two Message from "Agent"
+                            //     let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
 
-                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
-                                    job_id.to_string(),
-                                    WELCOME_MESSAGE.to_string(),
-                                    "".to_string(),
-                                    None,
-                                    identity_secret_key_clone,
-                                    profile.node_name.clone(),
-                                    profile.node_name.clone(),
-                                )
-                                .unwrap();
+                            //     let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+                            //         job_id.to_string(),
+                            //         WELCOME_MESSAGE.to_string(),
+                            //         "".to_string(),
+                            //         None,
+                            //         identity_secret_key_clone,
+                            //         profile.node_name.clone(),
+                            //         profile.node_name.clone(),
+                            //     )
+                            //     .unwrap();
 
-                                db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
-                                    .await?;
-                            }
+                            //     db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
+                            //         .await?;
+                            // }
                         }
                         Ok(())
                     }

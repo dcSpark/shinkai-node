@@ -202,12 +202,6 @@ impl Node {
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
-        // Fetch list of existing profiles from the node to push into the VectorFS
-        let profile_list = match db_arc.get_all_profiles(node_name.clone()) {
-            Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
-            Err(e) => panic!("Failed to fetch profiles: {}", e),
-        };
-
         let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
             .unwrap_or_else(|_| "5".to_string())
             .parse::<usize>()

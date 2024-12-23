@@ -9,7 +9,6 @@ use shinkai_sqlite::SqliteManager;
 use std::collections::HashMap;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 impl JobManager {
     /// Performs multiple proximity vector searches within the job scope based on extracting keywords from the query text.
@@ -206,7 +205,7 @@ impl JobManager {
     async fn internal_job_scope_vector_search_groups(
         _db: Arc<SqliteManager>,
         job_scope: &MinimalJobScope,
-        query: Embedding,
+        query: Vec<f32>,
         query_text: String,
         num_of_top_results: u64,
         profile: &ShinkaiName,

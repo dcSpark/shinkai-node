@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+use shinkai_embedding::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 // use shinkai_vector_resources::{
 //     embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator},
 //     embeddings::Embedding,
@@ -56,12 +58,6 @@ impl ParsedUserMessage {
                 elements.push(JobTaskElement::Text(TextTaskElement::new(text)));
             }
         }
-
-        // TODO: Fix
-        // // Parses the list point elements out of the text elements, and preserves ordering
-        // let elements = parse_list_point_elements_from_text_elements(elements);
-
-        //TODO: Convert list points to ListTaskElement
 
         elements
     }
@@ -139,7 +135,7 @@ impl ParsedUserMessage {
     }
 
     /// Generates an embedding for the user message using it's entire output string, with a default empty id
-    pub async fn generate_embedding(&self, generator: RemoteEmbeddingGenerator) -> Result<Embedding, VRError> {
+    pub async fn generate_embedding(&self, generator: RemoteEmbeddingGenerator) -> Result<Vec<f32>, ShinkaiFsError> {
         let embedding = generator.generate_embedding_default(&self.get_output_string()).await?;
         Ok(embedding)
     }
@@ -150,7 +146,7 @@ impl ParsedUserMessage {
         generator: RemoteEmbeddingGenerator,
         remove_text: bool,
         remove_code_blocks: bool,
-    ) -> Result<Embedding, VRError> {
+    ) -> Result<Vec<f32>, ShinkaiFsError> {
         let embedding = generator
             .generate_embedding_default(&self.get_output_string_filtered(remove_text, remove_code_blocks))
             .await?;
@@ -359,63 +355,4 @@ fn get_list_item_patterns() -> Vec<String> {
     }
 
     patterns
-}
-
-// TODO: Fix later
-fn parse_list_point_elements_from_text_elements(elements: Vec<JobTaskElement>) -> Vec<JobTaskElement> {
-    let mut new_elements = Vec::new();
-    let list_item_patterns = get_list_item_patterns();
-
-    for element in elements.into_iter() {
-        match element {
-            JobTaskElement::Text(text_element) => {
-                let text = text_element.content.clone();
-                let mut last_pos = 0;
-                let mut list_items = Vec::new();
-
-                for pattern in &list_item_patterns {
-                    let mut pos = text[last_pos..].find(pattern);
-                    while let Some(p) = pos {
-                        let start = last_pos + p;
-                        // Find the end of the list item or use the end of the string if no newline is found
-                        let end = text[start..].find('\n').map_or(text.len(), |p| start + p);
-                        // Ensure start is not beyond the end of the string
-                        if start < text.len() {
-                            let item_content = text[start + pattern.len()..end].trim().to_string();
-                            if !item_content.is_empty() {
-                                list_items.push((start, item_content, pattern.len()));
-                            }
-                        }
-                        last_pos = end + 1; // Move past the newline character for the next search
-                        pos = text[last_pos..].find(pattern);
-                    }
-                }
-
-                list_items.sort_by(|a, b| a.0.cmp(&b.0));
-                let mut current_pos = 0;
-
-                for (start, item_content, pattern_length) in list_items {
-                    if start > current_pos && current_pos < text.len() {
-                        // Ensure slicing does not go beyond the string's length
-                        let slice_end = std::cmp::min(start, text.len());
-                        new_elements.push(JobTaskElement::Text(TextTaskElement::new(
-                            text[current_pos..slice_end].to_string(),
-                        )));
-                    }
-                    new_elements.push(JobTaskElement::ListPoint(ListPoint::new(item_content.clone())));
-                    current_pos = start + item_content.len() + pattern_length;
-                }
-
-                // Handle any remaining text after the last list item
-                if current_pos < text.len() {
-                    new_elements.push(JobTaskElement::Text(TextTaskElement::new(
-                        text[current_pos..].to_string(),
-                    )));
-                }
-            }
-            _ => new_elements.push(element),
-        }
-    }
-
-    new_elements
 }

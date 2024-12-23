@@ -15,10 +15,8 @@ use std::{future::Future, pin::Pin};
 pub struct ShinkaiFileParser;
 
 impl ShinkaiFileParser {
-    
     pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
         use shinkai_ocr::image_parser::ImageParser;
-
         ImageParser::check_and_download_dependencies().await
     }
 

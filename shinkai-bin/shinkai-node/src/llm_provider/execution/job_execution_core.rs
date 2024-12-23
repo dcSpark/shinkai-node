@@ -18,6 +18,7 @@ use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::shinkai_message_schemas::JobMessage,
@@ -28,7 +29,7 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
@@ -100,7 +101,6 @@ impl JobManager {
             llm_provider_found.clone(),
             &mut full_job,
             user_profile.clone(),
-            None,
             generator.clone(),
             ws_manager.clone(),
         )
@@ -324,8 +324,7 @@ impl JobManager {
         //     None,
         //     None,
         // )?;
-        db
-            .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
+        db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
 
         // Check for callbacks and add them to the JobManagerQueue if required
@@ -407,20 +406,10 @@ impl JobManager {
             }
 
             for (local_file_path, local_file_name) in &input_string.local_files {
-                let vector_fs_entry = VectorFSItemScopeEntry {
-                    name: local_file_name.clone(),
-                    path: ShinkaiPath::from_string(local_file_path)
-                        .map_err(|e| LLMProviderError::InvalidVRPath(e.to_string()))?,
-                    source: VRSourceReference::None,
-                };
+                let path = ShinkaiPath::from_string(local_file_path.to_string());
 
                 // Unwrap the scope_with_files since you are sure it is always Some
-                mutable_job
-                    .scope_with_files
-                    .as_mut()
-                    .unwrap()
-                    .vector_fs_items
-                    .push(vector_fs_entry);
+                mutable_job.scope.vector_fs_items.push(path);
             }
 
             let mut job_message = job_message.clone();
@@ -492,7 +481,6 @@ impl JobManager {
         agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
-        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
@@ -529,7 +517,6 @@ impl JobManager {
             agent_found,
             files.clone(),
             profile,
-            save_to_vector_fs_folder,
             generator,
         )
         .await;
@@ -573,28 +560,6 @@ impl JobManager {
                     // Update the job scope with new entries
                     for (_filename, scope_entry) in new_scope_entries {
                         match scope_entry {
-                            ScopeEntry::LocalScopeVRKai(local_entry) => {
-                                if !scope_with_files.local_vrkai.contains(&local_entry) {
-                                    scope_with_files.local_vrkai.push(local_entry);
-                                } else {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        "Duplicate LocalScopeVRKaiEntry detected",
-                                    );
-                                }
-                            }
-                            ScopeEntry::LocalScopeVRPack(local_entry) => {
-                                if !scope_with_files.local_vrpack.contains(&local_entry) {
-                                    scope_with_files.local_vrpack.push(local_entry);
-                                } else {
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        "Duplicate LocalScopeVRPackEntry detected",
-                                    );
-                                }
-                            }
                             ScopeEntry::VectorFSItem(fs_entry) => {
                                 if !scope_with_files.vector_fs_items.contains(&fs_entry) {
                                     scope_with_files.vector_fs_items.push(fs_entry);
@@ -649,7 +614,6 @@ impl JobManager {
         agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
-        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
@@ -676,7 +640,6 @@ impl JobManager {
                 agent_found,
                 full_job,
                 profile,
-                save_to_vector_fs_folder,
                 generator,
                 ws_manager,
             )
@@ -695,7 +658,6 @@ impl JobManager {
         agent_found: Option<ProviderOrAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
-        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), LLMProviderError> {
@@ -728,7 +690,6 @@ impl JobManager {
                 agent_found,
                 full_job,
                 profile,
-                save_to_vector_fs_folder,
                 generator,
                 ws_manager,
             )
@@ -786,7 +747,6 @@ impl JobManager {
         agent: Option<ProviderOrAgent>,
         files: Vec<(String, Vec<u8>)>,
         _profile: ShinkaiName,
-        save_to_vector_fs_folder: Option<VRPath>,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<HashMap<String, ScopeEntry>, LLMProviderError> {
         // Create the RemoteEmbeddingGenerator instance

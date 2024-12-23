@@ -58,6 +58,7 @@ pub struct ShinkaiFileChunkEmbedding {
 pub struct ShinkaiFileChunkCollection {
     /// A set of chunks related to a parsed file.
     pub chunks: Vec<ShinkaiFileChunk>,
+    // TODO: we need a reference to the parsed file here?
 }
 
 impl ShinkaiFileChunkCollection {

@@ -41,6 +41,7 @@ impl ShinkaiPath {
 
     /// Creates a new ShinkaiPath from a String, ensuring it's absolute relative to the base path.
     /// If `path` is not absolute, it is joined to the base path.
+    /// Note: This doesn't check if the path exists.
     pub fn from_string(path: String) -> Self {
         Self::new(&path)
     }
@@ -81,6 +82,16 @@ impl ShinkaiPath {
     /// Returns the extension of the path, if any.
     pub fn extension(&self) -> Option<&str> {
         self.path.extension().and_then(|ext| ext.to_str())
+    }
+
+    /// Returns the full path as a string slice.
+    pub fn full_path(&self) -> &str {
+        self.as_str()
+    }
+
+    /// Returns the base path as a String.
+    pub fn base_path_as_string() -> String {
+        Self::base_path().to_str().unwrap_or("").to_string()
     }
 }
 

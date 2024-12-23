@@ -288,7 +288,6 @@ impl Node {
             }
             NodeCommand::APIUseRegistrationCode { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vec_fs_clone = self.vector_fs.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let node_name_clone = self.node_name.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
@@ -305,7 +304,6 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::api_handle_registration_code_usage(
                         db_clone,
-                        vec_fs_clone,
                         node_name_clone,
                         encryption_secret_key_clone,
                         first_device_needs_registration_code,
@@ -1331,26 +1329,6 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => self.api_update_supported_embedding_models(msg, res).await,
-            NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => {
-                let db = self.db.clone();
-                let vector_fs = self.vector_fs.clone();
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_update_supported_embedding_models(
-                        db,
-                        vector_fs,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
             //
             // V2 API
             //
@@ -1754,22 +1732,6 @@ impl Node {
                 let db = self.db.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_update_default_embedding_model(db, bearer, model_name, res).await;
-                });
-            }
-            NodeCommand::V2ApiUpdateSupportedEmbeddingModels { bearer, models, res } => {
-                let db = self.db.clone();
-                let vector_fs = self.vector_fs.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_update_supported_embedding_models(
-                        db,
-                        vector_fs,
-                        identity_manager_clone,
-                        bearer,
-                        models,
-                        res,
-                    )
-                    .await;
                 });
             }
             NodeCommand::V2ApiAddLlmProvider { bearer, agent, res } => {

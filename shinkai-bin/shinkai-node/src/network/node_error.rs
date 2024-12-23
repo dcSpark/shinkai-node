@@ -97,3 +97,11 @@ impl From<String> for NodeError {
         NodeError { message: error }
     }
 }
+
+impl From<serde_json::Error> for NodeError {
+    fn from(err: serde_json::Error) -> NodeError {
+        NodeError {
+            message: format!("Serde JSON error: {}", err),
+        }
+    }
+}

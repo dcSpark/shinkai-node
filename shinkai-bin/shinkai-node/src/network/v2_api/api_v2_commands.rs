@@ -4,14 +4,16 @@ use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 
+use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
     node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::job_scope::MinimalJobScope,
+    schemas::ws_types::WSUpdateHandler,
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -231,7 +233,7 @@ impl Node {
         payload: InitialRegistrationRequest,
         public_https_certificate: Option<String>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
-        vector_fs: Arc<VectorFS>,
+
         first_device_needs_registration_code: bool,
         embedding_generator: Arc<RemoteEmbeddingGenerator>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -255,7 +257,6 @@ impl Node {
 
         match Self::handle_registration_code_usage(
             db,
-            vector_fs,
             node_name,
             first_device_needs_registration_code,
             embedding_generator,
@@ -380,71 +381,6 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to update default embedding model: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn v2_api_update_supported_embedding_models(
-        db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        bearer: String,
-        models: Vec<String>,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let requester_name = match identity_manager.lock().await.get_main_identity() {
-            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-            _ => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Wrong identity type. Expected Standard identity.".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Convert the strings to EmbeddingModelType
-        let new_supported_models: Vec<EmbeddingModelType> = models
-            .into_iter()
-            .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse embedding model"))
-            .collect();
-
-        // Update the supported embedding models in the database
-        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to update supported embedding models: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        match vector_fs
-            .set_profile_supported_models(&requester_name, &requester_name, new_supported_models)
-            .await
-        {
-            Ok(_) => {
-                let _ = res
-                    .send(Ok("Supported embedding models updated successfully".to_string()))
-                    .await;
-                Ok(())
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to update supported embedding models: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

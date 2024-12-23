@@ -89,6 +89,11 @@ impl ShinkaiFileParser {
     //     cleaned_name
     // }
 
+    pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
+        use shinkai_ocr::image_parser::ImageParser;
+        ImageParser::check_and_download_dependencies().await
+    }
+
     /// Helper function that processes groups into a list of descriptions.
     /// Only takes the top-level group text, does not recurse into subgroups.
     pub fn process_groups_into_descriptions_list(

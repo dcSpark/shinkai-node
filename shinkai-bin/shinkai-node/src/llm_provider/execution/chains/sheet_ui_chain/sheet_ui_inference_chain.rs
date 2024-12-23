@@ -20,16 +20,14 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
-// use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-// use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-// use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use tokio::task;
 
 #[derive(Clone)]
@@ -167,18 +165,14 @@ impl SheetUIInferenceChain {
                         job_scope
                             .vector_fs_items
                             .iter()
-                            .any(|fs_item| fs_item.path.format_to_string() == *path)
+                            .any(|fs_item| fs_item.relative_path() == *path)
                     })
                     .collect();
 
                 // Add new FS items to the job scope
                 for file in vr_files {
-                    let vr_path = ShinkaiPath::from_string(&file)?;
-                    let reader = vector_fs
-                        .new_reader(user_profile.clone(), vr_path, user_profile.clone())
-                        .await?;
-                    let fs_item = vector_fs.retrieve_fs_entry(&reader).await?.as_item()?.as_scope_entry();
-                    job_scope.vector_fs_items.push(fs_item);
+                    let vr_path = ShinkaiPath::from_string(file);
+                    job_scope.vector_fs_items.push(vr_path);
                 }
             }
             job_scope

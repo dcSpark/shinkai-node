@@ -6774,6 +6774,7 @@ dependencies = [
  "serde_json",
  "shinkai_crypto_identities",
  "shinkai_embedding",
+ "shinkai_fs",
  "shinkai_http_api",
  "shinkai_job_queue_manager",
  "shinkai_message_primitives",
