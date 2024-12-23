@@ -3,7 +3,8 @@ use bytemuck::cast_slice;
 use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use std::collections::HashSet;
+use std::{collections::HashSet, string};
+use shinkai_vector_resources::embeddings::Embedding;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
@@ -44,6 +45,8 @@ impl SqliteManager {
 
         // Clone the tool to make it mutable
         let mut tool_clone = tool.clone();
+        tool_clone.set_embedding(Embedding::new("", embedding.clone()));
+
 
         // Determine if the tool can be enabled
         let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
