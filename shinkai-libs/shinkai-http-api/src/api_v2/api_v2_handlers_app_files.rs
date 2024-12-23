@@ -64,11 +64,11 @@ pub fn app_files_routes(
         .or(delete_file_route)
 }
 
-pub fn safe_folder_name(tool_router_key: &str) -> String {
+pub fn safe_folder_name(tool_router_key: &str, is_file_name: bool) -> String {
     tool_router_key
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || (is_file_name && c == '.') {
                 c
             } else {
                 '_'
@@ -109,7 +109,7 @@ pub async fn upload_file_handler(
                     bytes.extend_from_slice(chunk.chunk());
                 }
                 file_name = String::from_utf8_lossy(&bytes).into_owned();
-                file_name = safe_folder_name(&file_name);
+                file_name = safe_folder_name(&file_name, true);
             }
             "file" => {
                 // Read file data
@@ -140,8 +140,8 @@ pub async fn upload_file_handler(
     sender
         .send(NodeCommand::V2ApiUploadAppFile {
             bearer,
-            tool_id: safe_folder_name(&tool_id),
-            app_id: safe_folder_name(&app_id),
+            tool_id: safe_folder_name(&tool_id, false),
+            app_id: safe_folder_name(&app_id, false),
             file_name,
             file_data: file_data.unwrap(),
             res: res_sender,
@@ -222,7 +222,7 @@ pub async fn update_file_handler(
                 while let Ok(Some(chunk)) = stream.try_next().await {
                     bytes.extend_from_slice(chunk.chunk());
                 }
-                new_name = Some(safe_folder_name(&String::from_utf8_lossy(&bytes).into_owned()));
+                new_name = Some(safe_folder_name(&String::from_utf8_lossy(&bytes).into_owned(), true));
             }
             _ => {}
         }
@@ -241,8 +241,8 @@ pub async fn update_file_handler(
     sender
         .send(NodeCommand::V2ApiUpdateAppFile {
             bearer,
-            tool_id: safe_folder_name(&tool_id),
-            app_id: safe_folder_name(&app_id),
+            tool_id: safe_folder_name(&tool_id, false),
+            app_id: safe_folder_name(&app_id, false),
             file_name,
             new_name,
             file_data,
@@ -302,8 +302,8 @@ pub async fn get_file_handler(
     sender
         .send(NodeCommand::V2ApiGetAppFile {
             bearer,
-            tool_id: safe_folder_name(&tool_id),
-            app_id: safe_folder_name(&app_id),
+            tool_id: safe_folder_name(&tool_id, false),
+            app_id: safe_folder_name(&app_id, false),
             file_name,
             res: res_sender,
         })
@@ -351,8 +351,8 @@ pub async fn list_files_handler(
     sender
         .send(NodeCommand::V2ApiListAppFiles {
             bearer,
-            tool_id: safe_folder_name(&tool_id),
-            app_id: safe_folder_name(&app_id),
+            tool_id: safe_folder_name(&tool_id, false),
+            app_id: safe_folder_name(&app_id, false),
             res: res_sender,
         })
         .await
@@ -409,8 +409,8 @@ pub async fn delete_file_handler(
     sender
         .send(NodeCommand::V2ApiDeleteAppFile {
             bearer,
-            tool_id: safe_folder_name(&tool_id),
-            app_id: safe_folder_name(&app_id),
+            tool_id: safe_folder_name(&tool_id, false),
+            app_id: safe_folder_name(&app_id, false),
             file_name,
             res: res_sender,
         })
