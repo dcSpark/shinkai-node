@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::shinkai_utils::shinkai_path::ShinkaiPath;
+
 /// Represents a file that has been parsed and indexed (e.g., split into chunks and possibly embedded).
 /// This record stores metadata about the parsing process and the file itself, including its relative
 /// path, extension, descriptions, and token/character counts.
@@ -50,7 +52,7 @@ pub struct ShinkaiFileChunkEmbedding {
     /// Identifier of the file chunk this embedding is associated with.
     pub chunk_id: i64,
     /// Embedding vector for the file chunk.
-    pub embedding: Vec<u8>, // Consider changing to Vec<f32> if desired
+    pub embedding: Vec<f32>,
 }
 
 /// A struct that holds a collection of `ShinkaiFileChunk`.
@@ -58,7 +60,8 @@ pub struct ShinkaiFileChunkEmbedding {
 pub struct ShinkaiFileChunkCollection {
     /// A set of chunks related to a parsed file.
     pub chunks: Vec<ShinkaiFileChunk>,
-    // TODO: we need a reference to the parsed file here?
+    /// The path of the parsed file that these chunks are associated with.
+    pub path: Option<ShinkaiPath>,
 }
 
 impl ShinkaiFileChunkCollection {

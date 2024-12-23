@@ -779,7 +779,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create and add three DenoTool instances
         let deno_tool_1 = DenoTool {
@@ -1004,7 +1004,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_duplicate_tool() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
@@ -1048,7 +1048,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create multiple tools with different names
         let tools = vec![
@@ -1152,7 +1152,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_disabled() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create two DenoTool instances - one enabled, one disabled
         let enabled_tool = DenoTool {
@@ -1261,7 +1261,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_network_filter() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create three tools: one enabled non-network, one disabled non-network, one enabled network
         let enabled_non_network_tool = DenoTool {

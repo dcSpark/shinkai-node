@@ -133,7 +133,7 @@ impl Node {
         res: Sender<Result<Value, APIError>>,
         _is_minimal: bool, // TODO: to remove
     ) -> Result<(), NodeError> {
-        let (input_payload, requester_name) =
+        let (input_payload, _requester_name) =
             match Self::validate_and_extract_payload::<APIVecFsRetrievePathSimplifiedJson>(
                 node_name,
                 identity_manager,

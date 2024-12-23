@@ -1,5 +1,4 @@
 use crate::llm_provider::job_manager::JobManager;
-use keyphrases::KeyPhraseExtractor;
 use shinkai_embedding::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -173,28 +172,28 @@ impl JobManager {
         Ok((final_nodes, first_intro_text))
     }
 
-    /// Determines the number of grouped proximity retrieved nodes to check for intro fetching
-    fn determine_num_groups_for_intro_fetch(max_tokens_in_prompt: usize) -> usize {
-        if max_tokens_in_prompt < 5000 {
-            5
-        } else if max_tokens_in_prompt < 33000 {
-            6
-        } else {
-            7
-        }
-    }
+//     /// Determines the number of grouped proximity retrieved nodes to check for intro fetching
+//     fn determine_num_groups_for_intro_fetch(max_tokens_in_prompt: usize) -> usize {
+//         if max_tokens_in_prompt < 5000 {
+//             5
+//         } else if max_tokens_in_prompt < 33000 {
+//             6
+//         } else {
+//             7
+//         }
+//     }
 
-    /// Extracts top N keywords from the given text.
-    fn extract_keywords_from_text(text: &str, num_keywords: usize) -> Vec<String> {
-        // Create a new KeyPhraseExtractor with a maximum of num_keywords keywords
-        let extractor = KeyPhraseExtractor::new(text, num_keywords);
+//     /// Extracts top N keywords from the given text.
+//     fn extract_keywords_from_text(text: &str, num_keywords: usize) -> Vec<String> {
+//         // Create a new KeyPhraseExtractor with a maximum of num_keywords keywords
+//         let extractor = KeyPhraseExtractor::new(text, num_keywords);
 
-        // Get the keywords and their scores
-        let keywords = extractor.get_keywords();
+//         // Get the keywords and their scores
+//         let keywords = extractor.get_keywords();
 
-        // Return only the keywords, discarding the scores
-        keywords.into_iter().map(|(_score, keyword)| keyword).collect()
-    }
+//         // Return only the keywords, discarding the scores
+//         keywords.into_iter().map(|(_score, keyword)| keyword).collect()
+//     }
 
     //TODOs:
     // - Potentially check the top 10 group result VR, and if they were a pdf or docx, then include first 1-2 nodes of the pdf/docx to always have title/authors available
@@ -385,14 +384,14 @@ impl JobManager {
         Ok((sorted_retrieved_node_groups, intro_hashmap))
     }
 
-    /// Determines the proximity window size based on the max tokens supported by the model
-    fn determine_proximity_window_size(max_tokens_in_prompt: usize) -> u64 {
-        if max_tokens_in_prompt < 5000 {
-            1
-        } else if max_tokens_in_prompt < 33000 {
-            2
-        } else {
-            3
-        }
-    }
+//     /// Determines the proximity window size based on the max tokens supported by the model
+//     fn determine_proximity_window_size(max_tokens_in_prompt: usize) -> u64 {
+//         if max_tokens_in_prompt < 5000 {
+//             1
+//         } else if max_tokens_in_prompt < 33000 {
+//             2
+//         } else {
+//             3
+//         }
+//     }
 }
