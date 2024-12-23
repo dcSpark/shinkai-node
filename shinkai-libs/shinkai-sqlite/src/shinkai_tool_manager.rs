@@ -3,7 +3,7 @@ use bytemuck::cast_slice;
 use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use std::{collections::HashSet, string};
+use std::collections::HashSet;
 use shinkai_vector_resources::embeddings::Embedding;
 
 impl SqliteManager {
