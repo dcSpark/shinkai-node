@@ -1,8 +1,6 @@
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embeddings::Embedding;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -21,7 +19,7 @@ use crate::managers::IdentityManager;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 use crate::utils::environment::fetch_node_environment;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 use r2d2::Pool;
@@ -31,7 +29,7 @@ use rusqlite::params_from_iter;
 // LLM Tool
 pub struct SQLProcessorTool {
     pub tool: ShinkaiToolHeader,
-    pub tool_embedding: Option<Embedding>,
+    pub tool_embedding: Option<Vec<f32>>,
 }
 
 impl SQLProcessorTool {
@@ -95,7 +93,6 @@ impl ToolExecutor for SQLProcessorTool {
         tool_id: String,
         app_id: String,
         _db_clone: Arc<SqliteManager>,
-        _vector_fs_clone: Arc<VectorFS>,
         _node_name_clone: ShinkaiName,
         _identity_manager_clone: Arc<Mutex<IdentityManager>>,
         _job_manager_clone: Arc<Mutex<JobManager>>,

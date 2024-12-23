@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde_json::Value;
 
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::identity::Identity,
@@ -14,11 +15,10 @@ use shinkai_message_primitives::{
         APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
         APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
     },
+    shinkai_utils::shinkai_path::ShinkaiPath,
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::{embedding_generator::EmbeddingGenerator, source::SourceFile, vector_resource::VRPath};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{
     managers::IdentityManager,
@@ -28,7 +28,6 @@ use crate::{
 impl Node {
     pub async fn v2_api_vec_fs_retrieve_path_simplified_json(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrievePathSimplifiedJson,
         bearer: String,
@@ -52,7 +51,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -101,7 +100,6 @@ impl Node {
 
     pub async fn v2_convert_files_and_save_to_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIConvertFilesAndSaveToFolder,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -126,12 +124,11 @@ impl Node {
             }
         };
 
-        Self::process_and_save_files(db, vector_fs, input_payload, requester_name, embedding_generator, res).await
+        Self::process_and_save_files(db, input_payload, requester_name, embedding_generator, res).await
     }
 
     pub async fn v2_create_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCreateFolder,
         bearer: String,
@@ -155,7 +152,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
+        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -204,7 +201,6 @@ impl Node {
 
     pub async fn v2_move_item(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveItem,
         bearer: String,
@@ -227,7 +223,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -240,7 +236,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -289,7 +285,6 @@ impl Node {
 
     pub async fn v2_copy_item(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyItem,
         bearer: String,
@@ -312,7 +307,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -325,7 +320,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -374,7 +369,6 @@ impl Node {
 
     pub async fn v2_move_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveFolder,
         bearer: String,
@@ -397,7 +391,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -410,7 +404,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -459,7 +453,6 @@ impl Node {
 
     pub async fn v2_copy_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyFolder,
         bearer: String,
@@ -482,7 +475,7 @@ impl Node {
             }
         };
 
-        let origin_path = match VRPath::from_string(&input_payload.origin_path) {
+        let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -495,7 +488,7 @@ impl Node {
             }
         };
 
-        let destination_path = match VRPath::from_string(&input_payload.destination_path) {
+        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -544,7 +537,6 @@ impl Node {
 
     pub async fn v2_delete_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteFolder,
         bearer: String,
@@ -567,7 +559,7 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.path) {
+        let item_path = match ShinkaiPath::from_string(&input_payload.path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -616,7 +608,6 @@ impl Node {
 
     pub async fn v2_delete_item(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsDeleteItem,
         bearer: String,
@@ -639,56 +630,41 @@ impl Node {
             }
         };
 
-        let item_path = match VRPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert item path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let item_path = match ShinkaiPath::from_string(&input_payload.path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert item path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let writer = match vector_fs
-            .new_writer(requester_name.clone(), item_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // match vector_fs.delete_item(&writer).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Item successfully deleted: {}", input_payload.path);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to delete item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
 
-        match vector_fs.delete_item(&writer).await {
-            Ok(_) => {
-                let success_message = format!("Item successfully deleted: {}", input_payload.path);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to delete item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        unimplemented!();
     }
 
     pub async fn v2_search_items(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsSearchItems,
         bearer: String,
@@ -711,61 +687,62 @@ impl Node {
             }
         };
 
-        let search_path_str = input_payload.path.as_deref().unwrap_or("/");
-        let search_path = match VRPath::from_string(search_path_str) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert search path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let search_path_str = input_payload.path.as_deref().unwrap_or("/").to_string();
 
-        let reader = match vector_fs
-            .new_reader(requester_name.clone(), search_path, requester_name.clone())
-            .await
-        {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
+        // let search_path = match ShinkaiPath::from_string(search_path_str) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert search path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
-        let max_results = input_payload.max_results.unwrap_or(100) as u64;
+        // let reader = match vector_fs
+        //     .new_reader(requester_name.clone(), search_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(reader) => reader,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create reader: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let query_embedding = vector_fs
-            .generate_query_embedding_using_reader(input_payload.search, &reader)
-            .await
-            .unwrap();
-        let search_results = vector_fs
-            .vector_search_fs_item(&reader, query_embedding, max_resources_to_search)
-            .await
-            .unwrap();
+        // let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
+        // let max_results = input_payload.max_results.unwrap_or(100) as u64;
 
-        let results: Vec<String> = search_results
-            .into_iter()
-            .map(|res| res.path.to_string())
-            .take(max_results as usize)
-            .collect();
+        // let query_embedding = vector_fs
+        //     .generate_query_embedding_using_reader(input_payload.search, &reader)
+        //     .await
+        //     .unwrap();
+        // let search_results = vector_fs
+        //     .vector_search_fs_item(&reader, query_embedding, max_resources_to_search)
+        //     .await
+        //     .unwrap();
 
-        let _ = res.send(Ok(results)).await.map_err(|_| ());
+        // let results: Vec<String> = search_results
+        //     .into_iter()
+        //     .map(|res| res.path.to_string())
+        //     .take(max_results as usize)
+        //     .collect();
+
+        // let _ = res.send(Ok(results)).await.map_err(|_| ());
         Ok(())
     }
 
     pub async fn v2_retrieve_vector_resource(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         path: String,
         bearer: String,
@@ -789,7 +766,7 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&path) {
+        let vr_path = match ShinkaiPath::from_string(&path) {
             Ok(path) => path,
             Err(e) => {
                 let api_error = APIError {
@@ -850,7 +827,6 @@ impl Node {
 
     pub async fn v2_upload_file_to_folder(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         bearer: String,
@@ -916,7 +892,6 @@ impl Node {
 
         match Self::v2_convert_files_and_save_to_folder(
             db,
-            vector_fs,
             identity_manager,
             input_payload,
             embedding_generator,
@@ -969,7 +944,6 @@ impl Node {
 
     pub async fn v2_retrieve_source_file(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrieveSourceFile,
         bearer: String,
@@ -992,69 +966,38 @@ impl Node {
             }
         };
 
-        let vr_path = match VRPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let vr_path = ShinkaiPath::from_string(input_payload.path);
 
-        let reader = match vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await
-        {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
+        // let source_file_map = match vector_fs.retrieve_source_file_map(&reader).await {
+        //     Ok(source_file_map) => source_file_map,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to retrieve source file map: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let source_file_map = match vector_fs.retrieve_source_file_map(&reader).await {
-            Ok(source_file_map) => source_file_map,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve source file map: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let source_file = match source_file_map.get_source_file(VRPath::root()) {
+        //     Some(source_file) => source_file,
+        //     None => {
+        //         let api_error = APIError {
+        //             code: StatusCode::NOT_FOUND.as_u16(),
+        //             error: "Not Found".to_string(),
+        //             message: "Source file not found in the source file map".to_string(),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let source_file = match source_file_map.get_source_file(VRPath::root()) {
-            Some(source_file) => source_file,
-            None => {
-                let api_error = APIError {
-                    code: StatusCode::NOT_FOUND.as_u16(),
-                    error: "Not Found".to_string(),
-                    message: "Source file not found in the source file map".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
 
-        let file_content = match source_file {
-            SourceFile::Standard(file) => &file.file_content,
-            SourceFile::TLSNotarized(file) => &file.file_content,
-        };
-
-        let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
-
-        let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
+        // let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
         Ok(())
     }
 }

@@ -15,7 +15,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::NamedTempFile;

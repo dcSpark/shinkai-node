@@ -421,7 +421,7 @@ mod tests {
         shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry},
         wallet_mixed::{NetworkIdentifier, PublicAddress},
     };
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 

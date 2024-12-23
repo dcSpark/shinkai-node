@@ -607,13 +607,17 @@ mod tests {
     use futures::Future;
     use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     };
     use shinkai_sqlite::SqliteManager;
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-    use std::{path::PathBuf, sync::Arc};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        sync::Arc,
+    };
     use tempfile::NamedTempFile;
     use tokio::sync::{Mutex, RwLock};
 

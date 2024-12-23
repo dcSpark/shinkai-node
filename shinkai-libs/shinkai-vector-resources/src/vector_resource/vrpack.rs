@@ -4,7 +4,7 @@ use super::{
     deep_search_scores_average_out, BaseVectorResource, MapVectorResource, Node, NodeContent, RetrievedNode,
     ScoringMode, TraversalMethod, TraversalOption, VRKai, VRPath, VRSourceReference, VectorSearchMode,
 };
-#[cfg(feature = "desktop-only")]
+
 use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use crate::model_type::EmbeddingModelTypeString;
 use crate::{embeddings::Embedding, resource_errors::VRError};
@@ -559,7 +559,7 @@ impl VRPack {
         Ok(sorted_retrieved_nodes)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
     /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
     pub async fn dynamic_vector_search_vrkai(
@@ -580,7 +580,7 @@ impl VRPack {
         .await
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic vector search within the VRPack and returns the most similar VRKais based on the input query String.
     /// Supports customizing the search starting path/traversal options.
     /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
@@ -607,7 +607,7 @@ impl VRPack {
         Ok(vrkais)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic vector search within the VRPack and returns the most similar (VRKai, score) based on the input query String.
     /// Supports customizing the search starting path/traversal options.
     /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
@@ -649,7 +649,7 @@ impl VRPack {
         Ok(vrkais_with_score)
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
     /// the VRKais stored in the VRPack.
     /// This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
@@ -676,7 +676,7 @@ impl VRPack {
         .await
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
     /// the VRKais stored in the VRPack. This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
     /// Customized allows specifying options for the first top-level search for VRKais, and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.
@@ -710,7 +710,7 @@ impl VRPack {
         .map(|retrieved_nodes| retrieved_nodes.into_iter().map(|(ret_node, _)| ret_node).collect())
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Performs a dynamic deep vector search within the VRPack, returning the highest scored `RetrievedNode`s across
     /// the VRKais stored in the VRPack (with the relative VRPath of the VRKai in the VRPack). This allows for multiple embedding models to be used within the VRPack, as it automatically generates the input query embedding.
     /// Customized allows specifying options for the first top-level search for VRKais, and then "deep" options/method for the vector searches into the VRKais to acquire the `RetrievedNode`s.

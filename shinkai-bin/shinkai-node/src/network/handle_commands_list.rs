@@ -288,7 +288,6 @@ impl Node {
             }
             NodeCommand::APIUseRegistrationCode { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vec_fs_clone = self.vector_fs.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let node_name_clone = self.node_name.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
@@ -305,7 +304,6 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::api_handle_registration_code_usage(
                         db_clone,
-                        vec_fs_clone,
                         node_name_clone,
                         encryption_secret_key_clone,
                         first_device_needs_registration_code,
@@ -1022,14 +1020,12 @@ impl Node {
             // NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await,
             NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_retrieve_path_simplified_json(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1042,14 +1038,12 @@ impl Node {
             // NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => self.api_vec_fs_retrieve_path_minimal_json(msg, res).await,
             NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_retrieve_path_minimal_json(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1062,7 +1056,6 @@ impl Node {
             // NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => self.api_convert_files_and_save_to_folder(msg, res).await,
             NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
@@ -1070,7 +1063,6 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::api_convert_files_and_save_to_folder(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1084,14 +1076,12 @@ impl Node {
             // NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await,
             NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_retrieve_vector_search_simplified_json(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1104,14 +1094,12 @@ impl Node {
             // NodeCommand::APIVecFSSearchItems { msg, res } => self.api_vec_fs_search_items(msg, res).await,
             NodeCommand::APIVecFSSearchItems { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_search_items(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1124,14 +1112,12 @@ impl Node {
             // NodeCommand::APIVecFSCreateFolder { msg, res } => self.api_vec_fs_create_folder(msg, res).await,
             NodeCommand::APIVecFSCreateFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_create_folder(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1144,14 +1130,12 @@ impl Node {
             // NodeCommand::APIVecFSMoveItem { msg, res } => self.api_vec_fs_move_item(msg, res).await,
             NodeCommand::APIVecFSMoveItem { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_move_item(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1164,14 +1148,12 @@ impl Node {
             // NodeCommand::APIVecFSCopyItem { msg, res } => self.api_vec_fs_copy_item(msg, res).await,
             NodeCommand::APIVecFSCopyItem { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_copy_item(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1184,14 +1166,12 @@ impl Node {
             // NodeCommand::APIVecFSMoveFolder { msg, res } => self.api_vec_fs_move_folder(msg, res).await,
             NodeCommand::APIVecFSMoveFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_move_folder(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1204,14 +1184,12 @@ impl Node {
             // NodeCommand::APIVecFSCopyFolder { msg, res } => self.api_vec_fs_copy_folder(msg, res).await,
             NodeCommand::APIVecFSCopyFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_copy_folder(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1224,14 +1202,12 @@ impl Node {
             // NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => self.api_vec_fs_retrieve_vector_resource(msg, res).await,
             NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_retrieve_vector_resource(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1244,14 +1220,12 @@ impl Node {
             // NodeCommand::APIVecFSDeleteFolder { msg, res } => self.api_vec_fs_delete_folder(msg, res).await,
             NodeCommand::APIVecFSDeleteFolder { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_delete_folder(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1264,14 +1238,12 @@ impl Node {
             // NodeCommand::APIVecFSDeleteItem { msg, res } => self.api_vec_fs_delete_item(msg, res).await,
             NodeCommand::APIVecFSDeleteItem { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_vec_fs_delete_item(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1284,14 +1256,12 @@ impl Node {
             // NodeCommand::RetrieveVRKai { msg, res } => self.retrieve_vr_kai(msg, res).await,
             NodeCommand::RetrieveVRKai { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::retrieve_vr_kai(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1304,14 +1274,13 @@ impl Node {
             // NodeCommand::RetrieveVRPack { msg, res } => self.retrieve_vr_pack(msg, res).await,
             NodeCommand::RetrieveVRPack { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let node_name_clone = self.node_name.clone();
                 let identity_manager_clone = self.identity_manager.clone();
                 let encryption_secret_key_clone = self.encryption_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::retrieve_vr_pack(
                         db_clone,
-                        vector_fs_clone,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1360,26 +1329,6 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => self.api_update_supported_embedding_models(msg, res).await,
-            NodeCommand::APIUpdateSupportedEmbeddingModels { msg, res } => {
-                let db = self.db.clone();
-                let vector_fs = self.vector_fs.clone();
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_update_supported_embedding_models(
-                        db,
-                        vector_fs,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
             //
             // V2 API
             //
@@ -1392,7 +1341,7 @@ impl Node {
             }
             NodeCommand::V2ApiInitialRegistration { payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 let node_name_clone = self.node_name.clone();
                 let first_device_needs_registration_code = self.first_device_needs_registration_code;
@@ -1413,7 +1362,6 @@ impl Node {
                         payload,
                         public_https_certificate,
                         res,
-                        vector_fs_clone,
                         first_device_needs_registration_code,
                         embedding_generator_clone,
                         job_manager,
@@ -1591,12 +1539,11 @@ impl Node {
             }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_vec_fs_retrieve_path_simplified_json(
                         db_clone,
-                        vector_fs_clone,
                         identity_manager_clone,
                         payload,
                         bearer,
@@ -1607,13 +1554,12 @@ impl Node {
             }
             NodeCommand::V2ApiConvertFilesAndSaveToFolder { payload, bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 let embedding_generator_clone = self.embedding_generator.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_convert_files_and_save_to_folder(
                         db_clone,
-                        vector_fs_clone,
                         identity_manager_clone,
                         payload,
                         Arc::new(embedding_generator_clone),
@@ -1625,102 +1571,81 @@ impl Node {
             }
             NodeCommand::V2ApiVecFSCreateFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_create_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                            .await;
+                    let _ = Node::v2_create_folder(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiMoveItem { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_move_item(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                        .await;
+                    let _ = Node::v2_move_item(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
 
             NodeCommand::V2ApiCopyItem { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_copy_item(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                        .await;
+                    let _ = Node::v2_copy_item(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
 
             NodeCommand::V2ApiMoveFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_move_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                            .await;
+                    let _ = Node::v2_move_folder(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
 
             NodeCommand::V2ApiCopyFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_copy_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                            .await;
+                    let _ = Node::v2_copy_folder(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
 
             NodeCommand::V2ApiDeleteFolder { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_delete_folder(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                            .await;
+                    let _ = Node::v2_delete_folder(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
 
             NodeCommand::V2ApiDeleteItem { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_delete_item(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                            .await;
+                    let _ = Node::v2_delete_item(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
 
             NodeCommand::V2ApiSearchItems { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_search_items(db_clone, vector_fs_clone, identity_manager_clone, payload, bearer, res)
-                            .await;
+                    let _ = Node::v2_search_items(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_retrieve_vector_resource(
-                        db_clone,
-                        vector_fs_clone,
-                        identity_manager_clone,
-                        path,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_retrieve_vector_resource(db_clone, identity_manager_clone, path, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateSmartInboxName {
@@ -1761,13 +1686,12 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 let embedding_generator_clone = self.embedding_generator.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_upload_file_to_folder(
                         db_clone,
-                        vector_fs_clone,
                         identity_manager_clone,
                         Arc::new(embedding_generator_clone),
                         bearer,
@@ -1782,18 +1706,10 @@ impl Node {
             }
             NodeCommand::V2ApiRetrieveSourceFile { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_retrieve_source_file(
-                        db_clone,
-                        vector_fs_clone,
-                        identity_manager_clone,
-                        payload,
-                        bearer,
-                        res,
-                    )
-                    .await;
+                    let _ = Node::v2_retrieve_source_file(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiGetDefaultEmbeddingModel { bearer, res } => {
@@ -1816,22 +1732,6 @@ impl Node {
                 let db = self.db.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_update_default_embedding_model(db, bearer, model_name, res).await;
-                });
-            }
-            NodeCommand::V2ApiUpdateSupportedEmbeddingModels { bearer, models, res } => {
-                let db = self.db.clone();
-                let vector_fs = self.vector_fs.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_update_supported_embedding_models(
-                        db,
-                        vector_fs,
-                        identity_manager_clone,
-                        bearer,
-                        models,
-                        res,
-                    )
-                    .await;
                 });
             }
             NodeCommand::V2ApiAddLlmProvider { bearer, agent, res } => {
@@ -2391,14 +2291,13 @@ impl Node {
             }
             NodeCommand::V2ApiSetSheetUploadedFiles { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let identity_manager_clone = self.identity_manager.clone();
                 let sheet_manager_clone = self.sheet_manager.clone();
 
                 tokio::spawn(async move {
                     let _ = Node::v2_set_sheet_uploaded_files(
                         db_clone,
-                        vector_fs_clone,
                         identity_manager_clone,
                         sheet_manager_clone,
                         payload,
@@ -2419,7 +2318,7 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
-                let vector_fs_clone = self.vector_fs.clone();
+
                 let node_name = self.node_name.clone();
                 let job_manager = self.job_manager.clone().unwrap();
                 let identity_manager = self.identity_manager.clone();
@@ -2432,7 +2331,6 @@ impl Node {
                         bearer,
                         node_name,
                         db_clone,
-                        vector_fs_clone,
                         tool_router_key,
                         parameters,
                         tool_id,
@@ -2770,7 +2668,12 @@ impl Node {
                     let _ = Node::v2_export_messages_from_inbox(db_clone, bearer, inbox_name, format, res).await;
                 });
             }
-            NodeCommand::V2ApiSearchShinkaiTool { bearer, query, agent_or_llm, res } => {
+            NodeCommand::V2ApiSearchShinkaiTool {
+                bearer,
+                query,
+                agent_or_llm,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_search_shinkai_tool(db_clone, bearer, query, agent_or_llm, res).await;

@@ -7,6 +7,8 @@ use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
 use shinkai_http_api::node_api_router;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -17,7 +19,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
 };
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
@@ -75,7 +76,6 @@ pub async fn initialize_node() -> Result<
 
     // Storage db filesystem
     let main_db_path = get_main_db_path(main_db, &node_keys.identity_public_key, node_storage_path.clone());
-    let vector_fs_db_path = get_vector_fs_db_path(vector_fs_db, &node_keys.identity_public_key, node_storage_path);
 
     // Acquire the Node's keys.
     // TODO: Should check with on and then it's with onchain data for matching with the keys provided
@@ -107,8 +107,8 @@ pub async fn initialize_node() -> Result<
         ShinkaiLogOption::Node,
         ShinkaiLogLevel::Info,
         format!(
-            "Starting node with address: {}, main db path: {}, vector fs db path: {}",
-            node_env.api_listen_address, main_db_path, vector_fs_db_path
+            "Starting node with address: {}, main db path: {}",
+            node_env.api_listen_address, main_db_path
         )
         .as_str(),
     );
@@ -188,7 +188,6 @@ pub async fn initialize_node() -> Result<
         node_env.proxy_identity.clone(),
         node_env.first_device_needs_registration_code,
         initial_llm_providers,
-        vector_fs_db_path.clone(),
         Some(embedding_generator),
         node_env.ws_address,
         node_env.default_embedding_model.clone(),
@@ -224,7 +223,6 @@ pub async fn initialize_node() -> Result<
             &encryption_public_key_string,
             &identity_public_key_string,
             &main_db_path,
-            &vector_fs_db_path,
         );
     }
 
@@ -252,8 +250,6 @@ pub async fn initialize_node() -> Result<
     });
 
     tokio::spawn(async {
-        use shinkai_vector_resources::file_parser::file_parser::ShinkaiFileParser;
-
         match ShinkaiFileParser::initialize_local_file_parser().await {
             Ok(_) => {}
             Err(e) => shinkai_log(
@@ -308,28 +304,6 @@ fn get_main_db_path(main_db: &str, identity_public_key: &VerifyingKey, node_stor
     }
 }
 
-/// Machine filesystem path to the main VectorFS database, pub key based.
-fn get_vector_fs_db_path(
-    vector_fs_db: &str,
-    identity_public_key: &VerifyingKey,
-    node_storage_path: Option<String>,
-) -> String {
-    if let Some(path) = node_storage_path {
-        Path::new(&path)
-            .join(vector_fs_db)
-            .join(hash_signature_public_key(identity_public_key))
-            .to_str()
-            .expect("Invalid NODE_STORAGE_PATH")
-            .to_string()
-    } else {
-        Path::new(vector_fs_db)
-            .join(hash_signature_public_key(identity_public_key))
-            .into_os_string()
-            .into_string()
-            .unwrap()
-    }
-}
-
 /// Machine filesystem path for .secret.
 fn get_secrets_file_path(secrets_file: &str, node_storage_path: Option<String>) -> String {
     if let Some(path) = node_storage_path {
@@ -370,13 +344,7 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
 }
 
 /// Prints Useful Node information at startup
-pub fn print_node_info(
-    node_env: &NodeEnvironment,
-    encryption_pk: &str,
-    signature_pk: &str,
-    main_db_path: &str,
-    vector_fs_db_path: &str,
-) {
+pub fn print_node_info(node_env: &NodeEnvironment, encryption_pk: &str, signature_pk: &str, main_db_path: &str) {
     println!("---------------------------------------------------------------");
     println!("Node API address: {}", node_env.api_listen_address);
     println!("Node API HTTPS address: {}", node_env.api_https_listen_address);
@@ -387,6 +355,5 @@ pub fn print_node_info(
     println!("Node encryption pk: {}", encryption_pk);
     println!("Node signature pk: {}", signature_pk);
     println!("Main DB path: {}", main_db_path);
-    println!("Vector FS DB path: {}", vector_fs_db_path);
     println!("---------------------------------------------------------------");
 }

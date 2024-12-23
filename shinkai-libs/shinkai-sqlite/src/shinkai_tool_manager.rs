@@ -10,7 +10,7 @@ impl SqliteManager {
     pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => embedding.vector,
+            Some(embedding) => embedding,
             None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
@@ -363,7 +363,7 @@ impl SqliteManager {
     pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => embedding.vector,
+            Some(embedding) => embedding,
             None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
@@ -687,6 +687,8 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_embedding::model_type::EmbeddingModelType;
+    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::AssetPayment;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
@@ -698,8 +700,6 @@ mod tests {
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
     use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-    use shinkai_vector_resources::embeddings::Embedding;
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -779,7 +779,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create and add three DenoTool instances
         let deno_tool_1 = DenoTool {
@@ -971,7 +971,7 @@ mod tests {
         let mut updated_tool_2 = shinkai_tool_2.clone();
         if let ShinkaiTool::Deno(ref mut deno_tool, _) = updated_tool_2 {
             deno_tool.description = "Updated second Deno tool".to_string();
-            deno_tool.embedding = Some(Embedding::new("test", SqliteManager::generate_vector_for_testing(0.21)));
+            deno_tool.embedding = Some(SqliteManager::generate_vector_for_testing(0.21));
         }
         eprintln!("Updating tool: {:?}", updated_tool_2);
 
@@ -1004,7 +1004,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_duplicate_tool() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
@@ -1048,7 +1048,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create multiple tools with different names
         let tools = vec![
@@ -1152,7 +1152,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_disabled() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create two DenoTool instances - one enabled, one disabled
         let enabled_tool = DenoTool {
@@ -1261,7 +1261,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_network_filter() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create three tools: one enabled non-network, one disabled non-network, one enabled network
         let enabled_non_network_tool = DenoTool {

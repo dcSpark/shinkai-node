@@ -32,7 +32,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
@@ -262,7 +261,7 @@ async fn test_websocket() {
         };
 
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
@@ -563,7 +562,7 @@ async fn test_websocket_smart_inbox() {
         };
 
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
-        let scope = JobScope::new_default();
+        let scope = MinimalJobScope::default();
         match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone(), false, None, None) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),

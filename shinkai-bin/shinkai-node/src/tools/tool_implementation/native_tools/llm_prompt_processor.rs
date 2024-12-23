@@ -1,18 +1,19 @@
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
-use shinkai_tools_primitives::tools::{tool_output_arg::ToolOutputArg, error::ToolError, shinkai_tool::ShinkaiToolHeader};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
+use shinkai_tools_primitives::tools::{
+    error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
+};
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -70,7 +71,6 @@ impl ToolExecutor for LmPromptProcessorTool {
         _tool_id: String,
         _app_id: String,
         db_clone: Arc<SqliteManager>,
-        _vector_fs_clone: Arc<VectorFS>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -89,7 +89,7 @@ impl ToolExecutor for LmPromptProcessorTool {
         let response = v2_create_and_send_job_message(
             bearer.clone(),
             JobCreationInfo {
-                scope: JobScope::new_default(),
+                scope: MinimalJobScope::default(),
                 is_hidden: Some(true),
                 associated_ui: None,
             },

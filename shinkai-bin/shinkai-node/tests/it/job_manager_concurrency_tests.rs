@@ -19,9 +19,8 @@ use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::llm_stopper::LLMStopper;
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+
+{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;

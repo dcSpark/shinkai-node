@@ -6,7 +6,7 @@ use crate::resource_errors::VRError;
 use keyphrases::KeyPhraseExtractor;
 use regex::Regex;
 use std::collections::HashMap;
-#[cfg(feature = "desktop-only")]
+
 use std::{future::Future, pin::Pin};
 
 impl ShinkaiFileParser {
@@ -58,7 +58,7 @@ impl ShinkaiFileParser {
         }
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them in parallel, processing up to 10 futures at a time.
     pub fn generate_text_group_embeddings(
@@ -132,7 +132,7 @@ impl ShinkaiFileParser {
         })
     }
 
-    #[cfg(feature = "desktop-only")]
+    
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them.
     pub fn generate_text_group_embeddings_blocking(
