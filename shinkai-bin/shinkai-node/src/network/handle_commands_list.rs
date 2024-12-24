@@ -2738,6 +2738,22 @@ impl Node {
                     let _ = Node::v2_api_get_cron_task_logs(db_clone, bearer, cron_task_id, res).await;
                 });
             }
+            NodeCommand::V2ApiImportCronTask { bearer, url, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_cron_task(db_clone, bearer, url, res).await;
+                });
+            }
+            NodeCommand::V2ApiExportCronTask {
+                bearer,
+                cron_task_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_export_cron_task(db_clone, bearer, cron_task_id, res).await;
+                });
+            }
             NodeCommand::V2ApiGenerateToolMetadataImplementation {
                 bearer,
                 job_id,

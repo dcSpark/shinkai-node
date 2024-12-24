@@ -1140,4 +1140,14 @@ pub enum NodeCommand {
         file_name: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiImportCronTask {
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExportCronTask {
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },       
 }
