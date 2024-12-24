@@ -255,6 +255,16 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiImportAgent {
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    },    
+    V2ApiExportAgent {
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },    
     AvailableLLMProviders {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, String>>,

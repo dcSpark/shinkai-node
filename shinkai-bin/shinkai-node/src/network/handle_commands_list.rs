@@ -232,6 +232,18 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiExportAgent { bearer, agent_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_export_agent(db_clone, bearer, agent_id, res).await;
+                });
+            }
+            NodeCommand::V2ApiImportAgent { bearer, url, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_agent(db_clone, bearer, url, res).await;
+                });
+            }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
                 let db_clone = self.db.clone();
                 let node_name_clone = self.node_name.clone();
