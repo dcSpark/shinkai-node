@@ -2,6 +2,7 @@ use async_channel::Sender;
 use bytes::Buf;
 use futures::TryStreamExt;
 use reqwest::StatusCode;
+use serde::Deserialize;
 use std::collections::HashMap;
 use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
@@ -163,17 +164,17 @@ pub async fn upload_file_handler(
     }
 }
 
-// #[derive(Deserialize, ToSchema)]
-// pub struct UpdateFileRequest {
-//     pub file_name: String,
-//     pub new_name: String,
-//     pub file_data: Vec<u8>,
-// }
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateFileRequest {
+    pub file_name: String,
+    pub new_name: Option<String>,
+    pub file_data: Option<Vec<u8>>,
+}
 
 #[utoipa::path(
     post,
     path = "/v2/patch_app_file",
-    request_body = UpdateFileRequest,
+    request_body(content_type = "multipart/form-data", content = UpdateFileRequest, description = "File to update"),
     responses(
         (status = 200, description = "Successfully updated file", body = Value),
         (status = 400, description = "Bad request", body = APIError),
