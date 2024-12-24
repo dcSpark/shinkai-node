@@ -8,7 +8,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
-use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
+use crate::tools::tool_execution::execution_header_generator::{check_tool_config, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -622,6 +622,8 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
+                check_tool_config(shinkai_tool.tool_router_key().clone(), python_tool.config.clone()).await?;
+
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
                 if let Err(e) = mounts {
@@ -700,6 +702,8 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 )
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+                check_tool_config(shinkai_tool.tool_router_key().clone(), deno_tool.config.clone()).await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -1056,6 +1060,8 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
         )
         .await
         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+        check_tool_config(shinkai_tool.tool_router_key().clone(), function_config_vec.clone()).await?;
 
         let result = js_tool
             .run(
