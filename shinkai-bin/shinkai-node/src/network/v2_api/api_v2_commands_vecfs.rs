@@ -156,179 +156,115 @@ impl Node {
 
     pub async fn v2_move_item(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveItem,
         bearer: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
+        // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        unimplemented!();
+        // Convert origin and destination paths
+        let origin_path = ShinkaiPath::from_string(input_payload.origin_path.clone());
+        if !origin_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Origin path does not exist: {}", input_payload.origin_path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let requester_name = match identity_manager.lock().await.get_main_identity() {
-        //     Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-        //     _ => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Wrong identity type. Expected Standard identity.".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        let destination_path = ShinkaiPath::from_string(input_payload.destination_path.clone());
+        if destination_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Destination path already exists: {}", input_payload.destination_path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert origin path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        // Move the file using ShinkaiFileManager
+        match ShinkaiFileManager::move_file(origin_path, destination_path, &db) {
+            Ok(_) => {
+                let success_message = format!("Item moved successfully to {}", input_payload.destination_path);
+                let _ = res.send(Ok(success_message)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to move item: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
-        // let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert destination path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // let writer = match vector_fs
-        //     .new_writer(requester_name.clone(), origin_path, requester_name.clone())
-        //     .await
-        // {
-        //     Ok(writer) => writer,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to create writer: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // match vector_fs.move_item(&writer, destination_path).await {
-        //     Ok(_) => {
-        //         let success_message = format!("Item moved successfully to {}", input_payload.destination_path);
-        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-        //         Ok(())
-        //     }
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to move item: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         Ok(())
-        //     }
-        // }
+        Ok(())
     }
 
     pub async fn v2_copy_item(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsCopyItem,
         bearer: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
+        // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        unimplemented!();
+        // Convert origin and destination paths
+        let origin_path = ShinkaiPath::from_string(input_payload.origin_path.clone());
+        if !origin_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Origin path does not exist: {}", input_payload.origin_path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let requester_name = match identity_manager.lock().await.get_main_identity() {
-        //     Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-        //     _ => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Wrong identity type. Expected Standard identity.".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        let destination_path = ShinkaiPath::from_string(input_payload.destination_path.clone());
+        if destination_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Destination path already exists: {}", input_payload.destination_path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert origin path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        // Copy the file using ShinkaiFileManager
+        match ShinkaiFileManager::copy_file(origin_path, destination_path) {
+            Ok(_) => {
+                let success_message = format!("Item copied successfully to {}", input_payload.destination_path);
+                let _ = res.send(Ok(success_message)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to copy item: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
-        // let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert destination path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // let writer = match vector_fs
-        //     .new_writer(requester_name.clone(), origin_path, requester_name.clone())
-        //     .await
-        // {
-        //     Ok(writer) => writer,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to create writer: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // match vector_fs.copy_item(&writer, destination_path).await {
-        //     Ok(_) => {
-        //         let success_message = format!("Item copied successfully to {}", input_payload.destination_path);
-        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-        //         Ok(())
-        //     }
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to copy item: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         Ok(())
-        //     }
-        // }
+        Ok(())
     }
 
     pub async fn v2_move_folder(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsMoveFolder,
         bearer: String,
         res: Sender<Result<String, APIError>>,
@@ -337,79 +273,46 @@ impl Node {
             return Ok(());
         }
 
-        unimplemented!();
+        // Convert origin and destination paths
+        let origin_path = ShinkaiPath::from_string(input_payload.origin_path.clone());
+        if !origin_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Origin path does not exist: {}", input_payload.origin_path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let requester_name = match identity_manager.lock().await.get_main_identity() {
-        //     Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-        //     _ => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Wrong identity type. Expected Standard identity.".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        let destination_path = ShinkaiPath::from_string(input_payload.destination_path.clone());
+        if destination_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Destination path already exists: {}", input_payload.destination_path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let origin_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert origin path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        // Move the folder using ShinkaiFileManager
+        match ShinkaiFileManager::move_folder(origin_path, destination_path, &db) {
+            Ok(_) => {
+                let success_message = format!("Folder moved successfully to {}", input_payload.destination_path);
+                let _ = res.send(Ok(success_message)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to move folder: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
-        // let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert destination path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // let writer = match vector_fs
-        //     .new_writer(requester_name.clone(), origin_path, requester_name.clone())
-        //     .await
-        // {
-        //     Ok(writer) => writer,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to create writer: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // match vector_fs.move_folder(&writer, destination_path).await {
-        //     Ok(_) => {
-        //         let success_message = format!("Folder moved successfully to {}", input_payload.destination_path);
-        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-        //         Ok(())
-        //     }
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to move folder: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         Ok(())
-        //     }
-        // }
+        Ok(())
     }
 
     pub async fn v2_copy_folder(
@@ -509,66 +412,35 @@ impl Node {
             return Ok(());
         }
 
-        unimplemented!();
+        // Convert the path to ShinkaiPath
+        let folder_path = ShinkaiPath::from_string(input_payload.path.clone());
+        if !folder_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Folder path does not exist: {}", input_payload.path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let requester_name = match identity_manager.lock().await.get_main_identity() {
-        //     Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-        //     _ => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Wrong identity type. Expected Standard identity.".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        // Delete the folder using ShinkaiFileManager
+        match ShinkaiFileManager::remove_folder(folder_path) {
+            Ok(_) => {
+                let success_message = format!("Folder successfully deleted: {}", input_payload.path);
+                let _ = res.send(Ok(success_message)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to delete folder: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
-        // let item_path = match ShinkaiPath::from_string(&input_payload.path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert folder path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // let writer = match vector_fs
-        //     .new_writer(requester_name.clone(), item_path, requester_name.clone())
-        //     .await
-        // {
-        //     Ok(writer) => writer,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to create writer: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // match vector_fs.delete_folder(&writer).await {
-        //     Ok(_) => {
-        //         let success_message = format!("Folder successfully deleted: {}", input_payload.path);
-        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-        //         Ok(())
-        //     }
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to delete folder: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         Ok(())
-        //     }
-        // }
+        Ok(())
     }
 
     pub async fn v2_delete_item(
@@ -582,52 +454,46 @@ impl Node {
             return Ok(());
         }
 
-        unimplemented!();
+        // Convert the path to ShinkaiPath
+        let item_path = ShinkaiPath::from_string(input_payload.path.clone());
+        if !item_path.exists() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("File path does not exist: {}", input_payload.path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let requester_name = match identity_manager.lock().await.get_main_identity() {
-        //     Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-        //     _ => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Wrong identity type. Expected Standard identity.".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        // Ensure the path is a file
+        if !item_path.is_file() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Path is not a file: {}", input_payload.path),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
 
-        // let item_path = match ShinkaiPath::from_string(&input_payload.path) {
-        //     Ok(path) => path,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: format!("Failed to convert item path to VRPath: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        // Delete the file using ShinkaiFileManager
+        match ShinkaiFileManager::remove_file(item_path, &db) {
+            Ok(_) => {
+                let success_message = format!("File successfully deleted: {}", input_payload.path);
+                let _ = res.send(Ok(success_message)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to delete file: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
-        // match vector_fs.delete_item(&writer).await {
-        //     Ok(_) => {
-        //         let success_message = format!("Item successfully deleted: {}", input_payload.path);
-        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-        //         Ok(())
-        //     }
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to delete item: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         Ok(())
-        //     }
-        // }
-
-        unimplemented!();
+        Ok(())
     }
 
     pub async fn v2_search_items(

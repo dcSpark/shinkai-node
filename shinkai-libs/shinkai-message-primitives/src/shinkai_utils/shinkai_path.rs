@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
+use std::fs::File;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
 
@@ -98,6 +99,11 @@ impl ShinkaiPath {
     pub fn from_base_path() -> Self {
         Self::new("")
     }
+
+    /// Checks if the path is a file.
+    pub fn is_file(&self) -> bool {
+        self.path.is_file()
+    }
 }
 
 // Implement Display for ShinkaiPath to easily print it
@@ -112,13 +118,18 @@ impl fmt::Display for ShinkaiPath {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::env;
+    use std::fs::File;
+    use std::{env, fs};
+    use tempfile::{tempdir, NamedTempFile};
 
     #[test]
     #[serial]
     fn test_base_path() {
         env::set_var("NODE_STORAGE_PATH", "/Users/Nico/my_path");
-        assert_eq!(ShinkaiPath::base_path(), PathBuf::from("/Users/Nico/my_path/filesystem"));
+        assert_eq!(
+            ShinkaiPath::base_path(),
+            PathBuf::from("/Users/Nico/my_path/filesystem")
+        );
         env::remove_var("NODE_STORAGE_PATH");
     }
 
@@ -143,7 +154,10 @@ mod tests {
     fn test_from_string_without_base_path() {
         env::remove_var("NODE_STORAGE_PATH");
         let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
-        assert_eq!(path.as_path(), Path::new("storage/filesystem/word_files/christmas.docx"));
+        assert_eq!(
+            path.as_path(),
+            Path::new("storage/filesystem/word_files/christmas.docx")
+        );
         assert_eq!(path.relative_path(), "word_files/christmas.docx");
     }
 
@@ -194,5 +208,24 @@ mod tests {
         // Assuming the base path is "storage/filesystem" when NODE_STORAGE_PATH is not set
         let expected_path = ShinkaiPath::base_path().join(root_path.trim_start_matches('/'));
         assert_eq!(shinkai_path.path, expected_path);
+    }
+
+    #[test]
+    fn test_is_file() {
+        let dir = tempdir().unwrap();
+
+        // Set the environment variable to the temporary directory path
+        std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
+
+        let file_path = "test_file.txt";
+        let shinkai_path = ShinkaiPath::from_string(file_path.to_string());
+        eprintln!("shinkai_path: {:?}", shinkai_path.as_path());
+
+        // Ensure the parent directory exists
+        fs::create_dir_all(shinkai_path.as_path().parent().unwrap()).unwrap();
+
+        fs::write(shinkai_path.as_path(), "test".as_bytes()).unwrap();
+
+        assert!(shinkai_path.is_file());
     }
 }

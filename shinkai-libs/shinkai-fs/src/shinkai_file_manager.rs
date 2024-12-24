@@ -44,7 +44,7 @@ impl ShinkaiFileManager {
         generator: &dyn EmbeddingGenerator,
     ) -> Result<(), ShinkaiFsError> {
         // Save the file to disk
-        Self::add_file(dest_path.clone(), data)?;
+        Self::write_file_to_fs(dest_path.clone(), data)?;
 
         // Process the file for embeddings if the mode is not NoParsing
         if mode != FileProcessingMode::NoParsing {

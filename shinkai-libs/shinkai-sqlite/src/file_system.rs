@@ -544,6 +544,42 @@ impl SqliteManager {
         }
         Ok(result)
     }
+
+    /// Retrieve all parsed files whose relative paths start with the given prefix.
+    pub fn get_parsed_files_by_prefix(&self, prefix: &str) -> Result<Vec<ParsedFile>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, relative_path, original_extension, description, source, embedding_model_used, keywords,
+                    distribution_info, created_time, tags, total_tokens, total_characters
+             FROM parsed_files
+             WHERE relative_path LIKE ?",
+        )?;
+
+        let like_pattern = format!("{}%", prefix);
+
+        let rows = stmt.query_map([like_pattern], |row| {
+            Ok(ParsedFile {
+                id: row.get(0)?,
+                relative_path: row.get(1)?,
+                original_extension: row.get(2)?,
+                description: row.get(3)?,
+                source: row.get(4)?,
+                embedding_model_used: row.get(5)?,
+                keywords: row.get(6)?,
+                distribution_info: row.get(7)?,
+                created_time: row.get(8)?,
+                tags: row.get(9)?,
+                total_tokens: row.get(10)?,
+                total_characters: row.get(11)?,
+            })
+        })?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -847,5 +883,27 @@ mod tests {
         for (i, chunk) in neighbors.iter().enumerate() {
             assert_eq!(chunk.position, expected_positions[i]);
         }
+    }
+
+    #[test]
+    fn test_get_parsed_files_by_prefix() {
+        let db = setup_test_db();
+
+        // Create and add parsed files
+        let pf1 = create_test_parsed_file(1, "docs/reports/2024/january.txt");
+        let pf2 = create_test_parsed_file(2, "docs/reports/2024/february.txt");
+        let pf3 = create_test_parsed_file(3, "docs/other/2024/march.txt");
+        db.add_parsed_file(&pf1).unwrap();
+        db.add_parsed_file(&pf2).unwrap();
+        db.add_parsed_file(&pf3).unwrap();
+
+        // Retrieve files with the prefix "docs/reports/2024/"
+        let files_with_prefix = db.get_parsed_files_by_prefix("docs/reports/2024/").unwrap();
+
+        // Check that only pf1 and pf2 are returned
+        assert_eq!(files_with_prefix.len(), 2);
+        assert!(files_with_prefix.iter().any(|pf| pf.relative_path == "docs/reports/2024/january.txt"));
+        assert!(files_with_prefix.iter().any(|pf| pf.relative_path == "docs/reports/2024/february.txt"));
+        assert!(!files_with_prefix.iter().any(|pf| pf.relative_path == "docs/other/2024/march.txt"));
     }
 }
