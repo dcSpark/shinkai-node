@@ -278,3 +278,25 @@ impl Default for MinimalJobScope {
 //     pub name: String,
 //     pub path: VRPath,
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_deserialize_minimal_job_scope() {
+        let json_data = json!({
+            "vector_fs_items": [],
+            "vector_fs_folders": [{"path": "/My Files (Private)"}],
+            "vector_search_mode": []
+        });
+
+        let deserialized: MinimalJobScope = serde_json::from_value(json_data).expect("Failed to deserialize");
+
+        assert!(deserialized.vector_fs_items.is_empty());
+        assert_eq!(deserialized.vector_fs_folders.len(), 1);
+        assert_eq!(deserialized.vector_fs_folders[0].as_str(), "/My Files (Private)");
+        assert!(deserialized.vector_search_mode.is_empty());
+    }
+}

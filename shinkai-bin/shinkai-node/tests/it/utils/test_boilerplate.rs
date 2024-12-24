@@ -1,13 +1,14 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
 
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::managers::tool_router::ToolRouter;
 use shinkai_sqlite::SqliteManager;
 
-{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -47,7 +48,6 @@ pub struct TestEnvironment {
     pub node1_device_identity_pk: VerifyingKey,
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
-    pub node1_vecfs: Arc<VectorFS>,
     pub node1_db: Arc<SqliteManager>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
@@ -103,7 +103,6 @@ where
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
 
         // Fetch the PROXY_ADDRESS environment variable
         let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
@@ -126,7 +125,6 @@ where
             proxy_identity,
             false,
             vec![],
-            node1_fs_db_path,
             Some(RemoteEmbeddingGenerator::new_default()),
             None,
             default_embedding_model(),
@@ -136,7 +134,6 @@ where
         .await;
 
         let node1_locked = node1.lock().await;
-        let node1_vecfs = node1_locked.vector_fs.clone();
         let node1_db = node1_locked.db.clone();
         let node1_sheet_manager = node1_locked.sheet_manager.clone();
         let node1_callback_manager = node1_locked.callback_manager.clone();
@@ -171,7 +168,6 @@ where
             node1_device_identity_pk,
             node1_device_encryption_sk,
             node1_device_encryption_pk,
-            node1_vecfs,
             node1_db,
             node1_sheet_manager,
             node1_callback_manager,

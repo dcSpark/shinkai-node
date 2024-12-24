@@ -18,6 +18,7 @@ use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -49,6 +50,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use std::fs;
+use std::path::Path;
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
@@ -413,6 +416,17 @@ impl Node {
     // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
         let db_weak = Arc::downgrade(&self.db);
+
+        {
+            let vr_path = ShinkaiPath::from_base_path();
+
+            // Check if the directory exists, and create it if it doesn't
+            if !Path::new(&vr_path.as_path()).exists() {
+                fs::create_dir_all(&vr_path.as_path()).map_err(|e| {
+                    NodeError::from(format!("Failed to create directory {}: {}", vr_path.as_path().display(), e))
+                })?;
+            }
+        }
 
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(

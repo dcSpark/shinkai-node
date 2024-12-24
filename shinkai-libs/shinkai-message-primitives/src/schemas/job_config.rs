@@ -54,3 +54,38 @@ impl JobConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    #[test]
+    fn test_deserialize_job_config() {
+        let json_data = r#"{
+            "custom_system_prompt": null,
+            "custom_prompt": "",
+            "temperature": 0.8,
+            "max_tokens": null,
+            "seed": null,
+            "top_k": 40,
+            "top_p": 0.9,
+            "stream": true,
+            "other_model_params": null,
+            "use_tools": false
+        }"#;
+
+        let job_config: JobConfig = serde_json::from_str(json_data).expect("Failed to deserialize JSON");
+
+        assert_eq!(job_config.custom_system_prompt, None);
+        assert_eq!(job_config.custom_prompt, Some("".to_string()));
+        assert_eq!(job_config.temperature, Some(0.8));
+        assert_eq!(job_config.max_tokens, None);
+        assert_eq!(job_config.seed, None);
+        assert_eq!(job_config.top_k, Some(40));
+        assert_eq!(job_config.top_p, Some(0.9));
+        assert_eq!(job_config.stream, Some(true));
+        assert_eq!(job_config.other_model_params, None);
+        assert_eq!(job_config.use_tools, Some(false));
+    }
+}

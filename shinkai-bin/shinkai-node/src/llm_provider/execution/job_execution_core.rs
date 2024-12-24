@@ -2,7 +2,7 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::llm_provider::parsing_helper::ParsingHelper;
+
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
@@ -94,20 +94,21 @@ impl JobManager {
             }
         }
 
-        // 1.- Processes any files which were sent with the job message
-        let process_files_result = JobManager::process_job_message_files_for_vector_resources(
-            db.clone(),
-            &job_message.job_message,
-            llm_provider_found.clone(),
-            &mut full_job,
-            user_profile.clone(),
-            generator.clone(),
-            ws_manager.clone(),
-        )
-        .await;
-        if let Err(e) = process_files_result {
-            return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
-        }
+        // TODO: Fix this if it's still needed
+        // // 1.- Processes any files which were sent with the job message
+        // let process_files_result = JobManager::process_job_message_files_for_vector_resources(
+        //     db.clone(),
+        //     &job_message.job_message,
+        //     llm_provider_found.clone(),
+        //     &mut full_job,
+        //     user_profile.clone(),
+        //     generator.clone(),
+        //     ws_manager.clone(),
+        // )
+        // .await;
+        // if let Err(e) = process_files_result {
+        //     return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
+        // }
 
         // 2.- *If* a sheet job is found, processing job message is taken over by this alternate logic
         let sheet_job_found = JobManager::process_sheet_job(
@@ -391,18 +392,19 @@ impl JobManager {
                 let (files_inbox, file_names): (Vec<String>, Vec<String>) =
                     input_string.uploaded_files.iter().cloned().unzip();
 
-                Self::process_specified_files_for_vector_resources(
-                    db.clone(),
-                    files_inbox.first().unwrap().clone(),
-                    file_names,
-                    None,
-                    &mut mutable_job,
-                    user_profile.clone(),
-                    None,
-                    generator.clone(),
-                    ws_manager.clone(),
-                )
-                .await?;
+                // TODO: fix this
+                // Self::process_specified_files_for_vector_resources(
+                //     db.clone(),
+                //     files_inbox.first().unwrap().clone(),
+                //     file_names,
+                //     None,
+                //     &mut mutable_job,
+                //     user_profile.clone(),
+                //     None,
+                //     generator.clone(),
+                //     ws_manager.clone(),
+                // )
+                // .await?;
             }
 
             for (local_file_path, local_file_name) in &input_string.local_files {
@@ -474,98 +476,98 @@ impl JobManager {
         }
     }
 
-    /// Processes the files sent together with the current job_message into Vector Resources.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn process_job_message_files_for_vector_resources(
-        db: Arc<SqliteManager>,
-        job_message: &JobMessage,
-        agent_found: Option<ProviderOrAgent>,
-        full_job: &mut Job,
-        profile: ShinkaiName,
-        generator: RemoteEmbeddingGenerator,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    ) -> Result<(), LLMProviderError> {
-        if !job_message.files_inbox.is_empty() {
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                format!("Processing files_map: ... files: {}", job_message.files_inbox.len()).as_str(),
-            );
+    // /// Processes the files sent together with the current job_message into Vector Resources.
+    // #[allow(clippy::too_many_arguments)]
+    // pub async fn process_job_message_files_for_vector_resources(
+    //     db: Arc<SqliteManager>,
+    //     job_message: &JobMessage,
+    //     agent_found: Option<ProviderOrAgent>,
+    //     full_job: &mut Job,
+    //     profile: ShinkaiName,
+    //     generator: RemoteEmbeddingGenerator,
+    //     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    // ) -> Result<(), LLMProviderError> {
+    //     if !job_message.files_inbox.is_empty() {
+    //         shinkai_log(
+    //             ShinkaiLogOption::JobExecution,
+    //             ShinkaiLogLevel::Debug,
+    //             format!("Processing files_map: ... files: {}", job_message.files_inbox.len()).as_str(),
+    //         );
 
-            // Get the files from the DB
-            let files = {
-                let files_result = db.get_all_files_from_inbox(job_message.files_inbox.clone());
-                match files_result {
-                    Ok(files) => files,
-                    Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
-                }
-            };
+    //         // Get the files from the DB
+    //         let files = {
+    //             let files_result = db.get_all_files_from_inbox(job_message.files_inbox.clone());
+    //             match files_result {
+    //                 Ok(files) => files,
+    //                 Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
+    //             }
+    //         };
 
-            // Process the files and update the job scope
-            Self::process_files_and_update_scope(
-                db,
-                files,
-                agent_found,
-                full_job,
-                profile,
-                generator,
-                ws_manager,
-            )
-            .await?;
-        }
+    //         // Process the files and update the job scope
+    //         Self::process_files_and_update_scope(
+    //             db,
+    //             files,
+    //             agent_found,
+    //             full_job,
+    //             profile,
+    //             generator,
+    //             ws_manager,
+    //         )
+    //         .await?;
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    /// Processes the specified files into Vector Resources.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn process_specified_files_for_vector_resources(
-        db: Arc<SqliteManager>,
-        files_inbox: String,
-        file_names: Vec<String>,
-        agent_found: Option<ProviderOrAgent>,
-        full_job: &mut Job,
-        profile: ShinkaiName,
-        generator: RemoteEmbeddingGenerator,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    ) -> Result<(), LLMProviderError> {
-        if !file_names.is_empty() {
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                format!("Processing specified files: {:?}", file_names).as_str(),
-            );
+    // /// Processes the specified files into Vector Resources.
+    // #[allow(clippy::too_many_arguments)]
+    // pub async fn process_specified_files_for_vector_resources(
+    //     db: Arc<SqliteManager>,
+    //     files_inbox: String,
+    //     file_names: Vec<String>,
+    //     agent_found: Option<ProviderOrAgent>,
+    //     full_job: &mut Job,
+    //     profile: ShinkaiName,
+    //     generator: RemoteEmbeddingGenerator,
+    //     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    // ) -> Result<(), LLMProviderError> {
+    //     if !file_names.is_empty() {
+    //         shinkai_log(
+    //             ShinkaiLogOption::JobExecution,
+    //             ShinkaiLogLevel::Debug,
+    //             format!("Processing specified files: {:?}", file_names).as_str(),
+    //         );
 
-            // Get the files from the DB
-            let files = {
-                let files_result = db.get_all_files_from_inbox(files_inbox.clone());
-                match files_result {
-                    Ok(files) => files,
-                    Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
-                }
-            };
+    //         // Get the files from the DB
+    //         let files = {
+    //             let files_result = db.get_all_files_from_inbox(files_inbox.clone());
+    //             match files_result {
+    //                 Ok(files) => files,
+    //                 Err(e) => return Err(LLMProviderError::ShinkaiDB(e)),
+    //             }
+    //         };
 
-            // Filter files based on the provided file names
-            let specified_files: Vec<(String, Vec<u8>)> = files
-                .into_iter()
-                .filter(|(name, _)| file_names.contains(name))
-                .collect();
+    //         // Filter files based on the provided file names
+    //         let specified_files: Vec<(String, Vec<u8>)> = files
+    //             .into_iter()
+    //             .filter(|(name, _)| file_names.contains(name))
+    //             .collect();
 
-            // Process the specified files and update the job scope
-            Self::process_files_and_update_scope(
-                db,
-                specified_files,
-                agent_found,
-                full_job,
-                profile,
-                generator,
-                ws_manager,
-            )
-            .await?;
-        }
+    //         // Process the specified files and update the job scope
+    //         Self::process_files_and_update_scope(
+    //             db,
+    //             specified_files,
+    //             agent_found,
+    //             full_job,
+    //             profile,
+    //             generator,
+    //             ws_manager,
+    //         )
+    //         .await?;
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     /// Retrieves image files associated with a job message and converts them to base64
     pub async fn get_image_files_from_message(
@@ -606,89 +608,89 @@ impl JobManager {
         Ok(image_files)
     }
 
-    /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
-    /// If save_to_vector_fs_folder == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
-    /// Else, the files will be returned as LocalScopeEntries and thus held inside.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn process_files_inbox(
-        db: Arc<SqliteManager>,
-        agent: Option<ProviderOrAgent>,
-        files: Vec<(String, Vec<u8>)>,
-        _profile: ShinkaiName,
-        generator: RemoteEmbeddingGenerator,
-    ) -> Result<HashMap<String, ScopeEntry>, LLMProviderError> {
-        // Create the RemoteEmbeddingGenerator instance
-        let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
+    // /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
+    // /// If save_to_vector_fs_folder == true, the files will save to the DB and be returned as `VectorFSScopeEntry`s.
+    // /// Else, the files will be returned as LocalScopeEntries and thus held inside.
+    // #[allow(clippy::too_many_arguments)]
+    // pub async fn process_files_inbox(
+    //     db: Arc<SqliteManager>,
+    //     agent: Option<ProviderOrAgent>,
+    //     files: Vec<(String, Vec<u8>)>,
+    //     _profile: ShinkaiName,
+    //     generator: RemoteEmbeddingGenerator,
+    // ) -> Result<HashMap<String, ScopeEntry>, LLMProviderError> {
+    //     // Create the RemoteEmbeddingGenerator instance
+    //     let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
 
-        // Filter out image files
-        // TODO: Eventually we will add extra embeddings that support images
-        let files: Vec<(String, Vec<u8>)> = files
-            .into_iter()
-            .filter(|(name, _)| {
-                let name_lower = name.to_lowercase();
-                !name_lower.ends_with(".png")
-                    && !name_lower.ends_with(".jpg")
-                    && !name_lower.ends_with(".jpeg")
-                    && !name_lower.ends_with(".gif")
-            })
-            .collect();
+    //     // Filter out image files
+    //     // TODO: Eventually we will add extra embeddings that support images
+    //     let files: Vec<(String, Vec<u8>)> = files
+    //         .into_iter()
+    //         .filter(|(name, _)| {
+    //             let name_lower = name.to_lowercase();
+    //             !name_lower.ends_with(".png")
+    //                 && !name_lower.ends_with(".jpg")
+    //                 && !name_lower.ends_with(".jpeg")
+    //                 && !name_lower.ends_with(".gif")
+    //         })
+    //         .collect();
 
-        // Sort out the vrpacks from the rest
-        #[allow(clippy::type_complexity)]
-        let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
-            files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
+    //     // Sort out the vrpacks from the rest
+    //     #[allow(clippy::type_complexity)]
+    //     let (vr_packs, other_files): (Vec<(String, Vec<u8>)>, Vec<(String, Vec<u8>)>) =
+    //         files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
 
-        // TODO: Decide how frontend relays distribution info so it can be properly added
-        // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
-        let mut dist_files = vec![];
-        for file in other_files {
-            let distribution_info = DistributionInfo::new_auto(&file.0, None);
-            dist_files.push((file.0, file.1, distribution_info));
-        }
+    //     // TODO: Decide how frontend relays distribution info so it can be properly added
+    //     // For now attempting basic auto-detection of distribution origin based on filename, and setting release date to none
+    //     let mut dist_files = vec![];
+    //     for file in other_files {
+    //         let distribution_info = DistributionInfo::new_auto(&file.0, None);
+    //         dist_files.push((file.0, file.1, distribution_info));
+    //     }
 
-        let processed_vrkais =
-            ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), db.clone()).await?;
+    //     let processed_vrkais =
+    //         ParsingHelper::process_files_into_vrkai(dist_files, &generator, agent.clone(), db.clone()).await?;
 
-        // Save the vrkai into scope (and potentially VectorFS)
-        for (filename, vrkai) in processed_vrkais {
-            // Now create Local/VectorFSScopeEntry depending on setting
-            if let Some(folder_path) = &save_to_vector_fs_folder {
-                let fs_scope_entry = VectorFSItemScopeEntry {
-                    name: vrkai.resource.as_trait_object().name().to_string(),
-                    path: folder_path.clone(),
-                    source: vrkai.resource.as_trait_object().source().clone(),
-                };
+    //     // Save the vrkai into scope (and potentially VectorFS)
+    //     for (filename, vrkai) in processed_vrkais {
+    //         // Now create Local/VectorFSScopeEntry depending on setting
+    //         if let Some(folder_path) = &save_to_vector_fs_folder {
+    //             let fs_scope_entry = VectorFSItemScopeEntry {
+    //                 name: vrkai.resource.as_trait_object().name().to_string(),
+    //                 path: folder_path.clone(),
+    //                 source: vrkai.resource.as_trait_object().source().clone(),
+    //             };
 
-                // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
-                // let vector_fs = self.v
+    //             // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
+    //             // let vector_fs = self.v
 
-                files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
-            } else {
-                let local_scope_entry = LocalScopeVRKaiEntry { vrkai };
-                files_map.insert(filename, ScopeEntry::LocalScopeVRKai(local_scope_entry));
-            }
-        }
+    //             files_map.insert(filename, ScopeEntry::VectorFSItem(fs_scope_entry));
+    //         } else {
+    //             let local_scope_entry = LocalScopeVRKaiEntry { vrkai };
+    //             files_map.insert(filename, ScopeEntry::LocalScopeVRKai(local_scope_entry));
+    //         }
+    //     }
 
-        // Save the vrpacks into scope (and potentially VectorFS)
-        for (filename, vrpack_bytes) in vr_packs {
-            let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
-            // Now create Local/VectorFSScopeEntry depending on setting
-            if let Some(folder_path) = &save_to_vector_fs_folder {
-                let fs_scope_entry = VectorFSFolderScopeEntry {
-                    name: vrpack.name.clone(),
-                    path: folder_path.push_cloned(vrpack.name.clone()),
-                };
+    //     // Save the vrpacks into scope (and potentially VectorFS)
+    //     for (filename, vrpack_bytes) in vr_packs {
+    //         let vrpack = VRPack::from_bytes(&vrpack_bytes)?;
+    //         // Now create Local/VectorFSScopeEntry depending on setting
+    //         if let Some(folder_path) = &save_to_vector_fs_folder {
+    //             let fs_scope_entry = VectorFSFolderScopeEntry {
+    //                 name: vrpack.name.clone(),
+    //                 path: folder_path.push_cloned(vrpack.name.clone()),
+    //             };
 
-                // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
-                // let vector_fs = self.v
+    //             // TODO: Save to the vector_fs if `save_to_vector_fs_folder` not None
+    //             // let vector_fs = self.v
 
-                files_map.insert(filename, ScopeEntry::VectorFSFolder(fs_scope_entry));
-            } else {
-                let local_scope_entry = LocalScopeVRPackEntry { vrpack };
-                files_map.insert(filename, ScopeEntry::LocalScopeVRPack(local_scope_entry));
-            }
-        }
+    //             files_map.insert(filename, ScopeEntry::VectorFSFolder(fs_scope_entry));
+    //         } else {
+    //             let local_scope_entry = LocalScopeVRPackEntry { vrpack };
+    //             files_map.insert(filename, ScopeEntry::LocalScopeVRPack(local_scope_entry));
+    //         }
+    //     }
 
-        Ok(files_map)
-    }
+    //     Ok(files_map)
+    // }
 }

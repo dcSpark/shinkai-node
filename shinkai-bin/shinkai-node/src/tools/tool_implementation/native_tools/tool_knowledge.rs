@@ -1,4 +1,3 @@
-use futures::StreamExt;
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::subprompts::SubPrompt;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -104,54 +103,30 @@ impl ToolExecutor for KnowledgeTool {
             }
         }
 
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Runtime::new()
-                .map_err(|e| ToolError::ExecutionError(e.to_string()))?
-                .block_on(async {
-                    // TODO: if scope empty then return an error?
+        // Use the new method to retrieve resources
+        let resource_collections = JobManager::retrieve_all_resources_in_job_scope(&scope, &db_clone)
+            .await
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to retrieve resources: {:?}", e)))?;
 
-                    let resource_stream = {
-                        JobManager::retrieve_all_resources_in_job_scope_stream(&scope).await
-                    };
+        let mut processed_embeddings = Vec::new();
 
-                    let mut chunks = resource_stream.chunks(5);
-                    let mut processed_embeddings = Vec::new();
+        for collection in resource_collections {
+            let subprompts = SubPrompt::convert_chunks_into_subprompts_with_extra_info(&collection.chunks, 97);
+            let embedding = subprompts
+                .iter()
+                .map(|subprompt| subprompt.get_content().clone())
+                .collect::<Vec<String>>()
+                .join(" ");
+            processed_embeddings.push(embedding);
+        }
 
-                    while let Some(resources) = chunks.next().await {
-                        let futures = resources.into_iter().map(|resource| async move {
-                            let subprompts = SubPrompt::convert_resource_into_subprompts_with_extra_info(&resource, 97);
-                            let embedding = subprompts
-                                .iter()
-                                .map(|subprompt| subprompt.get_content().clone())
-                                .collect::<Vec<String>>()
-                                .join(" ");
-                            Ok::<_, ToolError>(embedding)
-                        });
-
-                        let results = futures::future::join_all(futures).await;
-
-                        for result in results {
-                            match result {
-                                Ok(processed) => processed_embeddings.push(processed),
-                                Err(e) => {
-                                    // Log error but continue processing
-                                    eprintln!("Error processing embedding: {}", e);
-                                }
-                            }
-                        }
-                    }
-
-                    let joined_results = processed_embeddings.join(":::");
-                    Ok::<_, ToolError>(json!({
-                        "result": joined_results,
-                        "type": "embeddings",
-                        "rowCount": processed_embeddings.len(),
-                        "rowsAffected": processed_embeddings.len(),
-                    }))
-                })
-        })?;
-
-        Ok(result)
+        let joined_results = processed_embeddings.join(":::");
+        Ok(json!({
+            "result": joined_results,
+            "type": "embeddings",
+            "rowCount": processed_embeddings.len(),
+            "rowsAffected": processed_embeddings.len(),
+        }))
     }
 }
 

@@ -79,11 +79,13 @@ impl SqliteManager {
     pub fn update_job_config(&self, job_id: &str, config: JobConfig) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
 
-        let config_bytes = serde_json::to_vec(&config)?;
+        // Serialize the config to a JSON string
+        let config_text = serde_json::to_string(&config)?;
 
         let mut stmt = conn.prepare("UPDATE jobs SET config = ?1 WHERE job_id = ?2")?;
 
-        stmt.execute(params![config_bytes, job_id])?;
+        // Store the JSON as a string
+        stmt.execute(params![config_text, job_id])?;
 
         Ok(())
     }
@@ -200,7 +202,24 @@ impl SqliteManager {
         let conversation_inbox: InboxName =
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
         let associated_ui_text: Option<String> = row.get(7)?;
+
+        eprintln!("before config_text with job_id: {}", job_id);
+        
+        if job_id == "jobid_924e6a42-9846-469e-9869-eb6a3db16e4c" {
+            eprintln!("Special job_id detected: {}", job_id);
+            // Add any additional logic you want to execute for this specific job_id
+        }
+        
         let config_text: Option<String> = row.get(8)?;
+
+        eprintln!("Retrieved config_text: {:?}", config_text);
+
+        if let Some(ref text) = config_text {
+            match serde_json::from_str::<JobConfig>(text) {
+                Ok(config) => eprintln!("Deserialized config: {:?}", config),
+                Err(e) => eprintln!("Failed to deserialize config: {:?}", e),
+            }
+        }
 
         let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
         let associated_ui = associated_ui_text
@@ -395,6 +414,15 @@ impl SqliteManager {
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
         let associated_ui_text: Option<String> = row.get(7)?;
         let config_text: Option<String> = row.get(8)?;
+
+        eprintln!("Retrieved config_text: {:?}", config_text);
+
+        if let Some(ref text) = config_text {
+            match serde_json::from_str::<JobConfig>(text) {
+                Ok(config) => eprintln!("Deserialized config: {:?}", config),
+                Err(e) => eprintln!("Failed to deserialize config: {:?}", e),
+            }
+        }
 
         let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
         let associated_ui = associated_ui_text

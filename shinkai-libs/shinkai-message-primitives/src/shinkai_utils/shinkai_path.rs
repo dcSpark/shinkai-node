@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ShinkaiPath {
-    path: PathBuf,
+    pub path: PathBuf,
 }
 
 impl ShinkaiPath {
@@ -16,7 +16,7 @@ impl ShinkaiPath {
         let path_buf = PathBuf::from(path);
 
         let final_path = if path_buf.is_absolute() {
-            path_buf
+            base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
         } else {
             base_path.join(path_buf)
         };
@@ -24,13 +24,13 @@ impl ShinkaiPath {
         ShinkaiPath { path: final_path }
     }
 
-    /// Returns the base path from the NODE_STORAGE_PATH environment variable.
-    /// Defaults to "storage" if not set.
+    /// Returns the base path from the NODE_STORAGE_PATH environment variable,
+    /// joined with "filesystem". Defaults to "storage/filesystem" if not set.
     fn base_path() -> PathBuf {
         env::var("NODE_STORAGE_PATH")
             .ok()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("storage"))
+            .map(|p| PathBuf::from(p).join("filesystem"))
+            .unwrap_or_else(|| PathBuf::from("storage/filesystem"))
     }
 
     /// Creates a new ShinkaiPath from a string slice, ensuring it's absolute relative to the base path.
@@ -93,6 +93,11 @@ impl ShinkaiPath {
     pub fn base_path_as_string() -> String {
         Self::base_path().to_str().unwrap_or("").to_string()
     }
+
+    /// Creates a new ShinkaiPath representing the base path.
+    pub fn from_base_path() -> Self {
+        Self::new("")
+    }
 }
 
 // Implement Display for ShinkaiPath to easily print it
@@ -113,7 +118,7 @@ mod tests {
     #[serial]
     fn test_base_path() {
         env::set_var("NODE_STORAGE_PATH", "/Users/Nico/my_path");
-        assert_eq!(ShinkaiPath::base_path(), PathBuf::from("/Users/Nico/my_path"));
+        assert_eq!(ShinkaiPath::base_path(), PathBuf::from("/Users/Nico/my_path/filesystem"));
         env::remove_var("NODE_STORAGE_PATH");
     }
 
@@ -126,7 +131,7 @@ mod tests {
         let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
         assert_eq!(
             path.as_path(),
-            Path::new("/Users/Nico/my_path/word_files/christmas.docx")
+            Path::new("/Users/Nico/my_path/filesystem/word_files/christmas.docx")
         );
         assert_eq!(path.relative_path(), "word_files/christmas.docx");
 
@@ -138,7 +143,7 @@ mod tests {
     fn test_from_string_without_base_path() {
         env::remove_var("NODE_STORAGE_PATH");
         let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
-        assert_eq!(path.as_path(), Path::new("storage/word_files/christmas.docx"));
+        assert_eq!(path.as_path(), Path::new("storage/filesystem/word_files/christmas.docx"));
         assert_eq!(path.relative_path(), "word_files/christmas.docx");
     }
 
@@ -147,7 +152,7 @@ mod tests {
     fn test_relative_path_outside_base() {
         env::set_var("NODE_STORAGE_PATH", "/Users/Nico/my_path");
         let absolute_outside = ShinkaiPath::from_string("/some/other/path".to_string());
-        // Not under /Users/Nico/my_path, so relative_path() returns full path.
+        // Not under /Users/Nico/my_path/filesystem, so relative_path() returns full path.
         assert_eq!(absolute_outside.relative_path(), "/some/other/path");
         env::remove_var("NODE_STORAGE_PATH");
     }
@@ -160,5 +165,34 @@ mod tests {
 
         let path_without_extension = ShinkaiPath::from_string("word_files/christmas".to_string());
         assert_eq!(path_without_extension.extension(), None);
+    }
+
+    #[test]
+    fn test_new_with_base_path() {
+        let base_path = ShinkaiPath::base_path();
+        let test_path = base_path.join("some/relative/path");
+        let shinkai_path = ShinkaiPath::new(test_path.to_str().unwrap());
+
+        assert_eq!(shinkai_path.path, test_path);
+    }
+
+    #[test]
+    fn test_new_without_base_path() {
+        let base_path = ShinkaiPath::base_path();
+        let relative_path = "some/relative/path";
+        let expected_path = base_path.join(relative_path);
+        let shinkai_path = ShinkaiPath::new(relative_path);
+
+        assert_eq!(shinkai_path.path, expected_path);
+    }
+
+    #[test]
+    fn test_new_with_root_path() {
+        let root_path = "/";
+        let shinkai_path = ShinkaiPath::new(root_path);
+
+        // Assuming the base path is "storage/filesystem" when NODE_STORAGE_PATH is not set
+        let expected_path = ShinkaiPath::base_path().join(root_path.trim_start_matches('/'));
+        assert_eq!(shinkai_path.path, expected_path);
     }
 }

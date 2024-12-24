@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_sqlite::SqliteManager;
-{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use tempfile::NamedTempFile;
 
 pub fn setup() {

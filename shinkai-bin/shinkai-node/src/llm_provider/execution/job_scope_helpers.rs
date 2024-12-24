@@ -7,6 +7,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use std::result::Result::Ok;
+use std::collections::HashMap;
 
 impl JobManager {
     /// Retrieves all resources in the given job scope and returns them as a vector of ShinkaiFileChunkCollection.
@@ -51,14 +52,16 @@ impl JobManager {
     }
 
     /// Static function to retrieve file chunks for a given path.
-    async fn retrieve_file_chunks(
+    pub async fn retrieve_file_chunks(
         path: &ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<Option<ShinkaiFileChunkCollection>, SqliteManagerError> {
         match sqlite_manager.get_parsed_file_by_shinkai_path(path) {
             Ok(Some(parsed_file)) if parsed_file.embedding_model_used.is_some() => {
                 let chunks = sqlite_manager.get_chunks_for_parsed_file(parsed_file.id.unwrap())?;
-                Ok(Some(ShinkaiFileChunkCollection { chunks, path: Some(path.clone()) }))
+                let mut paths_map = HashMap::new();
+                paths_map.insert(parsed_file.id.unwrap(), path.clone());
+                Ok(Some(ShinkaiFileChunkCollection { chunks, paths: Some(paths_map) }))
             }
             Ok(Some(_)) => {
                 shinkai_log(

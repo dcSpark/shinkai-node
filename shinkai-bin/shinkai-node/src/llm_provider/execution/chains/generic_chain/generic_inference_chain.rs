@@ -30,7 +30,7 @@ use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -145,21 +145,23 @@ impl GenericInferenceChain {
 
         // 1) Vector search for knowledge if the scope isn't empty
         let scope_is_empty = full_job.scope().is_empty();
-        let mut ret_nodes: Vec<ShinkaiFileChunkCollection> = vec![];
-        let mut summary_node_text = None;
+        let mut ret_nodes: ShinkaiFileChunkCollection = ShinkaiFileChunkCollection {
+            chunks: vec![],
+            paths: None,
+        };
+
         if !scope_is_empty {
-            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
-                db.clone(),
+            // Previously we used: keyword_chained_job_scope_vector_search
+            let ret = JobManager::search_all_resources_in_job_scope(
                 full_job.scope(),
+                db.clone(),
                 user_message.clone(),
-                &user_profile,
-                generator.clone(),
                 20,
                 max_tokens_in_prompt,
+                generator.clone(),
             )
             .await?;
             ret_nodes = ret;
-            summary_node_text = summary;
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
@@ -319,7 +321,7 @@ impl GenericInferenceChain {
             user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
-            summary_node_text.clone(),
+            None,
             Some(full_job.step_history.clone()),
             tools.clone(),
             None,
@@ -388,7 +390,10 @@ impl GenericInferenceChain {
 
                 // 6) Call workflow or tooling
                 // Find the ShinkaiTool that has a tool with the function name
-                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name || tool.tool_router_key() == function_call.tool_router_key.clone().unwrap_or_default());
+                let shinkai_tool = tools.iter().find(|tool| {
+                    tool.name() == function_call.name
+                        || tool.tool_router_key() == function_call.tool_router_key.clone().unwrap_or_default()
+                });
                 if shinkai_tool.is_none() {
                     eprintln!("Function not found: {}", function_call.name);
                     return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
@@ -433,7 +438,7 @@ impl GenericInferenceChain {
                     user_message.clone(),
                     image_files.clone(),
                     ret_nodes.clone(),
-                    summary_node_text.clone(),
+                    None,
                     Some(full_job.step_history.clone()),
                     tools.clone(),
                     Some(function_response),

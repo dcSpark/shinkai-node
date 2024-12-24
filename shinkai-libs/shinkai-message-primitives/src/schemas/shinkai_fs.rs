@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::shinkai_utils::shinkai_path::ShinkaiPath;
 
@@ -34,7 +35,7 @@ pub struct ParsedFile {
 }
 
 /// Represents a chunk of a processed file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ShinkaiFileChunk {
     /// Unique identifier for the file chunk.
     pub chunk_id: Option<i64>,
@@ -47,7 +48,7 @@ pub struct ShinkaiFileChunk {
 }
 
 /// Represents an embedding of a file chunk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShinkaiFileChunkEmbedding {
     /// Identifier of the file chunk this embedding is associated with.
     pub chunk_id: i64,
@@ -56,17 +57,19 @@ pub struct ShinkaiFileChunkEmbedding {
 }
 
 /// A struct that holds a collection of `ShinkaiFileChunk`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ShinkaiFileChunkCollection {
     /// A set of chunks related to a parsed file.
     pub chunks: Vec<ShinkaiFileChunk>,
-    /// The path of the parsed file that these chunks are associated with.
-    pub path: Option<ShinkaiPath>,
+    /// A map of parsed file IDs to their associated paths.
+    pub paths: Option<HashMap<i64, ShinkaiPath>>,
 }
 
 impl ShinkaiFileChunkCollection {
     /// Formats the data of all chunks into a single string that can be used as context.
     /// Respects a maximum character limit (`max_characters`).
+    
+    // TODO: this needs to be updated to support paths
     pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
         let mut result = String::new();
         let mut remaining_chars = max_characters;
@@ -91,5 +94,10 @@ impl ShinkaiFileChunkCollection {
         } else {
             Some(result)
         }
+    }
+
+    /// Checks if the collection of chunks is empty.
+    pub fn is_empty(&self) -> bool {
+        self.chunks.is_empty()
     }
 }

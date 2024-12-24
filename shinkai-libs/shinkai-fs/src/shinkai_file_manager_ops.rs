@@ -1,6 +1,4 @@
 use std::fs;
-use std::io;
-use std::path::Path;
 
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
@@ -23,11 +21,7 @@ impl ShinkaiFileManager {
     }
 
     /// Remove file: deletes file from filesystem and DB.
-    pub fn remove_file(
-        path: ShinkaiPath,
-        base_dir: &Path,
-        sqlite_manager: &SqliteManager,
-    ) -> Result<(), ShinkaiFsError> {
+    pub fn remove_file(path: ShinkaiPath, sqlite_manager: &SqliteManager) -> Result<(), ShinkaiFsError> {
         // Check if file exists on filesystem
         if !path.exists() {
             return Err(ShinkaiFsError::FileNotFoundOnFilesystem);
@@ -37,7 +31,7 @@ impl ShinkaiFileManager {
         fs::remove_file(path.as_path())?;
 
         // Update DB
-        let rel_path = Self::compute_relative_path(&path, base_dir)?;
+        let rel_path = path.relative_path();
         if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
             if let Some(parsed_file_id) = parsed_file.id {
                 sqlite_manager.remove_parsed_file(parsed_file_id)?;
@@ -79,8 +73,7 @@ impl ShinkaiFileManager {
     /// Rename file: rename a file in the filesystem and update `ParsedFile.relative_path` in DB.
     pub fn rename_file(
         old_path: ShinkaiPath,
-        new_relative_path: &str,
-        base_dir: &Path,
+        new_path: ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<(), ShinkaiFsError> {
         // Debugging: Check if the old file exists
@@ -89,22 +82,26 @@ impl ShinkaiFileManager {
             return Err(ShinkaiFsError::FileNotFoundOnFilesystem);
         }
 
-        let new_path = base_dir.join(new_relative_path);
+        let new_rel_path = new_path.relative_path();
         // Debugging: Print the new path
-        println!("Renaming to new path: {:?}", new_path);
+        eprintln!("Renaming to new path: {:?}", new_rel_path);
 
-        fs::create_dir_all(new_path.parent().unwrap())?;
-        fs::rename(old_path.as_path(), &new_path)?;
+        // Check if the parent directory of the new path exists
+        let parent_dir = new_path.as_path().parent().unwrap();
+        if !parent_dir.exists() {
+            fs::create_dir_all(parent_dir)?;
+        }
+
+        fs::rename(old_path.as_path(), &new_path.as_path())?;
 
         // Update DB
-        let old_rel_path = Self::compute_relative_path(&old_path, base_dir)?;
+        let old_rel_path = old_path.relative_path();
         if let Some(mut parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&old_rel_path)? {
-            parsed_file.relative_path = new_relative_path.to_string();
+            parsed_file.relative_path = new_path.to_string();
             sqlite_manager.update_parsed_file(&parsed_file)?;
         } else {
-            // File not found in DB is not necessarily an error if we just discovered it,
-            // but let's return an error for consistency.
-            return Err(ShinkaiFsError::FileNotFoundInDatabase);
+            // File not found in DB is not necessarily an error, it just means that it doesn't have embeddings.
+            eprintln!("Rename File not found in DB: {:?} (it just doesn't have embeddings)", old_path);
         }
 
         Ok(())
@@ -156,11 +153,10 @@ impl ShinkaiFileManager {
     /// Move file: effectively the same as renaming a file to a new directory.
     pub fn move_file(
         old_path: ShinkaiPath,
-        new_relative_path: &str,
-        base_dir: &Path,
+        new_path: ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<(), ShinkaiFsError> {
-        Self::rename_file(old_path, new_relative_path, base_dir, sqlite_manager)
+        Self::rename_file(old_path, new_path, sqlite_manager)
     }
 
     // /// Move folder: like rename_folder, but the new folder can be somewhere else entirely in the directory tree.
@@ -205,18 +201,6 @@ impl ShinkaiFileManager {
         }
     }
 
-    /// Compute a relative path given a file path and a base directory.
-    pub fn compute_relative_path(file_path: &ShinkaiPath, base_dir: &Path) -> Result<String, ShinkaiFsError> {
-        let abs_file_path = file_path.as_path().canonicalize()?;
-        let abs_base_dir = base_dir.canonicalize()?;
-
-        let rel = abs_file_path
-            .strip_prefix(&abs_base_dir)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "File is not under the base directory"))?;
-
-        Ok(rel.to_string_lossy().to_string())
-    }
-
     /// Returns the current UNIX timestamp (in seconds).
     pub fn current_timestamp() -> i64 {
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -237,10 +221,25 @@ impl ShinkaiFileManager {
 
 #[cfg(test)]
 mod tests {
+    use crate::shinkai_file_manager::FileProcessingMode;
+
     use super::*;
+    use shinkai_embedding::mock_generator::MockGenerator;
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::fs::{self, File};
     use std::io::Read;
-    use tempfile::tempdir;
+    use std::path::PathBuf;
+    use tempfile::{tempdir, NamedTempFile};
+
+    fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
 
     #[test]
     fn test_remove_empty_folder() {
@@ -290,62 +289,121 @@ mod tests {
         assert_eq!(contents, data);
     }
 
-    // #[test]
-    // fn test_rename_file() {
-    //     let dir = tempdir().unwrap();
-    //     let old_path = ShinkaiPath::from_string(dir.path().join("old_file.txt").to_string_lossy().to_string());
-    //     let new_relative_path = "new_file.txt";
-    //     let base_dir = dir.path();
-    //     let data = b"Hello, Shinkai!".to_vec();
+    #[test]
+    fn test_rename_file_without_embeddings() {
+        let dir = tempdir().unwrap();
 
-    //     // Create the original file
-    //     ShinkaiFileManager::add_file(old_path.clone(), data.clone()).unwrap();
+        // Set the environment variable to the temporary directory path
+        std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
 
-    //     // Debugging: Verify the file was created
-    //     assert!(old_path.exists(), "The file should exist on the filesystem after creation.");
+        let old_path = ShinkaiPath::from_string("old_file.txt".to_string());
+        let new_path = ShinkaiPath::from_string("new_file.txt".to_string());
 
-    //     // Setup the test database
-    //     let sqlite_manager = setup_test_db();
+        let data = b"Hello, Shinkai!".to_vec();
 
-    //     // Add the file to the database
-    //     let rel_path = ShinkaiFileManager::compute_relative_path(&old_path, base_dir).unwrap();
-    //     let parsed_file = ParsedFile {
-    //         id: 0,
-    //         relative_path: rel_path.clone(),
-    //         original_extension: Some("txt".to_string()),
-    //         description: None,
-    //         source: None,
-    //         embedding_model_used: None,
-    //         keywords: None,
-    //         distribution_info: None,
-    //         created_time: Some(ShinkaiFileManager::current_timestamp()),
-    //         tags: None,
-    //         total_tokens: None,
-    //         total_characters: None,
-    //     };
-    //     sqlite_manager.add_parsed_file(&parsed_file).unwrap();
+        // Create the original file
+        ShinkaiFileManager::add_file(old_path.clone(), data.clone()).unwrap();
 
-    //     // Debugging: Check if the file is in the database
-    //     let db_file = sqlite_manager.get_parsed_file_by_rel_path(&rel_path).unwrap();
-    //     assert!(db_file.is_some(), "The file should exist in the database before renaming.");
+        // Setup the test database
+        let sqlite_manager = setup_test_db();
 
-    //     // Debugging: Print paths for verification
-    //     println!("Old path: {:?}", old_path);
-    //     println!("New path: {:?}", base_dir.join(new_relative_path));
+        // List directory contents
+        let contents =
+            ShinkaiFileManager::list_directory_contents(ShinkaiPath::from_base_path(), &sqlite_manager).unwrap();
+        eprintln!("contents: {:?}", contents);
 
-    //     // Rename the file
-    //     let rename_result = ShinkaiFileManager::rename_file(old_path.clone(), new_relative_path, base_dir, &sqlite_manager);
-    //     assert!(rename_result.is_ok(), "Renaming the file should succeed: {:?}", rename_result);
+        // Verify the file is listed
+        let mut found_file = false;
+        for entry in contents {
+            if entry.name == "old_file.txt" && !entry.is_directory {
+                found_file = true;
+                assert!(!entry.has_embeddings, "File 'old_file.txt' should not have embeddings.");
+            }
+        }
 
-    //     // Verify the old file does not exist and the new file does
-    //     let new_path = base_dir.join(new_relative_path);
-    //     assert!(!old_path.exists(), "The old file should not exist after renaming.");
-    //     assert!(new_path.exists(), "The new file should exist after renaming.");
+        assert!(found_file, "File 'old_file.txt' should be found in the directory.");
 
-    //     // Verify the new file contains the correct data
-    //     let mut file = File::open(new_path).unwrap();
-    //     let mut contents = Vec::new();
-    //     file.read_to_end(&mut contents).unwrap();
-    //     assert_eq!(contents, data);
-    // }
+        // Rename the file
+        let rename_result = ShinkaiFileManager::rename_file(old_path.clone(), new_path.clone(), &sqlite_manager);
+        assert!(
+            rename_result.is_ok(),
+            "Renaming the file should succeed: {:?}",
+            rename_result
+        );
+
+        // Verify the old file does not exist and the new file does
+        assert!(!old_path.exists(), "The old file should not exist after renaming.");
+        assert!(new_path.exists(), "The new file should exist after renaming.");
+    }
+
+    #[tokio::test]
+    async fn test_rename_file_with_embeddings() {
+        let dir = tempdir().unwrap();
+
+        // Set the environment variable to the temporary directory path
+        std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
+
+        let old_path = ShinkaiPath::from_string("old_file.txt".to_string());
+        let new_path = ShinkaiPath::from_string("new_file.txt".to_string());
+
+        let data = b"Hello, Shinkai!".to_vec();
+
+        // Create the original file
+        ShinkaiFileManager::add_file(old_path.clone(), data.clone()).unwrap();
+
+        // Setup the test database
+        let sqlite_manager = setup_test_db();
+
+        // List directory contents
+        let contents =
+            ShinkaiFileManager::list_directory_contents(ShinkaiPath::from_base_path(), &sqlite_manager).unwrap();
+        eprintln!("contents: {:?}", contents);
+
+        // Verify the file is listed
+        let mut found_file = false;
+        for entry in contents {
+            if entry.name == "old_file.txt" && !entry.is_directory {
+                found_file = true;
+                assert!(!entry.has_embeddings, "File 'old_file.txt' should not have embeddings.");
+            }
+        }
+
+        assert!(found_file, "File 'old_file.txt' should be found in the directory.");
+
+        let mock_generator = MockGenerator::new(
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
+            10,
+        );
+
+        // Add embeddings to the file
+        let _ = ShinkaiFileManager::process_embeddings_for_file(
+            old_path.clone(),
+            &sqlite_manager,
+            FileProcessingMode::Auto,
+            &mock_generator,
+        )
+        .await;
+
+        // Rename the file
+        let rename_result = ShinkaiFileManager::rename_file(old_path.clone(), new_path.clone(), &sqlite_manager);
+        assert!(
+            rename_result.is_ok(),
+            "Renaming the file should succeed: {:?}",
+            rename_result
+        );
+
+        // Verify the old file does not exist and the new file does
+        assert!(!old_path.exists(), "The old file should not exist after renaming.");
+        assert!(new_path.exists(), "The new file should exist after renaming.");
+
+        let results = sqlite_manager.debug_get_all_parsed_files();
+        eprintln!("results: {:?}", results);
+
+        // Check that the file path with the embeddings were updated in the db
+        if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&new_path.relative_path()).unwrap() {
+            assert_eq!(parsed_file.relative_path, new_path.to_string(), "The relative path in the database should be updated to the new path.");
+        } else {
+            panic!("The file should be found in the database with the updated path.");
+        }
+    }
 }

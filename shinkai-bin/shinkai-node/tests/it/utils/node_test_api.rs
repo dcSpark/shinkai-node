@@ -1,4 +1,5 @@
 use async_channel::Sender;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use serde_json::{Map, Value};
@@ -12,7 +13,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
@@ -476,7 +476,7 @@ pub async fn api_create_job_with_scope(
     sender: &str,
     sender_subidentity: &str,
     recipient_subidentity: &str,
-    job_scope: JobScope,
+    job_scope: MinimalJobScope,
 ) -> String {
     {
         let full_sender = format!("{}/{}", sender, sender_subidentity);

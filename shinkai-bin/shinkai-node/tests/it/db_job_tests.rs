@@ -1,9 +1,10 @@
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType::{Assistant, User};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_sqlite::SqliteManager;
 use std::path::PathBuf;
@@ -14,7 +15,7 @@ use tokio::time::{sleep, Duration};
 use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-async fn create_new_job(db: &Arc<SqliteManager>, job_id: String, agent_id: String, scope: JobScope) {
+async fn create_new_job(db: &Arc<SqliteManager>, job_id: String, agent_id: String, scope: MinimalJobScope) {
     match db.create_new_job(job_id, agent_id, scope, false, None, None) {
         Ok(_) => (),
         Err(e) => panic!("Failed to create a new job: {}", e),

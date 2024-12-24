@@ -17,6 +17,7 @@ use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
+use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -181,21 +182,24 @@ impl SheetUIInferenceChain {
         };
 
         let scope_is_empty = job_scope.is_empty();
-        let mut ret_nodes: Vec<RetrievedNode> = vec![];
+        let mut ret_nodes: ShinkaiFileChunkCollection = ShinkaiFileChunkCollection {
+            chunks: vec![],
+            paths: None,
+        };
+        // tODO: remove this
         let mut summary_node_text = None;
         if !scope_is_empty {
-            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
+            let ret = JobManager::search_all_resources_in_job_scope(
+                full_job.scope(),
                 db.clone(),
-                &job_scope,
                 user_message.clone(),
-                &user_profile,
-                generator.clone(),
                 20,
                 max_tokens_in_prompt,
+                generator.clone(),
             )
             .await?;
             ret_nodes = ret;
-            summary_node_text = summary;
+            // summary_node_text = summary;
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty

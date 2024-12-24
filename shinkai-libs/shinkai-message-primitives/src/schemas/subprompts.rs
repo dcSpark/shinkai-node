@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::fmt;
 
-use super::{llm_message::LlmMessage, prompts::Prompt};
+use super::{llm_message::LlmMessage, prompts::Prompt, shinkai_fs::ShinkaiFileChunk};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPromptType {
@@ -298,4 +298,46 @@ impl SubPrompt {
 
     //     temp_prompt.remove_all_subprompts()
     // }
+
+    pub fn convert_chunks_into_subprompts_with_extra_info(
+        chunks: &[ShinkaiFileChunk],
+        subprompt_priority: u8,
+    ) -> Vec<SubPrompt> {
+        let mut temp_prompt = Prompt::new();
+        let mut last_content = String::new();
+        let mut last_reference = String::new();
+        let mut buffer_content = String::new();
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let current_content = chunk.content.clone();
+
+            // Skip empty or repeated content
+            if current_content.is_empty() || current_content == last_content {
+                continue;
+            }
+
+            // Generate extra info based on the chunk's position and file ID
+            let extra_info = format!("\nRef. chunk: {} from file ID: {}.", chunk.position, chunk.parsed_file_id);
+
+            if extra_info != last_reference {
+                if !buffer_content.is_empty() {
+                    temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
+                }
+                buffer_content.clone_from(&current_content);
+                last_reference.clone_from(&extra_info);
+            } else {
+                buffer_content.push_str(&format!(" {}", current_content));
+            }
+
+            if i == chunks.len() - 1 || extra_info != last_reference {
+                buffer_content.push_str(&extra_info);
+                temp_prompt.add_content(buffer_content.clone(), SubPromptType::ExtraContext, subprompt_priority);
+                buffer_content.clear();
+            }
+
+            last_content = current_content;
+        }
+
+        temp_prompt.remove_all_subprompts()
+    }
 }

@@ -1,5 +1,4 @@
 use crate::{SqliteManager, SqliteManagerError};
-use bytemuck::cast_slice;
 use rusqlite::params;
 use shinkai_message_primitives::{
     schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk},
@@ -351,6 +350,99 @@ impl SqliteManager {
         Ok(())
     }
 
+    /// Fetch neighboring chunks around a given position within a specified proximity window.
+    pub fn get_neighboring_chunks(
+        &self,
+        parsed_file_id: i64,
+        position: i64,
+        proximity_window_size: usize,
+    ) -> Result<Vec<ShinkaiFileChunk>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, parsed_file_id, position, chunk
+             FROM chunks
+             WHERE parsed_file_id = ? AND position BETWEEN ? AND ?
+             ORDER BY position",
+        )?;
+
+        let start_position = position - proximity_window_size as i64;
+        let end_position = position + proximity_window_size as i64;
+
+        let rows = stmt.query_map(params![parsed_file_id, start_position, end_position], |row| {
+            Ok(ShinkaiFileChunk {
+                chunk_id: Some(row.get(0)?),
+                parsed_file_id: row.get(1)?,
+                position: row.get(2)?,
+                content: row.get(3)?,
+            })
+        })?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    }
+
+    pub fn search_chunks(
+        &self,
+        parsed_file_ids: &[i64],
+        query_embedding: Vec<f32>,
+        limit: usize,
+    ) -> Result<Vec<(ShinkaiFileChunk, f64)>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+
+        // Serialize the vector to a JSON array string
+        let vector_json = serde_json::to_string(&query_embedding).map_err(|e| {
+            eprintln!("Vector serialization error: {}", e);
+            SqliteManagerError::SerializationError(e.to_string())
+        })?;
+
+        // Create a placeholder string for the number of parsed_file_ids
+        let placeholders = parsed_file_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+
+        // SQL query to perform the vector search
+        let sql = format!(
+            r#"
+            SELECT v.chunk_id, v.distance
+            FROM chunk_vec v
+            WHERE v.embedding MATCH json(?)
+            AND v.parsed_file_id IN ({})
+            ORDER BY v.distance
+            LIMIT ?
+        "#,
+            placeholders
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+
+        // Convert parsed_file_ids to a Vec of &dyn ToSql
+        let mut params: Vec<&dyn rusqlite::ToSql> = vec![&vector_json];
+        params.extend(parsed_file_ids.iter().map(|id| id as &dyn rusqlite::ToSql));
+
+        // Create a binding for the limit to ensure it lives long enough
+        let limit_binding = limit as i64;
+        params.push(&limit_binding);
+
+        // Convert Vec to slice
+        let params_slice: Vec<&dyn rusqlite::ToSql> = params.iter().map(|&p| p).collect();
+
+        // Execute the query and collect results using query_map
+        let chunk_ids_and_distances: Vec<(i64, f64)> = stmt
+            .query_map(params_slice.as_slice(), |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Fetch the chunk details for each chunk_id
+        let mut results = Vec::new();
+        for (chunk_id, distance) in chunk_ids_and_distances {
+            if let Some(chunk) = self.get_chunk_with_embedding(chunk_id)? {
+                results.push((chunk.0, distance)); // Assuming get_chunk_with_embedding returns (ShinkaiFileChunk, Option<Vec<f32>>)
+            }
+        }
+
+        Ok(results)
+    }
+
     // -------------------------
     // Folder Paths
     // -------------------------
@@ -371,42 +463,6 @@ impl SqliteManager {
 
         tx.commit()?;
         Ok(())
-    }
-
-    pub fn search_chunks(
-        &self,
-        parsed_file_id: i64,
-        query_embedding: Vec<f32>,
-        limit: usize,
-    ) -> Result<Vec<(i64, f64)>, SqliteManagerError> {
-        let conn = self.get_connection()?;
-
-        // Serialize the vector to a JSON array string
-        let vector_json = serde_json::to_string(&query_embedding).map_err(|e| {
-            eprintln!("Vector serialization error: {}", e);
-            SqliteManagerError::SerializationError(e.to_string())
-        })?;
-
-        // SQL query to perform the vector search
-        let sql = r#"
-            SELECT v.chunk_id, v.distance
-            FROM chunk_vec v
-            WHERE v.embedding MATCH json(?)
-            AND v.parsed_file_id = ?
-            ORDER BY v.distance
-            LIMIT ?
-        "#;
-
-        let mut stmt = conn.prepare(sql)?;
-
-        // Execute the query and collect results using query_map
-        let results: Vec<(i64, f64)> = stmt
-            .query_map(params![vector_json, parsed_file_id, limit as i64], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(results)
     }
 
     pub fn get_processed_files_in_directory(
@@ -454,6 +510,39 @@ impl SqliteManager {
     ) -> Result<Option<ParsedFile>, SqliteManagerError> {
         let rel_path = path.relative_path();
         self.get_parsed_file_by_rel_path(rel_path)
+    }
+
+    /// Retrieve all parsed files for debugging purposes.
+    pub fn debug_get_all_parsed_files(&self) -> Result<Vec<ParsedFile>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, relative_path, original_extension, description, source, embedding_model_used, keywords,
+                    distribution_info, created_time, tags, total_tokens, total_characters
+             FROM parsed_files",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(ParsedFile {
+                id: row.get(0)?,
+                relative_path: row.get(1)?,
+                original_extension: row.get(2)?,
+                description: row.get(3)?,
+                source: row.get(4)?,
+                embedding_model_used: row.get(5)?,
+                keywords: row.get(6)?,
+                distribution_info: row.get(7)?,
+                created_time: row.get(8)?,
+                tags: row.get(9)?,
+                total_tokens: row.get(10)?,
+                total_characters: row.get(11)?,
+            })
+        })?;
+
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
     }
 }
 
@@ -671,8 +760,10 @@ mod tests {
             position: 2,
             content: "This is the second chunk of file1.".to_string(),
         };
-        db.create_chunk_with_embedding(&chunk1_file1, Some(&SqliteManager::generate_vector_for_testing(0.9))).unwrap();
-        db.create_chunk_with_embedding(&chunk2_file1, Some(&SqliteManager::generate_vector_for_testing(0.9))).unwrap();
+        db.create_chunk_with_embedding(&chunk1_file1, Some(&SqliteManager::generate_vector_for_testing(0.9)))
+            .unwrap();
+        db.create_chunk_with_embedding(&chunk2_file1, Some(&SqliteManager::generate_vector_for_testing(0.9)))
+            .unwrap();
 
         // Create and add chunks for the second parsed file
         let chunk1_file2 = ShinkaiFileChunk {
@@ -687,39 +778,74 @@ mod tests {
             position: 2,
             content: "This is the second chunk of file2.".to_string(),
         };
-        db.create_chunk_with_embedding(&chunk1_file2, Some(&SqliteManager::generate_vector_for_testing(0.9))).unwrap();
-        db.create_chunk_with_embedding(&chunk2_file2, Some(&SqliteManager::generate_vector_for_testing(0.9))).unwrap();
+        db.create_chunk_with_embedding(&chunk1_file2, Some(&SqliteManager::generate_vector_for_testing(0.9)))
+            .unwrap();
+        db.create_chunk_with_embedding(&chunk2_file2, Some(&SqliteManager::generate_vector_for_testing(0.9)))
+            .unwrap();
 
         // Generate a mock query embedding
         let query_embedding = SqliteManager::generate_vector_for_testing(0.1);
 
         // Perform a vector search on the first parsed file
         let search_results = db
-            .search_chunks(parsed_file1.id.unwrap(), query_embedding, 10)
+            .search_chunks(&[parsed_file1.id.unwrap()], query_embedding, 10)
             .unwrap();
 
         // Ensure that only chunks from the first parsed file are returned
         assert!(!search_results.is_empty());
-        assert!(search_results.iter().all(|(chunk_id, _)| {
+        assert!(search_results.iter().all(|(chunk, _)| {
             db.get_chunks_for_parsed_file(parsed_file1.id.unwrap())
                 .unwrap()
                 .iter()
-                .any(|chunk| chunk.chunk_id == Some(*chunk_id))
+                .any(|c| c.chunk_id == chunk.chunk_id)
         }));
 
         // Ensure no chunks from the second parsed file are returned
-        assert!(search_results.iter().all(|(chunk_id, _)| {
+        assert!(search_results.iter().all(|(chunk, _)| {
             !db.get_chunks_for_parsed_file(parsed_file2.id.unwrap())
                 .unwrap()
                 .iter()
-                .any(|chunk| chunk.chunk_id == Some(*chunk_id))
+                .any(|c| c.chunk_id == chunk.chunk_id)
         }));
 
         // Check that embeddings were added
-        for (chunk_id, _) in search_results {
-            let (chunk, embedding) = db.get_chunk_with_embedding(chunk_id).unwrap().unwrap();
-            eprintln!("chunk: {:?}", chunk);
-            assert!(embedding.is_some(), "Embedding should be present for chunk_id: {}", chunk_id);
+        for (chunk, _) in search_results {
+            let (_chunk, embedding) = db.get_chunk_with_embedding(chunk.chunk_id.unwrap()).unwrap().unwrap();
+            assert!(
+                embedding.is_some(),
+                "Embedding should be present for chunk_id: {:?}",
+                chunk.chunk_id
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_neighboring_chunks() {
+        let db = setup_test_db();
+
+        // Create and add a parsed file
+        let parsed_file = create_test_parsed_file(1, "file.txt");
+        db.add_parsed_file(&parsed_file).unwrap();
+
+        // Create and add chunks for the parsed file
+        for i in 1..=10 {
+            let chunk = ShinkaiFileChunk {
+                chunk_id: None,
+                parsed_file_id: parsed_file.id.unwrap(),
+                position: i,
+                content: format!("This is chunk number {}.", i),
+            };
+            db.create_chunk_with_embedding(&chunk, None).unwrap();
+        }
+
+        // Fetch neighboring chunks around position 5 with a window size of 2
+        let neighbors = db.get_neighboring_chunks(parsed_file.id.unwrap(), 5, 2).unwrap();
+
+        // Check that the correct neighboring chunks are returned
+        assert_eq!(neighbors.len(), 5);
+        let expected_positions = vec![3, 4, 5, 6, 7];
+        for (i, chunk) in neighbors.iter().enumerate() {
+            assert_eq!(chunk.position, expected_positions[i]);
         }
     }
 }

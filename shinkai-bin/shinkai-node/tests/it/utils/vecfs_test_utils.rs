@@ -23,7 +23,7 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_vector_resources::resource_errors::VRError;
+
 use std::path::Path;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};

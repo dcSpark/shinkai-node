@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde_json::json;
+use std::collections::HashMap;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
@@ -19,7 +19,7 @@ impl JobPromptGenerator {
         custom_user_prompt: Option<String>,
         user_message: String,
         image_files: HashMap<String, String>,
-        ret_nodes: Vec<ShinkaiFileChunkCollection>, // TODO: is this correct to be Vec?
+        ret_nodes: ShinkaiFileChunkCollection,
         _summary_text: Option<String>,
         job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
@@ -61,9 +61,9 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
             }
-            for node in ret_nodes {
-                prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
-            }
+            
+            prompt.add_ret_node_content(ret_nodes, SubPromptType::ExtraContext, 96);
+
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
             }

@@ -197,57 +197,59 @@ impl Node {
             }
         };
 
-        let vr_path = match input_payload.path {
-            Some(path) => match ShinkaiPath::from_string(&path) {
-                Ok(path) => path,
-                Err(e) => {
-                    let api_error = APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: format!("Failed to convert path to VRPath: {}", e),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            },
-            None => VRPath::root(),
-        };
-        let reader = vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await;
-        let reader = match reader {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
-        let max_results = input_payload.max_results.unwrap_or(100) as u64;
+        // let vr_path = match input_payload.path {
+        //     Some(path) => match ShinkaiPath::from_string(&path) {
+        //         Ok(path) => path,
+        //         Err(e) => {
+        //             let api_error = APIError {
+        //                 code: StatusCode::BAD_REQUEST.as_u16(),
+        //                 error: "Bad Request".to_string(),
+        //                 message: format!("Failed to convert path to VRPath: {}", e),
+        //             };
+        //             let _ = res.send(Err(api_error)).await;
+        //             return Ok(());
+        //         }
+        //     },
+        //     None => VRPath::root(),
+        // };
+        // let reader = vector_fs
+        //     .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+        //     .await;
+        // let reader = match reader {
+        //     Ok(reader) => reader,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create reader: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let query_embedding = vector_fs
-            .generate_query_embedding_using_reader(input_payload.search, &reader)
-            .await
-            .unwrap();
-        let search_results = vector_fs
-            .vector_search_fs_item(&reader, query_embedding, max_resources_to_search)
-            .await
-            .unwrap();
+        // let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
+        // let max_results = input_payload.max_results.unwrap_or(100) as u64;
 
-        let results: Vec<String> = search_results
-            .into_iter()
-            .map(|res| res.path.to_string())
-            .take(max_results as usize)
-            .collect();
+        // let query_embedding = vector_fs
+        //     .generate_query_embedding_using_reader(input_payload.search, &reader)
+        //     .await
+        //     .unwrap();
+        // let search_results = vector_fs
+        //     .vector_search_fs_item(&reader, query_embedding, max_resources_to_search)
+        //     .await
+        //     .unwrap();
 
-        let _ = res.send(Ok(results)).await.map_err(|_| ());
-        Ok(())
+        // let results: Vec<String> = search_results
+        //     .into_iter()
+        //     .map(|res| res.path.to_string())
+        //     .take(max_results as usize)
+        //     .collect();
+
+        // let _ = res.send(Ok(results)).await.map_err(|_| ());
+        // Ok(())
     }
 
     // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
@@ -281,49 +283,51 @@ impl Node {
             None => ShinkaiPath::from_str(""),
         };
 
-        let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
-        let max_results = input_payload.max_results.unwrap_or(100) as u64;
-        
-        let search_results = match vector_fs
-            .deep_vector_search(
-                &reader,
-                input_payload.search.clone(),
-                max_resources_to_search,
-                max_results,
-                vec![],
-            )
-            .await
-        {
-            Ok(results) => results,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to perform deep vector search: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        // TODO: Change path to be a single output string.
-        // - Also return the source metadata, potentially using the format output method
-        // that is used for showing search results to LLMs
-        let results: Vec<(String, Vec<String>, f32)> = search_results
-            .into_iter()
-            .map(|res| {
-                let content = match res.resource_retrieved_node.node.get_text_content() {
-                    Ok(text) => text.to_string(),
-                    Err(_) => "".to_string(),
-                };
-                let path_ids = res.clone().fs_item_path().path_ids;
-                let score = res.resource_retrieved_node.score;
-                (content, path_ids, score)
-            })
-            .collect();
+        // let max_resources_to_search = input_payload.max_files_to_scan.unwrap_or(100) as u64;
+        // let max_results = input_payload.max_results.unwrap_or(100) as u64;
 
-        let _ = res.send(Ok(results)).await.map_err(|_| ());
-        Ok(())
+        // let search_results = match vector_fs
+        //     .deep_vector_search(
+        //         &reader,
+        //         input_payload.search.clone(),
+        //         max_resources_to_search,
+        //         max_results,
+        //         vec![],
+        //     )
+        //     .await
+        // {
+        //     Ok(results) => results,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to perform deep vector search: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // // TODO: Change path to be a single output string.
+        // // - Also return the source metadata, potentially using the format output method
+        // // that is used for showing search results to LLMs
+        // let results: Vec<(String, Vec<String>, f32)> = search_results
+        //     .into_iter()
+        //     .map(|res| {
+        //         let content = match res.resource_retrieved_node.node.get_text_content() {
+        //             Ok(text) => text.to_string(),
+        //             Err(_) => "".to_string(),
+        //         };
+        //         let path_ids = res.clone().fs_item_path().path_ids;
+        //         let score = res.resource_retrieved_node.score;
+        //         (content, path_ids, score)
+        //     })
+        //     .collect();
+
+        // let _ = res.send(Ok(results)).await.map_err(|_| ());
+        // Ok(())
     }
 
     pub async fn api_vec_fs_create_folder(
@@ -350,51 +354,53 @@ impl Node {
             }
         };
 
-        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let writer = match vector_fs
-            .new_writer(requester_name.clone(), vr_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        match vector_fs.create_new_folder(&writer, &input_payload.folder_name).await {
-            Ok(_) => {
-                let success_message = format!("Folder '{}' created successfully.", input_payload.folder_name);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create new folder: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        // let writer = match vector_fs
+        //     .new_writer(requester_name.clone(), vr_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(writer) => writer,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create writer: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // match vector_fs.create_new_folder(&writer, &input_payload.folder_name).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Folder '{}' created successfully.", input_payload.folder_name);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create new folder: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     pub async fn api_vec_fs_move_folder(
@@ -421,63 +427,65 @@ impl Node {
             }
         };
 
-        let folder_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert item path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert destination path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let orig_writer = match vector_fs
-            .new_writer(requester_name.clone(), folder_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer for original folder: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let folder_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to convert item path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to convert destination path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        match vector_fs.move_folder(&orig_writer, destination_path).await {
-            Ok(_) => {
-                let success_message = format!("Folder moved successfully to {}", input_payload.destination_path);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to move folder: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        // let orig_writer = match vector_fs
+        //     .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(writer) => writer,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create writer for original folder: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // match vector_fs.move_folder(&orig_writer, destination_path).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Folder moved successfully to {}", input_payload.destination_path);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to move folder: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     pub async fn api_vec_fs_copy_folder(
@@ -504,64 +512,66 @@ impl Node {
             }
         };
 
-        let folder_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert folder path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert destination path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let folder_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert folder path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let orig_writer = match vector_fs
-            .new_writer(requester_name.clone(), folder_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer for original folder: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert destination path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        match vector_fs.copy_folder(&orig_writer, destination_path).await {
-            Ok(_) => {
-                let success_message = format!("Folder copied successfully to {}", input_payload.destination_path);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to copy folder: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        // let orig_writer = match vector_fs
+        //     .new_writer(requester_name.clone(), folder_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(writer) => writer,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create writer for original folder: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // match vector_fs.copy_folder(&orig_writer, destination_path).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Folder copied successfully to {}", input_payload.destination_path);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to copy folder: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     pub async fn api_vec_fs_delete_item(
@@ -588,51 +598,53 @@ impl Node {
             }
         };
 
-        let item_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert item path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let orig_writer = match vector_fs
-            .new_writer(requester_name.clone(), item_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer for item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let item_path = match ShinkaiPath::from_string(&input_payload.path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert item path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        match vector_fs.delete_item(&orig_writer).await {
-            Ok(_) => {
-                let success_message = format!("Item successfully deleted: {}", input_payload.path);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to move item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        // let orig_writer = match vector_fs
+        //     .new_writer(requester_name.clone(), item_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(writer) => writer,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create writer for item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // match vector_fs.delete_item(&orig_writer).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Item successfully deleted: {}", input_payload.path);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to move item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     pub async fn api_vec_fs_delete_folder(
@@ -659,51 +671,53 @@ impl Node {
             }
         };
 
-        let item_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert folder path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let orig_writer = match vector_fs
-            .new_writer(requester_name.clone(), item_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer for item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let item_path = match ShinkaiPath::from_string(&input_payload.path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert folder path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        match vector_fs.delete_folder(&orig_writer).await {
-            Ok(_) => {
-                let success_message = format!("Folder successfully deleted: {}", input_payload.path);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to move item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        // let orig_writer = match vector_fs
+        //     .new_writer(requester_name.clone(), item_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(writer) => writer,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create writer for item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // match vector_fs.delete_folder(&orig_writer).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Folder successfully deleted: {}", input_payload.path);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to move item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     pub async fn api_vec_fs_move_item(
@@ -730,64 +744,66 @@ impl Node {
             }
         };
 
-        let item_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert item path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert destination path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let item_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert item path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let orig_writer = match vector_fs
-            .new_writer(requester_name.clone(), item_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer for original item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert destination path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        match vector_fs.move_item(&orig_writer, destination_path).await {
-            Ok(_) => {
-                let success_message = format!("Item moved successfully to {}", input_payload.destination_path);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to move item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        // let orig_writer = match vector_fs
+        //     .new_writer(requester_name.clone(), item_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(writer) => writer,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create writer for original item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // match vector_fs.move_item(&orig_writer, destination_path).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Item moved successfully to {}", input_payload.destination_path);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to move item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     pub async fn api_vec_fs_copy_item(
@@ -814,63 +830,65 @@ impl Node {
             }
         };
 
-        let item_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert item path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert destination path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
 
-        let orig_writer = match vector_fs
-            .new_writer(requester_name.clone(), item_path, requester_name.clone())
-            .await
-        {
-            Ok(writer) => writer,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create writer for original item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let item_path = match ShinkaiPath::from_string(&input_payload.origin_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to convert item path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let destination_path = match ShinkaiPath::from_string(&input_payload.destination_path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to convert destination path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        match vector_fs.copy_item(&orig_writer, destination_path).await {
-            Ok(_) => {
-                let success_message = format!("Item copied successfully to {}", input_payload.destination_path);
-                let _ = res.send(Ok(success_message)).await.map_err(|_| ());
-                Ok(())
-            }
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to copy item: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
+        // let orig_writer = match vector_fs
+        //     .new_writer(requester_name.clone(), item_path, requester_name.clone())
+        //     .await
+        // {
+        //     Ok(writer) => writer,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create writer for original item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // match vector_fs.copy_item(&orig_writer, destination_path).await {
+        //     Ok(_) => {
+        //         let success_message = format!("Item copied successfully to {}", input_payload.destination_path);
+        //         let _ = res.send(Ok(success_message)).await.map_err(|_| ());
+        //         Ok(())
+        //     }
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to copy item: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     pub async fn api_vec_fs_retrieve_vector_resource(
@@ -897,62 +915,64 @@ impl Node {
                     return Ok(());
                 }
             };
-        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let reader = vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await;
-        let reader = match reader {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
 
-        let result = vector_fs.retrieve_vector_resource(&reader).await;
-        let result = match result {
-            Ok(result) => result,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve vector resource: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
+        // let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let reader = vector_fs
+        //     .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+        //     .await;
+        // let reader = match reader {
+        //     Ok(reader) => reader,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create reader: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let json_resp = match result.to_json_value() {
-            Ok(result) => result,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert vector resource to json: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let _ = res.send(Ok(json_resp)).await.map_err(|_| ());
-        Ok(())
+        // let result = vector_fs.retrieve_vector_resource(&reader).await;
+        // let result = match result {
+        //     Ok(result) => result,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to retrieve vector resource: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+
+        // let json_resp = match result.to_json_value() {
+        //     Ok(result) => result,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to convert vector resource to json: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let _ = res.send(Ok(json_resp)).await.map_err(|_| ());
+        // Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1010,39 +1030,41 @@ impl Node {
             }
         };
 
-        type FileData = (String, Vec<u8>);
-        type FileDataVec = Vec<FileData>;
+        unimplemented!();
 
-        // Sort out the vrpacks from the rest
-        let (vr_packs, other_files): (FileDataVec, FileDataVec) =
-            files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
+        // type FileData = (String, Vec<u8>);
+        // type FileDataVec = Vec<FileData>;
 
-        for (filename, data) in other_files {
-            let file_path = destination_path.join(&filename);
-            let result = ShinkaiFileManager::save_and_process_file(
-                file_path,
-                data,
-                Path::new("/base/dir"), // Replace with actual base directory path
-                &db,
-                FileProcessingMode::Auto,
-                &*embedding_generator,
-            )
-            .await;
+        // // Sort out the vrpacks from the rest
+        // let (vr_packs, other_files): (FileDataVec, FileDataVec) =
+        //     files.into_iter().partition(|(name, _)| name.ends_with(".vrpack"));
 
-            if let Err(e) = result {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Error processing file '{}': {}", filename, e),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        }
+        // for (filename, data) in other_files {
+        //     let file_path = destination_path.join(&filename);
+        //     let result = ShinkaiFileManager::save_and_process_file(
+        //         file_path,
+        //         data,
+        //         Path::new("/base/dir"), // Replace with actual base directory path
+        //         &db,
+        //         FileProcessingMode::Auto,
+        //         &*embedding_generator,
+        //     )
+        //     .await;
 
-        // Handle vr_packs if necessary
-        // ...
+        //     if let Err(e) = result {
+        //         let _ = res
+        //             .send(Err(APIError {
+        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //                 error: "Internal Server Error".to_string(),
+        //                 message: format!("Error processing file '{}': {}", filename, e),
+        //             }))
+        //             .await;
+        //         return Ok(());
+        //     }
+        // }
+
+        // // Handle vr_packs if necessary
+        // // ...
 
         Ok(())
     }
@@ -1071,72 +1093,74 @@ impl Node {
                 return Ok(());
             }
         };
-        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let reader = vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await;
-        let reader = match reader {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
 
-        let result = vector_fs.retrieve_vrkai(&reader).await;
-        let result = match result {
-            Ok(result) => result,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve vector resource: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
+        // let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let reader = vector_fs
+        //     .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+        //     .await;
+        // let reader = match reader {
+        //     Ok(reader) => reader,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create reader: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        if env::var("DEBUG_VRKAI").is_ok() {
-            let debug_content = result.resource.resource_contents_by_hierarchy_to_string();
-            let file_name = format!("tmp/{}.txt", input_payload.path.replace("/", "_"));
-            let path = Path::new(&file_name);
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).unwrap();
-            }
-            fs::write(path, debug_content).unwrap();
-        }
+        // let result = vector_fs.retrieve_vrkai(&reader).await;
+        // let result = match result {
+        //     Ok(result) => result,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to retrieve vector resource: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let json_resp = match result.encode_as_base64() {
-            Ok(result) => result,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert vector resource to json: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let _ = res.send(Ok(json_resp)).await.map_err(|_| ());
-        Ok(())
+        // if env::var("DEBUG_VRKAI").is_ok() {
+        //     let debug_content = result.resource.resource_contents_by_hierarchy_to_string();
+        //     let file_name = format!("tmp/{}.txt", input_payload.path.replace("/", "_"));
+        //     let path = Path::new(&file_name);
+        //     if let Some(parent) = path.parent() {
+        //         fs::create_dir_all(parent).unwrap();
+        //     }
+        //     fs::write(path, debug_content).unwrap();
+        // }
+
+        // let json_resp = match result.encode_as_base64() {
+        //     Ok(result) => result,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to convert vector resource to json: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let _ = res.send(Ok(json_resp)).await.map_err(|_| ());
+        // Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1163,61 +1187,62 @@ impl Node {
                 return Ok(());
             }
         };
-        let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
-            Ok(path) => path,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to convert path to VRPath: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let reader = vector_fs
-            .new_reader(requester_name.clone(), vr_path, requester_name.clone())
-            .await;
-        let reader = match reader {
-            Ok(reader) => reader,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create reader: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        unimplemented!();
+        // let vr_path = match ShinkaiPath::from_string(&input_payload.path) {
+        //     Ok(path) => path,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::BAD_REQUEST.as_u16(),
+        //             error: "Bad Request".to_string(),
+        //             message: format!("Failed to convert path to VRPath: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let reader = vector_fs
+        //     .new_reader(requester_name.clone(), vr_path, requester_name.clone())
+        //     .await;
+        // let reader = match reader {
+        //     Ok(reader) => reader,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to create reader: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let result = vector_fs.retrieve_vrpack(&reader).await;
-        let result = match result {
-            Ok(result) => result,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve vector resource: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // let result = vector_fs.retrieve_vrpack(&reader).await;
+        // let result = match result {
+        //     Ok(result) => result,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to retrieve vector resource: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
 
-        let resp = match result.encode_as_base64() {
-            Ok(result) => result,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert vector resource to json: {}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        let _ = res.send(Ok(resp)).await.map_err(|_| ());
-        Ok(())
+        // let resp = match result.encode_as_base64() {
+        //     Ok(result) => result,
+        //     Err(e) => {
+        //         let api_error = APIError {
+        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //             error: "Internal Server Error".to_string(),
+        //             message: format!("Failed to convert vector resource to json: {}", e),
+        //         };
+        //         let _ = res.send(Err(api_error)).await;
+        //         return Ok(());
+        //     }
+        // };
+        // let _ = res.send(Ok(resp)).await.map_err(|_| ());
+        // Ok(())
     }
 }

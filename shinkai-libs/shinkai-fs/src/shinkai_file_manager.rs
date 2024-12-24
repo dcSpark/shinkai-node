@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use std::time::SystemTime;
 
+use chrono::{DateTime, Utc};
+use serde::Serializer;
 use serde::{Deserialize, Serialize};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_message_primitives::schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk};
@@ -19,7 +20,9 @@ pub struct ShinkaiFileManager;
 pub struct FileInfo {
     pub name: String,
     pub is_directory: bool,
+    #[serde(serialize_with = "serialize_system_time")]
     pub created_time: Option<SystemTime>,
+    #[serde(serialize_with = "serialize_system_time")]
     pub modified_time: Option<SystemTime>,
     pub has_embeddings: bool,
 }
@@ -36,7 +39,6 @@ impl ShinkaiFileManager {
     pub async fn save_and_process_file(
         dest_path: ShinkaiPath,
         data: Vec<u8>,
-        base_dir: &Path,
         sqlite_manager: &SqliteManager,
         mode: FileProcessingMode,
         generator: &dyn EmbeddingGenerator,
@@ -46,7 +48,7 @@ impl ShinkaiFileManager {
 
         // Process the file for embeddings if the mode is not NoParsing
         if mode != FileProcessingMode::NoParsing {
-            Self::process_embeddings_for_file(dest_path, base_dir, sqlite_manager, mode, generator).await;
+            let _ = Self::process_embeddings_for_file(dest_path, sqlite_manager, mode, generator).await;
         }
 
         Ok(())
@@ -56,7 +58,6 @@ impl ShinkaiFileManager {
     /// If already processed, consider checking if file changed (not implemented here).
     pub async fn process_embeddings_for_file(
         path: ShinkaiPath,
-        base_dir: &Path,
         sqlite_manager: &SqliteManager,
         mode: FileProcessingMode, // TODO: maybe we dont need this?
         generator: &dyn EmbeddingGenerator,
@@ -66,7 +67,8 @@ impl ShinkaiFileManager {
         }
 
         // Compute the relative path
-        let rel_path = Self::compute_relative_path(&path, base_dir)?;
+        let rel_path = path.relative_path();
+        eprintln!("rel_path: {:?}", rel_path);
 
         // Check if the file is already processed
         if let Some(_parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
@@ -94,7 +96,7 @@ impl ShinkaiFileManager {
         // Add the parsed file to the database
         let parsed_file = ParsedFile {
             id: None, // Expected. The DB will auto-generate the id.
-            relative_path: rel_path.clone(),
+            relative_path: rel_path.to_string(),
             original_extension: path.extension().map(|s| s.to_string()),
             description: None, // TODO: connect this
             source: None,      // TODO: connect this
@@ -123,7 +125,8 @@ impl ShinkaiFileManager {
                 position: position as i64,
                 content: text_group.text.clone(),
             };
-            sqlite_manager.add_chunk(&chunk)?;
+            sqlite_manager
+                .create_chunk_with_embedding(&chunk, Some(&text_group.embedding.as_ref().unwrap().clone()))?;
         }
 
         Ok(())
@@ -155,7 +158,7 @@ impl ShinkaiFileManager {
         }
 
         // Use the relative path for querying the database
-        let rel_path = Self::compute_relative_path(&path, path.as_path())?;
+        let rel_path = path.relative_path();
         let files_with_embeddings = sqlite_manager.get_processed_files_in_directory(&rel_path)?;
 
         // Create a hash map for files with embeddings
@@ -175,6 +178,18 @@ impl ShinkaiFileManager {
     }
 }
 
+// Custom serializer for SystemTime to ISO8601
+fn serialize_system_time<S>(time: &Option<SystemTime>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if let Some(system_time) = time {
+        let datetime: DateTime<Utc> = (*system_time).into();
+        return serializer.serialize_some(&datetime.to_rfc3339());
+    }
+    serializer.serialize_none()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,12 +198,21 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
     use std::fs::{self, File};
     use std::io::Write;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::{tempdir, NamedTempFile};
 
     fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
         let db_path = PathBuf::from(temp_file.path());
+        eprintln!("db_path: {:?}", db_path);
+
+        // Delete the database file if it exists
+        if db_path.exists() {
+            std::fs::remove_file(&db_path).unwrap_or_else(|e| {
+                eprintln!("Failed to delete existing database file: {}", e);
+            });
+        }
+
         let api_url = String::new();
         let model_type =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
@@ -223,19 +247,27 @@ mod tests {
 
         // Create a temporary directory and file path
         let dir = tempdir().unwrap();
-        let file_path = dir.path().join("test_file.txt");
+        let file_path = "test_file.txt".to_string();
+
+        // Set the environment variable to the temporary directory path
+        std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
+
+        let vr_path = ShinkaiPath::from_base_path();
+        eprintln!("vr_path: {:?}", vr_path.as_path());
+
+        // Check if the directory exists, and create it if it doesn't
+        if !Path::new(&vr_path.as_path()).exists() {
+            let _ = fs::create_dir_all(&vr_path.as_path()).map_err(|e| {
+                eprintln!("Failed to create directory {}: {}", vr_path.as_path().display(), e);
+            });
+        }
 
         // Create a mock embedding generator
         let model_type =
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
-        let generator = MockGenerator::new(model_type, 128); // 128 is the number of floats in the mock embedding
+        let generator = MockGenerator::new(model_type, 384); // 128 is the number of floats in the mock embedding
 
-        (
-            db,
-            dir,
-            ShinkaiPath::from_string(file_path.to_str().unwrap().to_string()),
-            generator,
-        )
+        (db, dir, ShinkaiPath::from_string(file_path), generator)
     }
 
     // Helper function to write large content to a file
@@ -255,18 +287,17 @@ mod tests {
 
     #[test]
     fn test_list_directory_contents() {
-        let db = setup_test_db();
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
 
         // Create a temporary directory
-        let dir = tempdir().unwrap();
-        let dir_path = ShinkaiPath::from_string(dir.path().to_string_lossy().to_string());
+        let dir_path = ShinkaiPath::from_base_path();
 
         // Create a subdirectory and a file inside the temporary directory
-        let subdir_path = dir.path().join("subdir");
-        fs::create_dir(&subdir_path).unwrap();
+        let subdir_path = ShinkaiPath::from_string("subdir".to_string());
+        fs::create_dir(&subdir_path.path).unwrap();
 
-        let file_path = dir.path().join("test_file.txt");
-        let mut file = File::create(&file_path).unwrap();
+        let file_path = ShinkaiPath::from_string("test_file.txt".to_string());
+        let mut file = File::create(&file_path.path).unwrap();
         writeln!(file, "Hello, Shinkai!").unwrap();
 
         // Call the function to list directory contents
@@ -292,39 +323,39 @@ mod tests {
 
     #[test]
     fn test_list_directory_contents_with_db_entries() {
-        let db = setup_test_db();
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
 
         // Initialize the database tables
         let conn = db.get_connection().unwrap();
         SqliteManager::initialize_filesystem_tables(&conn).unwrap();
 
+        let pf1_path = ShinkaiPath::from_string("january.txt".to_string());
+        let pf2_path = ShinkaiPath::from_string("february.txt".to_string());
+
         // Add parsed files with different relative paths
-        let pf1 = create_test_parsed_file(1, "january.txt");
-        let pf2 = create_test_parsed_file(2, "february.txt");
+        let pf1 = create_test_parsed_file(1, &pf1_path.relative_path());
+        let pf2 = create_test_parsed_file(2, &pf2_path.relative_path());
         db.add_parsed_file(&pf1).unwrap();
         db.add_parsed_file(&pf2).unwrap();
 
         // Create a temporary directory
-        let dir = tempdir().unwrap();
-        let dir_path = ShinkaiPath::from_string(dir.path().to_string_lossy().to_string());
+        let dir_path = ShinkaiPath::from_base_path();
 
         // Create files in the temporary directory to match the database entries
-        let file_path1 = dir.path().join("january.txt");
-        let mut file1 = File::create(&file_path1).unwrap();
+        let mut file1 = File::create(&pf1_path.as_path()).unwrap();
         writeln!(file1, "January report").unwrap();
 
-        let file_path2 = dir.path().join("february.txt");
-        let mut file2 = File::create(&file_path2).unwrap();
+        let mut file2 = File::create(&pf2_path.as_path()).unwrap();
         writeln!(file2, "February report").unwrap();
 
         // Create a file that is not in the database
-        let file_path3 = dir.path().join("march.txt");
-        let mut file3 = File::create(&file_path3).unwrap();
+        let pf3_path = ShinkaiPath::from_string("march.txt".to_string());
+        let mut file3 = File::create(&pf3_path.as_path()).unwrap();
         writeln!(file3, "March report").unwrap();
 
         // Create a subdirectory
-        let subdir_path = dir.path().join("subdir");
-        fs::create_dir(&subdir_path).unwrap();
+        let subdir_path = ShinkaiPath::from_string("subdir".to_string());
+        fs::create_dir(&subdir_path.as_path()).unwrap();
 
         // Call the function to list directory contents
         let contents = ShinkaiFileManager::list_directory_contents(dir_path, &db).unwrap();
@@ -369,7 +400,6 @@ mod tests {
         // Call the process_embeddings_for_file function
         let result = ShinkaiFileManager::process_embeddings_for_file(
             shinkai_path.clone(),
-            dir.path(),
             &db,
             FileProcessingMode::Auto,
             &generator,
@@ -406,7 +436,6 @@ mod tests {
         let result = ShinkaiFileManager::save_and_process_file(
             shinkai_path.clone(),
             data,
-            dir.path(),
             &db,
             FileProcessingMode::Auto,
             &generator,
