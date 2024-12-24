@@ -128,6 +128,7 @@ pub async fn execute_tool_cmd(
     encryption_secret_key: EncryptionStaticKey,
     encryption_public_key: EncryptionPublicKey,
     signing_secret_key: SigningKey,
+    mounts: Option<Vec<String>>,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_tool] with tool_router_key: {}", tool_router_key);
 
@@ -198,6 +199,7 @@ pub async fn execute_tool_cmd(
                         node_name,
                         true,
                         Some(tool_router_key),
+                        mounts,
                     )
                     .map(|result| json!(result.data))
             }
@@ -240,6 +242,7 @@ pub async fn execute_tool_cmd(
                         node_name,
                         true,
                         Some(tool_router_key),
+                        mounts,
                     )
                     .map(|result| json!(result.data))
                     .map_err(|e| ToolError::ExecutionError(e.to_string()))
@@ -262,6 +265,7 @@ pub async fn execute_code(
     llm_provider: String,
     bearer: String,
     node_name: ShinkaiName,
+    mounts: Option<Vec<String>>,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
     // Route based on the prefix
@@ -282,6 +286,7 @@ pub async fn execute_code(
                 llm_provider,
                 support_files,
                 code,
+                mounts,
             )
             .await
         }
@@ -301,6 +306,7 @@ pub async fn execute_code(
                 llm_provider,
                 support_files,
                 code,
+                mounts,
             )
             .await
         }

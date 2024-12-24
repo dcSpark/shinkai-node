@@ -801,6 +801,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         encryption_public_key: EncryptionPublicKey,
         signing_secret_key: SigningKey,
+        mounts: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -827,6 +828,7 @@ impl Node {
             encryption_secret_key,
             encryption_public_key,
             signing_secret_key,
+            mounts,
         )
         .await;
 
@@ -863,6 +865,7 @@ impl Node {
         app_id: String,
         llm_provider: String,
         node_name: ShinkaiName,
+        mounts: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -889,6 +892,7 @@ impl Node {
             llm_provider,
             bearer,
             node_name,
+            mounts,
         )
         .await;
 
@@ -1632,7 +1636,7 @@ impl Node {
         };
 
         // Save the tool to the database
-        let mut db_write = db;
+        let db_write = db;
         match db_write.add_tool(tool).await {
             Ok(tool) => {
                 let archive_clone = zip_contents.archive.clone();
@@ -1814,7 +1818,6 @@ impl Node {
         file_name: String,
         file_data: Vec<u8>,
         node_env: NodeEnvironment,
-
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
