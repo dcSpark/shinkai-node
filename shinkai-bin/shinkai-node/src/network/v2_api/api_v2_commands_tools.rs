@@ -1689,7 +1689,7 @@ impl Node {
         };
 
         // Save the tool to the database
-        let mut db_write = db;
+        let db_write = db;
         match db_write.add_tool(tool).await {
             Ok(tool) => {
                 let archive_clone = archive.clone();
