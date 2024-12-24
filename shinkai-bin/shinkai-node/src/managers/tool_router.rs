@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
+use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
@@ -621,6 +622,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
+                let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
+                let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
+                if let Err(e) = mounts {
+                    eprintln!("Failed to list app files: {:?}", e);
+                    return Err(LLMProviderError::FunctionExecutionError(format!("{:?}", e)));
+                }
+                let mounts = Some(mounts.unwrap_or_default());
+
                 let result = python_tool
                     .run(
                         envs,
@@ -635,6 +644,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         None,
+                        mounts,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -678,6 +688,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
                 let envs = generate_execution_environment(
                     context.db(),
                     context.agent().clone().get_id().to_string(),
@@ -689,6 +700,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 )
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+                let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
+                let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
+                if let Err(e) = mounts {
+                    eprintln!("Failed to list app files: {:?}", e);
+                    return Err(LLMProviderError::FunctionExecutionError(format!("{:?}", e)));
+                }
+                let mounts = Some(mounts.unwrap_or_default());
 
                 let result = deno_tool
                     .run(
@@ -704,6 +723,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         Some(tool_id),
+                        mounts,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -1052,6 +1072,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 requester_node_name,
                 true,
                 Some(tool_id),
+                None,
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =

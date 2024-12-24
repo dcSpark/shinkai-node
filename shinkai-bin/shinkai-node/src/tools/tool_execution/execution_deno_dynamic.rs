@@ -26,6 +26,7 @@ pub async fn execute_deno_tool(
     llm_provider: String,
     support_files: HashMap<String, String>,
     code: String,
+    mounts: Option<Vec<String>>,
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
     let tool = DenoTool {
@@ -101,6 +102,7 @@ pub async fn execute_deno_tool(
         node_name,
         false,
         assets_files,
+        mounts,
     ) {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
