@@ -1,7 +1,7 @@
 use std::{env, sync::Arc};
 use std::path::Path;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 
 use serde_json::{json, Value};
 use tokio::fs;
@@ -50,7 +50,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, Node},
+    network::{node_error::NodeError, Node, node_shareable_logic::download_zip_file},
     tools::tool_generation,
     utils::update_global_identity::update_global_identity_name,
 };
@@ -1728,49 +1728,21 @@ impl Node {
             return Ok(());
         }
 
-        // Download the zip file
-        let response = match reqwest::get(&url).await {
-            Ok(response) => response,
+        let zip_contents = match download_zip_file(url, "__agent.json".to_string()).await {
+            Ok(contents) => contents,
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Download Failed".to_string(),
-                    message: format!("Failed to download agent from URL: {}", err),
+                    error: "Invalid Agent Zip".to_string(),
+                    message: format!("Failed to extract agent.json: {:?}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
-
-        // Get the bytes from the response
-        let bytes = match response.bytes().await {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Download Failed".to_string(),
-                    message: format!("Failed to read response bytes: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let bytes = bytes.to_vec();
-        let buffer = tokio::task::spawn_blocking(move || {
-            let cursor = std::io::Cursor::new(bytes);
-            let mut archive = zip::ZipArchive::new(cursor)?;
-            let mut buffer = Vec::new();
-            let mut agent_file = archive.by_name("__agent.json")?;
-            agent_file.read_to_end(&mut buffer)?;
-            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(buffer)
-        })
-        .await
-        .map_err(|e| NodeError::from(e.to_string()))?
-        .map_err(|e| NodeError::from(e.to_string()))?;
 
         // Parse the JSON into an Agent
-        let agent: Agent = serde_json::from_slice(&buffer).map_err(|e| NodeError::from(e.to_string()))?;
+        let agent: Agent = serde_json::from_slice(&zip_contents.buffer).map_err(|e| NodeError::from(e.to_string()))?;
 
         // Save the agent to the database
         match db.add_agent(agent.clone(), &agent.full_identity_name) {

@@ -1,7 +1,7 @@
 use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
@@ -10,7 +10,6 @@ use crate::{
     },
     utils::environment::NodeEnvironment,
 };
-use std::io::Read;
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -43,7 +42,7 @@ use shinkai_tools_primitives::tools::{
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
+use std::{fs::File, io::Write, io::Read, path::Path, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -1613,71 +1612,15 @@ impl Node {
         node_env: NodeEnvironment,
         url: String,
     ) -> Result<Value, APIError> {
-        // Download the zip file
-        let response = match reqwest::get(&url).await {
-            Ok(response) => response,
+        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string()).await {
+            Ok(contents) => contents,
             Err(err) => {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Download Failed".to_string(),
-                    message: format!("Failed to download tool from URL: {}", err),
-                });
+                return Err(err);
             }
         };
-
-        // Get the bytes from the response
-        let bytes = match response.bytes().await {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                return Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Download Failed".to_string(),
-                    message: format!("Failed to read response bytes: {}", err),
-                });
-            }
-        };
-
-        // Create a cursor from the bytes
-        let cursor = std::io::Cursor::new(bytes);
-
-        // Create a zip archive from the cursor
-        let mut archive = match zip::ZipArchive::new(cursor) {
-            Ok(archive) => archive,
-            Err(err) => {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Invalid Zip File".to_string(),
-                    message: format!("Failed to read zip archive: {}", err),
-                });
-            }
-        };
-
-        // Extract and parse tool.json
-        let mut buffer = Vec::new();
-        {
-            let mut tool_file = match archive.by_name("__tool.json") {
-                Ok(file) => file,
-                Err(_) => {
-                    return Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Invalid Tool Archive".to_string(),
-                        message: "Archive does not contain tool.json".to_string(),
-                    });
-                }
-            };
-
-            // Read the tool file contents into a buffer
-            if let Err(err) = tool_file.read_to_end(&mut buffer) {
-                return Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Read Error".to_string(),
-                    message: format!("Failed to read tool.json contents: {}", err),
-                });
-            }
-        } // `tool_file` goes out of scope here
 
         // Parse the JSON into a ShinkaiTool
-        let tool: ShinkaiTool = match serde_json::from_slice(&buffer) {
+        let tool: ShinkaiTool = match serde_json::from_slice(&zip_contents.buffer) {
             Ok(tool) => tool,
             Err(err) => {
                 return Err(APIError {
@@ -1692,7 +1635,7 @@ impl Node {
         let mut db_write = db;
         match db_write.add_tool(tool).await {
             Ok(tool) => {
-                let archive_clone = archive.clone();
+                let archive_clone = zip_contents.archive.clone();
                 let files = archive_clone.file_names();
                 for file in files {
                     println!("File: {:?}", file);
@@ -1701,7 +1644,7 @@ impl Node {
                     }
                     let mut buffer = Vec::new();
                     {
-                        let file = archive.by_name(file);
+                        let file = zip_contents.archive.by_name(file);
                         let mut tool_file = match file {
                             Ok(file) => file,
                             Err(_) => {
