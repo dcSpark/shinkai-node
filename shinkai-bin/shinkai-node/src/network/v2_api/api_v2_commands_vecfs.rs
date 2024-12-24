@@ -717,7 +717,7 @@ impl Node {
         } else {
             format!("{}/{}", path, filename)
         };
-        let full_path = ShinkaiPath::from_string(full_path_str);
+        let full_path = ShinkaiPath::from_string(full_path_str.clone());
 
         // Check if the file already exists
         if full_path.exists() {
@@ -759,61 +759,38 @@ impl Node {
 
     pub async fn v2_retrieve_source_file(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrieveSourceFile,
         bearer: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
+        // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        unimplemented!();
+        // Convert the input path to a ShinkaiPath
+        let vr_path = ShinkaiPath::from_string(input_payload.path.clone());
 
-        // let requester_name = match identity_manager.lock().await.get_main_identity() {
-        //     Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-        //     _ => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Wrong identity type. Expected Standard identity.".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
+        // Read the file content
+        let file_content = match std::fs::read(vr_path.as_path()) {
+            Ok(content) => content,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to read file content: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
-        // let vr_path = ShinkaiPath::from_string(input_payload.path);
+        // Encode the file content in base64
+        let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
 
-        // let source_file_map = match vector_fs.retrieve_source_file_map(&reader).await {
-        //     Ok(source_file_map) => source_file_map,
-        //     Err(e) => {
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("Failed to retrieve source file map: {}", e),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // let source_file = match source_file_map.get_source_file(VRPath::root()) {
-        //     Some(source_file) => source_file,
-        //     None => {
-        //         let api_error = APIError {
-        //             code: StatusCode::NOT_FOUND.as_u16(),
-        //             error: "Not Found".to_string(),
-        //             message: "Source file not found in the source file map".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
-
-        // let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
+        // Send the encoded file content as a response
+        let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
         Ok(())
     }
 }

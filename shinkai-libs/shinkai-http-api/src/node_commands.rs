@@ -643,7 +643,7 @@ pub enum NodeCommand {
     V2ApiSearchItems {
         bearer: String,
         payload: APIVecFsSearchItems,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     V2ApiCreateFilesInbox {
         bearer: String, //

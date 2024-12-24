@@ -1633,10 +1633,11 @@ impl Node {
 
             NodeCommand::V2ApiSearchItems { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let embedding_generator_clone = self.embedding_generator.clone();
 
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_search_items(db_clone, identity_manager_clone, payload, bearer, res).await;
+                    let _ = Node::v2_search_items(db_clone, identity_manager_clone, payload, embedding_generator_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
