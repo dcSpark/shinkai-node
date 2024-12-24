@@ -97,11 +97,14 @@ impl ShinkaiFileManager {
         // Update DB
         let old_rel_path = old_path.relative_path();
         if let Some(mut parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&old_rel_path)? {
-            parsed_file.relative_path = new_path.to_string();
+            parsed_file.relative_path = new_path.relative_path().to_string();
             sqlite_manager.update_parsed_file(&parsed_file)?;
         } else {
             // File not found in DB is not necessarily an error, it just means that it doesn't have embeddings.
-            eprintln!("Rename File not found in DB: {:?} (it just doesn't have embeddings)", old_path);
+            eprintln!(
+                "Rename File not found in DB: {:?} (it just doesn't have embeddings)",
+                old_path
+            );
         }
 
         Ok(())
@@ -384,6 +387,17 @@ mod tests {
         )
         .await;
 
+        {
+            // delete this
+            let base_path = ShinkaiPath::from_base_path();
+            eprintln!("base_path: {:?}", base_path.as_path());
+            let contents = ShinkaiFileManager::list_directory_contents(base_path, &sqlite_manager).unwrap();
+            eprintln!("contents: {:?}", contents);
+
+            let debug = sqlite_manager.debug_get_all_parsed_files().unwrap();
+            eprintln!("debug parsed files: {:?}", debug);
+        }
+
         // Rename the file
         let rename_result = ShinkaiFileManager::rename_file(old_path.clone(), new_path.clone(), &sqlite_manager);
         assert!(
@@ -400,8 +414,15 @@ mod tests {
         eprintln!("results: {:?}", results);
 
         // Check that the file path with the embeddings were updated in the db
-        if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&new_path.relative_path()).unwrap() {
-            assert_eq!(parsed_file.relative_path, new_path.to_string(), "The relative path in the database should be updated to the new path.");
+        if let Some(parsed_file) = sqlite_manager
+            .get_parsed_file_by_rel_path(&new_path.relative_path())
+            .unwrap()
+        {
+            assert_eq!(
+                parsed_file.relative_path,
+                new_path.relative_path(),
+                "The relative path in the database should be updated to the new path."
+            );
         } else {
             panic!("The file should be found in the database with the updated path.");
         }
