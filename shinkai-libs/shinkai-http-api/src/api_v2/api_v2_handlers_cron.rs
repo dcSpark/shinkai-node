@@ -67,6 +67,20 @@ pub fn cron_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(get_cron_schedule_handler);
 
+    let import_cron_task_route = warp::path("import_cron_task")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(import_cron_task_handler);
+
+    let export_cron_task_route = warp::path("export_cron_task")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(export_cron_task_handler);
+
     add_cron_task_route
         .or(list_all_cron_tasks_route)
         .or(get_specific_cron_task_route)
@@ -75,6 +89,8 @@ pub fn cron_routes(
         .or(update_cron_task_route)
         .or(force_execute_cron_task_route)
         .or(get_cron_schedule_route)
+        .or(import_cron_task_route)
+        .or(export_cron_task_route)
 }
 
 #[derive(Deserialize)]
@@ -506,6 +522,115 @@ pub async fn get_cron_schedule_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/import_cron_task",
+    request_body = ImportCronTaskRequest,
+    responses(
+        (status = 200, description = "Successfully imported cron task", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn import_cron_task_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    url: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    node_commands_sender
+        .send(NodeCommand::V2ApiImportCronTask {
+            bearer,
+            url,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/export_cron_task",
+    params(
+        ("cron_task_id" = String, Query, description = "Cron task ID to export")
+    ),
+    responses(
+        (status = 200, description = "Successfully exported cron task", body = Vec<u8>),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn export_cron_task_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let cron_task_id_str = query_params.get("cron_task_id").ok_or_else(|| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The cron_task_id parameter is required".to_string(),
+        })
+    })?;
+
+    // Parse cron_task_id to i64
+    let cron_task_id: i64 = cron_task_id_str.parse().map_err(|_| {
+        warp::reject::custom(APIError {
+            code: 400,
+            error: "Invalid Query".to_string(),
+            message: "The cron_task_id must be a valid integer.".to_string(),
+        })
+    })?;
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiExportCronTask {
+            bearer,
+            cron_task_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(file_bytes) => {
+            // Return the raw bytes with appropriate headers
+            Ok(warp::reply::with_header(
+                warp::reply::with_status(file_bytes, StatusCode::OK),
+                "Content-Type",
+                "application/octet-stream",
+            ))
+        }
+        Err(error) => Ok(warp::reply::with_header(
+            warp::reply::with_status(
+                error.message.as_bytes().to_vec(),
+                StatusCode::from_u16(error.code).unwrap()
+            ),
+            "Content-Type",
+            "text/plain",
+        ))
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -517,6 +642,8 @@ pub async fn get_cron_schedule_handler(
         update_cron_task_handler,
         force_execute_cron_task_handler,
         get_cron_schedule_handler,
+        import_cron_task_handler,
+        export_cron_task_handler,
     ),
     components(
         schemas(CronTask, CronTaskAction, APIError)

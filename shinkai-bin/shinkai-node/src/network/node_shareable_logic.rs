@@ -1,7 +1,9 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentityType};
 use std::sync::Arc;
+use std::io::Read;
 use tokio::sync::Mutex;
+use tokio_util::bytes::Bytes;
 
 use crate::managers::identity_manager::IdentityManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
@@ -185,4 +187,83 @@ pub async fn validate_message_main_logic(
     }
 
     Ok((msg, sender_subidentity))
+}
+
+pub struct ZipFileContents {
+    pub buffer: Vec<u8>,
+    pub archive: zip::ZipArchive<std::io::Cursor<Bytes>>,
+}
+
+pub async fn download_zip_file(url: String, file_name: String) -> Result<ZipFileContents, APIError> {
+    // Download the zip file
+    let response = match reqwest::get(&url).await {
+        Ok(response) => response,
+        Err(err) => {
+            return Err(APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Download Failed".to_string(),
+                message: format!("Failed to download agent from URL: {}", err),
+            });
+        }
+    };
+
+    // Get the bytes from the response
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Download Failed".to_string(),
+                message: format!("Failed to read response bytes: {}", err),
+            });
+        }
+    };
+
+    // Create a cursor from the bytes
+    let cursor = std::io::Cursor::new(bytes.clone());
+
+    // Create a zip archive from the cursor
+    let mut archive = match zip::ZipArchive::new(cursor) {
+        Ok(archive) => archive,
+        Err(err) => {
+            return Err(APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Invalid Zip File".to_string(),
+                message: format!("Failed to read zip archive: {}", err),
+            });
+        }
+    };
+
+    // Extract and parse file
+    let mut buffer = Vec::new();
+    {
+        let mut file = match archive.by_name(&file_name) {
+            Ok(file) => file,
+            Err(_) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Zip File".to_string(),
+                    message: format!("Archive does not contain {}", file_name),
+                });
+            }
+        };
+
+        // Read the file contents into a buffer
+        if let Err(err) = file.read_to_end(&mut buffer) {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Read Error".to_string(),
+                message: format!("Failed to read file contents: {}", err),
+            });
+        }
+    }
+
+    // Create a new cursor and archive for returning
+    let return_cursor = std::io::Cursor::new(bytes);
+    let return_archive = zip::ZipArchive::new(return_cursor).unwrap();
+
+    Ok(ZipFileContents {
+        buffer,
+        archive: return_archive,
+    })
 }
