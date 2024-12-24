@@ -96,7 +96,7 @@ impl ToolRouter {
         let _ = self.add_rust_tools().await;
         let _ = self.add_python_tools().await;
         let _ = self.add_static_prompts(generator).await;
-
+        let _ = Self::import_tools_from_directory(self.sqlite_manager.clone()).await;
         Ok(())
     }
 
@@ -118,18 +118,55 @@ impl ToolRouter {
             .await
             .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
 
-        for tool in tools {
-            let tool_url = tool["file"]
-                .as_str()
-                .ok_or_else(|| ToolError::ParseError("Missing or invalid file URL in tool definition".to_string()))?;
+        let tool_urls = tools
+            .iter()
+            .map(|tool| {
+                (
+                    tool["name"].as_str(),
+                    tool["file"].as_str(),
+                    tool["router_key"].as_str(),
+                )
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter(|(name, url, router_key)| url.is_some() && name.is_some() && router_key.is_some())
+            .map(|(name, url, router_key)| (name.unwrap(), url.unwrap(), router_key.unwrap()))
+            .collect::<Vec<_>>();
 
-            let tool_name = tool["name"].as_str().unwrap_or("unknown");
+        let futures = tool_urls.into_iter().map(|(tool_name, tool_url, router_key)| {
+            let db = db.clone();
+            let node_env = fetch_node_environment();
+            let tool_url = tool_url.to_string();
+            async move {
+                let tool = db.get_tool_by_key(router_key);
+                let _ = match tool {
+                    Ok(_) => {
+                        println!("Tool already exists: {}", router_key);
+                        return Ok::<(), ToolError>(());
+                    }
+                    Err(SqliteManagerError::ToolNotFound(_)) => {
+                        ();
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to get tool: {:#?}", e);
+                        return Ok::<(), ToolError>(());
+                    }
+                };
 
-            match Node::v2_api_import_tool_internal(db.clone(), fetch_node_environment(), tool_url.to_string()).await {
-                Ok(_) => println!("Successfully imported tool {}", tool_name),
-                Err(e) => eprintln!("Failed to import tool {}: {:#?}", tool_name, e),
+                match Node::v2_api_import_tool_internal(db, node_env, tool_url).await {
+                    Ok(_) => {
+                        println!("Successfully imported tool {}", tool_name);
+                        return Ok::<(), ToolError>(());
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to import tool {}: {:#?}", tool_name, e);
+                        return Ok::<(), ToolError>(()); // Continue on error
+                    }
+                }
             }
-        }
+        });
+
+        futures::future::join_all(futures).await;
 
         Ok(())
     }
@@ -224,7 +261,7 @@ impl ToolRouter {
                 if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
                     continue; // Skip tools that are not in the allowed list
                 }
-                
+
                 println!("Adding JS tool: {}", name);
 
                 let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
