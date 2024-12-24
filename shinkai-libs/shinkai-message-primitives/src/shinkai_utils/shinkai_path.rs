@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
-use std::fs::File;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
 
@@ -118,9 +117,8 @@ impl fmt::Display for ShinkaiPath {
 mod tests {
     use super::*;
     use serial_test::serial;
-    use std::fs::File;
     use std::{env, fs};
-    use tempfile::{tempdir, NamedTempFile};
+    use tempfile::tempdir;
 
     #[test]
     #[serial]

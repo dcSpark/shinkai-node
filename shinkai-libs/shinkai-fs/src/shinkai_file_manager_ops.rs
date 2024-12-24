@@ -166,7 +166,6 @@ impl ShinkaiFileManager {
     // /// removed files should be cleaned up (if desired).
     // pub fn scan_folder(
     //     directory: ShinkaiPath,
-    //     base_dir: &Path,
     //     sqlite_manager: &SqliteManager
     // ) -> Result<(), FileManagerError> {
     //     if !directory.exists() {
