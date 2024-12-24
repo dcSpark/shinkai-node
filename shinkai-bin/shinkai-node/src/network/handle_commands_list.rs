@@ -1637,7 +1637,15 @@ impl Node {
 
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_search_items(db_clone, identity_manager_clone, payload, embedding_generator_clone, bearer, res).await;
+                    let _ = Node::v2_search_items(
+                        db_clone,
+                        identity_manager_clone,
+                        payload,
+                        Arc::new(embedding_generator_clone),
+                        bearer,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
@@ -2502,11 +2510,7 @@ impl Node {
                     let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, res).await;
                 });
             }
-            NodeCommand::V2ApiRemoveTool {
-                bearer,
-                tool_key,
-                res,
-            } => {
+            NodeCommand::V2ApiRemoveTool { bearer, tool_key, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_remove_tool(db_clone, bearer, tool_key, res).await;
@@ -2579,7 +2583,9 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let cron_manager_clone = self.cron_manager.clone().unwrap();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_force_execute_cron_task(db_clone, cron_manager_clone, bearer, cron_task_id, res).await;
+                    let _ =
+                        Node::v2_api_force_execute_cron_task(db_clone, cron_manager_clone, bearer, cron_task_id, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiGetCronSchedule { bearer, res } => {
