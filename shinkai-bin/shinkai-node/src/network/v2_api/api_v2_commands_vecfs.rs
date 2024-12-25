@@ -762,4 +762,48 @@ impl Node {
         let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
         Ok(())
     }
+
+    pub async fn v2_upload_file_to_job(
+        db: Arc<SqliteManager>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+        bearer: String,
+        job_id: String,
+        filename: String,
+        file: Vec<u8>,
+        _file_datetime: Option<DateTime<Utc>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Save and process the file with the job ID
+        match ShinkaiFileManager::save_and_process_file_with_jobid(
+            &job_id,
+            filename.clone(),
+            file,
+            &db,
+            FileProcessingMode::Auto,
+            &*embedding_generator,
+        )
+        .await
+        {
+            Ok(_) => {
+                let success_message = format!("File uploaded and processed successfully for job {}: {}", job_id, filename);
+                let _ = res.send(Ok(serde_json::json!({ "message": success_message }))).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to upload and process file for job {}: {:?}", job_id, e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
 }

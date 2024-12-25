@@ -650,6 +650,14 @@ pub enum NodeCommand {
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiUploadFileToJob {
+        bearer: String,
+        job_id: String,
+        filename: String,
+        file: Vec<u8>,
+        file_datetime: Option<DateTime<Utc>>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiRetrieveSourceFile {
         bearer: String,
         payload: APIVecFsRetrieveSourceFile,

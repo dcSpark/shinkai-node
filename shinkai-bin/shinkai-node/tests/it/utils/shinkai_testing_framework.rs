@@ -25,6 +25,7 @@ pub struct ShinkaiTestingFramework {
     pub node_encryption_pk: EncryptionPublicKey,
     pub node_identity_name: String,
     pub node_profile_name: String,
+    pub bearer_token: String,
 }
 
 impl ShinkaiTestingFramework {
@@ -36,6 +37,7 @@ impl ShinkaiTestingFramework {
         node_encryption_pk: EncryptionPublicKey,
         node_identity_name: String,
         node_profile_name: String,
+        bearer_token: String,
     ) -> Self {
         ShinkaiTestingFramework {
             node_commands_sender,
@@ -44,6 +46,7 @@ impl ShinkaiTestingFramework {
             node_encryption_pk,
             node_identity_name,
             node_profile_name,
+            bearer_token,
         }
     }
 
@@ -128,14 +131,9 @@ impl ShinkaiTestingFramework {
         let file_path = Path::new(file_path);
         upload_file(
             &self.node_commands_sender,
-            self.profile_encryption_sk.clone(),
-            clone_signature_secret_key(&self.profile_identity_sk),
-            self.node_encryption_pk,
-            &self.node_identity_name,
-            &self.node_profile_name,
             folder_name,
             file_path,
-            0, // Example symmetric key index, adjust as needed
+            &self.bearer_token,
         )
         .await;
     }

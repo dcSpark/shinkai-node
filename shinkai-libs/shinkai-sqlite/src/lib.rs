@@ -322,7 +322,6 @@ impl SqliteManager {
                 parent_agent_or_llm_provider_id TEXT NOT NULL,
                 scope TEXT NOT NULL,
                 conversation_inbox_name TEXT NOT NULL,
-                execution_context BLOB,
                 associated_ui TEXT,
                 config TEXT
             );",

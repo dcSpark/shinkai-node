@@ -198,14 +198,9 @@ fn native_tool_test_knowledge() {
                     let file_path = Path::new("../../files/shinkai_intro.vrkai");
                     upload_file(
                         &node1_commands_sender,
-                        node1_profile_encryption_sk.clone(),
-                        clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk,
-                        node1_identity_name,
-                        node1_profile_name,
                         "/test_folder",
                         file_path,
-                        0,
+                        &api_key_bearer.clone(),
                     )
                     .await;
                 }

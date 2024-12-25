@@ -1676,6 +1676,32 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiUploadFileToJob {
+                bearer,
+                job_id,
+                filename,
+                file,
+                file_datetime,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                let embedding_generator_clone = self.embedding_generator.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_upload_file_to_job(
+                        db_clone,
+                        identity_manager_clone,
+                        Arc::new(embedding_generator_clone),
+                        bearer,
+                        job_id,
+                        filename,
+                        file,
+                        file_datetime,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiRetrieveSourceFile { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
 

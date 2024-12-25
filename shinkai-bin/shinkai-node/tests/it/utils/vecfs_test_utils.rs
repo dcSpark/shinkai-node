@@ -583,14 +583,9 @@ pub fn print_subtree(folder: &serde_json::Value, indent: &str, is_last: bool) {
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
     commands_sender: &Sender<NodeCommand>,
-    encryption_sk: EncryptionStaticKey,
-    signature_sk: SigningKey,
-    encryption_pk: EncryptionPublicKey,
-    identity_name: &str,
-    profile_name: &str,
     folder_name: &str,
     file_path: &Path,
-    symmetric_key_index: u32,
+    bearer_token: &str,
 ) {
     eprintln!("file_path: {:?}", file_path);
 
@@ -598,59 +593,64 @@ pub async fn upload_file(
     let current_dir = std::env::current_dir().unwrap();
     println!("Current directory: {:?}", current_dir);
 
-
-    let symmetrical_sk = unsafe_deterministic_aes_encryption_key(symmetric_key_index);
-    eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-
-    // Upload file
+    // Read file data
     let file_data = std::fs::read(file_path).map_err(|_| ShinkaiFsError::FailedPDFParsing).unwrap();
 
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
-    let nonce = GenericArray::from_slice(&[0u8; 12]);
-    let nonce_slice = nonce.as_slice();
-    let nonce_str = aes_nonce_to_hex_string(nonce_slice);
-    let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+    // Extract the file name and extension
+    let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
 
+    // Prepare the response channel
     let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command using V2ApiUploadFileToFolder
     commands_sender
-        .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-            filename: file_path.to_string_lossy().to_string(),
-            file: ciphertext,
-            public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
-            encrypted_nonce: nonce_str,
+        .send(NodeCommand::V2ApiUploadFileToFolder {
+            bearer: bearer_token.to_string(),
+            filename, // Use the extracted filename
+            file: file_data,
+            path: folder_name.to_string(),
+            file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
             res: res_sender,
         })
         .await
         .unwrap();
-    let res = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-    eprintln!("upload_file resp to inbox: {:?}", res);
 
-    // Convert File and Save to Folder
-    let payload = APIConvertFilesAndSaveToFolder {
-        path: folder_name.to_string(),
-        file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
-        file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
-    };
+    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+    eprintln!("upload_file resp to folder: {:?}", resp);
+}
 
-    let msg = generate_message_with_payload(
-        serde_json::to_string(&payload).unwrap(),
-        MessageSchemaType::ConvertFilesAndSaveToFolder,
-        encryption_sk.clone(),
-        signature_sk.clone(),
-        encryption_pk,
-        identity_name,
-        profile_name,
-        identity_name,
-        profile_name,
-    );
+#[allow(clippy::too_many_arguments)]
+pub async fn upload_file_to_job(
+    commands_sender: &Sender<NodeCommand>,
+    job_id: &str,
+    file_path: &Path,
+    bearer_token: &str,
+) {
+    eprintln!("file_path: {:?}", file_path);
 
+    // Print current directory
+    let current_dir = std::env::current_dir().unwrap();
+    println!("Current directory: {:?}", current_dir);
+
+    // Read file data
+    let file_data = std::fs::read(file_path).map_err(|_| ShinkaiFsError::FailedPDFParsing).unwrap();
+
+    // Prepare the response channel
     let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command using V2ApiUploadFileToJob
     commands_sender
-        .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
+        .send(NodeCommand::V2ApiUploadFileToJob {
+            bearer: bearer_token.to_string(),
+            job_id: job_id.to_string(),
+            filename: file_path.to_string_lossy().to_string(),
+            file: file_data,
+            file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
+            res: res_sender,
+        })
         .await
         .unwrap();
-    let resp = res_receiver.recv().await;
-    eprintln!("upload_file resp to folder: {:?}", resp);
-    let resp = resp.unwrap().expect("Failed to receive response");
-    eprintln!("upload_file resp processed: {:?}", resp);
+
+    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+    eprintln!("upload_file_to_job resp: {:?}", resp);
 }
