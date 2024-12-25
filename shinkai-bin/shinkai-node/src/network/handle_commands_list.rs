@@ -1053,26 +1053,6 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => self.api_convert_files_and_save_to_folder(msg, res).await,
-            NodeCommand::APIConvertFilesAndSaveToFolder { msg, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let embedding_generator_clone = self.embedding_generator.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_convert_files_and_save_to_folder(
-                        db_clone,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        Arc::new(embedding_generator_clone),
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
             // NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await,
             NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1546,23 +1526,6 @@ impl Node {
                         db_clone,
                         identity_manager_clone,
                         payload,
-                        bearer,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            NodeCommand::V2ApiConvertFilesAndSaveToFolder { payload, bearer, res } => {
-                let db_clone = Arc::clone(&self.db);
-
-                let identity_manager_clone = self.identity_manager.clone();
-                let embedding_generator_clone = self.embedding_generator.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_convert_files_and_save_to_folder(
-                        db_clone,
-                        identity_manager_clone,
-                        payload,
-                        Arc::new(embedding_generator_clone),
                         bearer,
                         res,
                     )

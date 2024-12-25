@@ -62,37 +62,6 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_convert_files_and_save_to_folder(
-        db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        input_payload: APIConvertFilesAndSaveToFolder,
-        embedding_generator: Arc<dyn EmbeddingGenerator>,
-        bearer: String,
-        res: Sender<Result<Vec<Value>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        unimplemented!();
-
-        // let requester_name = match identity_manager.lock().await.get_main_identity() {
-        //     Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-        //     _ => {
-        //         let api_error = APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Wrong identity type. Expected Standard identity.".to_string(),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
-        //         return Ok(());
-        //     }
-        // };
-
-        // Self::process_and_save_files(db, input_payload, requester_name, embedding_generator, res).await
-    }
-
     pub async fn v2_create_folder(
         db: Arc<SqliteManager>,
         _identity_manager: Arc<Mutex<IdentityManager>>,
@@ -501,7 +470,7 @@ impl Node {
 
     pub async fn v2_search_items(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsSearchItems,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         bearer: String,
@@ -697,13 +666,13 @@ impl Node {
 
     pub async fn v2_upload_file_to_folder(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         bearer: String,
         filename: String,
         file: Vec<u8>,
         path: String,
-        file_datetime: Option<DateTime<Utc>>,
+        _file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token

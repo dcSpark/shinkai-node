@@ -224,12 +224,12 @@ impl SheetManager {
             let job_message = JobMessage {
                 job_id: job_id.clone(),
                 content: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
-                files_inbox: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
                 parent: None,
                 sheet_job_data: Some(serde_json::to_string(&job_data).unwrap()),
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                files: vec![],
             };
 
             job_messages.push((job_message, job_data));

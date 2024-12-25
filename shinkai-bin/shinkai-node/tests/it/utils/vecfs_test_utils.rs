@@ -7,6 +7,7 @@ use ed25519_dalek::SigningKey;
 use rust_decimal::Decimal;
 use serde_json::Value;
 
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscription;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -601,28 +602,8 @@ pub async fn upload_file(
     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(symmetric_key_index);
     eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-    let message_content = aes_encryption_key_to_string(symmetrical_sk);
-    let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
-        encryption_sk.clone(),
-        signature_sk.clone(),
-        encryption_pk,
-        "job::test::false".to_string(),
-        message_content.clone(),
-        profile_name.to_string(),
-        identity_name.to_string(),
-        identity_name.to_string(),
-    )
-    .unwrap();
-
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    commands_sender
-        .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
-        .await
-        .unwrap();
-    let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
-
     // Upload file
-    let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
+    let file_data = std::fs::read(file_path).map_err(|_| ShinkaiFsError::FailedPDFParsing).unwrap();
 
     let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
     let nonce = GenericArray::from_slice(&[0u8; 12]);

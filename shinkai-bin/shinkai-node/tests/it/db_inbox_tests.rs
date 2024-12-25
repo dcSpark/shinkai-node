@@ -1,3 +1,4 @@
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_message_primitives::schemas::identity::{StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;

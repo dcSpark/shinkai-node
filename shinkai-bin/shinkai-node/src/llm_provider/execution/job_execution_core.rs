@@ -574,7 +574,7 @@ impl JobManager {
         db: Arc<SqliteManager>,
         job_message: &JobMessage,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
-        if job_message.files_inbox.is_empty() {
+        if job_message.files.is_empty() {
             return Ok(HashMap::new());
         }
 
@@ -584,7 +584,8 @@ impl JobManager {
             format!("Retrieving files for job message: {}", job_message.job_id).as_str(),
         );
 
-        let files_vec = db.get_all_files_from_inbox(job_message.files_inbox.clone())?;
+        // TODO: get files content from db
+        let files_vec = db.get_all_files_from_inbox(job_message.files.clone())?;
 
         let image_files: HashMap<String, String> = files_vec
             .into_iter()

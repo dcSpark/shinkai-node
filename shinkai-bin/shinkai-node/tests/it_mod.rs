@@ -23,7 +23,6 @@ mod it {
     mod planner_integration_tests;
     mod utils;
     mod vector_fs_api_tests;
-    mod vector_fs_tests;
     mod websocket_tests;
 
     mod change_nodes_name_tests;

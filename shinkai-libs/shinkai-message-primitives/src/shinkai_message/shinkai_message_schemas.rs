@@ -3,6 +3,7 @@ use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionP
 use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::MinimalJobScope;
+use crate::shinkai_utils::shinkai_path::ShinkaiPath;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -317,7 +318,6 @@ pub enum CallbackAction {
 pub struct JobMessage {
     pub job_id: String,
     pub content: String,
-    pub files_inbox: String,
     pub parent: Option<String>,
     pub sheet_job_data: Option<String>,
     // Whenever we need to chain actions, we can use this
@@ -326,6 +326,9 @@ pub struct JobMessage {
     pub metadata: Option<MessageMetadata>,
     // Whenever we want to force the use of a specific tool, we can use this
     pub tool_key: Option<String>,
+    // Field that lists associated files of the message
+    #[serde(default)]
+    pub files: Vec<ShinkaiPath>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, ToSchema)]

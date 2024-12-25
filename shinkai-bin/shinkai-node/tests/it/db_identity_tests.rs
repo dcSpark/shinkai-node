@@ -1,3 +1,4 @@
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_message_primitives::schemas::identity::{StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
@@ -13,7 +14,6 @@ use shinkai_sqlite::SqliteManager;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
-use tokio::sync::RwLock;
 
 use ed25519_dalek::VerifyingKey;
 use x25519_dalek::PublicKey as EncryptionPublicKey;

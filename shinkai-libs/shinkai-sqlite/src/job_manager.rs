@@ -720,7 +720,7 @@ mod tests {
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             "something".to_string(),
-            "".to_string(),
+            vec![],
             None,
             placeholder_signature_sk,
             "@@node1.shinkai".to_string(),
@@ -763,7 +763,7 @@ mod tests {
             let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
-                "".to_string(),
+                vec![],
                 None,
                 placeholder_signature_sk.clone(),
                 "@@node1.shinkai".to_string(),
@@ -1156,7 +1156,7 @@ mod tests {
             let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
-                "".to_string(),
+                vec![],
                 None,
                 placeholder_signature_sk.clone(),
                 "@@node1.shinkai".to_string(),
@@ -1244,7 +1244,7 @@ mod tests {
             let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Hello World {}", i),
-                "".to_string(),
+                vec![],
                 None,
                 placeholder_signature_sk.clone(),
                 "@@node1.shinkai".to_string(),
@@ -1419,7 +1419,7 @@ mod tests {
             let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                 job_id.clone(),
                 format!("Test Message {}", i),
-                "".to_string(),
+                vec![],
                 None,
                 placeholder_signature_sk.clone(),
                 "@@node1.shinkai".to_string(),

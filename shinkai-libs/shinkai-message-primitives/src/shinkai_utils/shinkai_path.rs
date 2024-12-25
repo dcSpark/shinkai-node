@@ -11,12 +11,16 @@ pub struct ShinkaiPath {
 
 impl ShinkaiPath {
     /// Private helper method to create a ShinkaiPath from a &str.
-    fn new(path: &str) -> Self {
+    pub fn new(path: &str) -> Self {
         let base_path = Self::base_path();
         let path_buf = PathBuf::from(path);
 
         let final_path = if path_buf.is_absolute() {
-            base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
+            if path_buf.starts_with(&base_path) {
+                path_buf
+            } else {
+                base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
+            }
         } else {
             base_path.join(path_buf)
         };
@@ -26,7 +30,7 @@ impl ShinkaiPath {
 
     /// Returns the base path from the NODE_STORAGE_PATH environment variable,
     /// joined with "filesystem". Defaults to "storage/filesystem" if not set.
-    fn base_path() -> PathBuf {
+    pub fn base_path() -> PathBuf {
         env::var("NODE_STORAGE_PATH")
             .ok()
             .map(|p| PathBuf::from(p).join("filesystem"))
@@ -115,41 +119,41 @@ impl fmt::Display for ShinkaiPath {
 // Add tests for the new functionality
 #[cfg(test)]
 mod tests {
+    use crate::shinkai_utils::test_utils::testing_create_tempdir_and_set_env_var;
+
     use super::*;
     use serial_test::serial;
     use std::{env, fs};
-    use tempfile::tempdir;
 
     #[test]
     #[serial]
     fn test_base_path() {
-        env::set_var("NODE_STORAGE_PATH", "/Users/Nico/my_path");
+        let _dir = testing_create_tempdir_and_set_env_var();
         assert_eq!(
             ShinkaiPath::base_path(),
-            PathBuf::from("/Users/Nico/my_path/filesystem")
+            PathBuf::from(env::var("NODE_STORAGE_PATH").unwrap()).join("filesystem")
         );
-        env::remove_var("NODE_STORAGE_PATH");
     }
 
     #[test]
     #[serial]
     fn test_from_string_with_base_path() {
-        env::set_var("NODE_STORAGE_PATH", "/Users/Nico/my_path");
-        assert_eq!(env::var("NODE_STORAGE_PATH").unwrap(), "/Users/Nico/my_path");
-
+        let _dir = testing_create_tempdir_and_set_env_var();
         let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
         assert_eq!(
             path.as_path(),
-            Path::new("/Users/Nico/my_path/filesystem/word_files/christmas.docx")
+            Path::new(&format!(
+                "{}/filesystem/word_files/christmas.docx",
+                env::var("NODE_STORAGE_PATH").unwrap()
+            ))
         );
         assert_eq!(path.relative_path(), "word_files/christmas.docx");
-
-        env::remove_var("NODE_STORAGE_PATH");
     }
 
     #[test]
     #[serial]
     fn test_from_string_without_base_path() {
+        let _dir = testing_create_tempdir_and_set_env_var();
         env::remove_var("NODE_STORAGE_PATH");
         let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
         assert_eq!(
@@ -162,16 +166,15 @@ mod tests {
     #[test]
     #[serial]
     fn test_relative_path_outside_base() {
-        env::set_var("NODE_STORAGE_PATH", "/Users/Nico/my_path");
+        let _dir = testing_create_tempdir_and_set_env_var();
         let absolute_outside = ShinkaiPath::from_string("/some/other/path".to_string());
-        // Not under /Users/Nico/my_path/filesystem, so relative_path() returns full path.
-        assert_eq!(absolute_outside.relative_path(), "/some/other/path");
-        env::remove_var("NODE_STORAGE_PATH");
+        assert_eq!(absolute_outside.relative_path(), "some/other/path");
     }
 
     #[test]
     #[serial]
     fn test_extension() {
+        let _dir = testing_create_tempdir_and_set_env_var();
         let path_with_extension = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
         assert_eq!(path_with_extension.extension(), Some("docx"));
 
@@ -180,48 +183,51 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_new_with_base_path() {
+        let _dir = testing_create_tempdir_and_set_env_var();
         let base_path = ShinkaiPath::base_path();
+        eprintln!("base_path: {:?}", base_path);
         let test_path = base_path.join("some/relative/path");
+        eprintln!("test_path: {:?}", test_path);
         let shinkai_path = ShinkaiPath::new(test_path.to_str().unwrap());
-
+        eprintln!("shinkai_path: {:?}", shinkai_path.full_path());
         assert_eq!(shinkai_path.path, test_path);
     }
 
     #[test]
+    #[serial]
     fn test_new_without_base_path() {
+        let _dir = testing_create_tempdir_and_set_env_var();
         let base_path = ShinkaiPath::base_path();
         let relative_path = "some/relative/path";
         let expected_path = base_path.join(relative_path);
         let shinkai_path = ShinkaiPath::new(relative_path);
+        eprintln!("shinkai_path: {:?}", shinkai_path.full_path());
+        eprintln!("expected_path: {:?}", expected_path);
 
         assert_eq!(shinkai_path.path, expected_path);
     }
 
     #[test]
+    #[serial]
     fn test_new_with_root_path() {
+        let _dir = testing_create_tempdir_and_set_env_var();
         let root_path = "/";
         let shinkai_path = ShinkaiPath::new(root_path);
 
-        // Assuming the base path is "storage/filesystem" when NODE_STORAGE_PATH is not set
         let expected_path = ShinkaiPath::base_path().join(root_path.trim_start_matches('/'));
         assert_eq!(shinkai_path.path, expected_path);
     }
 
     #[test]
+    #[serial]
     fn test_is_file() {
-        let dir = tempdir().unwrap();
-
-        // Set the environment variable to the temporary directory path
-        std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
-
+        let _dir = testing_create_tempdir_and_set_env_var();
         let file_path = "test_file.txt";
         let shinkai_path = ShinkaiPath::from_string(file_path.to_string());
-        eprintln!("shinkai_path: {:?}", shinkai_path.as_path());
 
-        // Ensure the parent directory exists
         fs::create_dir_all(shinkai_path.as_path().parent().unwrap()).unwrap();
-
         fs::write(shinkai_path.as_path(), "test".as_bytes()).unwrap();
 
         assert!(shinkai_path.is_file());

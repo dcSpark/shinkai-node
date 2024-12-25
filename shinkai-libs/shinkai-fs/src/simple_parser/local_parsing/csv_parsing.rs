@@ -153,8 +153,17 @@ mod tests {
         let text_groups = result.unwrap();
 
         // Verify the output
-        assert_eq!(text_groups.len(), 1);
-        let expected_text = "header1|header2\nvalue1|value2\nvalue3|value4";
-        assert_eq!(text_groups[0].text, expected_text);
+        assert_eq!(text_groups.len(), 6); // Expecting 6 TextGroups due to max_node_text_size
+        let expected_texts = vec![
+            "header1|he",
+            "ader2",
+            "value1|val",
+            "ue2",
+            "value3|val",
+            "ue4",
+        ];
+        for (i, text_group) in text_groups.iter().enumerate() {
+            assert_eq!(text_group.text, expected_texts[i]);
+        }
     }
 }

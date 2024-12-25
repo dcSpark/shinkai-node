@@ -1,7 +1,7 @@
 use base64::decode;
-use shinkai_message_primitives::schemas::{
+use shinkai_message_primitives::{schemas::{
     llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt,
-};
+}, shinkai_utils::utils::count_tokens_from_message_llama3};
 
 use crate::{
     llm_provider::error::LLMProviderError,
@@ -17,7 +17,7 @@ pub fn llama_prepare_messages(
     let messages_string =
         prompt.generate_genericapi_messages(Some(total_tokens), &ModelCapabilitiesManager::num_tokens_from_llama3)?;
 
-    let used_tokens = ModelCapabilitiesManager::count_tokens_from_message_llama3(&messages_string);
+    let used_tokens = count_tokens_from_message_llama3(&messages_string);
 
     Ok(PromptResult {
         messages: PromptResultEnum::Text(messages_string.clone()),

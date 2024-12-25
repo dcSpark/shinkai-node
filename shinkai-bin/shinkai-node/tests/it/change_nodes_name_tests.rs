@@ -158,7 +158,7 @@ fn change_nodes_name_test() {
             None,
             true,
             vec![],
-            node1_fs_db_path,
+            
             None,
             None,
             default_embedding_model(),

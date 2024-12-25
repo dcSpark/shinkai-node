@@ -2,6 +2,8 @@ use rusqlite::params;
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 
+// TODO: remove this
+
 impl SqliteManager {
     pub fn add_file_to_files_message_inbox(
         &self,

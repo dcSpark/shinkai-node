@@ -203,6 +203,7 @@ pub enum NodeCommand {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     },
+    // TODO: remove this
     APICreateFilesInboxWithSymmetricKey {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -211,6 +212,7 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
     },
+    // TODO: remove this
     APIAddFileToInboxWithSymmetricKey {
         filename: String,
         file: Vec<u8>,
@@ -588,22 +590,6 @@ pub enum NodeCommand {
         bearer: String,
         path: String,
         res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiConvertFilesAndSaveToFolder {
-        bearer: String,
-        payload: APIConvertFilesAndSaveToFolder,
-        res: Sender<Result<Vec<Value>, APIError>>,
-    },
-    V2ApiDownloadFileFromInbox {
-        bearer: String,
-        inbox_name: String,
-        filename: String,
-        res: Sender<Result<Vec<u8>, APIError>>,
-    },
-    V2ApiListFilesInInbox {
-        bearer: String,
-        inbox_name: String,
-        res: Sender<Result<Vec<String>, APIError>>,
     },
     V2ApiVecFSCreateFolder {
         bearer: String,

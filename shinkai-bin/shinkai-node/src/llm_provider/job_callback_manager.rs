@@ -115,7 +115,7 @@ impl JobCallbackManager {
         let shinkai_message = ShinkaiMessageBuilder::job_message_unencrypted(
             job_id.to_string(),
             error_message,
-            "".to_string(),
+            vec![],
             "".to_string(),
             identity_secret_key_clone,
             user_profile.node_name.clone(),

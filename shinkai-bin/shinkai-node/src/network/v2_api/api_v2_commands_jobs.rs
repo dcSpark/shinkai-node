@@ -1345,14 +1345,6 @@ impl Node {
             }
         };
 
-        // Retrieve the file inboxes
-        let file_inboxes = v2_chat_messages
-            .iter()
-            .flatten()
-            .map(|message| message.job_message.files_inbox.clone())
-            .filter(|inbox| !inbox.is_empty())
-            .collect::<HashSet<_>>();
-
         // Remove the job
         match db.remove_job(&job_id) {
             Ok(_) => {}
@@ -1367,21 +1359,22 @@ impl Node {
             }
         }
 
+        // TODO: remove the files from the job folder
         // Remove the file inboxes
-        for file_inbox in file_inboxes {
-            match db.remove_inbox(&file_inbox) {
-                Ok(_) => {}
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to remove file inbox: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        }
+        // for file_inbox in file_inboxes {
+        //     match db.remove_inbox(&file_inbox) {
+        //         Ok(_) => {}
+        //         Err(err) => {
+        //             let api_error = APIError {
+        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //                 error: "Internal Server Error".to_string(),
+        //                 message: format!("Failed to remove file inbox: {}", err),
+        //             };
+        //             let _ = res.send(Err(api_error)).await;
+        //             return Ok(());
+        //         }
+        //     }
+        // }
 
         let _ = res
             .send(Ok(SendResponseBody {
@@ -1437,7 +1430,7 @@ impl Node {
         let file_inboxes = v2_chat_messages
             .iter()
             .flatten()
-            .map(|message| message.job_message.files_inbox.clone())
+            .map(|message| message.job_message.files.clone())
             .collect::<Vec<_>>();
         let mut inbox_filenames = HashMap::new();
 

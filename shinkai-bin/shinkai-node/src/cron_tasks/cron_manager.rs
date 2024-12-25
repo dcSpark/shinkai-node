@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use chrono::{Local, TimeZone, Utc};
+use chrono::{Local, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
@@ -593,19 +593,19 @@ impl CronManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Timelike, Utc};
+    use chrono::Timelike;
     use shinkai_message_primitives::schemas::crontab::CronTaskAction;
 
     fn create_test_cron_task(cron: &str) -> CronTask {
         let job_message = JobMessage {
             job_id: "job_id".to_string(),
             content: "message".to_string(),
-            files_inbox: "".to_string(),
             parent: None,
             sheet_job_data: None,
             callback: None,
             metadata: None,
             tool_key: None,
+            files: vec![],
         };
 
         CronTask {
@@ -631,7 +631,7 @@ mod tests {
 
     #[test]
     fn test_should_execute_specific_minute() {
-        let now = Utc::now();
+        let now = Local::now();
         let next_minute = (now.minute() + 1) % 60;
         let cron = format!("{} * * * *", next_minute);
         let task = create_test_cron_task(&cron);
@@ -642,7 +642,7 @@ mod tests {
 
     #[test]
     fn test_should_not_execute_past_time() {
-        let now = Utc::now();
+        let now = Local::now();
         let past_minute = if now.minute() == 0 { 59 } else { now.minute() - 1 };
         let cron = format!("{} * * * *", past_minute);
         let task = create_test_cron_task(&cron);
@@ -667,7 +667,7 @@ mod tests {
 
     #[test]
     fn test_should_execute_within_interval() {
-        let now = Utc::now();
+        let now = Local::now();
         let next_minute = (now.minute() + 1) % 60;
 
         // Create a cron expression for the next minute, any hour/day/month
@@ -688,7 +688,7 @@ mod tests {
 
     #[test]
     fn test_should_not_execute_outside_interval() {
-        let now = Utc::now();
+        let now = Local::now();
         let future_minute = (now.minute() + 2) % 60;
         let cron = format!("{} * * * *", future_minute);
         let task = create_test_cron_task(&cron);

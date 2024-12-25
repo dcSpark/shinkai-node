@@ -3,6 +3,7 @@ use super::utils::test_boilerplate::run_test_one_node_network;
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, OpenAI, SerializedLLMProvider,
@@ -16,7 +17,6 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_vector_resources::resource_errors::VRError;
 use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
@@ -204,7 +204,7 @@ fn sandwich_messages_with_files_test() {
                 let file_path = Path::new(filename);
 
                 // Read the file into a buffer
-                let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
+                let file_data = std::fs::read(file_path).map_err(|_| ShinkaiFsError::FailedPDFParsing).unwrap();
 
                 // Encrypt the file using Aes256Gcm
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));

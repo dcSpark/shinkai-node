@@ -22,7 +22,7 @@ use crate::{
 };
 
 use super::{
-    encryption::unsafe_deterministic_encryption_keypair, job_scope::MinimalJobScope, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}
+    encryption::unsafe_deterministic_encryption_keypair, job_scope::MinimalJobScope, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}, shinkai_path::ShinkaiPath
 };
 
 impl ShinkaiMessageBuilder {
@@ -130,7 +130,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message(
         job_id: String,
         content: String,
-        files_inbox: String,
+        files: Vec<ShinkaiPath>,
         parent_hash: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -144,7 +144,7 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
-            files_inbox,
+            files,
             parent: Some(parent_hash),
             sheet_job_data: None,
             callback: None,
@@ -177,7 +177,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message_unencrypted(
         job_id: String,
         content: String,
-        files_inbox: String,
+        files: Vec<ShinkaiPath>,
         parent_hash: String,
         my_signature_secret_key: SigningKey,
         node_sender: ShinkaiNameString,
@@ -189,7 +189,7 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
-            files_inbox,
+            files,
             parent: Some(parent_hash),
             sheet_job_data: None,
             callback: None,
@@ -227,7 +227,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message_from_llm_provider(
         job_id: String,
         content: String,
-        files_inbox: String,
+        files: Vec<ShinkaiPath>,
         metadata: Option<MessageMetadata>,
         my_signature_secret_key: SigningKey,
         node_sender: ShinkaiNameString,
@@ -237,12 +237,12 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
-            files_inbox,
             parent: None,
             sheet_job_data: None,
             callback: None,
             metadata,
             tool_key: None,
+            files,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -446,37 +446,6 @@ impl ShinkaiMessageBuilder {
             )
             .external_metadata_with_other(receiver.clone(), sender, other)
             .build()
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[allow(dead_code)]
-    pub fn create_files_inbox_with_sym_key(
-        my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SigningKey,
-        receiver_public_key: EncryptionPublicKey,
-        inbox: String,
-        symmetric_key_sk: String,
-        sender_subidentity: ShinkaiNameString,
-        sender: ShinkaiNameString,
-        receiver: ShinkaiNameString,
-    ) -> Result<ShinkaiMessage, &'static str> {
-        ShinkaiMessageBuilder::new(
-            my_subidentity_encryption_sk,
-            my_subidentity_signature_sk,
-            receiver_public_key,
-        )
-        .message_raw_content(symmetric_key_sk)
-        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .internal_metadata_with_schema(
-            sender_subidentity.clone(),
-            "".to_string(),
-            inbox.to_string(),
-            MessageSchemaType::SymmetricKeyExchange,
-            EncryptionMethod::None,
-            None,
-        )
-        .external_metadata_with_intra_sender(receiver.clone(), sender, sender_subidentity)
-        .build()
     }
 
     #[allow(clippy::too_many_arguments)]

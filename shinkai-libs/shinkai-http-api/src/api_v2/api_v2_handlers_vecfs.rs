@@ -2,7 +2,7 @@ use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
+    APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
     APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
     APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
 };
@@ -34,13 +34,6 @@ pub fn vecfs_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::query::<String>())
         .and_then(retrieve_vector_resource_handler);
-
-    let convert_files_and_save_route = warp::path("convert_files_and_save")
-        .and(warp::post())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::body::json())
-        .and_then(convert_files_and_save_handler);
 
     let create_folder_route = warp::path("create_folder")
         .and(warp::post())
@@ -121,7 +114,6 @@ pub fn vecfs_routes(
         .or(search_items_route)
         .or(retrieve_path_simplified_route)
         .or(retrieve_vector_resource_route)
-        .or(convert_files_and_save_route)
         .or(create_folder_route)
         .or(upload_file_to_folder_route)
         .or(retrieve_source_file_route)
@@ -187,45 +179,6 @@ pub async fn retrieve_vector_resource_handler(
         .send(NodeCommand::V2ApiVecFSRetrieveVectorResource {
             bearer,
             path,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
-    }
-}
-
-#[utoipa::path(
-    post,
-    path = "/v2/convert_files_and_save",
-    request_body = APIConvertFilesAndSaveToFolder,
-    responses(
-        (status = 200, description = "Successfully converted files and saved to folder", body = Vec<Value>),
-        (status = 400, description = "Bad request", body = APIError),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn convert_files_and_save_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    authorization: String,
-    payload: APIConvertFilesAndSaveToFolder,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .send(NodeCommand::V2ApiConvertFilesAndSaveToFolder {
-            bearer,
-            payload,
             res: res_sender,
         })
         .await
@@ -746,7 +699,6 @@ pub async fn retrieve_source_file_handler(
     paths(
         retrieve_path_simplified_handler,
         retrieve_vector_resource_handler,
-        convert_files_and_save_handler,
         create_folder_handler,
         move_item_handler,
         copy_item_handler,
@@ -759,7 +711,7 @@ pub async fn retrieve_source_file_handler(
         retrieve_source_file_handler,
     ),
     components(
-        schemas(APIError, APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+        schemas(APIError, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
             APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, AddFileToInboxRequest)
     ),
     tags(

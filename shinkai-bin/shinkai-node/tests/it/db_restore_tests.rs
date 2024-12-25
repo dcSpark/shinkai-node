@@ -57,7 +57,6 @@ mod tests {
                 None,
                 true,
                 vec![],
-                node1_vector_fs_path,
                 None,
                 None,
                 default_embedding_model(),
