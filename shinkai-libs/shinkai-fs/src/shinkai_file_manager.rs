@@ -187,6 +187,28 @@ impl ShinkaiFileManager {
 
         Ok(contents)
     }
+
+    /// Save a file to a job-specific directory and process it for embeddings.
+    /// This function determines the job folder path, constructs the file path,
+    /// and then saves and processes the file using the specified mode and generator.
+    pub async fn save_and_process_file_with_jobid(
+        job_id: &str,
+        file_name: String,
+        data: Vec<u8>,
+        sqlite_manager: &SqliteManager,
+        mode: FileProcessingMode,
+        generator: &dyn EmbeddingGenerator,
+    ) -> Result<(), ShinkaiFsError> {
+        // Get the job folder path
+        let folder_path = sqlite_manager.get_and_create_job_folder(job_id)?;
+
+        // Construct the full path for the file within the job folder
+        let full_path = folder_path.as_path().join(file_name);
+        let shinkai_path = ShinkaiPath::from_string(full_path.to_string_lossy().to_string());
+
+        // Use the existing save_and_process_file function to save and process the file
+        Self::save_and_process_file(shinkai_path, data, sqlite_manager, mode, generator).await
+    }
 }
 
 // Custom serializer for SystemTime to ISO8601
@@ -495,7 +517,6 @@ mod tests {
 
         // Get and create the job folder
         let folder_path = db.get_and_create_job_folder(&job_id).unwrap();
-        eprintln!("folder_path: {:?}", folder_path);
 
         // Prepare the data to be written
         let file_name = "test_file.txt";

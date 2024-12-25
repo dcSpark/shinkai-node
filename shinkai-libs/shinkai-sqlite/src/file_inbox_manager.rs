@@ -5,7 +5,7 @@ use crate::{errors::SqliteManagerError, SqliteManager};
 
 // TODO: remove this
 impl SqliteManager {
-    fn sanitize_inbox_name(inbox_name: &str) -> String {
+    fn sanitize_folder_name(inbox_name: &str) -> String {
         let invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
         inbox_name
             .chars()
@@ -41,20 +41,14 @@ impl SqliteManager {
         let date = chrono::NaiveDateTime::parse_from_str(&datetime_created, "%Y-%m-%dT%H:%M:%S%.fZ")?;
         let formatted_date = date.format("%b %d").to_string();
 
-        // Create the folder name
-        let folder_name = format!("{} - {}", formatted_date, smart_inbox_name);
+        // Extract the first 4 characters of the job_id
+        let job_id_prefix = &job_id[..4];
 
-        // Ensure the folder name is compatible with Windows, Linux, and Mac OS
-        let valid_folder_name = folder_name
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == ' ' || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>();
+        // Create the folder name with the job_id prefix
+        let folder_name = format!("{} - ({}) {}", formatted_date, job_id_prefix, smart_inbox_name);
+
+        // Use the sanitize_folder_name function to ensure compatibility
+        let valid_folder_name = Self::sanitize_folder_name(&folder_name);
 
         // Truncate if the name is too long
         let max_length = 30; // Max length
