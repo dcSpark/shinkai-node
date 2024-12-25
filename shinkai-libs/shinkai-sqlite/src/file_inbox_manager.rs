@@ -3,7 +3,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 
-// TODO: remove this
 impl SqliteManager {
     fn sanitize_folder_name(inbox_name: &str) -> String {
         let invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
@@ -69,6 +68,7 @@ impl SqliteManager {
         file_name: String,
         file_content: Vec<u8>,
     ) -> Result<(), SqliteManagerError> {
+        unimplemented!("deprecated");
         let file_inboxes_path = self.get_file_inboxes_path();
         let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let file_path = file_inboxes_path.join(&inbox_dir_name).join(&file_name);
@@ -91,6 +91,7 @@ impl SqliteManager {
         &self,
         file_inbox_name: String,
     ) -> Result<Vec<(String, Vec<u8>)>, SqliteManagerError> {
+        unimplemented!("deprecated");
         let file_inboxes_path = self.get_file_inboxes_path();
         let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let inbox_path = file_inboxes_path.join(&inbox_dir_name);
@@ -111,6 +112,7 @@ impl SqliteManager {
     }
 
     pub fn get_all_filenames_from_inbox(&self, file_inbox_name: String) -> Result<Vec<String>, SqliteManagerError> {
+        unimplemented!("deprecated");
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT file_name FROM file_inboxes WHERE file_inbox_name = ?1")?;
         let file_names = stmt.query_map(params![file_inbox_name], |row| row.get::<_, String>(0))?;
@@ -124,6 +126,7 @@ impl SqliteManager {
     }
 
     pub fn remove_inbox(&self, file_inbox_name: &str) -> Result<(), SqliteManagerError> {
+        unimplemented!("deprecated");
         let file_inboxes_path = self.get_file_inboxes_path();
         let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let inbox_path = file_inboxes_path.join(&inbox_dir_name);
@@ -144,6 +147,7 @@ impl SqliteManager {
         file_inbox_name: String,
         file_name: String,
     ) -> Result<Vec<u8>, SqliteManagerError> {
+        unimplemented!("deprecated");
         let file_inboxes_path = self.get_file_inboxes_path();
         let inbox_dir_name = Self::get_inbox_directory_name(&file_inbox_name);
         let file_path = file_inboxes_path.join(&inbox_dir_name).join(&file_name);
@@ -152,6 +156,7 @@ impl SqliteManager {
     }
 
     fn get_file_inboxes_path(&self) -> std::path::PathBuf {
+        unimplemented!("deprecated");
         match std::env::var("NODE_STORAGE_PATH").ok() {
             Some(path) => std::path::PathBuf::from(path).join("files"),
             None => std::path::PathBuf::from("files"),
@@ -159,6 +164,7 @@ impl SqliteManager {
     }
 
     fn get_inbox_directory_name(name: &str) -> String {
+        unimplemented!("deprecated");
         let sanitized_dir = name.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
         format!("inbox_{}", sanitized_dir)
     }

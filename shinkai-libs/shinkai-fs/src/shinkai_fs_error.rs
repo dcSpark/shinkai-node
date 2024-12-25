@@ -109,6 +109,8 @@ pub enum ShinkaiFsError {
     FailedToAddParsedFileToDatabase,
     #[error("Failed to add chunks to database")]
     FailedToAddChunksToDatabase,
+    #[error("Failed to read file: {0}")]
+    FailedToReadFile(String),
 }
 
 impl From<SerdeError> for ShinkaiFsError {

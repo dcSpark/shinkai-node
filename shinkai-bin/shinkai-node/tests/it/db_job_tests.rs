@@ -403,140 +403,6 @@ mod tests {
         assert_eq!(job_message_4.content, "Hello World 4".to_string());
     }
 
-    // #[tokio::test]
-    // async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
-    //     let job_id = "job_test".to_string();
-    //     let agent_id = "agent_test".to_string();
-    //     let scope = MinimalJobScope::default();
-    //     let db = setup_test_db();
-    //     let shinkai_db = Arc::new(db);
-
-    //     // Create a new job
-    //     let _ = create_new_job(&shinkai_db, job_id.clone(), agent_id.clone(), scope).await;
-
-    //     let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
-
-    //     let mut parent_message_hash: Option<String> = None;
-    //     let mut parent_message_hash_2: Option<String> = None;
-
-    //     /*
-    //     The tree that we are creating looks like:
-    //         1
-    //         ├── 2
-    //         │   ├── 4
-    //         └── 3
-    //      */
-    //     let mut current_level = 0;
-    //     for i in 1..=4 {
-    //         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
-    //             job_id.clone(),
-    //             format!("Hello World {}", i),
-    //             "".to_string(),
-    //             None,
-    //             placeholder_signature_sk.clone(),
-    //             "@@node1.shinkai".to_string(),
-    //             "@@node1.shinkai".to_string(),
-    //         )
-    //         .unwrap();
-
-    //         let parent_hash: Option<String> = match i {
-    //             2 | 3 => {
-    //                 current_level += 1;
-    //                 parent_message_hash.clone()
-    //             }
-    //             4 => parent_message_hash_2.clone(),
-    //             _ => None,
-    //         };
-
-    //         // Add a message to the job
-    //         let _ = shinkai_db
-    //             .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
-    //             .await;
-
-    //         // Update the parent message according to the tree structure
-    //         if i == 1 {
-    //             parent_message_hash = Some(shinkai_message.calculate_message_hash_for_pagination());
-    //         } else if i == 2 {
-    //             parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
-    //         }
-    //     }
-
-    //     // Check if the job inbox is not empty after adding a message
-    //     assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
-
-    //     // Get the inbox name
-    //     let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-    //     let inbox_name_value = match inbox_name {
-    //         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
-    //     };
-
-    //     // Get the messages from the job inbox
-    //     let last_messages_inbox = shinkai_db
-    //         .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
-    //         .unwrap();
-
-    //     // Check the content of the messages
-    //     assert_eq!(last_messages_inbox.len(), 3);
-
-    //     // Convert messages to prompts and check the content
-    //     let prompt_1 = last_messages_inbox[0][0].clone().to_prompt();
-    //     assert_eq!(prompt_1.get_content(), "Hello World 1".to_string());
-
-    //     let prompt_2 = last_messages_inbox[1][0].clone().to_prompt();
-    //     assert_eq!(prompt_2.get_content(), "Hello World 2".to_string());
-
-    //     let prompt_3 = last_messages_inbox[1][1].clone().to_prompt();
-    //     assert_eq!(prompt_3.get_content(), "Hello World 3".to_string());
-
-    //     let prompt_4 = last_messages_inbox[2][0].clone().to_prompt();
-    //     assert_eq!(prompt_4.get_content(), "Hello World 4".to_string());
-
-    //     let job = shinkai_db.get_job(&job_id.clone()).unwrap();
-
-    //     // Check the step history
-    //     let step1 = &job.step_history[0];
-    //     let step2 = &job.step_history[1];
-    //     let step4 = &job.step_history[2];
-
-    //     // Convert step revisions to prompts
-    //     let step1_prompt = step1.step_revisions[0].to_prompt();
-    //     let step2_prompt = step2.step_revisions[0].to_prompt();
-    //     let step4_prompt = step4.step_revisions[0].to_prompt();
-
-    //     // Extract sub-prompts from the prompts
-    //     let step1_sub_prompts = step1_prompt.sub_prompts();
-    //     let step2_sub_prompts = step2_prompt.sub_prompts();
-    //     let step4_sub_prompts = step4_prompt.sub_prompts();
-
-    //     // Assert the sub-prompts
-    //     assert_eq!(
-    //         step1_sub_prompts[0],
-    //         SubPrompt::Omni(SubPromptType::User, "Step 1 Level 0".to_string(), vec![], 100)
-    //     );
-    //     assert_eq!(
-    //         step1_sub_prompts[1],
-    //         SubPrompt::Omni(SubPromptType::Assistant, "Result 1".to_string(), vec![], 100)
-    //     );
-
-    //     assert_eq!(
-    //         step2_sub_prompts[0],
-    //         SubPrompt::Omni(SubPromptType::User, "Step 2 Level 1".to_string(), vec![], 100)
-    //     );
-    //     assert_eq!(
-    //         step2_sub_prompts[1],
-    //         SubPrompt::Omni(SubPromptType::Assistant, "Result 2".to_string(), vec![], 100)
-    //     );
-
-    //     assert_eq!(
-    //         step4_sub_prompts[0],
-    //         SubPrompt::Omni(SubPromptType::User, "Step 4 Level 2".to_string(), vec![], 100)
-    //     );
-    //     assert_eq!(
-    //         step4_sub_prompts[1],
-    //         SubPrompt::Omni(SubPromptType::Assistant, "Result 4".to_string(), vec![], 100)
-    //     );
-    // }
-
     #[tokio::test]
     async fn test_insert_steps_with_simple_tree_structure() {
         let node1_identity_name = "@@node1.shinkai";
@@ -565,12 +431,11 @@ mod tests {
             └── 3
          */
         for i in 1..=4 {
-            let user_message = format!("User message {}", i);
-            let agent_response = format!("Agent response {}", i);
+            let message_content = format!("Message {}", i);
 
             // Generate the ShinkaiMessage
             let message = generate_message_with_text(
-                format!("Hello World {}", i),
+                message_content.clone(),
                 node1_encryption_sk.clone(),
                 clone_signature_secret_key(&node1_identity_sk),
                 node1_encryption_pk,
@@ -578,8 +443,6 @@ mod tests {
                 node1_identity_name.to_string(),
                 format!("2023-07-02T20:53:34.81{}Z", i),
             );
-
-            eprintln!("Message: {:?}", message);
 
             let parent_hash: Option<String> = match i {
                 2 | 3 => parent_message_hash.clone(),
@@ -603,7 +466,6 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
 
-        eprintln!("\n\n Getting messages...");
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap();
         let last_messages_inbox = shinkai_db
             .get_last_messages_from_inbox(inbox_name.to_string(), 3, None)
@@ -628,16 +490,15 @@ mod tests {
         let step_history_content: Vec<String> = step_history
             .iter()
             .map(|shinkai_message| {
+                eprintln!("Shinkai message: {:?}", shinkai_message);
                 let prompt = shinkai_message.to_prompt();
-                let user_message = match &prompt.sub_prompts[0] {
+                eprintln!("Prompt: {:?}", prompt);
+
+                let message_content = match &prompt.sub_prompts[0] {
                     SubPrompt::Omni(_, text, _, _) => text,
                     _ => panic!("Unexpected SubPrompt variant"),
                 };
-                let agent_response = match &prompt.sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                };
-                format!("{} {}", user_message, agent_response)
+                message_content.clone()
             })
             .collect();
 
@@ -646,48 +507,9 @@ mod tests {
         assert_eq!(step_history.len(), 3);
 
         // Check the content of the steps
-        assert_eq!(
-            format!(
-                "{} {}",
-                match &step_history[0].to_prompt().sub_prompts[0] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                },
-                match &step_history[0].to_prompt().sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                }
-            ),
-            "User message 1 Agent response 1".to_string()
-        );
-        assert_eq!(
-            format!(
-                "{} {}",
-                match &step_history[1].to_prompt().sub_prompts[0] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                },
-                match &step_history[1].to_prompt().sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                }
-            ),
-            "User message 2 Agent response 2".to_string()
-        );
-        assert_eq!(
-            format!(
-                "{} {}",
-                match &step_history[2].to_prompt().sub_prompts[0] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                },
-                match &step_history[2].to_prompt().sub_prompts[1] {
-                    SubPrompt::Omni(_, text, _, _) => text,
-                    _ => panic!("Unexpected SubPrompt variant"),
-                }
-            ),
-            "User message 4 Agent response 4".to_string()
-        );
+        assert_eq!(step_history_content[0], "Message 1".to_string());
+        assert_eq!(step_history_content[1], "Message 2".to_string());
+        assert_eq!(step_history_content[2], "Message 4".to_string());
     }
 
     #[tokio::test]

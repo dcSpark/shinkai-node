@@ -209,6 +209,13 @@ impl ShinkaiFileManager {
         // Use the existing save_and_process_file function to save and process the file
         Self::save_and_process_file(shinkai_path, data, sqlite_manager, mode, generator).await
     }
+
+    /// Get the content of a file based on a ShinkaiPath.
+    pub fn get_file_content(path: ShinkaiPath) -> Result<Vec<u8>, ShinkaiFsError> {
+        let content = fs::read(path.as_path())
+            .map_err(|_| ShinkaiFsError::FailedToReadFile(path.as_path().to_string_lossy().to_string()))?;
+        Ok(content)
+    }
 }
 
 // Custom serializer for SystemTime to ISO8601
@@ -551,5 +558,25 @@ mod tests {
             "File '{}' should be listed in the directory contents.",
             file_name
         );
+    }
+
+    #[test]
+    fn test_get_file_content() {
+        let (_db, _dir, _shinkai_path, _generator) = setup_test_environment();
+
+        // Create a specific file path within the temporary directory
+        let file_name = "test_file.txt";
+        let file_path = ShinkaiPath::from_string(file_name.to_string());
+
+        // Create and write to the file
+        let mut file = File::create(file_path.as_path()).unwrap();
+        writeln!(file, "Hello, Shinkai!").unwrap();
+
+        // Call the get_file_content function
+        let content = ShinkaiFileManager::get_file_content(file_path.clone());
+
+        // Assert the content is as expected
+        assert!(content.is_ok());
+        assert_eq!(content.unwrap(), b"Hello, Shinkai!\n".to_vec());
     }
 }

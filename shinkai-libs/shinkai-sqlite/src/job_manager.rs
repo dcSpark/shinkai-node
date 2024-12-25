@@ -320,10 +320,21 @@ impl SqliteManager {
             .map_err(|e| SqliteManagerError::SomeError(format!("Error getting inbox name: {}", e)))?;
 
         let messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1000, None)?;
+        eprintln!("(get_step_history) Messages: {:?}", messages);
 
         // Map and collect the first element of each inner vector
-        let first_messages: Vec<ShinkaiMessage> =
-            messages.into_iter().filter_map(|mut msg_vec| msg_vec.pop()).collect();
+        let first_messages: Vec<ShinkaiMessage> = messages
+            .into_iter()
+            .filter_map(|mut msg_vec| {
+                if !msg_vec.is_empty() {
+                    Some(msg_vec.remove(0))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        eprintln!("(get_step_history) First messages: {:?}", first_messages);
 
         Ok(Some(first_messages))
     }
