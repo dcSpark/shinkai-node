@@ -1,5 +1,6 @@
 use async_channel::Sender;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use serde_json::{Map, Value};
@@ -411,14 +412,15 @@ pub async fn api_message_job(
     recipient_subidentity: &str,
     job_id: &str,
     content: &str,
-    files_inbox: &str,
+    files: &[&str],
     parent: &str,
 ) {
     {
+        let files_vec = files.iter().map(|f| ShinkaiPath::new(f)).collect::<Vec<_>>();
         let job_message = ShinkaiMessageBuilder::job_message(
             job_id.to_string(),
             content.to_string(),
-            files_inbox.to_string(),
+            files_vec,
             parent.to_string(),
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),

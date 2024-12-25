@@ -1435,7 +1435,7 @@ impl Node {
         let mut inbox_filenames = HashMap::new();
 
         for inbox in file_inboxes {
-            let files = match db.get_all_filenames_from_inbox(inbox.clone()) {
+            let files = match db.get_all_filenames_from_inbox("FIX ME".to_string()) {
                 Ok(files) => files,
                 Err(err) => {
                     let api_error = APIError {
@@ -1476,7 +1476,7 @@ impl Node {
                     let receiver = message.receiver_subidentity;
                     let content = message.job_message.content;
                     let files = inbox_filenames
-                        .get(&message.job_message.files_inbox)
+                        .get(&message.job_message.files)
                         .unwrap_or(&vec![])
                         .join(", ");
 
@@ -1530,7 +1530,7 @@ impl Node {
                             .map(|message| {
                                 json!({
                                     "message": message,
-                                    "files": inbox_filenames.get(&message.job_message.files_inbox).unwrap_or(&vec![]),
+                                    "files": inbox_filenames.get(&message.job_message.files).unwrap_or(&vec![]),
                                 })
                             })
                             .collect::<Vec<serde_json::Value>>()
@@ -1558,7 +1558,7 @@ impl Node {
                     for message in messages {
                         result_messages.push_str(&format!("{}\n\n", message.job_message.content));
 
-                        if let Some(files) = inbox_filenames.get(&message.job_message.files_inbox) {
+                        if let Some(files) = inbox_filenames.get(&message.job_message.files) {
                             result_messages.push_str(&format!("Attached files: [{}]\n\n", files.join(", ")));
                         }
                     }
@@ -1692,7 +1692,7 @@ impl Node {
                 let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                     job_id.to_string(),
                     message.content,
-                    message.files_inbox,
+                    message.files,
                     None,
                     identity_secret_key_clone,
                     node_name.node_name.clone(),

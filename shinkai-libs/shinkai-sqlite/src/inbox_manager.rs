@@ -648,6 +648,16 @@ impl SqliteManager {
         Ok(())
     }
 
+    pub fn get_smart_inbox_name(&self, conversation_inbox_name: &str) -> Result<String, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT smart_inbox_name FROM inboxes WHERE inbox_name = ?1")?;
+        let mut rows = stmt.query(params![conversation_inbox_name])?;
+
+        let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
+        let smart_inbox_name: String = row.get(0)?;
+        Ok(smart_inbox_name)
+    }
+
     pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(

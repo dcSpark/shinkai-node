@@ -28,12 +28,6 @@ impl SqliteManager {
         let job_inbox_name = format!("job_inbox::{}::false", job_id);
 
         {
-            // let conn = self.get_connection()?;
-
-            // let current_time = ShinkaiStringTime::generate_time_now();
-            // let scope_with_files_bytes = scope.to_bytes()?;
-            // let scope_bytes = serde_json::to_vec(&scope.to_json_value_minimal()?)?;
-
             let conn = self.get_connection()?;
 
             let current_time = ShinkaiStringTime::generate_time_now();
@@ -202,17 +196,7 @@ impl SqliteManager {
         let conversation_inbox: InboxName =
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
         let associated_ui_text: Option<String> = row.get(7)?;
-
-        eprintln!("before config_text with job_id: {}", job_id);
-        
-        if job_id == "jobid_924e6a42-9846-469e-9869-eb6a3db16e4c" {
-            eprintln!("Special job_id detected: {}", job_id);
-            // Add any additional logic you want to execute for this specific job_id
-        }
-        
         let config_text: Option<String> = row.get(8)?;
-
-        eprintln!("Retrieved config_text: {:?}", config_text);
 
         if let Some(ref text) = config_text {
             match serde_json::from_str::<JobConfig>(text) {

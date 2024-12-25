@@ -143,6 +143,7 @@ impl SqliteManager {
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
+        // TODO: remove this
         Self::initialize_file_inboxes_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;

@@ -144,26 +144,27 @@ fn job_image_analysis() {
             }
             {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
+                // TODO: remvoe this
 
-                let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
-                let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                    "job::test::false".to_string(),
-                    message_content.clone(),
-                    node1_profile_name.to_string(),
-                    node1_identity_name.to_string(),
-                    node1_identity_name.to_string(),
-                )
-                .unwrap();
+                // let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
+                // let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
+                //     node1_profile_encryption_sk.clone(),
+                //     clone_signature_secret_key(&node1_profile_identity_sk),
+                //     node1_encryption_pk,
+                //     "job::test::false".to_string(),
+                //     message_content.clone(),
+                //     node1_profile_name.to_string(),
+                //     node1_identity_name.to_string(),
+                //     node1_identity_name.to_string(),
+                // )
+                // .unwrap();
 
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-                node1_commands_sender
-                    .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let _response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                // let (res_sender, res_receiver) = async_channel::bounded(1);
+                // node1_commands_sender
+                //     .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
+                //     .await
+                //     .unwrap();
+                // let _response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
@@ -211,7 +212,7 @@ fn job_image_analysis() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &job_message_content,
-                    &hash_of_aes_encryption_key_hex(symmetrical_sk),
+                    &[],
                     "",
                 )
                 .await;

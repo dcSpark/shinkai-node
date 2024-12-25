@@ -1,10 +1,74 @@
 use rusqlite::params;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 
 // TODO: remove this
-
 impl SqliteManager {
+    fn sanitize_inbox_name(inbox_name: &str) -> String {
+        let invalid_chars = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+        inbox_name
+            .chars()
+            .map(|c| if invalid_chars.contains(&c) { '_' } else { c })
+            .collect()
+    }
+
+    pub fn get_and_create_job_folder(&self, job_id: &str) -> Result<ShinkaiPath, SqliteManagerError> {
+        // Get the job folder name
+        let folder_path = self.get_job_folder_name(job_id)?;
+
+        // Create the folder if it doesn't exist
+        if !folder_path.exists() {
+            std::fs::create_dir_all(&folder_path.path).map_err(|_| SqliteManagerError::FailedFetchingValue)?;
+        }
+
+        Ok(folder_path)
+    }
+
+    pub fn get_job_folder_name(&self, job_id: &str) -> Result<ShinkaiPath, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT conversation_inbox_name, datetime_created FROM jobs WHERE job_id = ?1")?;
+        let mut rows = stmt.query(params![job_id])?;
+
+        let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
+        let conversation_inbox_name: String = row.get(0)?;
+        let datetime_created: String = row.get(1)?;
+
+        // Fetch the smart inbox name using the conversation_inbox_name
+        let smart_inbox_name = self.get_smart_inbox_name(&conversation_inbox_name)?;
+
+        // Format the datetime_created to a more readable format
+        let date = chrono::NaiveDateTime::parse_from_str(&datetime_created, "%Y-%m-%dT%H:%M:%S%.fZ")?;
+        let formatted_date = date.format("%b %d").to_string();
+
+        // Create the folder name
+        let folder_name = format!("{} - {}", formatted_date, smart_inbox_name);
+
+        // Ensure the folder name is compatible with Windows, Linux, and Mac OS
+        let valid_folder_name = folder_name
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == ' ' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+
+        // Truncate if the name is too long
+        let max_length = 30; // Max length
+        let final_folder_name = if valid_folder_name.len() > max_length {
+            valid_folder_name[..max_length].to_string()
+        } else {
+            valid_folder_name
+        };
+
+        let folder_name = ShinkaiPath::new(&final_folder_name);
+        Ok(folder_name)
+    }
+
+    // TODO: remove from here
     pub fn add_file_to_files_message_inbox(
         &self,
         file_inbox_name: String,
@@ -110,6 +174,9 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+    use std::fs::File;
+    use std::io::Write;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 

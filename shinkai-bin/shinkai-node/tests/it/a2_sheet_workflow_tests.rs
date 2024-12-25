@@ -303,25 +303,26 @@ fn import_export_sheet_tests() {
             {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-                let message_content = aes_encryption_key_to_string(symmetrical_sk);
-                let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                    "job::test::false".to_string(),
-                    message_content.clone(),
-                    node1_profile_name.to_string(),
-                    node1_identity_name.to_string(),
-                    node1_identity_name.to_string(),
-                )
-                .unwrap();
+                // TODO: remove this
+                // let message_content = aes_encryption_key_to_string(symmetrical_sk);
+                // let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
+                //     node1_profile_encryption_sk.clone(),
+                //     clone_signature_secret_key(&node1_profile_identity_sk),
+                //     node1_encryption_pk,
+                //     "job::test::false".to_string(),
+                //     message_content.clone(),
+                //     node1_profile_name.to_string(),
+                //     node1_identity_name.to_string(),
+                //     node1_identity_name.to_string(),
+                // )
+                // .unwrap();
 
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-                node1_commands_sender
-                    .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
-                    .await
-                    .unwrap();
-                let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                // let (res_sender, res_receiver) = async_channel::bounded(1);
+                // node1_commands_sender
+                //     .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
+                //     .await
+                //     .unwrap();
+                // let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             let mut sheet_id = "".to_string();
             {

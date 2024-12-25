@@ -73,11 +73,19 @@ pub enum SqliteManagerError {
     UnsupportedEmbeddingLength(usize),
     #[error("Deserialization error")]
     DeserializationError,
+    #[error("Chrono parse error: {0}")]
+    ChronoParseError(chrono::ParseError),
     // Add other error variants as needed
 }
 
 impl From<&str> for SqliteManagerError {
     fn from(err: &str) -> SqliteManagerError {
         SqliteManagerError::SomeError(err.to_string())
+    }
+}
+
+impl From<chrono::ParseError> for SqliteManagerError {
+    fn from(err: chrono::ParseError) -> SqliteManagerError {
+        SqliteManagerError::ChronoParseError(err)
     }
 }

@@ -187,7 +187,7 @@ impl JobManager {
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             error_for_frontend.to_string(),
-            "".to_string(),
+            vec![],
             None,
             identity_secret_key_clone,
             node_name.clone(),
@@ -301,7 +301,7 @@ impl JobManager {
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.to_string(),
             inference_response_content.to_string(),
-            "".to_string(),
+            vec![],
             Some(message_metadata),
             identity_secret_key_clone,
             user_profile.node_name.clone(),
@@ -585,7 +585,18 @@ impl JobManager {
         );
 
         // TODO: get files content from db
-        let files_vec = db.get_all_files_from_inbox(job_message.files.clone())?;
+        // TODO: fix this
+        let files_vec = {
+            let file_names = job_message
+                .files
+                .clone()
+                .into_iter()
+                .map(|f| f.to_string())
+                .collect::<Vec<_>>();
+
+                // TODO: fix this
+            db.get_all_files_from_inbox("temporal FIX ME".to_string())?
+        };
 
         let image_files: HashMap<String, String> = files_vec
             .into_iter()

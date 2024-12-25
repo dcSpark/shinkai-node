@@ -1896,27 +1896,28 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiDownloadFileFromInbox {
-                bearer,
-                inbox_name,
-                filename,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_download_file_from_inbox(db_clone, bearer, inbox_name, filename, res).await;
-                });
-            }
-            NodeCommand::V2ApiListFilesInInbox {
-                bearer,
-                inbox_name,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_list_files_in_inbox(db_clone, bearer, inbox_name, res).await;
-                });
-            }
+            // TODO: repurpose
+            // NodeCommand::V2ApiDownloadFileFromInbox {
+            //     bearer,
+            //     inbox_name,
+            //     filename,
+            //     res,
+            // } => {
+            //     let db_clone = Arc::clone(&self.db);
+            //     tokio::spawn(async move {
+            //         let _ = Node::v2_api_download_file_from_inbox(db_clone, bearer, inbox_name, filename, res).await;
+            //     });
+            // }
+            // NodeCommand::V2ApiListFilesInInbox {
+            //     bearer,
+            //     inbox_name,
+            //     res,
+            // } => {
+            //     let db_clone = Arc::clone(&self.db);
+            //     tokio::spawn(async move {
+            //         let _ = Node::v2_api_list_files_in_inbox(db_clone, bearer, inbox_name, res).await;
+            //     });
+            // }
             NodeCommand::V2ApiGetToolOffering {
                 bearer,
                 tool_key_name,

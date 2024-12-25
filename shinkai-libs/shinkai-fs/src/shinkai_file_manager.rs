@@ -132,6 +132,17 @@ impl ShinkaiFileManager {
         Ok(())
     }
 
+    pub fn get_all_files_and_folders_for_job(
+        job_id: &str,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        // Get the job folder name using the SqliteManager
+        let folder_path = sqlite_manager.get_job_folder_name(job_id)?;
+
+        // Use the existing list_directory_contents method to get the files and folders
+        Self::list_directory_contents(folder_path, sqlite_manager)
+    }
+
     /// List all files and folders in a directory with additional metadata.
     pub fn list_directory_contents(
         path: ShinkaiPath,
@@ -196,6 +207,7 @@ mod tests {
     use shinkai_embedding::mock_generator::MockGenerator;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
+    use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
     use std::fs::{self, File};
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -268,6 +280,13 @@ mod tests {
         let generator = MockGenerator::new(model_type, 384); // 128 is the number of floats in the mock embedding
 
         (db, dir, ShinkaiPath::from_string(file_path), generator)
+    }
+
+    fn create_new_job(db: &SqliteManager, job_id: String, agent_id: String, scope: MinimalJobScope) {
+        match db.create_new_job(job_id, agent_id, scope, false, None, None) {
+            Ok(_) => (),
+            Err(e) => panic!("Failed to create a new job: {}", e),
+        }
     }
 
     // Helper function to write large content to a file
@@ -452,10 +471,64 @@ mod tests {
         // Verify the chunks are added to the database
         let parsed_file_id = parsed_file.unwrap().id.unwrap();
         let chunks = db.get_chunks_for_parsed_file(parsed_file_id).unwrap();
-        println!("chunks: {:?}", chunks); // Debugging output
         assert!(chunks.len() >= 2, "Expected at least 2 chunks, found {}", chunks.len());
 
         // Clean up
         dir.close().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_create_job_and_upload_file() {
+        let (db, _dir, _shinkai_path, generator) = setup_test_environment();
+
+        let job_id = "test_job".to_string();
+        let job_inbox = "job_inbox::test_job::false".to_string();
+        let agent_id = "agent_test".to_string();
+        let scope = MinimalJobScope::default();
+
+        // Create a new job
+        create_new_job(&db, job_id.clone(), agent_id.clone(), scope);
+
+        // Update the smart inbox name
+        let new_inbox_name = "Updated Inbox Name";
+        db.update_smart_inbox_name(&job_inbox, new_inbox_name).unwrap();
+
+        // Get and create the job folder
+        let folder_path = db.get_and_create_job_folder(&job_id).unwrap();
+        eprintln!("folder_path: {:?}", folder_path);
+
+        // Prepare the data to be written
+        let file_name = "test_file.txt";
+        let file_content = b"Hello, Shinkai!".to_vec();
+        let file_path = folder_path.as_path().join(file_name);
+        let file_path = ShinkaiPath::from_string(file_path.to_string_lossy().to_string());
+
+        // Use save_and_process_file to save and process the file
+        let result = ShinkaiFileManager::save_and_process_file(
+            file_path.clone(),
+            file_content,
+            &db,
+            FileProcessingMode::Auto,
+            &generator,
+        )
+        .await;
+
+        // Assert the result is Ok
+        assert!(result.is_ok());
+
+        // Verify the file is added to the database
+        let folder_and_filename = file_path.relative_path();
+
+        let parsed_file = db.get_parsed_file_by_rel_path(&folder_and_filename).unwrap();
+        assert!(parsed_file.is_some());
+
+        // List directory contents and check the file is listed
+        let contents = ShinkaiFileManager::list_directory_contents(folder_path, &db).unwrap();
+        let file_names: Vec<String> = contents.iter().map(|info| info.name.clone()).collect();
+        assert!(
+            file_names.contains(&file_name.to_string()),
+            "File '{}' should be listed in the directory contents.",
+            file_name
+        );
     }
 }
