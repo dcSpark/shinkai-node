@@ -324,7 +324,7 @@ impl Node {
         }
 
         // Download and validate the zip file
-        let zip_contents = match download_zip_file(url, "__cron.json".to_string()).await {
+        let zip_contents = match download_zip_file(url, "__cron_task.json".to_string()).await {
             Ok(contents) => contents,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
@@ -368,6 +368,8 @@ impl Node {
                 return Ok(());
             }
         };
+
+        println!("cron_task: {:?}", cron_task);
 
         // Add the cron task to the database
         match db.add_cron_task(&cron_task.0, cron_task.3.as_deref(), &cron_task.1, &cron_task.2) {

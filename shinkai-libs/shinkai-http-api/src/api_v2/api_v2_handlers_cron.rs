@@ -535,11 +535,12 @@ pub async fn get_cron_schedule_handler(
 pub async fn import_cron_task_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    url: String,
+    payload: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let url = payload.get("url").cloned().unwrap_or_default();
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
     node_commands_sender
         .send(NodeCommand::V2ApiImportCronTask {
             bearer,
