@@ -292,6 +292,24 @@ impl ShinkaiTool {
         }
     }
 
+    pub fn get_raw_version(&self) -> Option<u64> {
+        match self {
+            ShinkaiTool::Rust(r, _) => r.version.clone(),
+            ShinkaiTool::Network(n, _) => n.version.clone(),
+            ShinkaiTool::Deno(d, _) => d.version.clone(),
+            ShinkaiTool::Python(p, _) => p.version.clone(),
+        }
+    }
+
+    pub fn set_version(&mut self, version: Option<u64>) {
+        match self {
+            ShinkaiTool::Rust(r, _) => r.version = version,
+            ShinkaiTool::Network(n, _) => n.version = version,
+            ShinkaiTool::Deno(d, _) => d.version = version,
+            ShinkaiTool::Python(p, _) => p.version = version,
+        }
+    }
+
     /// Returns the version of the tool
     pub fn numeric_version(&self) -> Option<u64> {
         let version = match self {

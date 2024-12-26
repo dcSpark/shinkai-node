@@ -20,9 +20,14 @@ impl SqliteManager {
 
     pub fn add_tool_with_vector(
         &self,
-        tool: ShinkaiTool,
+        original_tool: ShinkaiTool,
         embedding: Vec<f32>,
     ) -> Result<ShinkaiTool, SqliteManagerError> {
+        let mut tool = original_tool.clone();
+        if original_tool.get_raw_version().is_none() {
+            println!("Tool has no version: {:?}. Setting default version.", tool);
+            tool.set_version(Some(1_000_000));
+        }
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -1341,7 +1346,7 @@ mod tests {
             name: "Enabled Network Tool".to_string(),
             toolkit_name: "Network Toolkit".to_string(),
             description: "An enabled network tool".to_string(),
-            version: "v0.1".to_string(),
+            version: Some(1_000_000),
             provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
             usage_type: usage_type.clone(),
             activated: true,
