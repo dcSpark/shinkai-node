@@ -1,6 +1,6 @@
 use crate::{
     cron_tasks::cron_manager::CronManager,
-    network::{node_error::NodeError, Node},
+    network::{node_error::NodeError, Node, node_shareable_logic::download_zip_file},
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -9,8 +9,13 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
-use chrono::{Utc, Local};
+use tokio::sync::Mutex;
+use chrono::Local;
+use std::path::Path;
+use std::fs::File;
+use std::io::Write;
+use tokio::fs;
+use zip::{write::FileOptions, ZipWriter};
 
 impl Node {
     pub async fn v2_api_add_cron_task(
@@ -305,5 +310,204 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_api_import_cron_task(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Download and validate the zip file
+        let zip_contents = match download_zip_file(url, "__cron_task.json".to_string()).await {
+            Ok(contents) => contents,
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+                return Ok(());
+            }
+        };
+
+        // Parse the JSON content
+        let cron_data: Value = match serde_json::from_slice(&zip_contents.buffer) {
+            Ok(data) => data,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid JSON".to_string(),
+                    message: format!("Failed to parse cron task JSON: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract and validate required fields
+        let cron_task = match cron_data.as_object() {
+            Some(obj) => {
+                let name = obj.get("name").and_then(|v| v.as_str()).ok_or_else(|| NodeError::from("Missing or invalid 'name' field".to_string()))?;
+                let cron = obj.get("cron").and_then(|v| v.as_str()).ok_or_else(|| NodeError::from("Missing or invalid 'cron' field".to_string()))?;
+                let action: CronTaskAction = serde_json::from_value(obj.get("action").cloned()
+                    .ok_or_else(|| NodeError::from("Missing 'action' field".to_string()))?)
+                    .map_err(|e| NodeError::from(format!("Invalid action format: {}", e)))?;
+                let description = obj.get("description").and_then(|v| v.as_str()).map(String::from);
+
+                (name.to_string(), cron.to_string(), action, description)
+            }
+            None => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid JSON".to_string(),
+                    message: "JSON must be an object".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        println!("cron_task: {:?}", cron_task);
+
+        // Add the cron task to the database
+        match db.add_cron_task(&cron_task.0, cron_task.3.as_deref(), &cron_task.1, &cron_task.2) {
+            Ok(_) => {
+                let response = json!({
+                    "status": "success",
+                    "message": "Cron task imported successfully"
+                });
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Database Error".to_string(),
+                    message: format!("Failed to add cron task: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_export_cron_task(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        cron_task_id: i64,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the cron task from the database
+        match db.get_cron_task(cron_task_id) {
+            Ok(Some(cron_task)) => {
+                // Serialize the cron task to JSON bytes
+                let cron_task_bytes = match serde_json::to_vec(&cron_task) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize cron task: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                // Create a temporary zip file
+                let name = format!("cron_task_{}.zip", cron_task_id);
+                let path = std::env::temp_dir().join(&name);
+                let file = match File::create(&path) {
+                    Ok(file) => file,
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to create zip file: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                let mut zip = ZipWriter::new(file);
+
+                // Add the cron task JSON to the zip file
+                if let Err(err) = zip.start_file::<_, ()>("__cron_task.json", FileOptions::default()) {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to create cron task file in zip: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+
+                if let Err(err) = zip.write_all(&cron_task_bytes) {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to write cron task data to zip: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+
+                // Finalize the zip file
+                if let Err(err) = zip.finish() {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to finalize zip file: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+
+                // Read the zip file into memory
+                match fs::read(&path).await {
+                    Ok(file_bytes) => {
+                        // Clean up the temporary file
+                        if let Err(err) = fs::remove_file(&path).await {
+                            eprintln!("Warning: Failed to remove temporary file: {}", err);
+                        }
+                        let _ = res.send(Ok(file_bytes)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to read zip file: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Cron task not found: {}", cron_task_id),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve cron task: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
     }
 }
