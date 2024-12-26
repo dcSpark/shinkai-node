@@ -44,6 +44,7 @@ impl SqliteManager {
 
         // Clone the tool to make it mutable
         let mut tool_clone = tool.clone();
+        tool_clone.set_embedding(embedding.clone());
 
         // Determine if the tool can be enabled
         let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
@@ -715,7 +716,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_deno_tool() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
@@ -879,7 +880,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_middle_tool() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create three DenoTool instances
         let deno_tool_1 = DenoTool {
@@ -1411,7 +1412,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_vector_limited() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create three tools with different vectors
         let tool1 = DenoTool {

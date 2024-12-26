@@ -12,6 +12,7 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
@@ -77,6 +78,7 @@ impl InferenceChain for SheetUIInferenceChain {
             self.context.ext_agent_payments_manager.clone(),
             // self.context.sqlite_logger.clone(),
             self.context.llm_stopper.clone(),
+            fetch_node_environment(),
         )
         .await?;
         Ok(InferenceChainResult::new(response))
@@ -118,6 +120,7 @@ impl SheetUIInferenceChain {
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
+        node_env: NodeEnvironment,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -276,6 +279,8 @@ impl SheetUIInferenceChain {
             Some(full_job.step_history.clone()),
             tools.clone(),
             None,
+            full_job.job_id.clone(),
+            node_env.clone(),
         );
 
         let mut iteration_count = 0;
@@ -410,6 +415,8 @@ impl SheetUIInferenceChain {
                     Some(full_job.step_history.clone()),
                     tools.clone(),
                     Some(function_response),
+                    full_job.job_id.clone(),
+                    node_env.clone(),
                 );
             } else {
                 // No more function calls required, return the final response

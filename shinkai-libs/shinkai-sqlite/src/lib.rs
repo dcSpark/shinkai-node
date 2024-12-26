@@ -713,6 +713,7 @@ impl SqliteManager {
                 execution_time TEXT NOT NULL,
                 success INTEGER NOT NULL CHECK (success IN (0, 1)),
                 error_message TEXT,
+                job_id TEXT,
                 FOREIGN KEY(task_id) REFERENCES cron_tasks(task_id)
             );",
             [],

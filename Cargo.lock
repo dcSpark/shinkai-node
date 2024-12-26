@@ -6894,9 +6894,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.9.5"
+version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c57bb4f0f17afa717610da76132fade98dd41b01ef9d46a4323b53c66ab728"
+checksum = "ed2fe0b6aa10cd6dcfafd165c2691d494ef14bb1243ed2881ddd2d2dd1b7f787"
 dependencies = [
  "anyhow",
  "base64-simd",

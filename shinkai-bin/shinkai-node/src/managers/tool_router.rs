@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
+use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
@@ -69,49 +70,7 @@ impl ToolRouter {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
-        // Import tools
-        async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
-            let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-                .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
-
-            let response = reqwest::get(url)
-                .await
-                .map_err(|e| ToolError::RequestError(e))?;
-
-            if response.status() != 200 {
-                return Err(ToolError::ExecutionError(format!("Import tools request returned a non OK status: {}", response.status())));
-            }
-
-            let tools: Vec<serde_json::Value> = response
-                .json()
-                .await
-                .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
-
-            for tool in tools {
-                let tool_url = tool["file"]
-                    .as_str()
-                    .ok_or_else(|| ToolError::ParseError("Missing or invalid file URL in tool definition".to_string()))?;
-                
-                let tool_name = tool["name"]
-                    .as_str()
-                    .unwrap_or("unknown");
-
-                match Node::v2_api_import_tool_internal(
-                    db.clone(),
-                    fetch_node_environment(),
-                    tool_url.to_string(),
-                )
-                .await
-                {
-                    Ok(_) => println!("Successfully imported tool {}", tool_name),
-                    Err(e) => eprintln!("Failed to import tool {}: {:#?}", tool_name, e),
-                }
-            }
-
-            Ok(())
-        }
-
-        if let Err(e) = import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
 
@@ -138,6 +97,77 @@ impl ToolRouter {
         let _ = self.add_rust_tools().await;
         let _ = self.add_python_tools().await;
         let _ = self.add_static_prompts(generator).await;
+        let _ = Self::import_tools_from_directory(self.sqlite_manager.clone()).await;
+        Ok(())
+    }
+
+    async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
+        let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
+            .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
+
+        let response = reqwest::get(url).await.map_err(|e| ToolError::RequestError(e))?;
+
+        if response.status() != 200 {
+            return Err(ToolError::ExecutionError(format!(
+                "Import tools request returned a non OK status: {}",
+                response.status()
+            )));
+        }
+
+        let tools: Vec<serde_json::Value> = response
+            .json()
+            .await
+            .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
+
+        let tool_urls = tools
+            .iter()
+            .map(|tool| {
+                (
+                    tool["name"].as_str(),
+                    tool["file"].as_str(),
+                    tool["router_key"].as_str(),
+                )
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter(|(name, url, router_key)| url.is_some() && name.is_some() && router_key.is_some())
+            .map(|(name, url, router_key)| (name.unwrap(), url.unwrap(), router_key.unwrap()))
+            .collect::<Vec<_>>();
+
+        let futures = tool_urls.into_iter().map(|(tool_name, tool_url, router_key)| {
+            let db = db.clone();
+            let node_env = fetch_node_environment();
+            let tool_url = tool_url.to_string();
+            async move {
+                let tool = db.get_tool_by_key(router_key);
+                let _ = match tool {
+                    Ok(_) => {
+                        println!("Tool already exists: {}", router_key);
+                        return Ok::<(), ToolError>(());
+                    }
+                    Err(SqliteManagerError::ToolNotFound(_)) => {
+                        ();
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to get tool: {:#?}", e);
+                        return Ok::<(), ToolError>(());
+                    }
+                };
+
+                match Node::v2_api_import_tool_internal(db, node_env, tool_url).await {
+                    Ok(_) => {
+                        println!("Successfully imported tool {}", tool_name);
+                        return Ok::<(), ToolError>(());
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to import tool {}: {:#?}", tool_name, e);
+                        return Ok::<(), ToolError>(()); // Continue on error
+                    }
+                }
+            }
+        });
+
+        futures::future::join_all(futures).await;
 
         Ok(())
     }
@@ -224,9 +254,15 @@ impl ToolRouter {
 
         {
             for (name, definition) in tools {
+                // Skip tools that start with "demo" if not only_testing_js_tools
+                if !only_testing_js_tools && name.starts_with("demo") {
+                    continue;
+                }
+                // Skip tools that are not in the allowed list if only_testing_js_tools is true
                 if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
                     continue; // Skip tools that are not in the allowed list
                 }
+
                 println!("Adding JS tool: {}", name);
 
                 let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
@@ -586,6 +622,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
+                let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
+                let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
+                if let Err(e) = mounts {
+                    eprintln!("Failed to list app files: {:?}", e);
+                    return Err(LLMProviderError::FunctionExecutionError(format!("{:?}", e)));
+                }
+                let mounts = Some(mounts.unwrap_or_default());
+
                 let result = python_tool
                     .run(
                         envs,
@@ -600,6 +644,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         None,
+                        mounts,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -643,6 +688,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
                 let envs = generate_execution_environment(
                     context.db(),
                     context.agent().clone().get_id().to_string(),
@@ -654,6 +700,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 )
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+                let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
+                let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
+                if let Err(e) = mounts {
+                    eprintln!("Failed to list app files: {:?}", e);
+                    return Err(LLMProviderError::FunctionExecutionError(format!("{:?}", e)));
+                }
+                let mounts = Some(mounts.unwrap_or_default());
 
                 let result = deno_tool
                     .run(
@@ -669,6 +723,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                         node_name,
                         false,
                         Some(tool_id),
+                        mounts,
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -1017,6 +1072,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 requester_node_name,
                 true,
                 Some(tool_id),
+                None,
             )
             .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
         let result_str =

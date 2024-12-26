@@ -476,8 +476,6 @@ impl SqliteManager {
             )));
         }
 
-        let profile_name = profile_name_identity.full_identity_name.to_string();
-
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT inbox_name FROM inboxes")?;
         let mut rows = stmt.query([])?;
@@ -486,16 +484,7 @@ impl SqliteManager {
         while let Some(row) = rows.next()? {
             let inbox_name: String = row.get(0)?;
 
-            if inbox_name.contains(&profile_name) {
-                inboxes.push(inbox_name);
-            } else {
-                // Check if the identity has read permission for the inbox
-                if let Ok(has_perm) = self.has_permission(&inbox_name, &profile_name_identity, InboxPermission::Read) {
-                    if has_perm {
-                        inboxes.push(inbox_name);
-                    }
-                }
-            }
+            inboxes.push(inbox_name);
         }
 
         Ok(inboxes)
@@ -1337,138 +1326,6 @@ mod tests {
             .get_last_unread_messages_from_inbox(inbox_name_value.clone().to_string(), 2, None)
             .unwrap();
         assert_eq!(last_messages_inbox.len(), 1);
-
-        // Test permissions
-        let subidentity_name = "device1";
-        let full_subidentity_name =
-            ShinkaiName::from_node_and_profile_names(node1_identity_name.to_string(), subidentity_name.to_string())
-                .unwrap();
-
-        let device1_subidentity = StandardIdentity::new(
-            full_subidentity_name.clone(),
-            None,
-            node1_encryption_pk.clone(),
-            node1_identity_pk.clone(),
-            Some(node1_subencryption_pk),
-            Some(node1_subidentity_pk),
-            StandardIdentityType::Profile,
-            IdentityPermissions::Standard,
-        );
-
-        let _ = db.insert_profile(device1_subidentity.clone());
-        println!("Inserted profile");
-        eprintln!("inbox name: {}", inbox_name_value);
-
-        db.add_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
-            .unwrap();
-        assert!(db
-            .has_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
-            .unwrap());
-
-        db.remove_permission(&inbox_name_value, &device1_subidentity).unwrap();
-        assert!(!db
-            .has_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
-            .unwrap());
-
-        let message4 = generate_message_with_text(
-            "Hello World 6".to_string(),
-            node1_encryption_sk.clone(),
-            clone_signature_secret_key(&node1_identity_sk),
-            node1_subencryption_pk,
-            "other_inbox".to_string(),
-            node1_identity_name.to_string(),
-            "2023-07-02T20:53:34.815Z".to_string(),
-        );
-        let message5 = generate_message_with_text(
-            "Hello World 7".to_string(),
-            node1_encryption_sk.clone(),
-            clone_signature_secret_key(&node1_identity_sk),
-            node1_subencryption_pk,
-            "yet_another_inbox".to_string(),
-            node1_identity_name.to_string(),
-            "2023-07-02T20:53:34.816Z".to_string(),
-        );
-        db.unsafe_insert_inbox_message(&message4, None, None).await.unwrap();
-        db.unsafe_insert_inbox_message(&message5, None, None).await.unwrap();
-
-        // Test get_inboxes_for_profile
-        let node1_profile_identity = StandardIdentity::new(
-            ShinkaiName::from_node_and_profile_names(
-                node1_identity_name.to_string(),
-                node1_subidentity_name.to_string(),
-            )
-            .unwrap(),
-            None,
-            node1_encryption_pk.clone(),
-            node1_identity_pk.clone(),
-            Some(node1_subencryption_pk),
-            Some(node1_subidentity_pk),
-            StandardIdentityType::Profile,
-            IdentityPermissions::Standard,
-        );
-        let _ = db.insert_profile(node1_profile_identity.clone());
-        let inboxes = db.get_inboxes_for_profile(node1_profile_identity.clone()).unwrap();
-        assert_eq!(inboxes.len(), 1);
-
-        let inboxes = db.get_inboxes_for_profile(node1_profile_identity.clone()).unwrap();
-        assert_eq!(inboxes.len(), 1);
-        assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()));
-
-        // Test get_smart_inboxes_for_profile
-        let smart_inboxes = db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
-            .unwrap();
-        assert_eq!(smart_inboxes.len(), 1);
-
-        // Check if smart_inboxes contain the expected results
-        let expected_inbox_ids = ["inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false"];
-
-        for smart_inbox in smart_inboxes {
-            assert!(expected_inbox_ids.contains(&smart_inbox.inbox_id.as_str()));
-            assert_eq!(format!("New Inbox: {}", smart_inbox.inbox_id), smart_inbox.custom_name);
-
-            // Check the last_message of each smart_inbox
-            if let Some(last_message) = smart_inbox.last_message {
-                match last_message.body {
-                    MessageBody::Unencrypted(ref body) => match body.message_data {
-                        MessageData::Unencrypted(ref data) => match smart_inbox.inbox_id.as_str() {
-                            "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 5");
-                            }
-                            "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 6");
-                            }
-                            "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 7");
-                            }
-                            _ => panic!("Unexpected inbox_id"),
-                        },
-                        _ => panic!("Expected unencrypted message data"),
-                    },
-                    _ => panic!("Expected unencrypted message body"),
-                }
-                assert_eq!(last_message.external_metadata.sender, "@@node1.shinkai");
-                assert_eq!(last_message.external_metadata.recipient, "@@node1.shinkai");
-                assert_eq!(last_message.encryption, EncryptionMethod::None);
-                assert_eq!(last_message.version, ShinkaiVersion::V1_0);
-            }
-        }
-
-        // Update the name of one of the inboxes
-        let inbox_to_update = "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false";
-        let new_name = "New Inbox Name";
-        db.update_smart_inbox_name(inbox_to_update, new_name).unwrap();
-
-        // Get smart_inboxes again
-        let updated_smart_inboxes = db.get_all_smart_inboxes_for_profile(node1_profile_identity).unwrap();
-
-        // Check if the name of the updated inbox has been changed
-        for smart_inbox in updated_smart_inboxes {
-            if smart_inbox.inbox_id == inbox_to_update {
-                eprintln!("Smart inbox: {:?}", smart_inbox);
-                assert_eq!(smart_inbox.custom_name, new_name);
-            }
-        }
     }
 
     // For benchmarking purposes

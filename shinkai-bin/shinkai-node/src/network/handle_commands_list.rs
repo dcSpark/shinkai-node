@@ -2249,6 +2249,7 @@ impl Node {
                 app_id,
                 llm_provider,
                 extra_config,
+                mounts,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2276,6 +2277,7 @@ impl Node {
                         encryption_secret_key,
                         encryption_public_key,
                         signing_secret_key,
+                        mounts,
                         res,
                     )
                     .await;
@@ -2292,6 +2294,7 @@ impl Node {
                 tool_id,
                 app_id,
                 llm_provider,
+                mounts,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2310,6 +2313,7 @@ impl Node {
                         app_id,
                         llm_provider,
                         node_name,
+                        mounts,
                         res,
                     )
                     .await;
@@ -2708,6 +2712,83 @@ impl Node {
                         .await;
                 });
             }
+
+            NodeCommand::V2ApiUploadAppFile {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                file_data,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_upload_app_file(
+                        db_clone, bearer, tool_id, app_id, file_name, file_data, node_env, res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiGetAppFile {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ =
+                        Node::v2_api_get_app_file(db_clone, bearer, tool_id, app_id, file_name, node_env, res).await;
+                });
+            }
+            NodeCommand::V2ApiUpdateAppFile {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                new_name,
+                file_data,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_app_file(
+                        db_clone, bearer, tool_id, app_id, file_name, new_name, file_data, node_env, res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiListAppFiles {
+                bearer,
+                tool_id,
+                app_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_app_files(db_clone, bearer, tool_id, app_id, node_env, res).await;
+                });
+            }
+            NodeCommand::V2ApiDeleteAppFile {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ =
+                        Node::v2_api_delete_app_file(db_clone, bearer, tool_id, app_id, file_name, node_env, res).await;
+                });
+            }
+
             _ => (),
         }
     }

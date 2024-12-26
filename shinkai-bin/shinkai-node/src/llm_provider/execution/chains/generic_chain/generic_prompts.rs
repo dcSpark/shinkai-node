@@ -4,6 +4,9 @@ use std::collections::HashMap;
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
 
+use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
+use crate::network::Node;
+use crate::utils::environment::NodeEnvironment;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
@@ -24,6 +27,8 @@ impl JobPromptGenerator {
         job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<ToolCallFunctionResponse>,
+        job_id: String,
+        node_env: NodeEnvironment,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
@@ -52,6 +57,16 @@ impl JobPromptGenerator {
                 if (i + 1) % 2 == 0 {
                     priority = priority.saturating_sub(1);
                 }
+            }
+
+            let folder = get_app_folder_path(node_env, job_id);
+            let current_files = Node::v2_api_list_app_files_internal(folder.clone(), true);
+            if let Ok(current_files) = current_files {
+                prompt.add_content(
+                    format!("Current files: {}", current_files.join(", ")),
+                    SubPromptType::ExtraContext,
+                    97,
+                );
             }
         }
 

@@ -685,10 +685,10 @@ pub async fn api_execute_tool(
     app_id: String,
     llm_provider: String,
     extra_config: Map<String, Value>,
-    oauth: Map<String, Value>,
+    _oauth: Map<String, Value>,
 ) -> Result<Value, APIError> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
-
+    let mounts = None;
     node_commands_sender
         .send(NodeCommand::V2ApiExecuteTool {
             bearer,
@@ -698,6 +698,7 @@ pub async fn api_execute_tool(
             app_id,
             llm_provider,
             extra_config,
+            mounts,
             res: res_sender,
         })
         .await
