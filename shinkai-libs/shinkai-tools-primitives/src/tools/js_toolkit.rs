@@ -17,7 +17,6 @@ pub struct JSToolkit {
     pub name: String,
     pub tools: Vec<DenoTool>,
     pub author: String,
-    pub version: String,
 }
 
 impl JSToolkit {
@@ -33,7 +32,6 @@ impl JSToolkit {
             name: name.to_string(),
             tools,
             author: definitions.first().map_or("".to_string(), |d| d.author.clone()),
-            version: "1.0.0".to_string(), // Dummy version
         }
     }
 
@@ -52,6 +50,8 @@ impl JSToolkit {
                 .unwrap_or_default(),
         };
 
+        // This comes from the tool definition. We will remove this.
+        let version = Some(1_000_000);
         DenoTool {
             toolkit_name: toolkit_name.to_string(),
             name: tool_name,
@@ -74,6 +74,7 @@ impl JSToolkit {
             sql_queries: None,
             file_inbox: None,
             assets: None,
+            version,
         }
     }
 

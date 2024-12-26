@@ -27,6 +27,7 @@ use tokio::runtime::Runtime;
 pub struct DenoTool {
     pub toolkit_name: String,
     pub name: String,
+    pub version: Option<u64>,
     pub author: String,
     pub js_code: String,
     pub tools: Option<Vec<String>>,

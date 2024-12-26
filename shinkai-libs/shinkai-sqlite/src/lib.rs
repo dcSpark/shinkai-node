@@ -513,13 +513,13 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
-                tool_key TEXT NOT NULL UNIQUE,
+                tool_key TEXT NOT NULL,
+                version INTEGER NOT NULL,
                 embedding_seo TEXT NOT NULL,
                 tool_data BLOB NOT NULL,
                 tool_header BLOB NOT NULL,
                 tool_type TEXT NOT NULL,
                 author TEXT NOT NULL,
-                version TEXT NOT NULL,
                 is_enabled INTEGER NOT NULL,
                 on_demand_price REAL,
                 is_network INTEGER NOT NULL
@@ -529,7 +529,7 @@ impl SqliteManager {
 
         // Create indexes for the shinkai_tools table if needed
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_shinkai_tools_key ON shinkai_tools (tool_key);",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_shinkai_tools_key_version ON shinkai_tools (tool_key, version);",
             [],
         )?;
 
@@ -576,19 +576,25 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS tool_playground (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                tool_router_key TEXT NOT NULL,
+                version INTEGER NOT NULL,
                 description TEXT,
                 author TEXT,
                 keywords TEXT, -- Store as a comma-separated list
                 configurations TEXT, -- Store as a JSON string
                 parameters TEXT, -- Store as a JSON string
                 result TEXT, -- Store as a JSON string
-                tool_router_key TEXT NOT NULL UNIQUE, -- Non-nullable and unique
                 job_id TEXT, -- Allow NULL values
                 job_id_history TEXT, -- Store as a comma-separated list
                 code TEXT NOT NULL,
                 language TEXT NOT NULL,
-                FOREIGN KEY(tool_router_key) REFERENCES shinkai_tools(tool_key) -- Foreign key constraint
+                FOREIGN KEY(tool_router_key, version) REFERENCES shinkai_tools(tool_key, version) -- Foreign key constraint
             );",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_playground_tool_router_key_version ON tool_playground (tool_router_key, version);",
             [],
         )?;
         Ok(())
@@ -600,11 +606,13 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS tool_playground_code_history (
                 message_id TEXT PRIMARY KEY,
                 tool_router_key TEXT NOT NULL,
+                version INTEGER NOT NULL,
                 code TEXT NOT NULL,
-                FOREIGN KEY(tool_router_key) REFERENCES tool_playground(tool_router_key)
+                FOREIGN KEY(tool_router_key, version) REFERENCES tool_playground(tool_router_key, version)
             );",
             [],
         )?;
+
         Ok(())
     }
 
@@ -1000,10 +1008,12 @@ impl SqliteManager {
     // New method to get the embedding model type
     pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
         let conn = self.get_connection()?;
-        Ok(conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
-            let model_type_str: String = row.get(0)?;
-            EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
-        })?)
+        Ok(
+            conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
+                let model_type_str: String = row.get(0)?;
+                EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
+            })?,
+        )
     }
 
     // Returns a connection from the pool

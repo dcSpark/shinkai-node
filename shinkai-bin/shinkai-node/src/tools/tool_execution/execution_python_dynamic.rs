@@ -49,6 +49,7 @@ pub async fn execute_python_tool(
         file_inbox: None,
         oauth: oauth.clone(),
         assets: None,
+        version: Some(1_000_000),
     };
 
     let env = generate_execution_environment(

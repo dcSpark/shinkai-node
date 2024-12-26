@@ -4,9 +4,9 @@ use crate::tools::error::ToolError;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::VRPath;
 
-use super::tool_output_arg::ToolOutputArg;
 use super::parameters::Parameters;
 use super::shinkai_tool::ShinkaiToolHeader;
+use super::tool_output_arg::ToolOutputArg;
 
 #[derive(Debug)]
 pub enum RustToolError {
@@ -28,6 +28,7 @@ impl std::error::Error for RustToolError {}
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustTool {
     pub name: String,
+    pub version: Option<u64>,
     pub description: String,
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
@@ -43,6 +44,7 @@ impl RustTool {
         output_arg: ToolOutputArg,
         tool_embedding: Option<Embedding>,
         tool_router_key: String,
+        version: Option<u64>,
     ) -> Self {
         Self {
             name: VRPath::clean_string(&name),
@@ -51,6 +53,7 @@ impl RustTool {
             output_arg,
             tool_embedding,
             tool_router_key,
+            version,
         }
     }
 
@@ -86,6 +89,7 @@ impl RustTool {
             output_arg: header.output_arg.clone(),
             tool_embedding: None, // Assuming no embedding is provided in the header
             tool_router_key: header.tool_router_key.clone(),
+            version: Some(1_000_000),
         })
     }
 }

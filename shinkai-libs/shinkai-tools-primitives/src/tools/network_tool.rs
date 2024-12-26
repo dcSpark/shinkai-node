@@ -1,14 +1,17 @@
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType};
 use shinkai_vector_resources::embeddings::Embedding;
 
-use super::{tool_output_arg::ToolOutputArg, error::ToolError, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::ToolConfig};
+use super::{
+    error::ToolError, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
+    tool_output_arg::ToolOutputArg,
+};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NetworkTool {
     pub name: String,
     pub toolkit_name: String,
     pub description: String,
-    pub version: String,
+    pub version: Option<u64>,
     pub provider: ShinkaiName,
     pub usage_type: UsageType, // includes pricing
     pub activated: bool,
@@ -27,7 +30,7 @@ impl NetworkTool {
         name: String,
         toolkit_name: String,
         description: String,
-        version: String,
+        version: Option<u64>,
         provider: ShinkaiName,
         usage_type: UsageType,
         activated: bool,

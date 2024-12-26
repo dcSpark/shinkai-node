@@ -37,6 +37,7 @@ pub struct ToolPlaygroundMetadata {
     pub description: String,
     pub author: String,
     pub keywords: Vec<String>,
+    pub version: String,
     #[serde(deserialize_with = "deserialize_configurations")]
     pub configurations: Vec<ToolConfig>,
     pub parameters: Parameters,

@@ -441,6 +441,21 @@ impl Node {
 
         let shinkai_tool = match payload.language {
             CodeLanguage::Typescript => {
+                let version = ShinkaiTool::from_string_to_numeric_version(payload.metadata.version.clone());
+                if version.is_err() {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Failed to convert version to numeric version: {}",
+                            version.err().unwrap()
+                        ),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+                let version = Some(version.unwrap());
+
                 let tool = DenoTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
@@ -460,10 +475,26 @@ impl Node {
                     sql_queries: Some(payload.metadata.sql_queries),
                     file_inbox: None,
                     assets: payload.assets.clone(),
+                    version,
                 };
                 ShinkaiTool::Deno(tool, false)
             }
             CodeLanguage::Python => {
+                let version = ShinkaiTool::from_string_to_numeric_version(payload.metadata.version.clone());
+                if version.is_err() {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Failed to convert version to numeric version: {}",
+                            version.err().unwrap()
+                        ),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+                let version = Some(version.unwrap());
+
                 let tool = PythonTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
@@ -483,6 +514,7 @@ impl Node {
                     sql_queries: Some(payload.metadata.sql_queries),
                     file_inbox: None,
                     assets: payload.assets.clone(),
+                    version,
                 };
                 ShinkaiTool::Python(tool, false)
             }

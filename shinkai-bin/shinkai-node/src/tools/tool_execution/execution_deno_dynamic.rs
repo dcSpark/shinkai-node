@@ -48,6 +48,7 @@ pub async fn execute_deno_tool(
         sql_queries: None,
         file_inbox: None,
         assets: None,
+        version: Some(1_000_000),
     };
 
     let env = generate_execution_environment(
@@ -137,6 +138,7 @@ pub fn check_deno_tool(
         sql_queries: None,
         file_inbox: None,
         assets: None,
+        version: Some(1_000_000),
     };
 
     let node_env = fetch_node_environment();

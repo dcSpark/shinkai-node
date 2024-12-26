@@ -78,14 +78,12 @@ impl ToolRouter {
             // Add JS tools
             let _ = self.add_deno_tools().await;
             let _ = self.add_rust_tools().await;
-            let _ = self.add_python_tools().await;
             // Add static prompts
             let _ = self.add_static_prompts(&generator).await;
         } else if !has_any_js_tools {
             // Add JS tools
             let _ = self.add_deno_tools().await;
             let _ = self.add_rust_tools().await;
-            let _ = self.add_python_tools().await;
         }
 
         Ok(())
@@ -95,7 +93,6 @@ impl ToolRouter {
         // Add JS tools
         let _ = self.add_deno_tools().await;
         let _ = self.add_rust_tools().await;
-        let _ = self.add_python_tools().await;
         let _ = self.add_static_prompts(generator).await;
         let _ = Self::import_tools_from_directory(self.sqlite_manager.clone()).await;
         Ok(())
@@ -226,6 +223,7 @@ impl ToolRouter {
                 tool.output_arg,
                 None,
                 tool.tool_router_key,
+                tool.version,
             );
             self.sqlite_manager
                 .add_tool(ShinkaiTool::Rust(rust_tool, true))
@@ -237,44 +235,6 @@ impl ToolRouter {
 
     async fn add_deno_tools(&self) -> Result<(), ToolError> {
         let start_time = Instant::now(); // Start the timer
-
-        let tools = built_in_tools::get_tools();
-
-        let only_testing_js_tools =
-            std::env::var("ONLY_TESTING_JS_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
-        let allowed_tools = vec![
-            "shinkai-tool-echo",
-            "shinkai-tool-coinbase-create-wallet",
-            "shinkai-tool-coinbase-get-my-address",
-            "shinkai-tool-coinbase-get-balance",
-            "shinkai-tool-coinbase-get-transactions",
-            "shinkai-tool-coinbase-send-tx",
-            "shinkai-tool-coinbase-call-faucet",
-        ];
-
-        {
-            for (name, definition) in tools {
-                // Skip tools that start with "demo" if not only_testing_js_tools
-                if !only_testing_js_tools && name.starts_with("demo") {
-                    continue;
-                }
-                // Skip tools that are not in the allowed list if only_testing_js_tools is true
-                if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
-                    continue; // Skip tools that are not in the allowed list
-                }
-
-                println!("Adding JS tool: {}", name);
-
-                let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-                for tool in toolkit.tools {
-                    let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-                    self.sqlite_manager
-                        .add_tool(shinkai_tool)
-                        .await
-                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                }
-            }
-        }
 
         // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_EXTERNAL_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
@@ -293,7 +253,7 @@ impl ToolRouter {
                 name: "network__echo".to_string(),
                 toolkit_name: "shinkai-tool-echo".to_string(),
                 description: "Echoes the input message".to_string(),
-                version: "v0.1".to_string(),
+                version: Some(1_000_000),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
                 usage_type: usage_type.clone(),
                 activated: true,
@@ -326,7 +286,7 @@ impl ToolRouter {
                 name: "youtube_transcript_with_timestamps".to_string(),
                 toolkit_name: "shinkai-tool-youtube-transcript".to_string(),
                 description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
-                version: "v0.1".to_string(),
+                version: Some(1_000_000),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
                 usage_type: usage_type.clone(),
                 activated: true,
@@ -401,130 +361,6 @@ impl ToolRouter {
 
         let duration = start_time.elapsed(); // Calculate the duration
         println!("Time taken to add JS tools: {:?}", duration); // Print the duration
-
-        Ok(())
-    }
-
-    fn generate_google_search_tool() -> PythonTool {
-        // Create parameters for Google search
-        let mut params = Parameters::new();
-        params.add_property(
-            "query".to_string(),
-            "string".to_string(),
-            "The search query to look up".to_string(),
-            true,
-        );
-        params.add_property(
-            "num_results".to_string(),
-            "number".to_string(),
-            "Number of search results to return".to_string(),
-            false,
-        );
-
-        let mut output_arg = ToolOutputArg::empty();
-        output_arg.json = r#"{
-        "query": "string",
-        "results": [
-            {
-                "title": "string",
-                "url": "string", 
-                "description": "string"
-            }
-        ]
-    }"#
-        .to_string();
-
-        let python_tool = PythonTool {
-            toolkit_name: "google_search_shinkai".to_string(),
-            embedding: None,
-            name: "Google Search".to_string(),
-            author: "Shinkai".to_string(),
-            py_code: r#"
-# /// script
-# dependencies = [
-# "googlesearch-python"
-# ]
-# ///
-from googlesearch import search, SearchResult
-from typing import List
-from dataclasses import dataclass
-import json
-
-class CONFIG:
-    pass
-
-class INPUTS:
-    query: str
-    num_results: int = 10
-
-class OUTPUT:
-    results: List[SearchResult]
-    query: str
-
-async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
-    query = p.query
-    if not query:
-        raise ValueError("No search query provided")
-
-    results = []
-    try:
-        results = search(query, num_results=p.num_results, advanced=True)
-    except Exception as e:
-        raise RuntimeError(f"Search failed: {str(e)}")
-
-    output = OUTPUT()
-    output.results = results
-    output.query = query
-    return output
-"#
-            .to_string(),
-            tools: None,
-            config: vec![],
-            description: "Search the web using Google".to_string(),
-            keywords: vec![
-                "web search".to_string(),
-                "google search".to_string(),
-                "internet search".to_string(),
-            ],
-            input_args: params,
-            output_arg,
-            activated: true,
-            result: ToolResult {
-                r#type: "object".to_string(),
-                properties: serde_json::json!({
-                    "query": {"type": "string"},
-                    "results": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "title": {"type": "string"},
-                                "url": {"type": "string"},
-                                "description": {"type": "string"}
-                            },
-                            "required": ["title", "url", "description"]
-                        }
-                    }
-                }),
-                required: vec!["query".to_string(), "results".to_string()],
-            },
-            sql_tables: None,
-            sql_queries: None,
-            file_inbox: None,
-            oauth: None,
-            assets: None,
-        };
-        python_tool
-    }
-
-    async fn add_python_tools(&self) -> Result<(), ToolError> {
-        let python_tools = vec![Self::generate_google_search_tool()];
-        for python_tool in python_tools {
-            self.sqlite_manager
-                .add_tool(ShinkaiTool::Python(python_tool, true))
-                .await
-                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-        }
 
         Ok(())
     }

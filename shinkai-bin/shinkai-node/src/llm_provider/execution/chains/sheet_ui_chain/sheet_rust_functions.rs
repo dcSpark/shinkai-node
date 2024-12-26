@@ -532,6 +532,7 @@ impl SheetRustFunctions {
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_create_new_column_with_values".to_string(),
+            Some(1_000_000),
         );
 
         // Add the tool definition for update_column_with_values
@@ -547,6 +548,7 @@ impl SheetRustFunctions {
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_update_column_with_values".to_string(),
+            Some(1_000_000),
         );
 
         // Add the tool definition for replace_value_at_position
@@ -563,6 +565,7 @@ impl SheetRustFunctions {
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_replace_value_at_position".to_string(),
+            Some(1_000_000),
         );
 
         // Add the tool definition for create_new_columns_with_csv
@@ -577,6 +580,7 @@ impl SheetRustFunctions {
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_create_new_columns_with_csv".to_string(),
+            Some(1_000_000),
         );
 
         // Add the tool definition for get_table
@@ -587,6 +591,7 @@ impl SheetRustFunctions {
             ToolOutputArg::empty(),
             None,
             "local:::rust_toolkit:::shinkai_sheet_ui_get_table".to_string(),
+            Some(1_000_000),
         );
 
         vec![

@@ -31,7 +31,7 @@ pub struct ShinkaiToolHeader {
     pub tool_type: String,
     pub formatted_tool_summary_for_ui: String,
     pub author: String,
-    pub version: String,
+    pub version: Option<u64>,
     pub enabled: bool,
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
@@ -61,7 +61,7 @@ impl ShinkaiTool {
             tool_type: self.tool_type().to_string(),
             formatted_tool_summary_for_ui: self.formatted_tool_summary_for_ui(),
             author: self.author(),
-            version: self.version(),
+            version: self.numeric_version(),
             enabled: self.is_enabled(),
             input_args: self.input_args(),
             output_arg: self.output_arg(),
@@ -293,13 +293,56 @@ impl ShinkaiTool {
     }
 
     /// Returns the version of the tool
-    pub fn version(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
+    pub fn numeric_version(&self) -> Option<u64> {
+        let version = match self {
+            ShinkaiTool::Rust(r, _) => r.version.clone(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
-            ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
-            ShinkaiTool::Python(_p, _) => "unknown".to_string(),
+            ShinkaiTool::Deno(d, _) => d.version.clone(),
+            ShinkaiTool::Python(p, _) => p.version.clone(),
+        };
+        if version.is_none() {
+            println!("No version found for tool: {:?}", self.name());
+            return Some(1_000_000);
         }
+        version
+    }
+
+    pub fn human_version(&self) -> String {
+        let version = self.numeric_version();
+        if let Some(version) = version {
+            Self::from_numeric_version_to_string(version)
+        } else {
+            println!("No version found for tool: {:?}", self.name());
+            "1.0.0".to_string()
+        }
+    }
+
+    pub fn from_numeric_version_to_string(version: u64) -> String {
+        let major = version / 1_000_000;
+        let minor = (version % 1_000_000) / 1_000;
+        let patch = version % 1_000;
+        format!("{}.{}.{}", major, minor, patch)
+    }
+
+    /// Converts a version string to a numeric version
+    pub fn from_string_to_numeric_version(version: String) -> Result<u64, String> {
+        let version_parts: Vec<&str> = version.split('.').collect();
+        if version_parts.len() != 3 {
+            return Err("Version must be in format major.minor.patch".to_string());
+        }
+
+        let major: u64 = version_parts[0].parse().map_err(|_| "Invalid major version")?;
+        let minor: u64 = version_parts[1].parse().map_err(|_| "Invalid minor version")?;
+        let patch: u64 = version_parts[2].parse().map_err(|_| "Invalid patch version")?;
+
+        if minor >= 1000 {
+            return Err("Minor version must be less than 1000".to_string());
+        }
+        if patch >= 1000 {
+            return Err("Patch version must be less than 1000".to_string());
+        }
+
+        Ok(major * 1_000_000 + minor * 1_000 + patch)
     }
 
     /// Get the usage type, only valid for NetworkTool
@@ -440,6 +483,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         // Create a ShinkaiTool instance
@@ -518,6 +562,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -532,5 +577,64 @@ mod tests {
         );
         assert_eq!(shinkai_tool.tool_type(), "Deno");
         assert!(shinkai_tool.is_enabled());
+    }
+
+    #[test]
+    fn test_version_conversions() {
+        // Test valid version conversions
+        assert_eq!(
+            ShinkaiTool::from_string_to_numeric_version("1.2.3".to_string()).unwrap(),
+            1_002_003
+        );
+        assert_eq!(
+            ShinkaiTool::from_string_to_numeric_version("0.0.1".to_string()).unwrap(),
+            1
+        );
+        assert_eq!(
+            ShinkaiTool::from_string_to_numeric_version("999.999.999".to_string()).unwrap(),
+            999_999_999
+        );
+        assert_eq!(
+            ShinkaiTool::from_string_to_numeric_version("1000.0.0".to_string()).unwrap(),
+            1000_000_000
+        );
+
+        // Test human_version conversion
+        // Test human_version conversion
+        let mut tool = ShinkaiTool::Rust(
+            RustTool {
+                name: "test".to_string(),
+                description: "test".to_string(),
+                input_args: Parameters::new(),
+                output_arg: ToolOutputArg { json: "".to_string() },
+                tool_embedding: None,
+                version: Some(1_002_003),
+                tool_router_key: "test".to_string(),
+            },
+            true,
+        );
+        assert_eq!(tool.human_version(), "1.2.3");
+
+        // Test edge cases
+        tool = ShinkaiTool::Rust(
+            RustTool {
+                name: "test".to_string(),
+                description: "test".to_string(),
+                input_args: Parameters::new(),
+                output_arg: ToolOutputArg { json: "".to_string() },
+                tool_embedding: None,
+                version: Some(1),
+                tool_router_key: "test".to_string(),
+            },
+            true,
+        );
+        assert_eq!(tool.human_version(), "0.0.0");
+
+        // Test invalid version strings
+        assert!(ShinkaiTool::from_string_to_numeric_version("0.1000.0".to_string()).is_err()); // Minor version too large
+        assert!(ShinkaiTool::from_string_to_numeric_version("0.0.1000".to_string()).is_err()); // Patch version too large
+        assert!(ShinkaiTool::from_string_to_numeric_version("invalid.version.string".to_string()).is_err());
+        assert!(ShinkaiTool::from_string_to_numeric_version("1.2".to_string()).is_err());
+        // Missing patch version
     }
 }

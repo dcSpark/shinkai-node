@@ -67,7 +67,7 @@ SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DES
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Execute SQLite queries".to_string(),
                 author: "Shinkai".to_string(),
-                version: "1.0".to_string(),
+                version: Some(1_000_000),
                 enabled: true,
                 input_args: {
                     let mut params = Parameters::new();

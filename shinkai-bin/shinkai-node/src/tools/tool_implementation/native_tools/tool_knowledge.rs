@@ -50,7 +50,7 @@ Example usage:
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Process embeddings in job scope".to_string(),
                 author: "Shinkai".to_string(),
-                version: "1.0".to_string(),
+                version: Some(1_000_000),
                 enabled: true,
                 input_args: {
                     let mut params = Parameters::new();

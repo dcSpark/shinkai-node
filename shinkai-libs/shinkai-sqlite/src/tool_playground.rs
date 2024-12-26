@@ -2,7 +2,10 @@ use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
-use shinkai_tools_primitives::tools::tool_playground::{ToolPlayground, ToolPlaygroundMetadata};
+use shinkai_tools_primitives::tools::{
+    shinkai_tool::ShinkaiTool,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+};
 
 impl SqliteManager {
     // Adds or updates a ToolPlayground entry in the tool_playground table
@@ -39,8 +42,9 @@ impl SqliteManager {
                     job_id = ?8,
                     job_id_history = ?9,
                     code = ?10,
-                    language = ?11
-                WHERE tool_router_key = ?12",
+                    language = ?11,
+                    version = ?12
+                WHERE tool_router_key = ?13",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -54,14 +58,16 @@ impl SqliteManager {
                     tool.code,
                     tool.language.to_string(),
                     tool.tool_router_key.as_deref(),
+                    ShinkaiTool::from_string_to_numeric_version(tool.metadata.version.clone())
+                        .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
                 ],
             )?;
         } else {
             // Insert new entry
             tx.execute(
                 "INSERT INTO tool_playground (
-                    name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language, version
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -75,6 +81,8 @@ impl SqliteManager {
                     job_id_history_str,
                     tool.code,
                     tool.language.to_string(),
+                    ShinkaiTool::from_string_to_numeric_version(tool.metadata.version.clone())
+                        .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?,
                 ],
             )?;
         }
@@ -108,7 +116,7 @@ impl SqliteManager {
     pub fn get_tool_playground(&self, tool_router_key: &str) -> Result<ToolPlayground, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language, version
              FROM tool_playground WHERE tool_router_key = ?1",
         )?;
 
@@ -155,6 +163,7 @@ impl SqliteManager {
                         sql_queries: vec![],
                         tools: None,
                         oauth: None,
+                        version: ShinkaiTool::from_numeric_version_to_string(row.get(12)?),
                     },
                     tool_router_key: row.get(7)?,
                     job_id: row.get(8)?,
@@ -178,7 +187,7 @@ impl SqliteManager {
     pub fn get_all_tool_playground(&self) -> Result<Vec<ToolPlayground>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language, version
              FROM tool_playground",
         )?;
 
@@ -219,6 +228,7 @@ impl SqliteManager {
                     sql_queries: vec![],
                     tools: None,
                     oauth: None,
+                    version: ShinkaiTool::from_numeric_version_to_string(row.get(12)?),
                 },
                 tool_router_key: row.get(7)?,
                 job_id: row.get(8)?,
@@ -299,6 +309,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -326,6 +337,7 @@ mod tests {
                 sql_queries: vec![],
                 tools: None,
                 oauth: None,
+                version: "1.0.0".to_string(),
             },
             tool_router_key: Some(tool_router_key),
             job_id: "job_123".to_string(),
@@ -424,6 +436,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -496,6 +509,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);

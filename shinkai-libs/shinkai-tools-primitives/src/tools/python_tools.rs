@@ -26,6 +26,7 @@ use super::tool_playground::{SqlQuery, SqlTable};
 pub struct PythonTool {
     pub toolkit_name: String,
     pub name: String,
+    pub version: Option<u64>,
     pub author: String,
     pub py_code: String,
     pub tools: Option<Vec<String>>,

@@ -1,7 +1,9 @@
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
-use shinkai_tools_primitives::tools::{tool_output_arg::ToolOutputArg, error::ToolError, shinkai_tool::ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::{
+    error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
+};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::sync::Arc;
 
@@ -44,7 +46,7 @@ This can be used to process complex requests, text analysis, text matching, text
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Tool for processing prompts with LLM".to_string(),
                 author: "Shinkai".to_string(),
-                version: "1.0".to_string(),
+                version: Some(1_000_000),
                 enabled: true,
                 input_args: {
                     let mut params = Parameters::new();

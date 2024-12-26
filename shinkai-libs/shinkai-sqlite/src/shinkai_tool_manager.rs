@@ -3,8 +3,8 @@ use bytemuck::cast_slice;
 use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use std::collections::HashSet;
 use shinkai_vector_resources::embeddings::Embedding;
+use std::collections::HashSet;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
@@ -81,8 +81,9 @@ impl SqliteManager {
                 version,
                 is_enabled,
                 on_demand_price,
-                is_network
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                is_network,
+                version
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 tool_clone.name(),
                 tool_clone.description(),
@@ -92,10 +93,11 @@ impl SqliteManager {
                 tool_header,
                 tool_type,
                 tool_clone.author(),
-                tool_clone.version(),
+                tool_clone.numeric_version(),
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
+                tool_clone.numeric_version(),
             ],
         )?;
 
@@ -342,7 +344,7 @@ impl SqliteManager {
                 tool_header,
                 tool.tool_type().to_string(),
                 tool.author(),
-                tool.version(),
+                tool.numeric_version(),
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
@@ -739,6 +741,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -803,6 +806,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let deno_tool_2 = DenoTool {
@@ -824,6 +828,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let deno_tool_3 = DenoTool {
@@ -845,6 +850,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let shinkai_tool_1 = ShinkaiTool::Deno(deno_tool_1, true);
@@ -903,6 +909,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let deno_tool_2 = DenoTool {
@@ -924,6 +931,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let deno_tool_3 = DenoTool {
@@ -945,6 +953,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -1028,6 +1037,7 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -1073,6 +1083,7 @@ mod tests {
                 sql_queries: None,
                 file_inbox: None,
                 assets: None,
+                version: Some(1_000_000),
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -1093,6 +1104,7 @@ mod tests {
                 sql_queries: None,
                 file_inbox: None,
                 assets: None,
+                version: Some(1_000_000),
             },
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
@@ -1113,6 +1125,7 @@ mod tests {
                 sql_queries: None,
                 file_inbox: None,
                 assets: None,
+                version: Some(1_000_000),
             },
         ];
 
@@ -1176,6 +1189,7 @@ mod tests {
             file_inbox: None,
             assets: None,
             oauth: None,
+            version: Some(1_000_000),
         };
 
         let disabled_tool = DenoTool {
@@ -1197,6 +1211,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         // Add both tools to the database
@@ -1285,6 +1300,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let disabled_non_network_tool = DenoTool {
@@ -1306,6 +1322,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
@@ -1435,6 +1452,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let tool2 = DenoTool {
@@ -1456,6 +1474,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         let tool3 = DenoTool {
@@ -1477,6 +1496,7 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            version: Some(1_000_000),
         };
 
         // Add tools to database with specific vectors

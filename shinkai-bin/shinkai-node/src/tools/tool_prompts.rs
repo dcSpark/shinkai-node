@@ -309,6 +309,10 @@ pub async fn tool_metadata_implementation_prompt(
           "type": "string",
           "description": "The name of the function"
         }},
+        "version": {{
+          "type": "string",
+          "description": "The version of the function"
+        }},
         "description": {{
           "type": "string",
           "description": "A description of what the function does"
@@ -529,6 +533,7 @@ pub async fn tool_metadata_implementation_prompt(
   Output: ```json
   {{
     "name": "Coinbase Wallet Creator",
+    "version": "1.0.0",
     "description": "Tool for creating a Coinbase wallet",
     "author": "Shinkai",
     "keywords": [
@@ -587,6 +592,7 @@ pub async fn tool_metadata_implementation_prompt(
   Output:```json
   {{
     "name": "Download Pages",
+    "version": "1.0.0",
     "description": "Downloads one or more URLs and sends the html content as markdown to an email address.",
     "author": "Shinkai",
     "keywords": [
