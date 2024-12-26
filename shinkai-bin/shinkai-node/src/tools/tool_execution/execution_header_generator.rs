@@ -1,7 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::{error::ToolError, tool_config::OAuth};
+use shinkai_tools_primitives::tools::{
+    error::ToolError,
+    tool_config::{OAuth, ToolConfig},
+};
 
 use super::execution_coordinator::handle_oauth;
 
@@ -28,4 +31,23 @@ pub async fn generate_execution_environment(
     envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
 
     Ok(envs)
+}
+
+pub async fn check_tool_config(tool_router_key: String, tool_config: Vec<ToolConfig>) -> Result<(), ToolError> {
+    for config in tool_config {
+        println!("config: {:?}", config);
+        match config {
+            ToolConfig::BasicConfig(config) => {
+                if config.key_value.is_none() && config.required {
+                    let fix_redirect_url = format!("shinkai://config?tool={}", urlencoding::encode(&tool_router_key));
+                    return Err(ToolError::MissingConfigError(format!(
+                        "\n\nCannot run tool, config is for \"{}\" is missing.\n\nClick the link to update the tool config and try again.\n\n{}",
+                        config.key_name, fix_redirect_url
+                    )));
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
