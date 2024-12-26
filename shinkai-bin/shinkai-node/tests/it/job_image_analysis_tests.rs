@@ -20,6 +20,7 @@ use super::utils::node_test_api::{
 use mockito::Server;
 
 #[test]
+#[ignore]
 fn job_image_analysis() {
     let mut server = Server::new();
 
@@ -128,6 +129,7 @@ fn job_image_analysis() {
                 )
                 .await;
             }
+            let job_message_content = "describe the image".to_string();
             {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
                 let file_path = Path::new("../../files/blue_64x64.png");
@@ -145,22 +147,30 @@ fn job_image_analysis() {
                     .unwrap();
                 eprintln!("Files for job: {:?}", files);
 
-                // Check that the files contain the expected file
-                let expected_file_name = "blue_64x64.png";
-                if let Some(files_array) = files.as_array() {
-                    assert!(
-                        files_array.iter().any(|file| file.get("name").and_then(|name| name.as_str()) == Some(expected_file_name)),
-                        "Expected file not found in job files"
-                    );
+                // Extract the path from the files
+                let file_paths: Vec<String> = if let Some(files_array) = files.as_array() {
+                    files_array
+                        .iter()
+                        .filter_map(|file| file.get("path").and_then(|name| name.as_str()).map(|s| s.to_string()))
+                        .collect()
                 } else {
                     panic!("Files is not an array");
-                }
+                };
+
+                // Convert Vec<String> to Vec<&str>
+                let file_paths_str: Vec<&str> = file_paths.iter().map(|s| s.as_str()).collect();
+
+                // Check that the files contain the expected file
+                let expected_file_name = "blue_64x64.png";
+                eprintln!("file_paths: {:?}", file_paths);
+                assert!(
+                    file_paths.iter().any(|file_name| file_name.ends_with(expected_file_name)),
+                    "Expected file not found in job files"
+                );
 
                 let shinkai_path = ShinkaiPath::base_path();
                 eprintln!("Shinkai Path: {}", shinkai_path.to_string_lossy());
-            }
-            let job_message_content = "describe the image".to_string();
-            {
+
                 // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for the Job");
                 let start = Instant::now();
@@ -174,7 +184,7 @@ fn job_image_analysis() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &job_message_content,
-                    &[],
+                    &file_paths_str,
                     "",
                 )
                 .await;

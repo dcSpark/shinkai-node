@@ -13,7 +13,7 @@ use shinkai_sqlite::SqliteManager;
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{

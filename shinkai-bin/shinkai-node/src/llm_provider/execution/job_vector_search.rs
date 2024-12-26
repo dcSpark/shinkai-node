@@ -450,7 +450,7 @@ impl JobManager {
 
             for file_info in files {
                 if !file_info.is_directory && file_info.has_embeddings {
-                    let file_path = ShinkaiPath::from_string(file_info.name);
+                    let file_path = ShinkaiPath::from_string(file_info.path);
                     if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(&file_path).unwrap() {
                         let file_id = parsed_file.id.unwrap();
                         parsed_file_ids.push(file_id);

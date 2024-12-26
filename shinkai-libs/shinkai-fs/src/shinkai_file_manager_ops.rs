@@ -334,7 +334,7 @@ mod tests {
         // Verify the file is listed
         let mut found_file = false;
         for entry in contents {
-            if entry.name == "old_file.txt" && !entry.is_directory {
+            if entry.path == "old_file.txt" && !entry.is_directory {
                 found_file = true;
                 assert!(!entry.has_embeddings, "File 'old_file.txt' should not have embeddings.");
             }
@@ -381,7 +381,7 @@ mod tests {
         // Verify the file is listed
         let mut found_file = false;
         for entry in contents {
-            if entry.name == "old_file.txt" && !entry.is_directory {
+            if entry.path == "old_file.txt" && !entry.is_directory {
                 found_file = true;
                 assert!(!entry.has_embeddings, "File 'old_file.txt' should not have embeddings.");
             }

@@ -1584,24 +1584,6 @@ impl Node {
                     let _ = Node::v2_update_smart_inbox_name(db_clone, bearer, inbox_name, custom_name, res).await;
                 });
             }
-            NodeCommand::V2ApiCreateFilesInbox { bearer, res } => {
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::v2_create_files_inbox(db_clone, bearer, res).await;
-                });
-            }
-            NodeCommand::V2ApiAddFileToInbox {
-                file_inbox_name,
-                filename,
-                file,
-                bearer,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::v2_add_file_to_inbox(db_clone, file_inbox_name, filename, file, bearer, res).await;
-                });
-            }
             NodeCommand::V2ApiUploadFileToFolder {
                 bearer,
                 filename,
@@ -1655,12 +1637,12 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiRetrieveSourceFile { bearer, payload, res } => {
+            NodeCommand::V2ApiRetrieveFile { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
 
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_retrieve_source_file(db_clone, identity_manager_clone, payload, bearer, res).await;
+                    let _ = Node::v2_retrieve_file(db_clone, identity_manager_clone, payload, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiGetDefaultEmbeddingModel { bearer, res } => {

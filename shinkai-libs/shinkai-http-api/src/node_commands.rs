@@ -652,7 +652,7 @@ pub enum NodeCommand {
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiRetrieveSourceFile {
+    V2ApiRetrieveFile {
         bearer: String,
         payload: APIVecFsRetrieveSourceFile,
         res: Sender<Result<String, APIError>>,

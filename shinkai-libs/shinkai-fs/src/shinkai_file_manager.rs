@@ -18,7 +18,7 @@ pub struct ShinkaiFileManager;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone, ToSchema)]
 pub struct FileInfo {
-    pub name: String,
+    pub path: String,
     pub is_directory: bool,
     #[serde(serialize_with = "serialize_system_time")]
     pub created_time: Option<SystemTime>,
@@ -151,15 +151,18 @@ impl ShinkaiFileManager {
         let mut contents = Vec::new();
         let mut file_map = HashMap::new();
 
+        let rel_path = path.relative_path();
+
         // Read directory contents and store in a hash map
         for entry in fs::read_dir(path.as_path())? {
             let entry = entry?;
             let metadata = entry.metadata()?;
             let file_name = entry.file_name().into_string().unwrap_or_default();
+            let shinkai_path = ShinkaiPath::new(&format!("{}/{}", rel_path, file_name));
             file_map.insert(file_name.clone(), metadata.is_dir());
 
             let file_info = FileInfo {
-                name: file_name,
+                path: shinkai_path.relative_path().to_string(),
                 is_directory: metadata.is_dir(),
                 created_time: metadata.created().ok(),
                 modified_time: metadata.modified().ok(),
@@ -169,7 +172,6 @@ impl ShinkaiFileManager {
         }
 
         // Use the relative path for querying the database
-        let rel_path = path.relative_path();
         let files_with_embeddings = sqlite_manager.get_processed_files_in_directory(&rel_path)?;
 
         // Create a hash map for files with embeddings
@@ -180,7 +182,7 @@ impl ShinkaiFileManager {
 
         // Update the contents with embedding information
         for file_info in &mut contents {
-            if embeddings_map.contains(&file_info.name) {
+            if embeddings_map.contains(&file_info.path) {
                 file_info.has_embeddings = true;
             }
         }
@@ -233,6 +235,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use shinkai_embedding::mock_generator::MockGenerator;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
@@ -334,6 +337,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_list_directory_contents() {
         let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
 
@@ -358,9 +362,9 @@ mod tests {
         let mut found_file = false;
 
         for entry in contents {
-            if entry.name == "subdir" && entry.is_directory {
+            if entry.path == "subdir" && entry.is_directory {
                 found_subdir = true;
-            } else if entry.name == "test_file.txt" && !entry.is_directory {
+            } else if entry.path == "test_file.txt" && !entry.is_directory {
                 found_file = true;
             }
         }
@@ -370,6 +374,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_list_directory_contents_with_db_entries() {
         let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
 
@@ -407,6 +412,7 @@ mod tests {
 
         // Call the function to list directory contents
         let contents = ShinkaiFileManager::list_directory_contents(dir_path, &db).unwrap();
+        eprintln!("contents: {:?}", contents);
 
         // Check that the directory contents are correct
         assert_eq!(contents.len(), 4);
@@ -417,16 +423,16 @@ mod tests {
         let mut found_subdir = false;
 
         for entry in contents {
-            if entry.name == "january.txt" && !entry.is_directory {
+            if entry.path == "january.txt" && !entry.is_directory {
                 found_january = true;
                 assert!(entry.has_embeddings, "File 'january.txt' should have embeddings.");
-            } else if entry.name == "february.txt" && !entry.is_directory {
+            } else if entry.path == "february.txt" && !entry.is_directory {
                 found_february = true;
                 assert!(entry.has_embeddings, "File 'february.txt' should have embeddings.");
-            } else if entry.name == "march.txt" && !entry.is_directory {
+            } else if entry.path == "march.txt" && !entry.is_directory {
                 found_march = true;
                 assert!(!entry.has_embeddings, "File 'march.txt' should not have embeddings.");
-            } else if entry.name == "subdir" && entry.is_directory {
+            } else if entry.path == "subdir" && entry.is_directory {
                 found_subdir = true;
             }
         }
@@ -438,6 +444,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_process_file() {
         let (db, dir, shinkai_path, generator) = setup_test_environment();
 
@@ -472,6 +479,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_save_and_process_file() {
         let (db, dir, shinkai_path, generator) = setup_test_environment();
 
@@ -507,6 +515,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_create_job_and_upload_file() {
         let (db, _dir, _shinkai_path, generator) = setup_test_environment();
 
@@ -552,15 +561,17 @@ mod tests {
 
         // List directory contents and check the file is listed
         let contents = ShinkaiFileManager::list_directory_contents(folder_path, &db).unwrap();
-        let file_names: Vec<String> = contents.iter().map(|info| info.name.clone()).collect();
+        eprintln!("conents: {:?}", contents);
+        let file_names: Vec<String> = contents.iter().map(|info| info.path.clone()).collect();
         assert!(
-            file_names.contains(&file_name.to_string()),
+            file_names.iter().any(|path| path.contains(&file_name)),
             "File '{}' should be listed in the directory contents.",
             file_name
         );
     }
 
     #[test]
+    #[serial]
     fn test_get_file_content() {
         let (_db, _dir, _shinkai_path, _generator) = setup_test_environment();
 

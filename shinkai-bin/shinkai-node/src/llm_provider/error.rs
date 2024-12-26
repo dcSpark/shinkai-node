@@ -1,5 +1,6 @@
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManagerError;
 use anyhow::Error as AnyhowError;
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, prompts::PromptError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
@@ -353,5 +354,11 @@ impl From<RustToolError> for LLMProviderError {
             RustToolError::InvalidFunctionArguments(msg) => LLMProviderError::InvalidFunctionArguments(msg),
             RustToolError::FailedJSONParsing => LLMProviderError::ContentParseFailed,
         }
+    }
+}
+
+impl From<ShinkaiFsError> for LLMProviderError {
+    fn from(err: ShinkaiFsError) -> LLMProviderError {
+        LLMProviderError::IO(err.to_string())
     }
 }

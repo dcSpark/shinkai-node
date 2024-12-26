@@ -11,6 +11,7 @@ use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentO
 use ed25519_dalek::SigningKey;
 
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
@@ -571,46 +572,41 @@ impl JobManager {
 
     /// Retrieves image files associated with a job message and converts them to base64
     pub async fn get_image_files_from_message(
-        db: Arc<SqliteManager>,
+        _db: Arc<SqliteManager>,
         job_message: &JobMessage,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
         if job_message.files.is_empty() {
             return Ok(HashMap::new());
         }
-
+        
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
             format!("Retrieving files for job message: {}", job_message.job_id).as_str(),
         );
 
-        // TODO: get files content from db
-        // TODO: fix this
-        let files_vec = {
-            let file_names = job_message
-                .files
-                .clone()
-                .into_iter()
-                .map(|f| f.to_string())
-                .collect::<Vec<_>>();
-
-                // TODO: fix this
-            db.get_all_files_from_inbox("temporal FIX ME".to_string())?
-        };
-
-        let image_files: HashMap<String, String> = files_vec
-            .into_iter()
-            .filter_map(|(filename, content)| {
-                let filename_lower = filename.to_lowercase();
-                if filename_lower.ends_with(".png")
-                    || filename_lower.ends_with(".jpg")
-                    || filename_lower.ends_with(".jpeg")
-                    || filename_lower.ends_with(".gif")
-                {
-                    // Note: helpful for later, when we add other types like audio, video, etc.
-                    // let file_extension = filename.split('.').last().unwrap_or("jpg");
-                    let base64_content = base64::encode(&content);
-                    Some((filename, base64_content))
+        let image_files: HashMap<String, String> = job_message
+            .files
+            .iter()
+            .filter_map(|file_path| {
+                if let Some(file_name) = file_path.path.file_name() {
+                    let filename_lower = file_name.to_string_lossy().to_lowercase();
+                    if filename_lower.ends_with(".png")
+                        || filename_lower.ends_with(".jpg")
+                        || filename_lower.ends_with(".jpeg")
+                        || filename_lower.ends_with(".gif")
+                    {
+                        // Retrieve the file content
+                        match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                            Ok(content) => {
+                                let base64_content = base64::encode(&content);
+                                Some((file_path.relative_path().to_string(), base64_content))
+                            }
+                            Err(_) => None,
+                        }
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }

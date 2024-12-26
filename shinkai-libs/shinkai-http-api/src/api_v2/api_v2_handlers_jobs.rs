@@ -221,8 +221,15 @@ pub struct UpdateSmartInboxNameRequest {
 }
 
 #[derive(Deserialize, ToSchema)]
-pub struct AddFileToInboxRequest {
-    pub file_inbox_name: String,
+pub struct AddFileToFolder {
+    pub path: String,
+    pub filename: String,
+    pub file: Vec<u8>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct AddFileToJob {
+    pub job_id: String,
     pub filename: String,
     pub file: Vec<u8>,
 }
@@ -1211,7 +1218,7 @@ pub async fn add_messages_god_mode_handler(
         remove_job_handler,
     ),
     components(
-        schemas(AddFileToInboxRequest, V2SmartInbox, APIChangeJobAgentRequest, CreateJobRequest, JobConfig,
+        schemas(AddFileToFolder, V2SmartInbox, APIChangeJobAgentRequest, CreateJobRequest, JobConfig,
             JobMessageRequest, GetLastMessagesRequest, V2ChatMessage, GetLastMessagesWithBranchesRequest,
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, MinimalJobScope, CallbackAction, ShinkaiName,

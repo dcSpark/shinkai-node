@@ -6642,6 +6642,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "serial_test",
  "shinkai_embedding",
  "shinkai_message_primitives",
  "shinkai_ocr",

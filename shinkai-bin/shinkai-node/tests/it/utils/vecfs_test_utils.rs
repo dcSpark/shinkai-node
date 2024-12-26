@@ -1,6 +1,3 @@
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::SigningKey;
@@ -8,22 +5,17 @@ use rust_decimal::Decimal;
 use serde_json::Value;
 
 use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
+use shinkai_http_api::node_api_router::APIError;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscription;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder,
-    APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials,
-    MessageSchemaType,
+    APIAvailableSharedItems, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+    APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
-use shinkai_message_primitives::shinkai_utils::file_encryption::{
-    aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
-    unsafe_deterministic_aes_encryption_key,
-};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_http_api::node_api_router::APIError;
 
 use std::path::Path;
 use std::time::Duration;
@@ -202,102 +194,6 @@ pub fn generate_message_with_payload<T: ToString>(
         .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()
         .unwrap()
-}
-
-// Function to recursively check if the actual response contains the expected structure
-pub fn check_structure(actual: &Value, expected: &Value) -> bool {
-    if let (Some(mut actual_folders), Some(mut expected_folders)) = (
-        actual["child_folders"].as_array().cloned(),
-        expected["child_folders"].as_array().cloned(),
-    ) {
-        if actual_folders.len() != expected_folders.len() {
-            eprintln!("Folder count mismatch: expected {}, found {}", expected_folders.len(), actual_folders.len());
-            return false;
-        }
-        sort_folders(&mut actual_folders);
-        sort_folders(&mut expected_folders);
-        for (actual_folder, expected_folder) in actual_folders.iter().zip(expected_folders.iter()) {
-            if !check_folder(actual_folder, expected_folder) {
-                return false;
-            }
-        }
-    } else {
-        eprintln!("Expected and actual folders structure mismatch");
-        return false;
-    }
-    true
-}
-
-pub fn sort_folders(folders: &mut [Value]) {
-    folders.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-}
-
-pub fn sort_items(items: &mut [Value]) {
-    items.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-}
-
-pub fn check_folder(actual_folder: &Value, expected_folder: &Value) -> bool {
-    let actual_name = actual_folder["name"].as_str().unwrap_or("Unknown Folder");
-    let expected_name = expected_folder["name"].as_str().unwrap_or("Unknown Folder");
-    if actual_name != expected_name {
-        eprintln!("Folder name mismatch: expected '{}', found '{}'", expected_name, actual_name);
-        return false;
-    }
-
-    let actual_path = actual_folder["path"].as_str().unwrap_or("Unknown Path");
-    let expected_path = expected_folder["path"].as_str().unwrap_or("Unknown Path");
-    if actual_path != expected_path {
-        eprintln!("Folder path mismatch: expected '{}', found '{}'", expected_path, actual_path);
-        return false;
-    }
-
-    let mut actual_subfolders = actual_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
-    let mut expected_subfolders = expected_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
-    if actual_subfolders.len() != expected_subfolders.len() {
-        eprintln!("Subfolder count mismatch in '{}': expected {}, found {}", actual_name, expected_subfolders.len(), actual_subfolders.len());
-        return false;
-    }
-    sort_folders(&mut actual_subfolders);
-    sort_folders(&mut expected_subfolders);
-    for (actual_subfolder, expected_subfolder) in actual_subfolders.iter().zip(expected_subfolders.iter()) {
-        if !check_folder(actual_subfolder, expected_subfolder) {
-            return false;
-        }
-    }
-
-    let mut actual_items = actual_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
-    let mut expected_items = expected_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
-    if actual_items.len() != expected_items.len() {
-        eprintln!("Item count mismatch in '{}': expected {}, found {}", actual_name, expected_items.len(), actual_items.len());
-        return false;
-    }
-    sort_items(&mut actual_items);
-    sort_items(&mut expected_items);
-    for (actual_item, expected_item) in actual_items.iter().zip(expected_items.iter()) {
-        if !check_item(actual_item, expected_item) {
-            return false;
-        }
-    }
-
-    true
-}
-
-pub fn check_item(actual_item: &Value, expected_item: &Value) -> bool {
-    let actual_name = actual_item["name"].as_str().unwrap_or("Unknown Item");
-    let expected_name = expected_item["name"].as_str().unwrap_or("Unknown Item");
-    if actual_name != expected_name {
-        eprintln!("Item name mismatch: expected '{}', found '{}'", expected_name, actual_name);
-        return false;
-    }
-
-    let actual_path = actual_item["path"].as_str().unwrap_or("Unknown Path");
-    let expected_path = expected_item["path"].as_str().unwrap_or("Unknown Path");
-    if actual_path != expected_path {
-        eprintln!("Item path mismatch: expected '{}', found '{}'", expected_path, actual_path);
-        return false;
-    }
-
-    true
 }
 
 pub async fn fetch_last_messages(
@@ -594,7 +490,9 @@ pub async fn upload_file(
     println!("Current directory: {:?}", current_dir);
 
     // Read file data
-    let file_data = std::fs::read(file_path).map_err(|_| ShinkaiFsError::FailedPDFParsing).unwrap();
+    let file_data = std::fs::read(file_path)
+        .map_err(|_| ShinkaiFsError::FailedPDFParsing)
+        .unwrap();
 
     // Extract the file name and extension
     let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
@@ -633,7 +531,9 @@ pub async fn upload_file_to_job(
     println!("Current directory: {:?}", current_dir);
 
     // Read file data
-    let file_data = std::fs::read(file_path).map_err(|_| ShinkaiFsError::FailedPDFParsing).unwrap();
+    let file_data = std::fs::read(file_path)
+        .map_err(|_| ShinkaiFsError::FailedPDFParsing)
+        .unwrap();
 
     // Extract the file name with extension
     let filename = file_path.file_name().unwrap().to_string_lossy().to_string();

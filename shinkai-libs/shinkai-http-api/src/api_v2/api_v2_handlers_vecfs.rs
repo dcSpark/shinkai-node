@@ -7,8 +7,9 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
 };
 
+use crate::api_v2::api_v2_handlers_jobs::AddFileToJob;
 use crate::node_commands::NodeCommand;
-use crate::{api_v2::api_v2_handlers_jobs::AddFileToInboxRequest, node_api_router::APIError};
+use crate::{api_v2::api_v2_handlers_jobs::AddFileToFolder, node_api_router::APIError};
 use bytes::Buf;
 use futures::StreamExt;
 use utoipa::OpenApi;
@@ -98,7 +99,7 @@ pub fn vecfs_routes(
         .and(warp::multipart::form())
         .and_then(upload_file_to_folder_handler);
 
-    let retrieve_source_file_route = warp::path("retrieve_source_file")
+    let retrieve_source_file_route = warp::path("download_file")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
@@ -119,6 +120,13 @@ pub fn vecfs_routes(
         .and(warp::query::<String>())
         .and_then(get_folder_name_for_job_handler);
 
+    let upload_file_to_job_route = warp::path("upload_file_to_job")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::multipart::form())
+        .and_then(upload_file_to_job_handler);
+
     move_item_route
         .or(copy_item_route)
         .or(move_folder_route)
@@ -133,6 +141,7 @@ pub fn vecfs_routes(
         .or(retrieve_source_file_route)
         .or(retrieve_files_for_job_route)
         .or(get_folder_name_for_job_route)
+        .or(upload_file_to_job_route)
 }
 
 #[utoipa::path(
@@ -590,39 +599,34 @@ pub async fn upload_file_to_folder_handler(
                 })?;
             }
             "file_datetime" => {
-                let content = part.data().await.ok_or_else(|| {
-                    warp::reject::custom(APIError::new(
-                        StatusCode::BAD_REQUEST,
-                        "Bad Request",
-                        "Missing file_datetime",
-                    ))
-                })?;
-                let mut content = content.map_err(|e| {
-                    warp::reject::custom(APIError::new(
-                        StatusCode::BAD_REQUEST,
-                        "Bad Request",
-                        format!("Failed to read file_datetime: {:?}", e).as_str(),
-                    ))
-                })?;
-                let datetime_str =
-                    String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                if let Some(content) = part.data().await {
+                    let mut content = content.map_err(|e| {
                         warp::reject::custom(APIError::new(
                             StatusCode::BAD_REQUEST,
                             "Bad Request",
-                            "Invalid UTF-8 in file_datetime",
+                            format!("Failed to read file_datetime: {:?}", e).as_str(),
                         ))
                     })?;
-                file_datetime = Some(
-                    DateTime::parse_from_rfc3339(&datetime_str)
-                        .map_err(|_| {
+                    let datetime_str =
+                        String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
                             warp::reject::custom(APIError::new(
                                 StatusCode::BAD_REQUEST,
                                 "Bad Request",
-                                "Invalid datetime format",
+                                "Invalid UTF-8 in file_datetime",
                             ))
-                        })?
-                        .with_timezone(&Utc),
-                );
+                        })?;
+                    file_datetime = Some(
+                        DateTime::parse_from_rfc3339(&datetime_str)
+                            .map_err(|_| {
+                                warp::reject::custom(APIError::new(
+                                    StatusCode::BAD_REQUEST,
+                                    "Bad Request",
+                                    "Invalid datetime format",
+                                ))
+                            })?
+                            .with_timezone(&Utc),
+                    );
+                }
             }
             _ => {}
         }
@@ -676,7 +680,7 @@ pub async fn upload_file_to_folder_handler(
 
 #[utoipa::path(
     post,
-    path = "/v2/retrieve_source_file",
+    path = "/v2/download_file",
     request_body = APIVecFsSearchItems,
     responses(
         (status = 200, description = "Successfully searched items", body = String),
@@ -692,7 +696,7 @@ pub async fn retrieve_source_file_handler(
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::V2ApiRetrieveSourceFile {
+        .send(NodeCommand::V2ApiRetrieveFile {
             bearer,
             payload,
             res: res_sender,
@@ -786,6 +790,178 @@ pub async fn get_folder_name_for_job_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/upload_file_to_job",
+    request_body = AddFileToJob,
+    responses(
+        (status = 200, description = "Successfully uploaded file to job", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn upload_file_to_job_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    mut form: FormData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let mut job_id = String::new();
+    let mut filename = String::new();
+    let mut file_data = Vec::new();
+    let mut file_datetime: Option<DateTime<Utc>> = None;
+
+    while let Some(part) = form.next().await {
+        let mut part = part.map_err(|e| {
+            eprintln!("Error collecting form data: {:?}", e);
+            warp::reject::custom(APIError::new(
+                StatusCode::BAD_REQUEST,
+                "Bad Request",
+                format!("Failed to collect form data: {:?}", e).as_str(),
+            ))
+        })?;
+        match part.name() {
+            "job_id" => {
+                let content = part.data().await.ok_or_else(|| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Missing job_id",
+                    ))
+                })?;
+                let mut content = content.map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Failed to read job_id",
+                    ))
+                })?;
+                job_id = String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Invalid UTF-8 in job_id",
+                    ))
+                })?;
+            }
+            "filename" => {
+                let content = part.data().await.ok_or_else(|| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Missing filename",
+                    ))
+                })?;
+                let mut content = content.map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Failed to read filename",
+                    ))
+                })?;
+                filename = String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                    warp::reject::custom(APIError::new(
+                        StatusCode::BAD_REQUEST,
+                        "Bad Request",
+                        "Invalid UTF-8 in filename",
+                    ))
+                })?;
+            }
+            "file_data" => {
+                while let Some(content) = part.data().await {
+                    let mut content = content.map_err(|_| {
+                        warp::reject::custom(APIError::new(
+                            StatusCode::BAD_REQUEST,
+                            "Bad Request",
+                            "Failed to read file data",
+                        ))
+                    })?;
+                    file_data.extend_from_slice(&content.copy_to_bytes(content.remaining()));
+                }
+            }
+            "file_datetime" => {
+                if let Some(content) = part.data().await {
+                    let mut content = content.map_err(|e| {
+                        warp::reject::custom(APIError::new(
+                            StatusCode::BAD_REQUEST,
+                            "Bad Request",
+                            format!("Failed to read file_datetime: {:?}", e).as_str(),
+                        ))
+                    })?;
+                    let datetime_str =
+                        String::from_utf8(content.copy_to_bytes(content.remaining()).to_vec()).map_err(|_| {
+                            warp::reject::custom(APIError::new(
+                                StatusCode::BAD_REQUEST,
+                                "Bad Request",
+                                "Invalid UTF-8 in file_datetime",
+                            ))
+                        })?;
+                    file_datetime = Some(
+                        DateTime::parse_from_rfc3339(&datetime_str)
+                            .map_err(|_| {
+                                warp::reject::custom(APIError::new(
+                                    StatusCode::BAD_REQUEST,
+                                    "Bad Request",
+                                    "Invalid datetime format",
+                                ))
+                            })?
+                            .with_timezone(&Utc),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if file_data.is_empty() {
+        return Err(warp::reject::custom(APIError::new(
+            StatusCode::BAD_REQUEST,
+            "Bad Request",
+            "No file data found. Check that the file is being uploaded correctly in the `file_data` field",
+        )));
+    }
+
+    // Generate current UTC time if file_datetime is not provided
+    let file_datetime = file_datetime.unwrap_or_else(Utc::now);
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiUploadFileToJob {
+            bearer,
+            job_id,
+            filename,
+            file: file_data,
+            file_datetime: Some(file_datetime),
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| {
+            warp::reject::custom(APIError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+                "Failed to send command",
+            ))
+        })?;
+    let result = res_receiver.recv().await.map_err(|_| {
+        warp::reject::custom(APIError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "Failed to receive response",
+        ))
+    })?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -803,10 +979,11 @@ pub async fn get_folder_name_for_job_handler(
         retrieve_source_file_handler,
         retrieve_files_for_job_handler,
         get_folder_name_for_job_handler,
+        upload_file_to_job_handler,
     ),
     components(
         schemas(APIError, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
-            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, AddFileToInboxRequest)
+            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsSearchItems, AddFileToFolder, AddFileToJob)
     ),
     tags(
         (name = "vecfs", description = "VecFS API endpoints")

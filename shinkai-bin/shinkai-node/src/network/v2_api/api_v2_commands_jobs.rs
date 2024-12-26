@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    usize,
-};
+use std::{collections::HashMap, sync::Arc, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -28,7 +24,8 @@ use shinkai_message_primitives::{
         },
     },
     shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
     },
 };
 
@@ -546,61 +543,6 @@ impl Node {
         }
 
         Ok(())
-    }
-
-    // TODO: Remove this endpoint. No need to create inboxes in SQLite, they are managed in the VectorFSDB
-    pub async fn v2_create_files_inbox(
-        db: Arc<SqliteManager>,
-        bearer: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), APIError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let hash_hex = uuid::Uuid::new_v4().to_string();
-
-        if let Err(_) = res.send(Ok(hash_hex)).await {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: "Failed to send response".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-        }
-        Ok(())
-    }
-
-    pub async fn v2_add_file_to_inbox(
-        db: Arc<SqliteManager>,
-        file_inbox_name: String,
-        filename: String,
-        file: Vec<u8>,
-        bearer: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), APIError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        match db.add_file_to_files_message_inbox(file_inbox_name, filename, file) {
-            Ok(_) => {
-                let _ = res.send(Ok("File added successfully".to_string())).await;
-                Ok(())
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to add file to inbox: {}", err),
-                    }))
-                    .await;
-                Ok(())
-            }
-        }
     }
 
     pub async fn v2_api_change_job_llm_provider(
@@ -1432,24 +1374,6 @@ impl Node {
             .flatten()
             .map(|message| message.job_message.files.clone())
             .collect::<Vec<_>>();
-        let mut inbox_filenames = HashMap::new();
-
-        for inbox in file_inboxes {
-            let files = match db.get_all_filenames_from_inbox("FIX ME".to_string()) {
-                Ok(files) => files,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to get files from inbox: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
-
-            inbox_filenames.insert(inbox, files);
-        }
 
         // Export the messages in the requested format
         match format {
@@ -1475,9 +1399,12 @@ impl Node {
                     let sender = message.sender_subidentity;
                     let receiver = message.receiver_subidentity;
                     let content = message.job_message.content;
-                    let files = inbox_filenames
-                        .get(&message.job_message.files)
-                        .unwrap_or(&vec![])
+                    let files = message
+                        .job_message
+                        .files
+                        .iter()
+                        .map(|path| path.relative_path())
+                        .collect::<Vec<&str>>()
                         .join(", ");
 
                     let row = vec![timestamp, sender, receiver, content, files];
@@ -1528,9 +1455,17 @@ impl Node {
                         messages
                             .into_iter()
                             .map(|message| {
+                                let files: Vec<String> = message
+                                    .clone()
+                                    .job_message
+                                    .files
+                                    .into_iter()
+                                    .map(|file| file.relative_path().to_string())
+                                    .collect();
+
                                 json!({
                                     "message": message,
-                                    "files": inbox_filenames.get(&message.job_message.files).unwrap_or(&vec![]),
+                                    "files": files,
                                 })
                             })
                             .collect::<Vec<serde_json::Value>>()
@@ -1558,8 +1493,8 @@ impl Node {
                     for message in messages {
                         result_messages.push_str(&format!("{}\n\n", message.job_message.content));
 
-                        if let Some(files) = inbox_filenames.get(&message.job_message.files) {
-                            result_messages.push_str(&format!("Attached files: [{}]\n\n", files.join(", ")));
+                        for file in &message.job_message.files {
+                            result_messages.push_str(&format!("Attached file: {}\n\n", file));
                         }
                     }
                 }

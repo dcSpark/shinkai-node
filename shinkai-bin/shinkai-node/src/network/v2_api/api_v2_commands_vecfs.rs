@@ -726,7 +726,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_retrieve_source_file(
+    pub async fn v2_retrieve_file(
         db: Arc<SqliteManager>,
         _identity_manager: Arc<Mutex<IdentityManager>>,
         input_payload: APIVecFsRetrieveSourceFile,

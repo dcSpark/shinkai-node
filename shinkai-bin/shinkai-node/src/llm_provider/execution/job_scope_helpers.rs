@@ -40,7 +40,7 @@ impl JobManager {
 
             for file_info in files {
                 if !file_info.is_directory && file_info.has_embeddings {
-                    let file_path = ShinkaiPath::from_string(file_info.name);
+                    let file_path = ShinkaiPath::from_string(file_info.path);
                     if let Some(collection) = JobManager::retrieve_file_chunks(&file_path, sqlite_manager).await? {
                         collections.push(collection);
                     }
