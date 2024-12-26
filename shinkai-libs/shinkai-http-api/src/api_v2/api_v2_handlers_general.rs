@@ -178,6 +178,20 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(get_all_agents_handler);
 
+    let export_agent_route = warp::path("export_agent")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(export_agent_handler);
+
+    let import_agent_route = warp::path("import_agent")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(import_agent_handler);
+
     let test_llm_provider_route = warp::path("test_llm_provider")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -207,6 +221,8 @@ pub fn general_routes(
         .or(update_agent_route)
         .or(get_agent_route)
         .or(get_all_agents_route)
+        .or(export_agent_route)
+        .or(import_agent_route)        
         .or(test_llm_provider_route)
 }
 
@@ -935,6 +951,104 @@ pub async fn get_all_agents_handler(
 }
 
 #[utoipa::path(
+    get,
+    path = "/v2/export_agent",
+    params(
+        ("agent_id" = String, Query, description = "Agent identifier")
+    ),
+    responses(
+        (status = 200, description = "Exported agent", body = Vec<u8>),
+        (status = 400, description = "Invalid agent identifier", body = APIError),
+    )
+)]
+pub async fn export_agent_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let agent_id = query_params
+        .get("agent_id")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid agent identifier".to_string(),
+                message: "Agent identifier is required".to_string(),
+            })
+        })?
+        .to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiExportAgent {
+            bearer,
+            agent_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(file_bytes) => {
+            // Return the raw bytes with appropriate headers
+            Ok(warp::reply::with_header(
+                warp::reply::with_status(file_bytes, StatusCode::OK),
+                "Content-Type",
+                "application/octet-stream",
+            ))
+        }
+        Err(error) => Ok(warp::reply::with_header(
+            warp::reply::with_status(
+                error.message.as_bytes().to_vec(),
+                StatusCode::from_u16(error.code).unwrap()
+            ),
+            "Content-Type",
+            "text/plain",
+        ))
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/import_agent",
+    request_body = HashMap<String, String>,
+    responses(
+        (status = 200, description = "Successfully imported agent", body = Value),
+        (status = 400, description = "Invalid URL or agent data", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn import_agent_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let url = payload.get("url").cloned().unwrap_or_default();
+    
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiImportAgent {
+            bearer,
+            url,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
     post,
     path = "/v2/test_llm_provider",
     request_body = SerializedLLMProvider,
@@ -990,6 +1104,8 @@ pub async fn test_llm_provider_handler(
         add_agent_handler,
         remove_agent_handler,
         update_agent_handler,
+        import_agent_handler,
+        export_agent_handler,        
         get_agent_handler,
         get_all_agents_handler,
         test_llm_provider_handler,

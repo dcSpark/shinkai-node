@@ -1,4 +1,11 @@
 use std::{env, sync::Arc};
+use std::path::Path;
+use std::fs::File;
+use std::io::Write;
+
+use serde_json::{json, Value};
+use tokio::fs;
+use zip::{write::FileOptions, ZipWriter};
 
 use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -43,7 +50,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, Node},
+    network::{node_error::NodeError, Node, node_shareable_logic::download_zip_file},
     tools::tool_generation,
     utils::update_global_identity::update_global_identity_name,
 };
@@ -1587,6 +1594,175 @@ impl Node {
         // If it exists, remove it
         if provider_exists {
             db.remove_llm_provider(&input_provider.id, profile)?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_export_agent(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the agent from the database
+        match db.get_agent(&agent_id) {
+            Ok(Some(agent)) => {
+                // Serialize the agent to JSON bytes
+                let agent_bytes = match serde_json::to_vec(&agent) {
+                    Ok(bytes) => bytes,
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize agent: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                // Create a temporary zip file
+                let name = format!("{}.zip", agent.agent_id.replace(':', "_"));
+                let path = std::env::temp_dir().join(&name);
+                let file = match File::create(&path) {
+                    Ok(file) => file,
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to create zip file: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                let mut zip = ZipWriter::new(file);
+
+                // Add the agent JSON to the zip file
+                if let Err(err) = zip.start_file::<_, ()>("__agent.json", FileOptions::default()) {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to create agent file in zip: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+
+                if let Err(err) = zip.write_all(&agent_bytes) {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to write agent data to zip: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+
+                // Finalize the zip file
+                if let Err(err) = zip.finish() {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to finalize zip file: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+
+                // Read the zip file into memory
+                match fs::read(&path).await {
+                    Ok(file_bytes) => {
+                        // Clean up the temporary file
+                        if let Err(err) = fs::remove_file(&path).await {
+                            eprintln!("Warning: Failed to remove temporary file: {}", err);
+                        }
+                        let _ = res.send(Ok(file_bytes)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to read zip file: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            Ok(None) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Agent not found: {}", agent_id),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_import_agent(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        url: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let zip_contents = match download_zip_file(url, "__agent.json".to_string()).await {
+            Ok(contents) => contents,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Agent Zip".to_string(),
+                    message: format!("Failed to extract agent.json: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Parse the JSON into an Agent
+        let agent: Agent = serde_json::from_slice(&zip_contents.buffer).map_err(|e| NodeError::from(e.to_string()))?;
+
+        // Save the agent to the database
+        match db.add_agent(agent.clone(), &agent.full_identity_name) {
+            Ok(_) => {
+                let response = json!({
+                    "status": "success",
+                    "message": "Agent imported successfully",
+                    "agent_id": agent.agent_id,
+                    "agent": agent
+                });
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Database Error".to_string(),
+                    message: format!("Failed to save agent to database: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
         }
 
         Ok(())
