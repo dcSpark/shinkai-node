@@ -1,7 +1,6 @@
+use crate::it::utils::vecfs_test_utils::{get_files_for_job, get_folder_name_for_job, upload_file_to_job};
+
 use super::utils::test_boilerplate::run_test_one_node_network;
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, SerializedLLMProvider,
@@ -9,12 +8,9 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
-use shinkai_message_primitives::shinkai_utils::file_encryption::{
-    aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
-    unsafe_deterministic_aes_encryption_key,
-};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -24,13 +20,13 @@ use super::utils::node_test_api::{
 use mockito::Server;
 
 #[test]
-#[ignore]
 fn job_image_analysis() {
     let mut server = Server::new();
 
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
+            let node1_api_key_bearer = env.node1_api_key;
             let node1_identity_name = env.node1_identity_name.clone();
             let node1_profile_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
@@ -40,9 +36,6 @@ fn job_image_analysis() {
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
-
-            // For this test
-            let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
 
             {
                 // Register a Profile in Node1 and verifies it
@@ -103,15 +96,8 @@ fn job_image_analysis() {
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
-                    // external_url: Some("http://localhost:11435".to_string()),
-                    // external_url: Some("https://api.openai.com".to_string()),
-                    // api_key: Some("".to_string()),
-                    // api_key: Some(api_key),
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
-                    // external_url: Some("https://api.together.xyz".to_string()),
-                    // model: LLMProviderInterface::OpenAI(open_ai),
-                    // model: LLMProviderInterface::GenericAPI(generic_api),
                     model: LLMProviderInterface::Ollama(ollama),
                 };
                 api_llm_provider_registration(
@@ -143,59 +129,35 @@ fn job_image_analysis() {
                 .await;
             }
             {
-                eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-                // TODO: remvoe this
-
-                // let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
-                // let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
-                //     node1_profile_encryption_sk.clone(),
-                //     clone_signature_secret_key(&node1_profile_identity_sk),
-                //     node1_encryption_pk,
-                //     "job::test::false".to_string(),
-                //     message_content.clone(),
-                //     node1_profile_name.to_string(),
-                //     node1_identity_name.to_string(),
-                //     node1_identity_name.to_string(),
-                // )
-                // .unwrap();
-
-                // let (res_sender, res_receiver) = async_channel::bounded(1);
-                // node1_commands_sender
-                //     .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
-                //     .await
-                //     .unwrap();
-                // let _response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
-            }
-            {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-                let file_path = "../../files/blue_64x64.png";
-                let file_data = std::fs::read(file_path).expect("Failed to read file");
+                let file_path = Path::new("../../files/blue_64x64.png");
+                upload_file_to_job(&node1_commands_sender, &job_id, file_path, &node1_api_key_bearer).await;
 
-                // Encrypt the file using Aes256Gcm
-                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
-                let nonce = GenericArray::from_slice(&[0u8; 12]);
-                let nonce_slice = nonce.as_slice();
-                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
-                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
-
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                        filename: "samurai_underwater.png".to_string(),
-                        file: ciphertext,
-                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
-                        encrypted_nonce: nonce_str,
-                        res: res_sender,
-                    })
+                // Retrieve the folder name for the job
+                let folder_name = get_folder_name_for_job(&node1_commands_sender, &job_id, &node1_api_key_bearer)
                     .await
                     .unwrap();
+                eprintln!("Folder name for job: {}", folder_name);
 
-                // Receive the response
-                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("response: {:?}", response);
+                // Retrieve the files for the job
+                let files = get_files_for_job(&node1_commands_sender, &job_id, &node1_api_key_bearer)
+                    .await
+                    .unwrap();
+                eprintln!("Files for job: {:?}", files);
+
+                // Check that the files contain the expected file
+                let expected_file_name = "blue_64x64.png";
+                if let Some(files_array) = files.as_array() {
+                    assert!(
+                        files_array.iter().any(|file| file.get("name").and_then(|name| name.as_str()) == Some(expected_file_name)),
+                        "Expected file not found in job files"
+                    );
+                } else {
+                    panic!("Files is not an array");
+                }
+
+                let shinkai_path = ShinkaiPath::base_path();
+                eprintln!("Shinkai Path: {}", shinkai_path.to_string_lossy());
             }
             let job_message_content = "describe the image".to_string();
             {
@@ -237,7 +199,7 @@ fn job_image_analysis() {
                     match node1_last_messages[0].get_message_content() {
                         Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                             Ok(job_message) => {
-                                // eprintln!("message_content: {}", message_content);
+                                eprintln!("message_content: {}", message_content);
                                 if job_message.content != job_message_content {
                                     assert!(true);
                                     break;

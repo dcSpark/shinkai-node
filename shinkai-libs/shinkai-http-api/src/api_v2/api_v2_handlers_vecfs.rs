@@ -105,6 +105,20 @@ pub fn vecfs_routes(
         .and(warp::query::<APIVecFsRetrieveSourceFile>())
         .and_then(retrieve_source_file_handler);
 
+    let retrieve_files_for_job_route = warp::path("retrieve_files_for_job")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<String>())
+        .and_then(retrieve_files_for_job_handler);
+
+    let get_folder_name_for_job_route = warp::path("get_folder_name_for_job")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<String>())
+        .and_then(get_folder_name_for_job_handler);
+
     move_item_route
         .or(copy_item_route)
         .or(move_folder_route)
@@ -117,6 +131,8 @@ pub fn vecfs_routes(
         .or(create_folder_route)
         .or(upload_file_to_folder_route)
         .or(retrieve_source_file_route)
+        .or(retrieve_files_for_job_route)
+        .or(get_folder_name_for_job_route)
 }
 
 #[utoipa::path(
@@ -694,6 +710,82 @@ pub async fn retrieve_source_file_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/retrieve_files_for_job",
+    responses(
+        (status = 200, description = "Successfully retrieved files for job", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn retrieve_files_for_job_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    job_id: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiVecFSRetrieveFilesForJob {
+            bearer,
+            job_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_folder_name_for_job",
+    responses(
+        (status = 200, description = "Successfully retrieved folder name for job", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_folder_name_for_job_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    job_id: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiVecFSGetFolderNameForJob {
+            bearer,
+            job_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -709,6 +801,8 @@ pub async fn retrieve_source_file_handler(
         search_items_handler,
         upload_file_to_folder_handler,
         retrieve_source_file_handler,
+        retrieve_files_for_job_handler,
+        get_folder_name_for_job_handler,
     ),
     components(
         schemas(APIError, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,

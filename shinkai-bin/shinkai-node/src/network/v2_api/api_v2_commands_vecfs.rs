@@ -806,4 +806,69 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn v2_api_vec_fs_retrieve_files_for_job(
+        db: Arc<SqliteManager>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        job_id: String,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve files for the given job_id using ShinkaiFileManager
+        let files_result = ShinkaiFileManager::get_all_files_and_folders_for_job(&job_id, &db);
+
+        if let Err(e) = files_result {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to retrieve files for job_id {}: {}", job_id, e),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // Convert the files information to JSON
+        let json_files = serde_json::to_value(files_result.unwrap()).map_err(|e| NodeError::from(e))?;
+
+        // Send the files information as a response
+        let _ = res.send(Ok(json_files)).await.map_err(|_| ());
+        Ok(())
+    }
+
+    pub async fn v2_api_vec_fs_get_folder_name_for_job(
+        db: Arc<SqliteManager>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        job_id: String,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve the folder name for the given job_id
+        let folder_name_result = db.get_job_folder_name(&job_id);
+
+        match folder_name_result {
+            Ok(folder_name) => {
+                let _ = res.send(Ok(folder_name.relative_path().to_string())).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve folder name for job_id {}: {}", job_id, e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
 }

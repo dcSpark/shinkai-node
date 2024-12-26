@@ -532,67 +532,6 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res } => self.api_create_files_inbox_with_symmetric_key(msg, res).await,
-            NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let identity_manager_clone = self.identity_manager.clone();
-                let node_name_clone = self.node_name.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let encryption_public_key_clone = self.encryption_public_key;
-                tokio::spawn(async move {
-                    let _ = Node::api_create_files_inbox_with_symmetric_key(
-                        db_clone,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        encryption_public_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIGetFilenamesInInbox { msg, res } => self.api_get_filenames_in_inbox(msg, res).await,
-            NodeCommand::APIGetFilenamesInInbox { msg, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let identity_manager_clone = self.identity_manager.clone();
-                let node_name_clone = self.node_name.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let encryption_public_key_clone = self.encryption_public_key;
-                tokio::spawn(async move {
-                    let _ = Node::api_get_filenames_in_inbox(
-                        db_clone,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        encryption_public_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res } => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await,
-            NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                filename,
-                file,
-                public_key,
-                encrypted_nonce,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                tokio::spawn(async move {
-                    let _ = Node::api_add_file_to_inbox_with_symmetric_key(
-                        db_clone,
-                        filename,
-                        file,
-                        public_key,
-                        encrypted_nonce,
-                        res,
-                    )
-                    .await;
-                });
-            }
             // NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } => self.api_get_all_smart_inboxes_for_profile(msg, res).await,
             NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1618,6 +1557,20 @@ impl Node {
                 tokio::spawn(async move {
                     let _ =
                         Node::v2_retrieve_vector_resource(db_clone, identity_manager_clone, path, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiVecFSRetrieveFilesForJob { bearer, job_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_vec_fs_retrieve_files_for_job(db_clone, identity_manager_clone, job_id, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiVecFSGetFolderNameForJob { bearer, job_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_vec_fs_get_folder_name_for_job(db_clone, identity_manager_clone, job_id, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateSmartInboxName {

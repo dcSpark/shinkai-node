@@ -635,6 +635,9 @@ pub async fn upload_file_to_job(
     // Read file data
     let file_data = std::fs::read(file_path).map_err(|_| ShinkaiFsError::FailedPDFParsing).unwrap();
 
+    // Extract the file name with extension
+    let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
+
     // Prepare the response channel
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
@@ -643,7 +646,7 @@ pub async fn upload_file_to_job(
         .send(NodeCommand::V2ApiUploadFileToJob {
             bearer: bearer_token.to_string(),
             job_id: job_id.to_string(),
-            filename: file_path.to_string_lossy().to_string(),
+            filename, // Use the extracted filename
             file: file_data,
             file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
             res: res_sender,
@@ -653,4 +656,48 @@ pub async fn upload_file_to_job(
 
     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
     eprintln!("upload_file_to_job resp: {:?}", resp);
+}
+
+pub async fn get_folder_name_for_job(
+    commands_sender: &Sender<NodeCommand>,
+    job_id: &str,
+    bearer_token: &str,
+) -> Result<String, APIError> {
+    // Prepare the response channel
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command to get the folder name for the job
+    commands_sender
+        .send(NodeCommand::V2ApiVecFSGetFolderNameForJob {
+            bearer: bearer_token.to_string(),
+            job_id: job_id.to_string(),
+            res: res_sender,
+        })
+        .await
+        .unwrap();
+
+    // Receive and return the folder name
+    res_receiver.recv().await.unwrap()
+}
+
+pub async fn get_files_for_job(
+    commands_sender: &Sender<NodeCommand>,
+    job_id: &str,
+    bearer_token: &str,
+) -> Result<Value, APIError> {
+    // Prepare the response channel
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command to retrieve files for the job
+    commands_sender
+        .send(NodeCommand::V2ApiVecFSRetrieveFilesForJob {
+            bearer: bearer_token.to_string(),
+            job_id: job_id.to_string(),
+            res: res_sender,
+        })
+        .await
+        .unwrap();
+
+    // Receive and return the files as a JSON value
+    res_receiver.recv().await.unwrap()
 }

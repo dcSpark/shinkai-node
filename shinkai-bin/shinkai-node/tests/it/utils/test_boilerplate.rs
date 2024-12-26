@@ -1,4 +1,4 @@
-use super::db_handlers::setup;
+use super::db_handlers::{setup, setup_node_storage_path};
 use async_channel::{bounded, Receiver, Sender};
 
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
@@ -52,6 +52,7 @@ pub struct TestEnvironment {
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
     pub node1_tool_router: Option<Arc<ToolRouter>>,
+    pub node1_api_key: String,
     pub node1_abort_handler: AbortHandle,
 }
 
@@ -82,6 +83,7 @@ where
     F: FnOnce(TestEnvironment) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + 'static,
 {
     setup();
+    setup_node_storage_path();
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
@@ -107,7 +109,7 @@ where
         // Fetch the PROXY_ADDRESS environment variable
         let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
 
-        let api_v2_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
+        let node1_api_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -129,7 +131,7 @@ where
             None,
             default_embedding_model(),
             supported_embedding_models(),
-            Some(api_v2_key),
+            Some(node1_api_key.clone()),
         )
         .await;
 
@@ -173,6 +175,7 @@ where
             node1_callback_manager,
             node1_tool_router,
             node1_abort_handler,
+            node1_api_key,
         };
 
         let interactions_handler = tokio::spawn(interactions_handler_logic(env));

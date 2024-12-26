@@ -23,14 +23,15 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
-            APIExportSheetPayload, APIImportSheetPayload, APISetSheetUploadedFilesPayload, APIVecFsCopyFolder,
-            APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder,
-            APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIExportSheetPayload,
+            APIImportSheetPayload, APISetSheetUploadedFilesPayload, APIVecFsCopyFolder, APIVecFsCopyItem,
+            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
             ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType,
             V2ChatMessage,
         },
-    }, shinkai_utils::job_scope::MinimalJobScope,
+    },
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 
 use shinkai_tools_primitives::tools::{
@@ -202,23 +203,6 @@ pub enum NodeCommand {
     CreateJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
-    },
-    // TODO: remove this
-    APICreateFilesInboxWithSymmetricKey {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIGetFilenamesInInbox {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
-    },
-    // TODO: remove this
-    APIAddFileToInboxWithSymmetricKey {
-        filename: String,
-        file: Vec<u8>,
-        public_key: String,
-        encrypted_nonce: String,
-        res: Sender<Result<String, APIError>>,
     },
     APIJobMessage {
         msg: ShinkaiMessage,
@@ -590,6 +574,16 @@ pub enum NodeCommand {
         bearer: String,
         path: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiVecFSRetrieveFilesForJob {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiVecFSGetFolderNameForJob {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<String, APIError>>,
     },
     V2ApiVecFSCreateFolder {
         bearer: String,
