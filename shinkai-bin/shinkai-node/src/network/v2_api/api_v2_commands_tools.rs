@@ -1538,7 +1538,7 @@ impl Node {
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
 
                 let name = format!("{}.zip", tool.tool_router_key().replace(':', "_"));
-                let path = Path::new(&name);
+                let path = std::env::temp_dir().join(&name);
                 let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
 
                 let mut zip = ZipWriter::new(file);

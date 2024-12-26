@@ -1629,7 +1629,7 @@ impl Node {
 
                 // Create a temporary zip file
                 let name = format!("{}.zip", agent.agent_id.replace(':', "_"));
-                let path = Path::new(&name);
+                let path = std::env::temp_dir().join(&name);
                 let file = match File::create(&path) {
                     Ok(file) => file,
                     Err(err) => {

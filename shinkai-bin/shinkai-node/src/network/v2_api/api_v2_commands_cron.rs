@@ -423,7 +423,7 @@ impl Node {
 
                 // Create a temporary zip file
                 let name = format!("cron_task_{}.zip", cron_task_id);
-                let path = Path::new(&name);
+                let path = std::env::temp_dir().join(&name);
                 let file = match File::create(&path) {
                     Ok(file) => file,
                     Err(err) => {
