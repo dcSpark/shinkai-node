@@ -26,6 +26,7 @@ use super::tool_playground::{SqlQuery, SqlTable};
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PythonTool {
     pub toolkit_name: String,
+    pub version: String,
     pub name: String,
     pub author: String,
     pub py_code: String,

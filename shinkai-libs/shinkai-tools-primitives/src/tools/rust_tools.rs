@@ -4,9 +4,9 @@ use crate::tools::error::ToolError;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource::VRPath;
 
-use super::tool_output_arg::ToolOutputArg;
 use super::parameters::Parameters;
 use super::shinkai_tool::ShinkaiToolHeader;
+use super::tool_output_arg::ToolOutputArg;
 
 #[derive(Debug)]
 pub enum RustToolError {

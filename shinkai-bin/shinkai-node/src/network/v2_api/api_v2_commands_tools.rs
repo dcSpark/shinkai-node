@@ -451,7 +451,7 @@ impl Node {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
                     author: payload.metadata.author.clone(),
-                    version: "1.0.0".to_string(),
+                    version: payload.metadata.version.clone(),
                     js_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
                     config: payload.metadata.configurations.clone(),
@@ -474,6 +474,7 @@ impl Node {
                 let tool = PythonTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
+                    version: payload.metadata.version.clone(),
                     author: payload.metadata.author.clone(),
                     py_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
@@ -734,7 +735,7 @@ impl Node {
         }
 
         // Get the playground tool
-        match db.get_tool_playground(&tool_key) {
+        match db.get_tool_playground(&tool_key, None) {
             Ok(tool) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;

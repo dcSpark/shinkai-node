@@ -104,11 +104,12 @@ pub async fn generate_tool_definitions(
     }
 
     for tool in all_tools {
-        let tool_playground: Option<ToolPlayground> = match sqlite_manager.get_tool_playground(&tool.tool_router_key) {
-            Ok(tool_playground) => Some(tool_playground),
-            Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
-            Err(e) => return Err(APIError::from(e.to_string())),
-        };
+        let tool_playground: Option<ToolPlayground> =
+            match sqlite_manager.get_tool_playground(&tool.tool_router_key, None) {
+                Ok(tool_playground) => Some(tool_playground),
+                Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
+                Err(e) => return Err(APIError::from(e.to_string())),
+            };
 
         match language {
             CodeLanguage::Typescript => {

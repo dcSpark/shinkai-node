@@ -34,6 +34,7 @@ pub struct ToolPlayground {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolPlaygroundMetadata {
     pub name: String,
+    pub version: String,
     pub description: String,
     pub author: String,
     pub keywords: Vec<String>,

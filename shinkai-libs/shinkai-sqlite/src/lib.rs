@@ -582,13 +582,18 @@ impl SqliteManager {
                 configurations TEXT, -- Store as a JSON string
                 parameters TEXT, -- Store as a JSON string
                 result TEXT, -- Store as a JSON string
-                tool_router_key TEXT NOT NULL UNIQUE, -- Non-nullable and unique
+                tool_router_key TEXT NOT NULL, -- Non-nullable and unique
+                version INTEGER NOT NULL,
                 job_id TEXT, -- Allow NULL values
                 job_id_history TEXT, -- Store as a comma-separated list
                 code TEXT NOT NULL,
                 language TEXT NOT NULL,
                 FOREIGN KEY(tool_router_key) REFERENCES shinkai_tools(tool_key) -- Foreign key constraint
             );",
+            [],
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_playground_tool_router_key_version ON tool_playground (tool_router_key, version);",
             [],
         )?;
         Ok(())
@@ -600,8 +605,9 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS tool_playground_code_history (
                 message_id TEXT PRIMARY KEY,
                 tool_router_key TEXT NOT NULL,
+                version INTEGER NOT NULL,
                 code TEXT NOT NULL,
-                FOREIGN KEY(tool_router_key) REFERENCES tool_playground(tool_router_key)
+                FOREIGN KEY(tool_router_key, version) REFERENCES tool_playground(tool_router_key, version)
             );",
             [],
         )?;
@@ -1000,10 +1006,12 @@ impl SqliteManager {
     // New method to get the embedding model type
     pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
         let conn = self.get_connection()?;
-        Ok(conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
-            let model_type_str: String = row.get(0)?;
-            EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
-        })?)
+        Ok(
+            conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
+                let model_type_str: String = row.get(0)?;
+                EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
+            })?,
+        )
     }
 
     // Returns a connection from the pool

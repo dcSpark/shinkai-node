@@ -313,6 +313,10 @@ pub async fn tool_metadata_implementation_prompt(
           "type": "string",
           "description": "A description of what the function does"
         }},
+        "version": {{
+          "type": "string",
+          "description": "The version of the function"
+        }},
         "author": {{
           "type": "string",
           "description": "The author of the function"
@@ -531,6 +535,7 @@ pub async fn tool_metadata_implementation_prompt(
     "name": "Coinbase Wallet Creator",
     "description": "Tool for creating a Coinbase wallet",
     "author": "Shinkai",
+    "version": "1.0.0",
     "keywords": [
       "coinbase",
       "wallet",
@@ -589,6 +594,7 @@ pub async fn tool_metadata_implementation_prompt(
     "name": "Download Pages",
     "description": "Downloads one or more URLs and sends the html content as markdown to an email address.",
     "author": "Shinkai",
+    "version": "1.0.0",
     "keywords": [
       "HTML to Markdown",
       "web page downloader",
