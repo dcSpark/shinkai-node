@@ -3,7 +3,11 @@ use std::env;
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
 use serde_json::{self, Value};
-use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}};
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+use shinkai_message_primitives::schemas::{
+    indexable_version::IndexableVersion,
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
+};
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
@@ -57,7 +61,7 @@ impl ShinkaiTool {
             name: self.name(),
             toolkit_name: self.toolkit_name(),
             description: self.description(),
-            tool_router_key: self.tool_router_key(),
+            tool_router_key: self.tool_router_key().to_string_without_version(),
             tool_type: self.tool_type().to_string(),
             formatted_tool_summary_for_ui: self.formatted_tool_summary_for_ui(),
             author: self.author(),
@@ -71,32 +75,15 @@ impl ShinkaiTool {
         }
     }
 
-    // Return a folder-safe version of the tool_router_key
-    pub fn tool_router_key_path(&self) -> String {
-        let path = self.tool_router_key();
-        Self::convert_to_path(&path)
-    }
-
-    pub fn convert_to_path(tool_router_key: &str) -> String {
-        tool_router_key
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>()
-            .to_lowercase()
-    }
-
     /// The key that this tool will be stored under in the tool router
-    pub fn tool_router_key(&self) -> String {
+    pub fn tool_router_key(&self) -> ToolRouterKey {
         match self {
-            ShinkaiTool::Network(n, _) => {
-                Self::gen_router_key(n.provider.to_string(), n.toolkit_name.clone(), n.name.clone())
-            }
+            ShinkaiTool::Network(n, _) => ToolRouterKey::new(
+                n.provider.to_string(),
+                n.toolkit_name.clone(),
+                n.name.clone(),
+                Some(n.version.clone()),
+            ),
             _ => {
                 let (name, toolkit_name) = (
                     self.name(),
@@ -108,36 +95,15 @@ impl ShinkaiTool {
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
-                Self::gen_router_key("local".to_string(), toolkit_name, name)
+                ToolRouterKey::new("local".to_string(), toolkit_name, name, None)
             }
         }
     }
 
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
-        // Replace any ':' in the components to avoid breaking the key format
-        let sanitized_source = source.replace(':', "_");
-        let sanitized_toolkit_name = toolkit_name.replace(':', "_");
-        let sanitized_name = name.replace(':', "_");
-
-        // We replace any `/` in order to not have the names break VRPaths
-        let key = format!("{}:::{}:::{}", sanitized_source, sanitized_toolkit_name, sanitized_name)
-            .replace('/', "|")
-            .to_lowercase();
-
-        // Ensure the key fits the pattern [^a-z0-9_@]+
-        let valid_key = key
-            .chars()
-            .map(|c| {
-                if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':' || c == '@' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>();
-
-        valid_key
+        let tool_router_key = ToolRouterKey::new(source, toolkit_name, name, None);
+        tool_router_key.to_string_without_version()
     }
 
     /// Tool name
@@ -221,23 +187,18 @@ impl ShinkaiTool {
 
     /// Returns the tool formatted as a JSON object for the function call format
     pub fn json_function_call_format(&self) -> Result<serde_json::Value, ToolError> {
-        // Store the tool_router_key in a variable to extend its lifetime
-        let tool_router_key = self.tool_router_key().clone();
-        let key_parts: Vec<&str> = tool_router_key.split(":::").collect();
-        let tool_name = if key_parts.len() == 3 {
-            key_parts[2].to_string()
-        } else {
-            return Err(ToolError::InvalidToolRouterKey(
-                "Tool router key is not in the expected format".to_string(),
-            ));
-        };
+        // Get the ToolRouterKey instance
+        let tool_router_key = self.tool_router_key();
+        
+        // Extract the tool name directly from the ToolRouterKey
+        let tool_name = tool_router_key.name.clone();
 
         let summary = serde_json::json!({
             "type": "function",
             "function": {
                 "name": tool_name,
                 "description": self.description(),
-                "tool_router_key": tool_router_key,
+                "tool_router_key": tool_router_key.to_string_without_version(),
                 "parameters": self.input_args()
             },
         });
@@ -268,7 +229,8 @@ impl ShinkaiTool {
 
     /// Returns an Option<ToolConfig> based on an environment variable
     pub fn get_config_from_env(&self) -> Option<ToolConfig> {
-        let tool_key = self.tool_router_key().replace(":::", "___");
+        // Get the ToolRouterKey instance and convert it to a string
+        let tool_key = self.tool_router_key().to_string_without_version().replace(":::", "___");
         let env_var_key = format!("TOOLKIT_{}", tool_key);
 
         if let Ok(env_value) = env::var(env_var_key) {
@@ -389,7 +351,6 @@ impl ShinkaiTool {
     /// Returns the version number using IndexableVersion
     pub fn version_number(&self) -> Result<u64, String> {
         let version_str = self.version();
-        eprintln!("version: {:?}", version_str);
 
         let indexable_version = IndexableVersion::from_string(&version_str)?;
         Ok(indexable_version.get_version_number())
@@ -462,7 +423,7 @@ mod tests {
         let expected_key = "local:::deno_toolkit:::shinkai__download_pages";
 
         // Assert that the generated key matches the expected pattern
-        assert_eq!(router_key, expected_key);
+        assert_eq!(router_key.to_string_without_version(), expected_key);
     }
 
     #[test]

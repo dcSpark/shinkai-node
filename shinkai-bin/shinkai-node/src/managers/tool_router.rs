@@ -603,7 +603,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let app_id = context.full_job().job_id().to_string();
-                let tool_id = shinkai_tool.tool_router_key().clone();
+                let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = python_tool.tools.clone().unwrap_or_default();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
@@ -615,14 +615,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     context.agent().clone().get_id().to_string(),
                     format!("jid-{}", tool_id),
                     format!("jid-{}", app_id),
-                    shinkai_tool.tool_router_key().clone(),
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     format!("jid-{}", app_id),
                     &python_tool.oauth,
                 )
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-                check_tool_config(shinkai_tool.tool_router_key().clone(), python_tool.config.clone()).await?;
+                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), python_tool.config.clone()).await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -684,7 +684,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let app_id = context.full_job().job_id().to_string();
-                let tool_id = shinkai_tool.tool_router_key().clone();
+                let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = deno_tool.tools.clone().unwrap_or_default();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
@@ -696,14 +696,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     context.agent().clone().get_id().to_string(),
                     format!("jid-{}", app_id),
                     format!("jid-{}", tool_id),
-                    shinkai_tool.tool_router_key().clone(),
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     format!("jid-{}", app_id),
                     &deno_tool.oauth,
                 )
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-                check_tool_config(shinkai_tool.tool_router_key().clone(), deno_tool.config.clone()).await?;
+                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), deno_tool.config.clone()).await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -1036,7 +1036,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
             .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
         let tools = js_tool.clone().tools.unwrap_or_default();
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
-        let tool_id = shinkai_tool.tool_router_key().clone();
+        let tool_id = shinkai_tool.tool_router_key().clone().to_string_without_version();
         let support_files =
             generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                 .await
@@ -1053,7 +1053,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
             "".to_string(),
             format!("xid-{}", app_id),
             format!("xid-{}", tool_id),
-            shinkai_tool.tool_router_key().clone(),
+            shinkai_tool.tool_router_key().clone().to_string_without_version(),
             // TODO: Pass data from the API
             "".to_string(),
             &oauth,
@@ -1061,7 +1061,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
         .await
         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-        check_tool_config(shinkai_tool.tool_router_key().clone(), function_config_vec.clone()).await?;
+        check_tool_config(shinkai_tool.tool_router_key().clone().to_string_without_version(), function_config_vec.clone()).await?;
 
         let result = js_tool
             .run(

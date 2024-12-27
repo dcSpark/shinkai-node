@@ -309,7 +309,7 @@ mod tests {
         manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Return the tool_router_key generated from the DenoTool
-        shinkai_tool.tool_router_key().to_string()
+        shinkai_tool.tool_router_key().to_string_without_version()
     }
 
     fn create_test_tool_playground(tool_router_key: String) -> ToolPlayground {
@@ -435,7 +435,7 @@ mod tests {
         manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Return the tool_router_key generated from the DenoTool
-        shinkai_tool.tool_router_key().to_string()
+        shinkai_tool.tool_router_key().to_string_without_version()
     }
 
     #[tokio::test]
@@ -506,14 +506,14 @@ mod tests {
         manager.add_tool_with_vector(shinkai_tool.clone(), vector).unwrap();
 
         // Create and add a ToolPlayground entry
-        let tool_playground = create_test_tool_playground(shinkai_tool.tool_router_key().to_string());
+        let tool_playground = create_test_tool_playground(shinkai_tool.tool_router_key().to_string_without_version());
         manager.set_tool_playground(&tool_playground).unwrap();
 
         // Add a message to the tool_playground_code_history table
         let message_id = "msg-001";
         let code = "console.log('Message Code');";
         manager
-            .add_tool_playground_code_history(message_id, &shinkai_tool.tool_router_key(), code)
+            .add_tool_playground_code_history(message_id, &shinkai_tool.tool_router_key().to_string_without_version(), code)
             .unwrap();
 
         // Verify the message was added
@@ -529,10 +529,10 @@ mod tests {
         assert_eq!(retrieved_code, code);
 
         // Remove the ToolPlayground and its messages
-        manager.remove_tool_playground(&shinkai_tool.tool_router_key()).unwrap();
+        manager.remove_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version()).unwrap();
 
         // Verify the ToolPlayground is removed
-        let result = manager.get_tool_playground(&shinkai_tool.tool_router_key());
+        let result = manager.get_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version());
         assert!(matches!(result, Err(SqliteManagerError::ToolPlaygroundNotFound(_))));
 
         // Verify the message is removed

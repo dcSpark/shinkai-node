@@ -72,6 +72,6 @@ impl NetworkTool {
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
         let shinkai_tool: ShinkaiTool = self.clone().into();
-        shinkai_tool.tool_router_key()
+        shinkai_tool.tool_router_key().to_string_without_version()
     }
 }

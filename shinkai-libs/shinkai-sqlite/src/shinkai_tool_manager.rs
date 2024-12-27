@@ -27,16 +27,17 @@ impl SqliteManager {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
-        // Check if the tool already exists
-        let tool_key = tool.tool_router_key().to_lowercase();
+        // Check if the tool already exists with the same key and version
+        let tool_key = tool.tool_router_key().to_string_without_version().to_lowercase();
+        let version = tool.version_number()?;
         let exists: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
-            params![tool_key],
+            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1 AND version = ?2)",
+            params![tool_key, version],
             |row| row.get(0),
         )?;
 
         if exists {
-            println!("Tool already exists with key: {}", tool_key);
+            println!("Tool already exists with key: {} and version: {}", tool_key, version);
             return Err(SqliteManagerError::ToolAlreadyExists(tool_key));
         }
 
@@ -89,7 +90,7 @@ impl SqliteManager {
             params![
                 tool_clone.name(),
                 tool_clone.description(),
-                tool_clone.tool_router_key(),
+                tool_clone.tool_router_key().to_string_without_version(),
                 tool_seos,
                 tool_data,
                 tool_header,
@@ -226,7 +227,7 @@ impl SqliteManager {
     /// Retrieves a ShinkaiToolHeader based on its tool_key
     pub fn get_tool_header_by_key(&self, tool_key: &str) -> Result<ShinkaiToolHeader, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE tool_key = ?1")?;
+        let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE tool_key = ?1 ORDER BY version DESC LIMIT 1")?;
 
         let tool_header_data: Vec<u8> = stmt
             .query_row(params![tool_key.to_lowercase()], |row| row.get(0))
@@ -248,10 +249,12 @@ impl SqliteManager {
         Ok(tool_header)
     }
 
-    /// Retrieves a ShinkaiTool based on its tool_key
+    /// Retrieves a ShinkaiTool based on its tool_key, sorted by descending version
     pub fn get_tool_by_key(&self, tool_key: &str) -> Result<ShinkaiTool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools WHERE tool_key = ?1")?;
+        let mut stmt = conn.prepare(
+            "SELECT tool_data FROM shinkai_tools WHERE tool_key = ?1 ORDER BY version DESC LIMIT 1"
+        )?;
 
         let tool_data: Vec<u8> = stmt
             .query_row(params![tool_key.to_lowercase()], |row| row.get(0))
@@ -284,7 +287,7 @@ impl SqliteManager {
         let tx = conn.transaction()?;
 
         // Get the tool_key and find the rowid
-        let tool_key = tool.tool_router_key().to_lowercase();
+        let tool_key = tool.tool_router_key().to_string_without_version().to_lowercase();
         let rowid: i64 = tx
             .query_row(
                 "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
@@ -344,7 +347,7 @@ impl SqliteManager {
             params![
                 tool.name(),
                 tool.description(),
-                tool.tool_router_key(),
+                tool.tool_router_key().to_string_without_version(),
                 tool.format_embedding_string(),
                 tool_data,
                 tool_header,
@@ -552,7 +555,7 @@ impl SqliteManager {
 
                 // Only fetch tool header if we haven't seen this one already
                 if seen.insert(name.clone()) {
-                    let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE name = ?1")?;
+                    let mut stmt = conn.prepare("SELECT tool_header FROM shinkai_tools WHERE name = ?1 ORDER BY version DESC")?;
                     let tool_header_data: Vec<u8> =
                         stmt.query_row(rusqlite::params![name], |row| row.get(0)).map_err(|e| {
                             eprintln!("Persistent DB query error: {}", e);
@@ -692,6 +695,44 @@ impl SqliteManager {
 
         Ok(tools_with_distances)
     }
+
+    pub fn get_tool_by_key_and_version(
+        &self,
+        tool_key: &str,
+        version: Option<IndexableVersion>,
+    ) -> Result<ShinkaiTool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let tool_key_lower = tool_key.to_lowercase();
+
+        let tool: ShinkaiTool = if let Some(version) = version {
+            let version_number = version.get_version_number();
+            conn.query_row(
+                "SELECT tool_data FROM shinkai_tools WHERE tool_key = ?1 AND version = ?2",
+                params![tool_key_lower, version_number],
+                |row| {
+                    let tool_data: Vec<u8> = row.get(0)?;
+                    serde_json::from_slice(&tool_data).map_err(|e| {
+                        eprintln!("Deserialization error: {}", e);
+                        rusqlite::Error::InvalidQuery
+                    })
+                },
+            )?
+        } else {
+            conn.query_row(
+                "SELECT tool_data FROM shinkai_tools WHERE tool_key = ?1 ORDER BY version DESC LIMIT 1",
+                params![tool_key_lower],
+                |row| {
+                    let tool_data: Vec<u8> = row.get(0)?;
+                    serde_json::from_slice(&tool_data).map_err(|e| {
+                        eprintln!("Deserialization error: {}", e);
+                        rusqlite::Error::InvalidQuery
+                    })
+                },
+            )?
+        };
+
+        Ok(tool)
+    }
 }
 
 #[cfg(test)]
@@ -763,7 +804,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Retrieve the tool using the new method
-        let retrieved_tool = manager.get_tool_by_key(&shinkai_tool.tool_router_key()).unwrap();
+        let retrieved_tool = manager.get_tool_by_key(&shinkai_tool.tool_router_key().to_string_without_version()).unwrap();
 
         // Assert that the retrieved tool matches the added tool
         assert_eq!(retrieved_tool.name(), shinkai_tool.name());
@@ -771,17 +812,17 @@ mod tests {
         assert_eq!(retrieved_tool.author(), shinkai_tool.author());
 
         // Remove the tool from the database
-        manager.remove_tool(&shinkai_tool.tool_router_key()).unwrap();
+        manager.remove_tool(&shinkai_tool.tool_router_key().to_string_without_version()).unwrap();
 
         // Verify that the tool is removed from the shinkai_tools table
-        let tool_removal_result = manager.get_tool_by_key(&shinkai_tool.tool_router_key());
+        let tool_removal_result = manager.get_tool_by_key(&shinkai_tool.tool_router_key().to_string_without_version());
         assert!(tool_removal_result.is_err());
 
         // Verify that the embedding is removed from the shinkai_tools_vec_items table
         let conn = manager.get_connection().unwrap();
         let embedding_removal_result: Result<i64, _> = conn.query_row(
             "SELECT rowid FROM shinkai_tools_vec_items WHERE rowid = ?1",
-            params![shinkai_tool.tool_router_key().to_lowercase()],
+            params![shinkai_tool.tool_router_key().to_string_without_version().to_lowercase()],
             |row| row.get(0),
         );
 
@@ -995,7 +1036,7 @@ mod tests {
         manager.update_tool(updated_tool_2.clone()).await.unwrap();
 
         // Retrieve the updated tool and verify the changes
-        let retrieved_tool = manager.get_tool_by_key(&updated_tool_2.tool_router_key()).unwrap();
+        let retrieved_tool = manager.get_tool_by_key(&updated_tool_2.tool_router_key().to_string_without_version()).unwrap();
         assert_eq!(retrieved_tool.name(), "Deno Tool 2");
         assert_eq!(retrieved_tool.description(), "Updated second Deno tool");
 
@@ -1004,7 +1045,7 @@ mod tests {
         let rowid: i64 = conn
             .query_row(
                 "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
-                params![updated_tool_2.tool_router_key().to_lowercase()],
+                params![updated_tool_2.tool_router_key().to_string_without_version().to_lowercase()],
                 |row| row.get(0),
             )
             .unwrap();
@@ -1525,7 +1566,7 @@ mod tests {
         let search_vector = SqliteManager::generate_vector_for_testing(0.5);
 
         // Only include Tool 1 and Tool 3 in the search scope
-        let limited_tool_keys = vec![shinkai_tool1.tool_router_key(), shinkai_tool3.tool_router_key()];
+        let limited_tool_keys = vec![shinkai_tool1.tool_router_key().to_string_without_version(), shinkai_tool3.tool_router_key().to_string_without_version()];
 
         // Perform the limited search
         let results = manager
@@ -1619,10 +1660,44 @@ mod tests {
             .unwrap();
 
         // Retrieve and verify both tools are added
-        let retrieved_tool_v1 = manager.get_tool_by_key(&shinkai_tool_v1.tool_router_key()).unwrap();
-        let retrieved_tool_v2 = manager.get_tool_by_key(&shinkai_tool_v2.tool_router_key()).unwrap();
+        let retrieved_tool_v1 = manager.get_tool_by_key(&shinkai_tool_v1.tool_router_key().to_string_without_version()).unwrap();
+        let retrieved_tool_v2 = manager.get_tool_by_key(&shinkai_tool_v2.tool_router_key().to_string_without_version()).unwrap();
 
-        assert_eq!(retrieved_tool_v1.version(), "1.0");
+        assert_eq!(retrieved_tool_v1.version(), "2.0");
         assert_eq!(retrieved_tool_v2.version(), "2.0");
+
+        // Retrieve the tool with version 1.0 using the new function
+        let version_1_0 = IndexableVersion::from_string("1.0").unwrap();
+        let retrieved_tool_v1_0 = manager
+            .get_tool_by_key_and_version(&shinkai_tool_v1.tool_router_key().to_string_without_version(), Some(version_1_0))
+            .unwrap();
+
+        // Verify the retrieved tool is the correct version
+        assert_eq!(retrieved_tool_v1_0.version(), "1.0");
+
+        // Retrieve the tool with the highest version using None
+        let retrieved_tool_latest = manager
+            .get_tool_by_key_and_version(&shinkai_tool_v1.tool_router_key().to_string_without_version(), None)
+            .unwrap();
+
+        // Verify the retrieved tool is the latest version
+        assert_eq!(retrieved_tool_latest.version(), "2.0");
+
+        // Perform a vector search and ensure it only returns one result
+        let search_vector = SqliteManager::generate_vector_for_testing(0.2);
+        let search_results = manager
+            .tool_vector_search_with_vector(search_vector, 1, true, true)
+            .unwrap();
+
+        // Verify that only one result is returned
+        assert_eq!(search_results.len(), 1);
+        assert_eq!(search_results[0].0.name, "Versioned Tool");
+        assert_eq!(search_results[0].0.version, "2.0");
+
+        // Perform an FTS search and ensure it only returns one result (version 2.0)
+        let fts_results = manager.search_tools_fts("Versioned Tool").unwrap();
+        assert_eq!(fts_results.len(), 1);
+        assert_eq!(fts_results[0].name, "Versioned Tool");
+        assert_eq!(fts_results[0].version, "2.0");
     }
 }

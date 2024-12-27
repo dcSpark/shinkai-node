@@ -513,7 +513,7 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
-                tool_key TEXT NOT NULL UNIQUE,
+                tool_key TEXT NOT NULL,
                 embedding_seo TEXT NOT NULL,
                 tool_data BLOB NOT NULL,
                 tool_header BLOB NOT NULL,
@@ -527,7 +527,7 @@ impl SqliteManager {
             [],
         )?;
 
-        // Create indexes for the shinkai_tools table if needed
+        // Create a composite unique index for tool_key and version
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_shinkai_tools_key_version ON shinkai_tools (tool_key, version);",
             [],
@@ -1000,12 +1000,10 @@ impl SqliteManager {
     // New method to get the embedding model type
     pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
         let conn = self.get_connection()?;
-        Ok(
-            conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
-                let model_type_str: String = row.get(0)?;
-                EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
-            })?,
-        )
+        Ok(conn.query_row("SELECT model_type FROM embedding_model_type LIMIT 1;", [], |row| {
+            let model_type_str: String = row.get(0)?;
+            EmbeddingModelType::from_string(&model_type_str).map_err(|_| rusqlite::Error::InvalidQuery)
+        })?)
     }
 
     // Returns a connection from the pool
