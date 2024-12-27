@@ -1,6 +1,7 @@
 use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::shinkai_tools::DynamicToolType;
+use crate::schemas::tool_router_key::ToolRouterKey;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
 use crate::shinkai_utils::job_scope::JobScope;
 use chrono::{DateTime, Utc};
@@ -310,7 +311,7 @@ pub enum CallbackAction {
     Sheet(SheetManagerAction),
     ToolPlayground(ToolPlaygroundAction),
     // ImplementationCheck: (DynamicToolType, available_tools)
-    ImplementationCheck(DynamicToolType, Vec<String>),
+    ImplementationCheck(DynamicToolType, Vec<ToolRouterKey>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]

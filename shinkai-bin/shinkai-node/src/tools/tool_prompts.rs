@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::{shinkai_tools::CodeLanguage, tool_router_key::ToolRouterKey};
 
 pub async fn generate_code_prompt(
     language: CodeLanguage,
@@ -239,7 +239,7 @@ class OUTPUT:
 pub async fn tool_metadata_implementation_prompt(
     language: CodeLanguage,
     code: String,
-    tools: Vec<String>,
+    tools: Vec<ToolRouterKey>,
 ) -> Result<String, APIError> {
     // code might be json string as {
     //  "job_id":"jobid_c7c5c9f5-e3a3-4667-ba67-e8b838c2f5db",

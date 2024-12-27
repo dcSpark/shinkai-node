@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 use crate::tools::error::ToolError;
+use serde::Deserialize;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
@@ -18,7 +19,6 @@ use tokio::runtime::Runtime;
 use super::deno_tools::ToolResult;
 use super::parameters::Parameters;
 use super::shared_execution::update_result_with_modified_files;
-use super::shinkai_tool::ShinkaiTool;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
@@ -29,7 +29,8 @@ pub struct PythonTool {
     pub name: String,
     pub author: String,
     pub py_code: String,
-    pub tools: Option<Vec<String>>,
+    #[serde(deserialize_with = "deserialize_tool_router_keys")]
+    pub tools: Option<Vec<ToolRouterKey>>,
     pub config: Vec<ToolConfig>,
     pub description: String,
     pub keywords: Vec<String>,
@@ -43,6 +44,25 @@ pub struct PythonTool {
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
     pub assets: Option<Vec<String>>,
+}
+
+fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Option<Vec<ToolRouterKey>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let string_vec: Option<Vec<String>> = Option::deserialize(deserializer)?;
+
+    match string_vec {
+        Some(vec) => {
+            let router_keys = vec
+                .into_iter()
+                .map(|s| ToolRouterKey::from_string(&s))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(serde::de::Error::custom)?;
+            Ok(Some(router_keys))
+        }
+        None => Ok(None),
+    }
 }
 
 impl PythonTool {
