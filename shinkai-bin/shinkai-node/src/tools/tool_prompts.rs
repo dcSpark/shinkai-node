@@ -340,14 +340,36 @@ pub async fn tool_metadata_implementation_prompt(
           "type": "array",
           "description": "A list of SQL tables used by the function",
           "items": {{
-            "type": "string"
+            "type": "object",
+            "properties": {{
+              "name": {{
+                "type": "string",
+                "description": "The unique name of the SQL table."
+              }},
+              "definition": {{
+                "type": "string",
+                "description": "The SQL Query to create the table"
+              }},
+            }},
+            "required": ["name", "definition"]
           }}
         }},
         "sqlQueries": {{
           "type": "array",
           "description": "A list of SQL queries used by the function",
           "items": {{
-            "type": "string"
+            "type": "object",
+            "properties": {{
+              "name": {{
+                "type": "string",
+                "description": "A functional name to describe the SQL query."
+              }},
+              "query": {{
+                "type": "string",
+                "description": "The SQL query to retrieve data from the database."
+              }},
+            }},
+            "required": ["name", "query"]
           }}
         }},
         "tools": {{
