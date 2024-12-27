@@ -71,22 +71,40 @@ impl ToolRouter {
         }
 
         if is_empty {
-            let _ = self.add_testing_network_tools().await;
-            let _ = self.add_rust_tools().await;
-            let _ = self.add_static_prompts(&generator).await;
+            if let Err(e) = self.add_testing_network_tools().await {
+                eprintln!("Error adding testing network tools: {}", e);
+            }
+            if let Err(e) = self.add_rust_tools().await {
+                eprintln!("Error adding rust tools: {}", e);
+            }
+            if let Err(e) = self.add_static_prompts(&generator).await {
+                eprintln!("Error adding static prompts: {}", e);
+            }
         } else if !has_any_js_tools {
-            let _ = self.add_testing_network_tools().await;
-            let _ = self.add_rust_tools().await;
+            if let Err(e) = self.add_testing_network_tools().await {
+                eprintln!("Error adding testing network tools: {}", e);
+            }
+            if let Err(e) = self.add_rust_tools().await {
+                eprintln!("Error adding rust tools: {}", e);
+            }
         }
 
         Ok(())
     }
 
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        let _ = self.add_testing_network_tools().await;
-        let _ = self.add_rust_tools().await;
-        let _ = self.add_static_prompts(generator).await;
-        let _ = Self::import_tools_from_directory(self.sqlite_manager.clone()).await;
+        if let Err(e) = self.add_testing_network_tools().await {
+            eprintln!("Error adding testing network tools: {}", e);
+        }
+        if let Err(e) = self.add_rust_tools().await {
+            eprintln!("Error adding rust tools: {}", e);
+        }
+        if let Err(e) = self.add_static_prompts(generator).await {
+            eprintln!("Error adding static prompts: {}", e);
+        }
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+            eprintln!("Error importing tools from directory: {}", e);
+        }
         Ok(())
     }
 

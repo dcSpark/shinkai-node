@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::{shinkai_tools::CodeLanguage, tool_router_key::ToolRouterKey};
 
 pub async fn generate_code_prompt(
     language: CodeLanguage,
@@ -239,7 +239,7 @@ class OUTPUT:
 pub async fn tool_metadata_implementation_prompt(
     language: CodeLanguage,
     code: String,
-    tools: Vec<String>,
+    tools: Vec<ToolRouterKey>,
 ) -> Result<String, APIError> {
     // code might be json string as {
     //  "job_id":"jobid_c7c5c9f5-e3a3-4667-ba67-e8b838c2f5db",
@@ -312,6 +312,10 @@ pub async fn tool_metadata_implementation_prompt(
         "description": {{
           "type": "string",
           "description": "A description of what the function does"
+        }},
+        "version": {{
+          "type": "string",
+          "description": "The version of the function"
         }},
         "author": {{
           "type": "string",
@@ -531,6 +535,7 @@ pub async fn tool_metadata_implementation_prompt(
     "name": "Coinbase Wallet Creator",
     "description": "Tool for creating a Coinbase wallet",
     "author": "Shinkai",
+    "version": "1.0.0",
     "keywords": [
       "coinbase",
       "wallet",
@@ -589,6 +594,7 @@ pub async fn tool_metadata_implementation_prompt(
     "name": "Download Pages",
     "description": "Downloads one or more URLs and sends the html content as markdown to an email address.",
     "author": "Shinkai",
+    "version": "1.0.0",
     "keywords": [
       "HTML to Markdown",
       "web page downloader",
