@@ -444,6 +444,7 @@ impl Node {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
                     author: payload.metadata.author.clone(),
+                    version: "1.0.0".to_string(),
                     js_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
                     config: payload.metadata.configurations.clone(),
@@ -2016,7 +2017,7 @@ mod tests {
                         }
                     ],
                     "sticky": true,
-                    "version": "v0.1"
+                    "version": "0.1"
                 }
             }],
             "type": "Workflow"
@@ -2087,7 +2088,7 @@ mod tests {
                         }
                     ],
                     "sticky": true,
-                    "version": "v0.1"
+                    "version": "0.1"
                 }
             }],
             "type": "Workflow"

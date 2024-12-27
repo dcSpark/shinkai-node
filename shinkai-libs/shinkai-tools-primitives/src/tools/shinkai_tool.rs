@@ -3,7 +3,7 @@ use std::env;
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
 use serde_json::{self, Value};
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
+use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}};
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
@@ -295,9 +295,9 @@ impl ShinkaiTool {
     /// Returns the version of the tool
     pub fn version(&self) -> String {
         match self {
-            ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
+            ShinkaiTool::Rust(_r, _) => "0.1".to_string(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
-            ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
+            ShinkaiTool::Deno(d, _) => d.version.clone(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
         }
     }
@@ -385,6 +385,15 @@ impl ShinkaiTool {
     pub fn is_network_based(&self) -> bool {
         matches!(self, ShinkaiTool::Network(_, _))
     }
+
+    /// Returns the version number using IndexableVersion
+    pub fn version_number(&self) -> Result<u64, String> {
+        let version_str = self.version();
+        eprintln!("version: {:?}", version_str);
+
+        let indexable_version = IndexableVersion::from_string(&version_str)?;
+        Ok(indexable_version.get_version_number())
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
@@ -422,7 +431,8 @@ mod tests {
             input_args: Parameters::new(),
             output_arg: ToolOutputArg { json: "".to_string() },
             config: vec![],
-            author: "unknown".to_string(),
+            author: "1.0".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "".to_string(),
             tools: None,
             keywords: vec![],
@@ -496,6 +506,7 @@ mod tests {
         let deno_tool = DenoTool {
             toolkit_name: "deno_toolkit".to_string(),
             name: "shinkai__download_website".to_string(),
+            version: "1.0.0".to_string(),
             description: tool_definition.description.clone(),
             input_args: input_args.clone(),
             output_arg: ToolOutputArg {

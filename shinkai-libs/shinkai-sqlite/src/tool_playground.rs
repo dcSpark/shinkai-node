@@ -284,6 +284,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: None,
             config: vec![],
@@ -409,6 +410,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: name.to_string(),
             author: "Deno Author".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: None,
             config: vec![],
@@ -474,13 +476,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_and_remove_tool_playground_message() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Add a tool to ensure the tool_router_key exists
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: None,
             config: vec![],

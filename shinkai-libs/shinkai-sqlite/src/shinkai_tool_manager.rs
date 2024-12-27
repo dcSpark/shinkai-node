@@ -2,6 +2,7 @@ use crate::{SqliteManager, SqliteManagerError};
 use bytemuck::cast_slice;
 use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
+use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use std::collections::HashSet;
 use shinkai_vector_resources::embeddings::Embedding;
@@ -67,6 +68,8 @@ impl SqliteManager {
             _ => (None, false),
         };
 
+        let version_number = tool_clone.version_number()?;
+
         // Insert the tool into the database
         tx.execute(
             "INSERT INTO shinkai_tools (
@@ -92,7 +95,7 @@ impl SqliteManager {
                 tool_header,
                 tool_type,
                 tool_clone.author(),
-                tool_clone.version(),
+                version_number,
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
@@ -317,6 +320,11 @@ impl SqliteManager {
             _ => (None, false),
         };
 
+        // Convert version string to IndexableVersion
+        let indexable_version = IndexableVersion::from_string(&tool.version())
+            .map_err(|e| SqliteManagerError::VersionConversionError(e))?;
+        let version_number = indexable_version.get_version_number();
+
         // Update the tool in the database
         tx.execute(
             "UPDATE shinkai_tools SET 
@@ -342,7 +350,7 @@ impl SqliteManager {
                 tool_header,
                 tool.tool_type().to_string(),
                 tool.author(),
-                tool.version(),
+                version_number,
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
@@ -717,13 +725,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_deno_tool() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: None,
             config: vec![],
@@ -781,13 +790,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create and add three DenoTool instances
         let deno_tool_1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool 1".to_string(),
             author: "Deno Author 1".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno 1!');".to_string(),
             tools: None,
             config: vec![],
@@ -809,6 +819,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool 2".to_string(),
             author: "Deno Author 2".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno 2!');".to_string(),
             tools: None,
             config: vec![],
@@ -830,6 +841,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool 3".to_string(),
             author: "Deno Author 3".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno 3!');".to_string(),
             tools: None,
             config: vec![],
@@ -881,13 +893,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_middle_tool() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create three DenoTool instances
         let deno_tool_1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Tool 1".to_string(),
             author: "Author 1".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Tool 1');".to_string(),
             tools: None,
             config: vec![],
@@ -909,6 +922,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Tool 2".to_string(),
             author: "Author 2".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Tool 2');".to_string(),
             tools: None,
             config: vec![],
@@ -930,6 +944,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Tool 3".to_string(),
             author: "Author 3".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Tool 3');".to_string(),
             tools: None,
             config: vec![],
@@ -1006,13 +1021,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_add_duplicate_tool() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create a DenoTool instance
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Duplicate Tool".to_string(),
             author: "Deno Author".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: None,
             config: vec![],
@@ -1050,7 +1066,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fts_search() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create multiple tools with different names
         let tools = vec![
@@ -1058,6 +1074,7 @@ mod tests {
                 toolkit_name: "Deno Toolkit".to_string(),
                 name: "Image Processing Tool".to_string(),
                 author: "Author 1".to_string(),
+                version: "1.0.0".to_string(),
                 js_code: "console.log('Tool 1');".to_string(),
                 tools: None,
                 config: vec![],
@@ -1078,6 +1095,7 @@ mod tests {
                 toolkit_name: "Deno Toolkit".to_string(),
                 name: "Text Analysis Helper".to_string(),
                 author: "Author 2".to_string(),
+                version: "1.0.0".to_string(),
                 js_code: "console.log('Tool 2');".to_string(),
                 tools: None,
                 config: vec![],
@@ -1098,6 +1116,7 @@ mod tests {
                 toolkit_name: "Deno Toolkit".to_string(),
                 name: "Data Visualization Tool".to_string(),
                 author: "Author 3".to_string(),
+                version: "1.0.0".to_string(),
                 js_code: "console.log('Tool 3');".to_string(),
                 tools: None,
                 config: vec![],
@@ -1154,12 +1173,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_disabled() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create two DenoTool instances - one enabled, one disabled
         let enabled_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Enabled Test Tool".to_string(),
+            version: "1.0.0".to_string(),
             author: "Author 1".to_string(),
             js_code: "console.log('Enabled');".to_string(),
             tools: None,
@@ -1182,6 +1202,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Disabled Test Tool".to_string(),
             author: "Author 2".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Disabled');".to_string(),
             tools: None,
             config: vec![],
@@ -1263,13 +1284,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_network_filter() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create three tools: one enabled non-network, one disabled non-network, one enabled network
         let enabled_non_network_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Enabled Non-Network Tool".to_string(),
             author: "Author 1".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Enabled Non-Network');".to_string(),
             tools: None,
             config: vec![],
@@ -1291,6 +1313,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Disabled Non-Network Tool".to_string(),
             author: "Author 2".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Disabled Non-Network');".to_string(),
             tools: None,
             config: vec![],
@@ -1324,7 +1347,7 @@ mod tests {
             name: "Enabled Network Tool".to_string(),
             toolkit_name: "Network Toolkit".to_string(),
             description: "An enabled network tool".to_string(),
-            version: "v0.1".to_string(),
+            version: "0.1".to_string(),
             provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
             usage_type: usage_type.clone(),
             activated: true,
@@ -1413,13 +1436,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_tool_vector_search_with_vector_limited() {
-        let mut manager = setup_test_db().await;
+        let manager = setup_test_db().await;
 
         // Create three tools with different vectors
         let tool1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Tool One".to_string(),
             author: "Author 1".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Tool 1');".to_string(),
             tools: None,
             config: vec![],
@@ -1441,6 +1465,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Tool Two".to_string(),
             author: "Author 2".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Tool 2');".to_string(),
             tools: None,
             config: vec![],
@@ -1462,6 +1487,7 @@ mod tests {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Tool Three".to_string(),
             author: "Author 3".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "console.log('Tool 3');".to_string(),
             tools: None,
             config: vec![],
@@ -1529,5 +1555,74 @@ mod tests {
         let result_names: Vec<String> = results.iter().map(|(tool, _)| tool.name.clone()).collect();
         assert!(result_names.contains(&"Tool One".to_string()));
         assert!(result_names.contains(&"Tool Three".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_add_tools_with_different_versions() {
+        let manager = setup_test_db().await;
+
+        // Create two DenoTool instances with different versions
+        let deno_tool_v1 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Versioned Tool".to_string(),
+            author: "Version Author".to_string(),
+            version: "1.0".to_string(),
+            js_code: "console.log('Version 1');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "A tool with version 1.0".to_string(),
+            keywords: vec!["version".to_string(), "test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+        };
+
+        let deno_tool_v2 = DenoTool {
+            toolkit_name: "Deno Toolkit".to_string(),
+            name: "Versioned Tool".to_string(),
+            author: "Version Author".to_string(),
+            version: "2.0".to_string(),
+            js_code: "console.log('Version 2');".to_string(),
+            tools: None,
+            config: vec![],
+            description: "A tool with version 2.0".to_string(),
+            keywords: vec!["version".to_string(), "test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+        };
+
+        // Wrap the DenoTools in ShinkaiTool::Deno variants
+        let shinkai_tool_v1 = ShinkaiTool::Deno(deno_tool_v1, true);
+        let shinkai_tool_v2 = ShinkaiTool::Deno(deno_tool_v2, true);
+
+        // Add both tools to the database
+        manager
+            .add_tool_with_vector(shinkai_tool_v1.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool_v2.clone(), SqliteManager::generate_vector_for_testing(0.2))
+            .unwrap();
+
+        // Retrieve and verify both tools are added
+        let retrieved_tool_v1 = manager.get_tool_by_key(&shinkai_tool_v1.tool_router_key()).unwrap();
+        let retrieved_tool_v2 = manager.get_tool_by_key(&shinkai_tool_v2.tool_router_key()).unwrap();
+
+        assert_eq!(retrieved_tool_v1.version(), "1.0");
+        assert_eq!(retrieved_tool_v2.version(), "2.0");
     }
 }

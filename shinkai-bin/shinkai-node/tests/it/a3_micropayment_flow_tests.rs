@@ -331,7 +331,7 @@ fn micropayment_flow_test() {
                 input_args: input_args.clone(),
                 output_arg: ToolOutputArg::empty(),
                 author: "Shinkai".to_string(),
-                version: "v0.1".to_string(),
+                version: "0.1".to_string(),
                 enabled: true,
                 config: Some(vec![]),
                 usage_type: None,

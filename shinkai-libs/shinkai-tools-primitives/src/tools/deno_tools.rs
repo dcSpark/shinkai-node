@@ -28,6 +28,7 @@ pub struct DenoTool {
     pub toolkit_name: String,
     pub name: String,
     pub author: String,
+    pub version: String,
     pub js_code: String,
     pub tools: Option<Vec<String>>,
     pub config: Vec<ToolConfig>,
