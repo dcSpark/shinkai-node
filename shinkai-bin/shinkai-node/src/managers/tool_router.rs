@@ -12,6 +12,7 @@ use crate::tools::tool_execution::execution_header_generator::{check_tool_config
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -537,6 +538,18 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
         }
     }
 
+    pub async fn get_tool_by_name_and_version(
+        &self,
+        name: &str,
+        version: Option<IndexableVersion>,
+    ) -> Result<Option<ShinkaiTool>, ToolError> {
+        match self.sqlite_manager.get_tool_by_key_and_version(name, version) {
+            Ok(tool) => Ok(Some(tool)),
+            Err(SqliteManagerError::ToolNotFound(_)) => Ok(None),
+            Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+        }
+    }
+
     pub async fn vector_search_enabled_tools(
         &self,
         query: &str,
@@ -622,7 +635,11 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), python_tool.config.clone()).await?;
+                check_tool_config(
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    python_tool.config.clone(),
+                )
+                .await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -703,7 +720,11 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), deno_tool.config.clone()).await?;
+                check_tool_config(
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    deno_tool.config.clone(),
+                )
+                .await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -1061,7 +1082,11 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
         .await
         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-        check_tool_config(shinkai_tool.tool_router_key().clone().to_string_without_version(), function_config_vec.clone()).await?;
+        check_tool_config(
+            shinkai_tool.tool_router_key().clone().to_string_without_version(),
+            function_config_vec.clone(),
+        )
+        .await?;
 
         let result = js_tool
             .run(

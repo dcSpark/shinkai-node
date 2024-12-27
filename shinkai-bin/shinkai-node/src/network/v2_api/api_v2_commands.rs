@@ -1,7 +1,6 @@
-use std::{env, sync::Arc};
-use std::path::Path;
 use std::fs::File;
 use std::io::Write;
+use std::{env, sync::Arc};
 
 use serde_json::{json, Value};
 use tokio::fs;
@@ -50,7 +49,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, Node, node_shareable_logic::download_zip_file},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
     tools::tool_generation,
     utils::update_global_identity::update_global_identity_name,
 };
@@ -1274,7 +1273,9 @@ impl Node {
                 .get("tools")
                 .and_then(|v| v.as_array())
                 .map_or(existing_agent.tools.clone(), |v| {
-                    v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
+                    v.iter()
+                        .filter_map(|s| serde_json::from_value(s.clone()).ok())
+                        .collect()
                 }),
             debug_mode: partial_agent
                 .get("debug_mode")

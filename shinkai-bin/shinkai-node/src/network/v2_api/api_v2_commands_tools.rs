@@ -42,7 +42,7 @@ use shinkai_tools_primitives::tools::{
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use std::{fs::File, io::Write, io::Read, path::Path, sync::Arc, time::Instant};
+use std::{fs::File, io::Read, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -113,7 +113,11 @@ impl Node {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
             // Then use the embedding with the limited search
-            db.tool_vector_search_with_vector_limited(embedding, 5, tools)
+            let tool_names = tools
+                .iter()
+                .map(|tool| tool.to_string_without_version())
+                .collect::<Vec<String>>();
+            db.tool_vector_search_with_vector_limited(embedding, 5, tool_names)
         } else {
             db.tool_vector_search(&sanitized_query, 5, false, true).await
         };
@@ -1538,7 +1542,10 @@ impl Node {
             Ok(tool) => {
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
 
-                let name = format!("{}.zip", tool.tool_router_key().to_string_without_version().replace(':', "_"));
+                let name = format!(
+                    "{}.zip",
+                    tool.tool_router_key().to_string_without_version().replace(':', "_")
+                );
                 let path = std::env::temp_dir().join(&name);
                 let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
 
