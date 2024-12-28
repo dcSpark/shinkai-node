@@ -33,7 +33,7 @@ pub async fn execute_deno_tool(
         toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
         author: "system".to_string(),
-        version: "1.0".to_string(),
+        version: "1.0.0".to_string(),
         js_code: code,
         tools: None,
         config: extra_config.clone(),

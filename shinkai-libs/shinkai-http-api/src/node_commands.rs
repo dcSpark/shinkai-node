@@ -17,6 +17,7 @@ use shinkai_message_primitives::{
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
         shinkai_tools::{CodeLanguage, DynamicToolType},
         smart_inbox::{SmartInbox, V2SmartInbox},
+        tool_router_key::ToolRouterKey,
         wallet_complementary::{WalletRole, WalletSource},
         wallet_mixed::NetworkIdentifier,
     },
@@ -259,12 +260,12 @@ pub enum NodeCommand {
         bearer: String,
         url: String,
         res: Sender<Result<Value, APIError>>,
-    },    
+    },
     V2ApiExportAgent {
         bearer: String,
         agent_id: String,
         res: Sender<Result<Vec<u8>, APIError>>,
-    },    
+    },
     AvailableLLMProviders {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
@@ -959,7 +960,7 @@ pub enum NodeCommand {
     V2ApiExecuteCode {
         bearer: String,
         code: String,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         tool_type: DynamicToolType,
         parameters: Map<String, Value>,
         extra_config: Map<String, Value>,
@@ -973,13 +974,13 @@ pub enum NodeCommand {
     V2ApiGenerateToolDefinitions {
         bearer: String,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolFetchQuery {
         bearer: String,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         code: String,
         res: Sender<Result<Value, APIError>>,
     },
@@ -987,7 +988,7 @@ pub enum NodeCommand {
         bearer: String,
         message: JobMessage,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         post_check: bool,
         raw: bool,
         res: Sender<Result<SendResponseBodyData, APIError>>,
@@ -996,7 +997,7 @@ pub enum NodeCommand {
         bearer: String,
         job_id: String,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExportMessagesFromInbox {
@@ -1188,5 +1189,5 @@ pub enum NodeCommand {
         bearer: String,
         cron_task_id: i64,
         res: Sender<Result<Vec<u8>, APIError>>,
-    },       
+    },
 }

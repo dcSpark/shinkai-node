@@ -5,7 +5,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 use super::parameters::Parameters;
-use super::shinkai_tool::ShinkaiTool;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
@@ -31,7 +30,9 @@ pub struct DenoTool {
     pub author: String,
     pub version: String,
     pub js_code: String,
-    pub tools: Option<Vec<String>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_tool_router_keys")]
+    pub tools: Option<Vec<ToolRouterKey>>,
     pub config: Vec<ToolConfig>,
     pub description: String,
     pub keywords: Vec<String>,
@@ -45,6 +46,24 @@ pub struct DenoTool {
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
     pub assets: Option<Vec<String>>,
+}
+
+fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Option<Vec<ToolRouterKey>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let string_vec: Option<Vec<String>> = Option::deserialize(deserializer)?;
+
+    match string_vec {
+        Some(vec) => {
+            let router_keys = vec
+                .into_iter()
+                .filter_map(|s| ToolRouterKey::from_string(&s).ok())
+                .collect();
+            Ok(Some(router_keys))
+        }
+        None => Ok(None),
+    }
 }
 
 impl DenoTool {

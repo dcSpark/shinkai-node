@@ -5,7 +5,7 @@ use super::{
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::{shinkai_tools::CodeLanguage, tool_router_key::ToolRouterKey};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SqlTable {
@@ -34,6 +34,7 @@ pub struct ToolPlayground {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolPlaygroundMetadata {
     pub name: String,
+    pub version: String,
     pub description: String,
     pub author: String,
     pub keywords: Vec<String>,
@@ -50,10 +51,9 @@ pub struct ToolPlaygroundMetadata {
     #[serde(deserialize_with = "deserialize_sql_queries")]
     #[serde(rename = "sqlQueries")]
     pub sql_queries: Vec<SqlQuery>,
-    // This is optional as:
-    // None -> All tools.
-    // Empty vector -> No tools.
-    pub tools: Option<Vec<String>>,
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_tools")]
+    pub tools: Option<Vec<ToolRouterKey>>,
     pub oauth: Option<Vec<OAuth>>,
 }
 
@@ -140,6 +140,24 @@ where
         }
         JsonValue::Null => Ok(Vec::new()),
         _ => Err(serde::de::Error::custom("Invalid type for sql_queries")),
+    }
+}
+
+fn deserialize_tools<'de, D>(deserializer: D) -> Result<Option<Vec<ToolRouterKey>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: JsonValue = Deserialize::deserialize(deserializer)?;
+    match value {
+        JsonValue::Array(tools) => {
+            let tool_keys = tools
+                .into_iter()
+                .filter_map(|tool| tool.as_str().and_then(|key| ToolRouterKey::from_string(key).ok()))
+                .collect::<Vec<_>>();
+            Ok(Some(tool_keys))
+        }
+        JsonValue::Null => Ok(None),
+        _ => Err(serde::de::Error::custom("Invalid type for tools")),
     }
 }
 
@@ -309,5 +327,166 @@ mod tests {
         assert_eq!(deserialized.metadata.sql_queries.len(), 1);
         assert_eq!(deserialized.metadata.sql_queries[0].name, "Get markdown by URL");
         // assert_eq!(deserialized.metadata.sql_database_path, Some("test.db".to_string()));
+    }
+
+    #[test]
+    fn test_deserialize_playground_tool_with_tools() {
+        let json_data = r#"
+        {
+            "metadata": {
+                "name": "Tool With Dependencies",
+                "description": "A tool that depends on other tools",
+                "author": "Test Author",
+                "keywords": ["test", "dependencies"],
+                "configurations": [],
+                "parameters": {},
+                "result": {
+                    "type": "string",
+                    "properties": "{}",
+                    "required": []
+                },
+                "tools": [
+                    "local:::toolkit1:::tool1",
+                    "local:::toolkit2:::tool2:::1.0"
+                ]
+            },
+            "tool_router_key": "example_key",
+            "job_id": "job_123",
+            "job_id_history": [],
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
+        }
+        "#;
+
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
+
+        // Verify tools were correctly deserialized
+        let tools = deserialized.metadata.tools.unwrap();
+        assert_eq!(tools.len(), 2);
+
+        let tool1 = &tools[0];
+        assert_eq!(tool1.source, "local");
+        assert_eq!(tool1.toolkit_name, "toolkit1");
+        assert_eq!(tool1.name, "tool1");
+        assert_eq!(tool1.version, None);
+
+        let tool2 = &tools[1];
+        assert_eq!(tool2.source, "local");
+        assert_eq!(tool2.toolkit_name, "toolkit2");
+        assert_eq!(tool2.name, "tool2");
+        assert_eq!(tool2.version, Some("1.0".to_string()));
+    }
+
+    #[test]
+    fn test_deserialize_playground_tool_with_invalid_tools() {
+        // Test with malformed tool strings
+        let json_data = r#"
+        {
+            "metadata": {
+                "name": "Tool With Invalid Dependencies",
+                "description": "A tool with invalid tool references",
+                "author": "Test Author",
+                "keywords": ["test", "invalid"],
+                "configurations": [],
+                "parameters": {},
+                "result": {
+                    "type": "string",
+                    "properties": "{}",
+                    "required": []
+                },
+                "tools": [
+                    "invalid_format",
+                    "too:::many:::colons:::here:::version",
+                    "not::enough::colons",
+                    "local:::toolkit1:::tool1:::version:::extra",
+                    "local:::toolkit2:::tool2"
+                ]
+            },
+            "tool_router_key": "example_key",
+            "job_id": "job_123",
+            "job_id_history": [],
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
+        }
+        "#;
+
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
+
+        // Only the valid tool should be included, others should be filtered out
+        let tools = deserialized.metadata.tools.unwrap_or_default();
+        assert_eq!(tools.len(), 1, "Only one valid tool should remain");
+
+        let valid_tool = &tools[0];
+        assert_eq!(valid_tool.source, "local");
+        assert_eq!(valid_tool.toolkit_name, "toolkit2");
+        assert_eq!(valid_tool.name, "tool2");
+        assert_eq!(valid_tool.version, None);
+    }
+
+    #[test]
+    fn test_deserialize_playground_tool_with_empty_tools() {
+        // Test with empty array and non-string values
+        let json_data = r#"
+        {
+            "metadata": {
+                "name": "Tool With Empty Dependencies",
+                "description": "A tool with empty tool references",
+                "author": "Test Author",
+                "keywords": ["test", "empty"],
+                "configurations": [],
+                "parameters": {},
+                "result": {
+                    "type": "string",
+                    "properties": "{}",
+                    "required": []
+                },
+                "tools": []
+            },
+            "tool_router_key": "example_key",
+            "job_id": "job_123",
+            "job_id_history": [],
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
+        }
+        "#;
+
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
+        assert_eq!(
+            deserialized.metadata.tools,
+            Some(vec![]),
+            "Empty tools array should deserialize to empty vec"
+        );
+
+        // Test with non-string values in array
+        let json_data = r#"
+        {
+            "metadata": {
+                "name": "Tool With Invalid Dependencies",
+                "description": "A tool with non-string tool references",
+                "author": "Test Author",
+                "keywords": ["test", "invalid"],
+                "configurations": [],
+                "parameters": {},
+                "result": {
+                    "type": "string",
+                    "properties": "{}",
+                    "required": []
+                },
+                "tools": [123, true, null, {"key": "value"}]
+            },
+            "tool_router_key": "example_key",
+            "job_id": "job_123",
+            "job_id_history": [],
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
+        }
+        "#;
+
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
+        assert_eq!(
+            deserialized.metadata.tools,
+            Some(vec![]),
+            "Non-string tools should be filtered out"
+        );
     }
 }

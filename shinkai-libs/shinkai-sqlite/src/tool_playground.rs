@@ -105,11 +105,16 @@ impl SqliteManager {
     }
 
     // Retrieves a ToolPlayground entry based on its tool_router_key
-    pub fn get_tool_playground(&self, tool_router_key: &str) -> Result<ToolPlayground, SqliteManagerError> {
+    pub fn get_tool_playground(
+        &self,
+        tool_router_key: &str,
+        version: Option<String>,
+    ) -> Result<ToolPlayground, SqliteManagerError> {
         let conn = self.get_connection()?;
+        // TODO: Add version to the query
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
-             FROM tool_playground WHERE tool_router_key = ?1",
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language, version
+             FROM tool_playground WHERE tool_router_key = ?1 ORDER BY version DESC LIMIT 1",
         )?;
 
         let tool = stmt
@@ -155,6 +160,7 @@ impl SqliteManager {
                         sql_queries: vec![],
                         tools: None,
                         oauth: None,
+                        version: row.get(12)?,
                     },
                     tool_router_key: row.get(7)?,
                     job_id: row.get(8)?,
@@ -178,7 +184,7 @@ impl SqliteManager {
     pub fn get_all_tool_playground(&self) -> Result<Vec<ToolPlayground>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
+            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language, version
              FROM tool_playground",
         )?;
 
@@ -219,6 +225,7 @@ impl SqliteManager {
                     sql_queries: vec![],
                     tools: None,
                     oauth: None,
+                    version: row.get(12)?,
                 },
                 tool_router_key: row.get(7)?,
                 job_id: row.get(8)?,
@@ -317,6 +324,7 @@ mod tests {
             language: CodeLanguage::Typescript,
             metadata: ToolPlaygroundMetadata {
                 name: "Test Tool".to_string(),
+                version: "1.0.0".to_string(),
                 description: "A tool for testing".to_string(),
                 author: "Test Author".to_string(),
                 keywords: vec!["test".to_string(), "tool".to_string()],
@@ -346,7 +354,7 @@ mod tests {
         manager.set_tool_playground(&tool).unwrap();
 
         // Retrieve the tool playground
-        let retrieved_tool = manager.get_tool_playground(&tool_router_key).unwrap();
+        let retrieved_tool = manager.get_tool_playground(&tool_router_key, None).unwrap();
 
         // Verify the retrieved tool matches the original
         assert_eq!(retrieved_tool.metadata.name, tool.metadata.name);
@@ -371,7 +379,7 @@ mod tests {
         manager.remove_tool_playground(&tool_router_key).unwrap();
 
         // Verify the tool playground is removed
-        let result = manager.get_tool_playground(&tool_router_key);
+        let result = manager.get_tool_playground(&tool_router_key, None);
         assert!(matches!(result, Err(SqliteManagerError::ToolPlaygroundNotFound(_))));
     }
 
@@ -450,7 +458,7 @@ mod tests {
         manager.set_tool_playground(&tool_playground).unwrap();
 
         // Retrieve the tool playground
-        let retrieved_tool_playground = manager.get_tool_playground(&tool_router_key).unwrap();
+        let retrieved_tool_playground = manager.get_tool_playground(&tool_router_key, None).unwrap();
 
         // Verify the retrieved tool playground matches the original
         assert_eq!(retrieved_tool_playground.metadata.name, tool_playground.metadata.name);
@@ -513,7 +521,11 @@ mod tests {
         let message_id = "msg-001";
         let code = "console.log('Message Code');";
         manager
-            .add_tool_playground_code_history(message_id, &shinkai_tool.tool_router_key().to_string_without_version(), code)
+            .add_tool_playground_code_history(
+                message_id,
+                &shinkai_tool.tool_router_key().to_string_without_version(),
+                code,
+            )
             .unwrap();
 
         // Verify the message was added
@@ -529,10 +541,12 @@ mod tests {
         assert_eq!(retrieved_code, code);
 
         // Remove the ToolPlayground and its messages
-        manager.remove_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version()).unwrap();
+        manager
+            .remove_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version())
+            .unwrap();
 
         // Verify the ToolPlayground is removed
-        let result = manager.get_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version());
+        let result = manager.get_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version(), None);
         assert!(matches!(result, Err(SqliteManagerError::ToolPlaygroundNotFound(_))));
 
         // Verify the message is removed

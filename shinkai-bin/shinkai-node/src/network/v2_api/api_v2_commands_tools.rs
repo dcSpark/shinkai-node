@@ -18,7 +18,10 @@ use serde_json::{json, Map, Value};
 
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType},
+    schemas::{
+        inbox_name::InboxName, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType,
+        tool_router_key::ToolRouterKey,
+    },
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
         job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
@@ -42,7 +45,7 @@ use shinkai_tools_primitives::tools::{
     tool_playground::ToolPlayground,
 };
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use std::{fs::File, io::Write, io::Read, path::Path, sync::Arc, time::Instant};
+use std::{fs::File, io::Read, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -113,7 +116,11 @@ impl Node {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
 
             // Then use the embedding with the limited search
-            db.tool_vector_search_with_vector_limited(embedding, 5, tools)
+            let tool_names = tools
+                .iter()
+                .map(|tool| tool.to_string_without_version())
+                .collect::<Vec<String>>();
+            db.tool_vector_search_with_vector_limited(embedding, 5, tool_names)
         } else {
             db.tool_vector_search(&sanitized_query, 5, false, true).await
         };
@@ -444,7 +451,7 @@ impl Node {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
                     author: payload.metadata.author.clone(),
-                    version: "1.0.0".to_string(),
+                    version: payload.metadata.version.clone(),
                     js_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
                     config: payload.metadata.configurations.clone(),
@@ -467,6 +474,7 @@ impl Node {
                 let tool = PythonTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
+                    version: payload.metadata.version.clone(),
                     author: payload.metadata.author.clone(),
                     py_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
@@ -727,7 +735,7 @@ impl Node {
         }
 
         // Get the playground tool
-        match db.get_tool_playground(&tool_key) {
+        match db.get_tool_playground(&tool_key, None) {
             Ok(tool) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;
@@ -762,7 +770,7 @@ impl Node {
         bearer: String,
         db: Arc<SqliteManager>,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -858,7 +866,7 @@ impl Node {
         db: Arc<SqliteManager>,
         tool_type: DynamicToolType,
         code: String,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         parameters: Map<String, Value>,
         extra_config: Map<String, Value>,
         oauth: Option<Vec<OAuth>>,
@@ -920,7 +928,7 @@ impl Node {
         bearer: String,
         db: Arc<SqliteManager>,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         code: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -944,7 +952,7 @@ impl Node {
 
         let is_memory_required = tools
             .iter()
-            .any(|tool| tool.contains("local:::rust_toolkit:::shinkai_sqlite_query_executor"));
+            .any(|tool| tool.to_string_without_version() == "local:::rust_toolkit:::shinkai_sqlite_query_executor");
         let code_prompt =
             match generate_code_prompt(language.clone(), is_memory_required, "".to_string(), tool_definitions).await {
                 Ok(prompt) => prompt,
@@ -1016,7 +1024,7 @@ impl Node {
         db: Arc<SqliteManager>,
         job_message: JobMessage,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
@@ -1051,7 +1059,7 @@ impl Node {
         let is_memory_required = tools
             .clone()
             .iter()
-            .any(|tool| tool.contains("local:::rust_toolkit:::shinkai_sqlite_query_executor"));
+            .any(|tool| tool.to_string_without_version() == "local:::rust_toolkit:::shinkai_sqlite_query_executor");
 
         // Determine the code generation prompt so we can update the message with the custom prompt if required
         let generate_code_prompt = match raw {
@@ -1110,7 +1118,7 @@ impl Node {
         bearer: String,
         job_id: String,
         language: CodeLanguage,
-        tools: Vec<String>,
+        tools: Vec<ToolRouterKey>,
         db: Arc<SqliteManager>,
         node_name_clone: ShinkaiName,
         identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -1538,7 +1546,10 @@ impl Node {
             Ok(tool) => {
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
 
-                let name = format!("{}.zip", tool.tool_router_key().to_string_without_version().replace(':', "_"));
+                let name = format!(
+                    "{}.zip",
+                    tool.tool_router_key().to_string_without_version().replace(':', "_")
+                );
                 let path = std::env::temp_dir().join(&name);
                 let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
 
