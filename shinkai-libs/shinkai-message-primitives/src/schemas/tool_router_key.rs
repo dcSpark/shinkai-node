@@ -18,19 +18,25 @@ impl ToolRouterKey {
         }
     }
 
+    fn sanitize(input: &str) -> String {
+        input.chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+            .collect()
+    }
+
     pub fn to_string_without_version(&self) -> String {
-        let sanitized_source = self.source.replace(':', "_").replace(' ', "_");
-        let sanitized_toolkit_name = self.toolkit_name.replace(':', "_").replace(' ', "_");
-        let sanitized_name = self.name.replace(':', "_").replace(' ', "_");
+        let sanitized_source = Self::sanitize(&self.source);
+        let sanitized_toolkit_name = Self::sanitize(&self.toolkit_name);
+        let sanitized_name = Self::sanitize(&self.name);
         
         let key = format!("{}:::{}:::{}", sanitized_source, sanitized_toolkit_name, sanitized_name);
         key.replace('/', "|").to_lowercase()
     }
 
     pub fn to_string_with_version(&self) -> String {
-        let sanitized_source = self.source.replace(':', "_").replace(' ', "_");
-        let sanitized_toolkit_name = self.toolkit_name.replace(':', "_").replace(' ', "_");
-        let sanitized_name = self.name.replace(':', "_").replace(' ', "_");
+        let sanitized_source = Self::sanitize(&self.source);
+        let sanitized_toolkit_name = Self::sanitize(&self.toolkit_name);
+        let sanitized_name = Self::sanitize(&self.name);
         
         let version_str = self.version.clone().unwrap_or_else(|| "none".to_string());
         
