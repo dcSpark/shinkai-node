@@ -35,7 +35,6 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_runner::built_in_tools;
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 
 #[derive(Clone)]
 pub struct ToolRouter {
