@@ -522,10 +522,7 @@ mod tests {
                     "toolkit_name": "shinkai-tool-coinbase-get-my-address",
                     "sql_tables": [],
                     "sql_queries": [],
-                    "embedding": {
-                        "id": "",
-                        "vector": []
-                    },
+                    "embedding": [],
                     "oauth": null,
                     "config": [],
                     "keywords": [
