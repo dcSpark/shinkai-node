@@ -773,9 +773,10 @@ mod tests {
             };
 
             // Add a message to the job
-            let _ = db
+            let result = db
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
+            eprintln!("result {:?}", result);
 
             // Update the parent message according to the tree structure
             if i == 1 {
