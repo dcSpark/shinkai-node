@@ -514,6 +514,7 @@ mod tests {
             "content": [
                 {
                     "description": "Tool for getting the default address of a Coinbase wallet",
+                    "version": "1.0.0",
                     "activated": false,
                     "assets": null,
                     "author": "Shinkai",
@@ -550,7 +551,8 @@ mod tests {
                         "properties": {
                             "walletId": {
                                 "type": "string",
-                                "nullable": true
+                                "nullable": true,
+                                "description": "The ID of the wallet to get the address for"
                             }
                         },
                         "required": []
@@ -567,6 +569,7 @@ mod tests {
         "#;
 
         let deserialized_tool: Result<ShinkaiTool, _> = serde_json::from_str(json_payload);
+        eprintln!("deserialized_tool: {:?}", deserialized_tool);
 
         assert!(deserialized_tool.is_ok(), "Failed to deserialize ShinkaiTool");
     }
