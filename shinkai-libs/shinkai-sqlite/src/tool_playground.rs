@@ -10,6 +10,29 @@ impl SqliteManager {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
+        // 1) Make sure tool_key exists at all
+        let row_exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
+            params![tool.tool_router_key.as_deref()],
+            |row| row.get(0),
+        )?;
+        if !row_exists {
+            return Err(SqliteManagerError::ToolKeyNotFound(
+                tool.tool_router_key.clone().unwrap_or_default(),
+            ));
+        }
+
+        // 2) Find the highest version for that tool_key
+        let tool_version: i64 = tx.query_row(
+            "SELECT version FROM shinkai_tools 
+             WHERE tool_key = ?1 
+             ORDER BY version DESC 
+             LIMIT 1",
+            params![tool.tool_router_key.as_deref()],
+            |row| row.get(0),
+        )?;
+
+        // Prepare JSON fields
         let job_id_history_str = tool.job_id_history.join(",");
         let keywords = tool.metadata.keywords.join(",");
         let configurations = serde_json::to_string(&tool.metadata.configurations)
@@ -18,15 +41,17 @@ impl SqliteManager {
             .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
         let result = serde_json::to_string(&tool.metadata.result)
             .map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
-        // Check if the entry exists
+
+        // Check if an entry already exists for this router_key
         let exists: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM tool_playground WHERE tool_router_key = ?1)",
+            "SELECT EXISTS(SELECT 1 FROM tool_playground 
+                           WHERE tool_router_key = ?1)",
             params![tool.tool_router_key.as_deref()],
             |row| row.get(0),
         )?;
 
         if exists {
-            // Update existing entry
+            // Update existing
             tx.execute(
                 "UPDATE tool_playground SET
                     name = ?1,
@@ -39,8 +64,9 @@ impl SqliteManager {
                     job_id = ?8,
                     job_id_history = ?9,
                     code = ?10,
-                    language = ?11
-                WHERE tool_router_key = ?12",
+                    language = ?11,
+                    tool_version = ?12
+                 WHERE tool_router_key = ?13",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -53,15 +79,21 @@ impl SqliteManager {
                     job_id_history_str,
                     tool.code,
                     tool.language.to_string(),
-                    tool.tool_router_key.as_deref(),
+                    tool_version, // <= we ensure the current highest version
+                    tool.tool_router_key.as_deref()
                 ],
             )?;
         } else {
-            // Insert new entry
+            // Insert new
             tx.execute(
                 "INSERT INTO tool_playground (
-                    name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    name, description, author, keywords, configurations,
+                    parameters, result,
+                    tool_router_key, tool_version,
+                    job_id, job_id_history, code, language
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                          ?8, ?9,
+                          ?10, ?11, ?12, ?13)",
                 params![
                     tool.metadata.name,
                     tool.metadata.description,
@@ -71,6 +103,7 @@ impl SqliteManager {
                     parameters,
                     result,
                     tool.tool_router_key.as_deref(),
+                    tool_version, // new code: we must insert the version
                     tool.job_id,
                     job_id_history_str,
                     tool.code,
@@ -83,33 +116,46 @@ impl SqliteManager {
         Ok(())
     }
 
-    // Removes a ToolPlayground entry and its associated messages from the tool_playground table
+    /// Removes a ToolPlayground entry and its associated messages
     pub fn remove_tool_playground(&self, tool_router_key: &str) -> Result<(), SqliteManagerError> {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
-        // Remove all messages associated with the tool_router_key
-        tx.execute(
-            "DELETE FROM tool_playground_code_history WHERE tool_router_key = ?1",
+        // 1) Look up the tool_playground.id for this router_key
+        let playground_id: i64 = match tx.query_row(
+            "SELECT id FROM tool_playground WHERE tool_router_key = ?1",
             params![tool_router_key],
+            |row| row.get(0),
+        ) {
+            Ok(id) => id,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return Err(SqliteManagerError::ToolPlaygroundNotFound(tool_router_key.to_string()))
+            }
+            Err(e) => return Err(SqliteManagerError::DatabaseError(e)),
+        };
+
+        // 2) Remove all messages referencing this id
+        tx.execute(
+            "DELETE FROM tool_playground_code_history WHERE tool_playground_id = ?1",
+            params![playground_id],
         )?;
 
-        // Remove the tool playground entry
-        tx.execute(
-            "DELETE FROM tool_playground WHERE tool_router_key = ?1",
-            params![tool_router_key],
-        )?;
+        // 3) Remove the playground entry
+        tx.execute("DELETE FROM tool_playground WHERE id = ?1", params![playground_id])?;
 
         tx.commit()?;
         Ok(())
     }
 
-    // Retrieves a ToolPlayground entry based on its tool_router_key
+    /// Retrieves a ToolPlayground by router_key (still no version needed for the call)
     pub fn get_tool_playground(&self, tool_router_key: &str) -> Result<ToolPlayground, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
-             FROM tool_playground WHERE tool_router_key = ?1",
+            "SELECT 
+                name, description, author, keywords, configurations, parameters,
+                result, tool_router_key, job_id, job_id_history, code, language
+             FROM tool_playground 
+             WHERE tool_router_key = ?1",
         )?;
 
         let tool = stmt
@@ -120,11 +166,13 @@ impl SqliteManager {
                 let result: String = row.get(6)?;
                 let job_id_history: String = row.get(9)?;
                 let language: String = row.get(11)?;
+
                 let code_language = match language.as_str() {
                     "typescript" => CodeLanguage::Typescript,
                     "python" => CodeLanguage::Python,
                     _ => CodeLanguage::Typescript,
                 };
+
                 let configurations = serde_json::from_str(&configurations).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
@@ -174,11 +222,13 @@ impl SqliteManager {
         Ok(tool)
     }
 
-    // Retrieves all ToolPlayground entries from the tool_playground table
+    /// A helper for listing all tool_playgrounds (version usage is behind the scenes)
     pub fn get_all_tool_playground(&self) -> Result<Vec<ToolPlayground>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT name, description, author, keywords, configurations, parameters, result, tool_router_key, job_id, job_id_history, code, language
+            "SELECT
+                name, description, author, keywords, configurations, parameters, 
+                result, tool_router_key, job_id, job_id_history, code, language
              FROM tool_playground",
         )?;
 
@@ -189,12 +239,14 @@ impl SqliteManager {
             let result: String = row.get(6)?;
             let job_id_history: String = row.get(9)?;
             let language: String = row.get(11)?;
+
             let code_language = match language.as_str() {
                 "typescript" => CodeLanguage::Typescript,
                 "python" => CodeLanguage::Python,
-                _ => CodeLanguage::Typescript, // Default to TypeScript
+                _ => CodeLanguage::Typescript,
             };
 
+            // same deserialization pattern
             let configurations = serde_json::from_str(&configurations).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?;
@@ -229,14 +281,13 @@ impl SqliteManager {
         })?;
 
         let mut tools = Vec::new();
-        for tool in tool_iter {
-            tools.push(tool.map_err(SqliteManagerError::DatabaseError)?);
+        for tool_row in tool_iter {
+            tools.push(tool_row.map_err(SqliteManagerError::DatabaseError)?);
         }
-
         Ok(tools)
     }
 
-    // Adds a new entry to the tool_playground_code_history table
+    /// Add a new entry to code_history by looking up the `id` from tool_playground
     pub fn add_tool_playground_code_history(
         &self,
         message_id: &str,
@@ -244,9 +295,27 @@ impl SqliteManager {
         code: &str,
     ) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
+
+        // 1) Find the ID of the playground row
+        let playground_id: i64 = conn
+            .query_row(
+                "SELECT id FROM tool_playground WHERE tool_router_key = ?1",
+                params![tool_router_key],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                if e == rusqlite::Error::QueryReturnedNoRows {
+                    SqliteManagerError::ToolPlaygroundNotFound(tool_router_key.to_string())
+                } else {
+                    SqliteManagerError::DatabaseError(e)
+                }
+            })?;
+
+        // 2) Insert into code_history
         conn.execute(
-            "INSERT INTO tool_playground_code_history (message_id, tool_router_key, code) VALUES (?1, ?2, ?3)",
-            params![message_id, tool_router_key, code],
+            "INSERT INTO tool_playground_code_history (message_id, tool_playground_id, code)
+             VALUES (?1, ?2, ?3)",
+            params![message_id, playground_id, code],
         )
         .map_err(|e| {
             eprintln!("Database error: {}", e);
@@ -513,7 +582,11 @@ mod tests {
         let message_id = "msg-001";
         let code = "console.log('Message Code');";
         manager
-            .add_tool_playground_code_history(message_id, &shinkai_tool.tool_router_key().to_string_without_version(), code)
+            .add_tool_playground_code_history(
+                message_id,
+                &shinkai_tool.tool_router_key().to_string_without_version(),
+                code,
+            )
             .unwrap();
 
         // Verify the message was added
@@ -529,7 +602,9 @@ mod tests {
         assert_eq!(retrieved_code, code);
 
         // Remove the ToolPlayground and its messages
-        manager.remove_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version()).unwrap();
+        manager
+            .remove_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version())
+            .unwrap();
 
         // Verify the ToolPlayground is removed
         let result = manager.get_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version());

@@ -69,6 +69,8 @@ pub enum SqliteManagerError {
     UnsupportedEmbeddingLength(usize),
     #[error("Version Converson Error: {0}")]
     VersionConversionError(String),
+    #[error("Tool key not found: {0}")]
+    ToolKeyNotFound(String),
     // Add other error variants as needed
 }
 

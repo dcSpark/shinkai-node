@@ -505,4 +505,69 @@ mod tests {
         assert_eq!(shinkai_tool.tool_type(), "Deno");
         assert!(shinkai_tool.is_enabled());
     }
+
+    #[test]
+    fn test_deserialize_shinkai_tool() {
+        let json_payload = r#"
+        {
+            "type": "Deno",
+            "content": [
+                {
+                    "description": "Tool for getting the default address of a Coinbase wallet",
+                    "activated": false,
+                    "assets": null,
+                    "author": "Shinkai",
+                    "file_inbox": null,
+                    "toolkit_name": "shinkai-tool-coinbase-get-my-address",
+                    "sql_tables": [],
+                    "sql_queries": [],
+                    "embedding": {
+                        "id": "",
+                        "vector": []
+                    },
+                    "oauth": null,
+                    "config": [],
+                    "keywords": [
+                        "coinbase",
+                        "address",
+                        "shinkai"
+                    ],
+                    "tools": [],
+                    "result": {
+                        "type": "object",
+                        "properties": {
+                            "address": {
+                                "type": "string",
+                                "description": "hey"
+                            }
+                        },
+                        "required": [
+                            "address"
+                        ]
+                    },
+                    "input_args": {
+                        "type": "object",
+                        "properties": {
+                            "walletId": {
+                                "type": "string",
+                                "nullable": true
+                            }
+                        },
+                        "required": []
+                    },
+                    "output_arg": {
+                        "json": ""
+                    },
+                    "name": "Shinkai: Coinbase My Address Getter",
+                    "js_code": "import { Coinbase, CoinbaseOptions } from 'npm:@coinbase/coinbase-sdk@0.0.16';\\n\\ntype Configurations = {\\n name: string;\\n privateKey: string;\\n walletId?: string;\\n useServerSigner?: string;\\n};\\ntype Parameters = {\\n walletId?: string;\\n};\\ntype Result = {\\n address: string;\\n};\\nexport type Run<C extends Record<string, any>, I extends Record<string, any>, R extends Record<string, any>> = (config: C, inputs: I) => Promise<R>;\\n\\nexport const run: Run<Configurations, Parameters, Result> = async (\\n configurations: Configurations,\\n params: Parameters,\\n): Promise<Result> => {\\n const coinbaseOptions: CoinbaseOptions = {\\n apiKeyName: configurations.name,\\n privateKey: configurations.privateKey,\\n useServerSigner: configurations.useServerSigner === 'true',\\n };\\n const coinbase = new Coinbase(coinbaseOptions);\\n const user = await coinbase.getDefaultUser();\\n\\n // Prioritize walletId from Params over Config\\n const walletId = params.walletId || configurations.walletId;\\n\\n // Throw an error if walletId is not defined\\n if (!walletId) {\\n throw new Error('walletId must be defined in either params or config');\\n }\\n\\n const wallet = await user.getWallet(walletId);\\n console.log(`Wallet retrieved: `, wallet.toString());\\n\\n // Retrieve the list of balances for the wallet\\n const address = await wallet.getDefaultAddress();\\n console.log(`Default Address: `, address);\\n\\n return {\\n address: address?.getId() || '',\\n };\\n};"
+                },
+                false
+            ]
+        }
+        "#;
+
+        let deserialized_tool: Result<ShinkaiTool, _> = serde_json::from_str(json_payload);
+
+        assert!(deserialized_tool.is_ok(), "Failed to deserialize ShinkaiTool");
+    }
 }

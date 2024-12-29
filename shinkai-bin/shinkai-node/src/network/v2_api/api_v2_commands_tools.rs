@@ -685,7 +685,7 @@ impl Node {
         match db_write.remove_tool_playground(&tool_key) {
             Ok(_) => {
                 // Also remove the underlying tool from the SqliteManager
-                match db_write.remove_tool(&tool_key) {
+                match db_write.remove_tool(&tool_key, None) {
                     Ok(_) => {
                         let response =
                             json!({ "status": "success", "message": "Tool and underlying data removed successfully" });
@@ -1934,7 +1934,7 @@ impl Node {
         let _ = db_write.remove_tool_playground(&tool_key);
 
         // Remove the tool from the database
-        match db_write.remove_tool(&tool_key) {
+        match db_write.remove_tool(&tool_key, None) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
                 let _ = res.send(Ok(response)).await;
