@@ -3,7 +3,11 @@ use std::env;
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
 use serde_json::{self, Value};
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType};
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+use shinkai_message_primitives::schemas::{
+    indexable_version::IndexableVersion,
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
+};
 use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
@@ -57,7 +61,7 @@ impl ShinkaiTool {
             name: self.name(),
             toolkit_name: self.toolkit_name(),
             description: self.description(),
-            tool_router_key: self.tool_router_key(),
+            tool_router_key: self.tool_router_key().to_string_without_version(),
             tool_type: self.tool_type().to_string(),
             formatted_tool_summary_for_ui: self.formatted_tool_summary_for_ui(),
             author: self.author(),
@@ -71,32 +75,15 @@ impl ShinkaiTool {
         }
     }
 
-    // Return a folder-safe version of the tool_router_key
-    pub fn tool_router_key_path(&self) -> String {
-        let path = self.tool_router_key();
-        Self::convert_to_path(&path)
-    }
-
-    pub fn convert_to_path(tool_router_key: &str) -> String {
-        tool_router_key
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>()
-            .to_lowercase()
-    }
-
     /// The key that this tool will be stored under in the tool router
-    pub fn tool_router_key(&self) -> String {
+    pub fn tool_router_key(&self) -> ToolRouterKey {
         match self {
-            ShinkaiTool::Network(n, _) => {
-                Self::gen_router_key(n.provider.to_string(), n.toolkit_name.clone(), n.name.clone())
-            }
+            ShinkaiTool::Network(n, _) => ToolRouterKey::new(
+                n.provider.to_string(),
+                n.toolkit_name.clone(),
+                n.name.clone(),
+                Some(n.version.clone()),
+            ),
             _ => {
                 let (name, toolkit_name) = (
                     self.name(),
@@ -108,36 +95,15 @@ impl ShinkaiTool {
                         _ => unreachable!(), // This case is already handled above
                     },
                 );
-                Self::gen_router_key("local".to_string(), toolkit_name, name)
+                ToolRouterKey::new("local".to_string(), toolkit_name, name, None)
             }
         }
     }
 
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
-        // Replace any ':' in the components to avoid breaking the key format
-        let sanitized_source = source.replace(':', "_");
-        let sanitized_toolkit_name = toolkit_name.replace(':', "_");
-        let sanitized_name = name.replace(':', "_");
-
-        // We replace any `/` in order to not have the names break VRPaths
-        let key = format!("{}:::{}:::{}", sanitized_source, sanitized_toolkit_name, sanitized_name)
-            .replace('/', "|")
-            .to_lowercase();
-
-        // Ensure the key fits the pattern [^a-z0-9_@]+
-        let valid_key = key
-            .chars()
-            .map(|c| {
-                if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == ':' || c == '@' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect::<String>();
-
-        valid_key
+        let tool_router_key = ToolRouterKey::new(source, toolkit_name, name, None);
+        tool_router_key.to_string_without_version()
     }
 
     /// Tool name
@@ -221,23 +187,18 @@ impl ShinkaiTool {
 
     /// Returns the tool formatted as a JSON object for the function call format
     pub fn json_function_call_format(&self) -> Result<serde_json::Value, ToolError> {
-        // Store the tool_router_key in a variable to extend its lifetime
-        let tool_router_key = self.tool_router_key().clone();
-        let key_parts: Vec<&str> = tool_router_key.split(":::").collect();
-        let tool_name = if key_parts.len() == 3 {
-            key_parts[2].to_string()
-        } else {
-            return Err(ToolError::InvalidToolRouterKey(
-                "Tool router key is not in the expected format".to_string(),
-            ));
-        };
+        // Get the ToolRouterKey instance
+        let tool_router_key = self.tool_router_key();
+        
+        // Extract the tool name directly from the ToolRouterKey
+        let tool_name = tool_router_key.name.clone();
 
         let summary = serde_json::json!({
             "type": "function",
             "function": {
                 "name": tool_name,
                 "description": self.description(),
-                "tool_router_key": tool_router_key,
+                "tool_router_key": tool_router_key.to_string_without_version(),
                 "parameters": self.input_args()
             },
         });
@@ -268,7 +229,8 @@ impl ShinkaiTool {
 
     /// Returns an Option<ToolConfig> based on an environment variable
     pub fn get_config_from_env(&self) -> Option<ToolConfig> {
-        let tool_key = self.tool_router_key().replace(":::", "___");
+        // Get the ToolRouterKey instance and convert it to a string
+        let tool_key = self.tool_router_key().to_string_without_version().replace(":::", "___");
         let env_var_key = format!("TOOLKIT_{}", tool_key);
 
         if let Ok(env_value) = env::var(env_var_key) {
@@ -295,9 +257,9 @@ impl ShinkaiTool {
     /// Returns the version of the tool
     pub fn version(&self) -> String {
         match self {
-            ShinkaiTool::Rust(_r, _) => "v0.1".to_string(),
+            ShinkaiTool::Rust(_r, _) => "0.1".to_string(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
-            ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
+            ShinkaiTool::Deno(d, _) => d.version.clone(),
             ShinkaiTool::Python(_p, _) => "unknown".to_string(),
         }
     }
@@ -385,6 +347,14 @@ impl ShinkaiTool {
     pub fn is_network_based(&self) -> bool {
         matches!(self, ShinkaiTool::Network(_, _))
     }
+
+    /// Returns the version number using IndexableVersion
+    pub fn version_number(&self) -> Result<u64, String> {
+        let version_str = self.version();
+
+        let indexable_version = IndexableVersion::from_string(&version_str)?;
+        Ok(indexable_version.get_version_number())
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
@@ -422,7 +392,8 @@ mod tests {
             input_args: Parameters::new(),
             output_arg: ToolOutputArg { json: "".to_string() },
             config: vec![],
-            author: "unknown".to_string(),
+            author: "1.0".to_string(),
+            version: "1.0.0".to_string(),
             js_code: "".to_string(),
             tools: None,
             keywords: vec![],
@@ -452,7 +423,7 @@ mod tests {
         let expected_key = "local:::deno_toolkit:::shinkai__download_pages";
 
         // Assert that the generated key matches the expected pattern
-        assert_eq!(router_key, expected_key);
+        assert_eq!(router_key.to_string_without_version(), expected_key);
     }
 
     #[test]
@@ -496,6 +467,7 @@ mod tests {
         let deno_tool = DenoTool {
             toolkit_name: "deno_toolkit".to_string(),
             name: "shinkai__download_website".to_string(),
+            version: "1.0.0".to_string(),
             description: tool_definition.description.clone(),
             input_args: input_args.clone(),
             output_arg: ToolOutputArg {
@@ -532,5 +504,73 @@ mod tests {
         );
         assert_eq!(shinkai_tool.tool_type(), "Deno");
         assert!(shinkai_tool.is_enabled());
+    }
+
+    #[test]
+    fn test_deserialize_shinkai_tool() {
+        let json_payload = r#"
+        {
+            "type": "Deno",
+            "content": [
+                {
+                    "description": "Tool for getting the default address of a Coinbase wallet",
+                    "version": "1.0.0",
+                    "activated": false,
+                    "assets": null,
+                    "author": "Shinkai",
+                    "file_inbox": null,
+                    "toolkit_name": "shinkai-tool-coinbase-get-my-address",
+                    "sql_tables": [],
+                    "sql_queries": [],
+                    "embedding": {
+                        "id": "",
+                        "vector": []
+                    },
+                    "oauth": null,
+                    "config": [],
+                    "keywords": [
+                        "coinbase",
+                        "address",
+                        "shinkai"
+                    ],
+                    "tools": [],
+                    "result": {
+                        "type": "object",
+                        "properties": {
+                            "address": {
+                                "type": "string",
+                                "description": "hey"
+                            }
+                        },
+                        "required": [
+                            "address"
+                        ]
+                    },
+                    "input_args": {
+                        "type": "object",
+                        "properties": {
+                            "walletId": {
+                                "type": "string",
+                                "nullable": true,
+                                "description": "The ID of the wallet to get the address for"
+                            }
+                        },
+                        "required": []
+                    },
+                    "output_arg": {
+                        "json": ""
+                    },
+                    "name": "Shinkai: Coinbase My Address Getter",
+                    "js_code": "import { Coinbase, CoinbaseOptions } from 'npm:@coinbase/coinbase-sdk@0.0.16';\\n\\ntype Configurations = {\\n name: string;\\n privateKey: string;\\n walletId?: string;\\n useServerSigner?: string;\\n};\\ntype Parameters = {\\n walletId?: string;\\n};\\ntype Result = {\\n address: string;\\n};\\nexport type Run<C extends Record<string, any>, I extends Record<string, any>, R extends Record<string, any>> = (config: C, inputs: I) => Promise<R>;\\n\\nexport const run: Run<Configurations, Parameters, Result> = async (\\n configurations: Configurations,\\n params: Parameters,\\n): Promise<Result> => {\\n const coinbaseOptions: CoinbaseOptions = {\\n apiKeyName: configurations.name,\\n privateKey: configurations.privateKey,\\n useServerSigner: configurations.useServerSigner === 'true',\\n };\\n const coinbase = new Coinbase(coinbaseOptions);\\n const user = await coinbase.getDefaultUser();\\n\\n // Prioritize walletId from Params over Config\\n const walletId = params.walletId || configurations.walletId;\\n\\n // Throw an error if walletId is not defined\\n if (!walletId) {\\n throw new Error('walletId must be defined in either params or config');\\n }\\n\\n const wallet = await user.getWallet(walletId);\\n console.log(`Wallet retrieved: `, wallet.toString());\\n\\n // Retrieve the list of balances for the wallet\\n const address = await wallet.getDefaultAddress();\\n console.log(`Default Address: `, address);\\n\\n return {\\n address: address?.getId() || '',\\n };\\n};"
+                },
+                false
+            ]
+        }
+        "#;
+
+        let deserialized_tool: Result<ShinkaiTool, _> = serde_json::from_str(json_payload);
+        eprintln!("deserialized_tool: {:?}", deserialized_tool);
+
+        assert!(deserialized_tool.is_ok(), "Failed to deserialize ShinkaiTool");
     }
 }

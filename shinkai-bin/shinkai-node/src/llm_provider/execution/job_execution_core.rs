@@ -10,7 +10,6 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 
-use image::error;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
@@ -35,7 +34,7 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step

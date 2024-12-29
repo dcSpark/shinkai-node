@@ -14,6 +14,7 @@ use crate::tools::shared_execution::update_result_with_modified_files;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::deno_runner::DenoRunner;
 use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
@@ -28,6 +29,7 @@ pub struct DenoTool {
     pub toolkit_name: String,
     pub name: String,
     pub author: String,
+    pub version: String,
     pub js_code: String,
     pub tools: Option<Vec<String>>,
     pub config: Vec<ToolConfig>,
@@ -80,10 +82,11 @@ impl DenoTool {
     ) -> Result<RunResult, ToolError> {
         let assets_files = match files_tool_router_key {
             Some(tool_router_key) => {
+                let tool_key = ToolRouterKey::from_string(&tool_router_key)?;
                 let path = PathBuf::from(&node_storage_path)
                     .join(".tools_storage")
                     .join("tools")
-                    .join(ShinkaiTool::convert_to_path(&tool_router_key));
+                    .join(tool_key.convert_to_path());
                 self.assets
                     .clone()
                     .unwrap_or(vec![])

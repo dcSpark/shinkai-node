@@ -6,7 +6,6 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,8 +15,22 @@ use shinkai_http_api::node_api_router::APIError;
 pub fn get_app_folder_path(node_env: NodeEnvironment, app_id: String) -> PathBuf {
     let mut origin_path: PathBuf = PathBuf::from(node_env.node_storage_path.clone().unwrap_or_default());
     origin_path.push("app_files");
-    origin_path.push(ShinkaiTool::convert_to_path(&app_id));
+    origin_path.push(convert_to_path(&app_id));
     origin_path
+}
+
+fn convert_to_path(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .to_lowercase()
 }
 
 impl Node {

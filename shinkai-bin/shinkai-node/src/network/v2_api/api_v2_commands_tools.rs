@@ -321,7 +321,7 @@ impl Node {
         match save_result {
             Ok(tool) => {
                 let tool_key = tool.tool_router_key();
-                let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key) });
+                let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key.to_string_without_version()) });
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }
@@ -444,6 +444,7 @@ impl Node {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
                     author: payload.metadata.author.clone(),
+                    version: "1.0.0".to_string(),
                     js_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
                     config: payload.metadata.configurations.clone(),
@@ -487,7 +488,7 @@ impl Node {
             }
         };
 
-        updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key());
+        updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key().to_string_without_version());
 
         let storage_path = node_env.node_storage_path.unwrap_or_default();
         // Check all asset files exist in the {storage}/tool_storage/assets/{app_id}/
@@ -515,7 +516,7 @@ impl Node {
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
-        perm_file_path.push(shinkai_tool.tool_router_key_path());
+        perm_file_path.push(shinkai_tool.tool_router_key().convert_to_path());
         if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -596,7 +597,7 @@ impl Node {
 
         // Create a longer-lived binding for the db clone
 
-        match db.tool_exists(&shinkai_tool.tool_router_key()) {
+        match db.tool_exists(&shinkai_tool.tool_router_key().to_string_without_version()) {
             Ok(true) => {
                 // Tool already exists, update it
                 match db.update_tool(shinkai_tool).await {
@@ -684,7 +685,7 @@ impl Node {
         match db_write.remove_tool_playground(&tool_key) {
             Ok(_) => {
                 // Also remove the underlying tool from the SqliteManager
-                match db_write.remove_tool(&tool_key) {
+                match db_write.remove_tool(&tool_key, None) {
                     Ok(_) => {
                         let response =
                             json!({ "status": "success", "message": "Tool and underlying data removed successfully" });
@@ -1537,7 +1538,7 @@ impl Node {
             Ok(tool) => {
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
 
-                let name = format!("{}.zip", tool.tool_router_key().replace(':', "_"));
+                let name = format!("{}.zip", tool.tool_router_key().to_string_without_version().replace(':', "_"));
                 let path = std::env::temp_dir().join(&name);
                 let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
 
@@ -1546,7 +1547,7 @@ impl Node {
                 let assets = PathBuf::from(&node_env.node_storage_path.unwrap_or_default())
                     .join(".tools_storage")
                     .join("tools")
-                    .join(tool.tool_router_key_path());
+                    .join(tool.tool_router_key().convert_to_path());
                 if assets.exists() {
                     for entry in std::fs::read_dir(assets).unwrap() {
                         let entry = entry.unwrap();
@@ -1673,7 +1674,7 @@ impl Node {
                     let mut file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
                         .join(".tools_storage")
                         .join("tools")
-                        .join(tool.tool_router_key_path());
+                        .join(tool.tool_router_key().convert_to_path());
                     if !file_path.exists() {
                         let s = std::fs::create_dir_all(&file_path);
                         if s.is_err() {
@@ -1698,7 +1699,7 @@ impl Node {
                 Ok(json!({
                     "status": "success",
                     "message": "Tool imported successfully",
-                    "tool_key": tool.tool_router_key(),
+                    "tool_key": tool.tool_router_key().to_string_without_version(),
                     "tool": tool
                 }))
             }
@@ -1933,7 +1934,7 @@ impl Node {
         let _ = db_write.remove_tool_playground(&tool_key);
 
         // Remove the tool from the database
-        match db_write.remove_tool(&tool_key) {
+        match db_write.remove_tool(&tool_key, None) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
                 let _ = res.send(Ok(response)).await;
@@ -2016,7 +2017,7 @@ mod tests {
                         }
                     ],
                     "sticky": true,
-                    "version": "v0.1"
+                    "version": "0.1"
                 }
             }],
             "type": "Workflow"
@@ -2087,7 +2088,7 @@ mod tests {
                         }
                     ],
                     "sticky": true,
-                    "version": "v0.1"
+                    "version": "0.1"
                 }
             }],
             "type": "Workflow"

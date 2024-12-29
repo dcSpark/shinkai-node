@@ -5,6 +5,7 @@ use std::{env, thread};
 
 use crate::tools::error::ToolError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::python_runner::PythonRunner;
@@ -79,10 +80,11 @@ impl PythonTool {
     ) -> Result<RunResult, ToolError> {
         let assets_files = match files_tool_router_key {
             Some(tool_router_key) => {
+                let tool_key = ToolRouterKey::from_string(&tool_router_key)?;
                 let path = PathBuf::from(&node_storage_path)
                     .join(".tools_storage")
                     .join("tools")
-                    .join(ShinkaiTool::convert_to_path(&tool_router_key));
+                    .join(tool_key.convert_to_path());
                 self.assets
                     .clone()
                     .unwrap_or(vec![])

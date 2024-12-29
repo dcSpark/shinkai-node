@@ -67,6 +67,10 @@ pub enum SqliteManagerError {
     QueryError { query: String, source: rusqlite::Error },
     #[error("Unsupported embedding length: {0}")]
     UnsupportedEmbeddingLength(usize),
+    #[error("Version Converson Error: {0}")]
+    VersionConversionError(String),
+    #[error("Tool key not found: {0}")]
+    ToolKeyNotFound(String),
     // Add other error variants as needed
 }
 
@@ -79,5 +83,11 @@ impl From<VRError> for SqliteManagerError {
 impl From<&str> for SqliteManagerError {
     fn from(err: &str) -> SqliteManagerError {
         SqliteManagerError::SomeError(err.to_string())
+    }
+}
+
+impl From<String> for SqliteManagerError {
+    fn from(err: String) -> SqliteManagerError {
+        SqliteManagerError::SomeError(err)
     }
 }
