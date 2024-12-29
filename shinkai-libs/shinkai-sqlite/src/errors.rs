@@ -91,6 +91,8 @@ impl From<&str> for SqliteManagerError {
 impl From<chrono::ParseError> for SqliteManagerError {
     fn from(err: chrono::ParseError) -> SqliteManagerError {
         SqliteManagerError::ChronoParseError(err)
+    }
+}
 
 impl From<String> for SqliteManagerError {
     fn from(err: String) -> SqliteManagerError {

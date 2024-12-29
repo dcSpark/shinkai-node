@@ -9,7 +9,6 @@ use shinkai_message_primitives::schemas::{
     indexable_version::IndexableVersion,
     shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
 };
-use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
