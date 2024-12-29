@@ -29,3 +29,5 @@ pub mod subprompts;
 pub mod wallet_complementary;
 pub mod wallet_mixed;
 pub mod ws_types;
+pub mod indexable_version;
+pub mod tool_router_key;

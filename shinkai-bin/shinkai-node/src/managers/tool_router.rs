@@ -8,7 +8,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
-use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
+use crate::tools::tool_execution::execution_header_generator::{check_tool_config, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -293,7 +293,7 @@ impl ToolRouter {
                 name: "network__echo".to_string(),
                 toolkit_name: "shinkai-tool-echo".to_string(),
                 description: "Echoes the input message".to_string(),
-                version: "v0.1".to_string(),
+                version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
                 usage_type: usage_type.clone(),
                 activated: true,
@@ -326,7 +326,7 @@ impl ToolRouter {
                 name: "youtube_transcript_with_timestamps".to_string(),
                 toolkit_name: "shinkai-tool-youtube-transcript".to_string(),
                 description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
-                version: "v0.1".to_string(),
+                version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
                 usage_type: usage_type.clone(),
                 activated: true,
@@ -603,7 +603,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let app_id = context.full_job().job_id().to_string();
-                let tool_id = shinkai_tool.tool_router_key().clone();
+                let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = python_tool.tools.clone().unwrap_or_default();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
@@ -615,12 +615,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     context.agent().clone().get_id().to_string(),
                     format!("jid-{}", tool_id),
                     format!("jid-{}", app_id),
-                    shinkai_tool.tool_router_key().clone(),
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     format!("jid-{}", app_id),
                     &python_tool.oauth,
                 )
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), python_tool.config.clone()).await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -682,7 +684,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let app_id = context.full_job().job_id().to_string();
-                let tool_id = shinkai_tool.tool_router_key().clone();
+                let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = deno_tool.tools.clone().unwrap_or_default();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
@@ -694,12 +696,14 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                     context.agent().clone().get_id().to_string(),
                     format!("jid-{}", app_id),
                     format!("jid-{}", tool_id),
-                    shinkai_tool.tool_router_key().clone(),
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     format!("jid-{}", app_id),
                     &deno_tool.oauth,
                 )
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), deno_tool.config.clone()).await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -1032,7 +1036,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
             .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
         let tools = js_tool.clone().tools.unwrap_or_default();
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
-        let tool_id = shinkai_tool.tool_router_key().clone();
+        let tool_id = shinkai_tool.tool_router_key().clone().to_string_without_version();
         let support_files =
             generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                 .await
@@ -1049,13 +1053,15 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
             "".to_string(),
             format!("xid-{}", app_id),
             format!("xid-{}", tool_id),
-            shinkai_tool.tool_router_key().clone(),
+            shinkai_tool.tool_router_key().clone().to_string_without_version(),
             // TODO: Pass data from the API
             "".to_string(),
             &oauth,
         )
         .await
         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+        check_tool_config(shinkai_tool.tool_router_key().clone().to_string_without_version(), function_config_vec.clone()).await?;
 
         let result = js_tool
             .run(

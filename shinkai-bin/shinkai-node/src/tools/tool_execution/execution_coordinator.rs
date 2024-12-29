@@ -2,7 +2,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
-use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
+use crate::tools::tool_execution::execution_header_generator::{check_tool_config, generate_execution_environment};
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
 
@@ -170,6 +170,8 @@ pub async fn execute_tool_cmd(
                 )
                 .await?;
 
+                check_tool_config(tool_router_key.clone(), python_tool.config.clone()).await?;
+
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
                     .node_storage_path
@@ -212,6 +214,8 @@ pub async fn execute_tool_cmd(
                     &deno_tool.oauth.clone(),
                 )
                 .await?;
+
+                check_tool_config(tool_router_key.clone(), deno_tool.config.clone()).await?;
 
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env

@@ -6,7 +6,6 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,15 +15,29 @@ use shinkai_http_api::node_api_router::APIError;
 pub fn get_app_folder_path(node_env: NodeEnvironment, app_id: String) -> PathBuf {
     let mut origin_path: PathBuf = PathBuf::from(node_env.node_storage_path.clone().unwrap_or_default());
     origin_path.push("app_files");
-    origin_path.push(ShinkaiTool::convert_to_path(&app_id));
+    origin_path.push(convert_to_path(&app_id));
     origin_path
+}
+
+fn convert_to_path(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .to_lowercase()
 }
 
 impl Node {
     pub async fn v2_api_upload_app_file(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         file_name: String,
         file_data: Vec<u8>,
@@ -65,7 +78,7 @@ impl Node {
     pub async fn v2_api_get_app_file(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         file_name: String,
         node_env: NodeEnvironment,
@@ -94,7 +107,7 @@ impl Node {
     pub async fn v2_api_update_app_file(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         file_name: String,
         new_name: Option<String>,
@@ -134,7 +147,7 @@ impl Node {
     pub async fn v2_api_list_app_files(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         node_env: NodeEnvironment,
         res: Sender<Result<Value, APIError>>,
@@ -162,6 +175,23 @@ impl Node {
     }
 
     pub fn v2_api_list_app_files_internal(app_folder_path: PathBuf, absolute: bool) -> Result<Vec<String>, APIError> {
+        let exists = std::fs::exists(&app_folder_path);
+        match exists {
+            Ok(true) => {} // Folder exists, continue execution.
+            Ok(false) => {
+                // Folder does not exist, no files have been created or uploaded
+                return Ok(vec![]);
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to read directory: {}", err),
+                };
+                return Err(api_error);
+            }
+        }
+
         let files = std::fs::read_dir(&app_folder_path);
         if let Err(err) = files {
             let api_error = APIError {
@@ -195,7 +225,7 @@ impl Node {
     pub async fn v2_api_delete_app_file(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         file_name: String,
         node_env: NodeEnvironment,

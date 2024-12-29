@@ -9,7 +9,7 @@ use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 
-use super::execution_header_generator::generate_execution_environment;
+use super::execution_header_generator::{check_tool_config, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
@@ -33,9 +33,10 @@ pub async fn execute_deno_tool(
         toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
         author: "system".to_string(),
+        version: "1.0".to_string(),
         js_code: code,
         tools: None,
-        config: vec![],
+        config: extra_config.clone(),
         oauth: oauth.clone(),
         description: "Deno runtime execution".to_string(),
         keywords: vec![],
@@ -61,6 +62,8 @@ pub async fn execute_deno_tool(
         &oauth.clone(),
     )
     .await?;
+
+    check_tool_config("code-execution".to_string(), tool.config.clone()).await?;
 
     let node_env = fetch_node_environment();
     let node_storage_path = node_env
@@ -120,6 +123,7 @@ pub fn check_deno_tool(
         toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
         author: "system".to_string(),
+        version: "1.0".to_string(),
         js_code: code,
         tools: None,
         config: vec![],

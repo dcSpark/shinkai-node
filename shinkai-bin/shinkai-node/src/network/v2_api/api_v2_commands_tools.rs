@@ -1,7 +1,7 @@
 use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
         tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
@@ -10,7 +10,6 @@ use crate::{
     },
     utils::environment::NodeEnvironment,
 };
-use std::io::Read;
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -42,7 +41,7 @@ use shinkai_tools_primitives::tools::{
     tool_output_arg::ToolOutputArg,
     tool_playground::ToolPlayground,
 };
-use std::{fs::File, io::Write, path::Path, sync::Arc, time::Instant};
+use std::{fs::File, io::Write, io::Read, path::Path, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -321,7 +320,7 @@ impl Node {
         match save_result {
             Ok(tool) => {
                 let tool_key = tool.tool_router_key();
-                let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key) });
+                let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key.to_string_without_version()) });
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }
@@ -444,6 +443,7 @@ impl Node {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
                     author: payload.metadata.author.clone(),
+                    version: "1.0.0".to_string(),
                     js_code: payload.code.clone(),
                     tools: payload.metadata.tools.clone(),
                     config: payload.metadata.configurations.clone(),
@@ -487,7 +487,7 @@ impl Node {
             }
         };
 
-        updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key());
+        updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key().to_string_without_version());
 
         let storage_path = node_env.node_storage_path.unwrap_or_default();
         // Check all asset files exist in the {storage}/tool_storage/assets/{app_id}/
@@ -515,7 +515,7 @@ impl Node {
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
-        perm_file_path.push(shinkai_tool.tool_router_key_path());
+        perm_file_path.push(shinkai_tool.tool_router_key().convert_to_path());
         if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -596,7 +596,7 @@ impl Node {
 
         // Create a longer-lived binding for the db clone
 
-        match db.tool_exists(&shinkai_tool.tool_router_key()) {
+        match db.tool_exists(&shinkai_tool.tool_router_key().to_string_without_version()) {
             Ok(true) => {
                 // Tool already exists, update it
                 match db.update_tool(shinkai_tool).await {
@@ -684,7 +684,7 @@ impl Node {
         match db_write.remove_tool_playground(&tool_key) {
             Ok(_) => {
                 // Also remove the underlying tool from the SqliteManager
-                match db_write.remove_tool(&tool_key) {
+                match db_write.remove_tool(&tool_key, None) {
                     Ok(_) => {
                         let response =
                             json!({ "status": "success", "message": "Tool and underlying data removed successfully" });
@@ -1536,8 +1536,8 @@ impl Node {
             Ok(tool) => {
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
 
-                let name = format!("{}.zip", tool.tool_router_key().replace(':', "_"));
-                let path = Path::new(&name);
+                let name = format!("{}.zip", tool.tool_router_key().to_string_without_version().replace(':', "_"));
+                let path = std::env::temp_dir().join(&name);
                 let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
 
                 let mut zip = ZipWriter::new(file);
@@ -1545,7 +1545,7 @@ impl Node {
                 let assets = PathBuf::from(&node_env.node_storage_path.unwrap_or_default())
                     .join(".tools_storage")
                     .join("tools")
-                    .join(tool.tool_router_key_path());
+                    .join(tool.tool_router_key().convert_to_path());
                 if assets.exists() {
                     for entry in std::fs::read_dir(assets).unwrap() {
                         let entry = entry.unwrap();
@@ -1615,71 +1615,15 @@ impl Node {
         node_env: NodeEnvironment,
         url: String,
     ) -> Result<Value, APIError> {
-        // Download the zip file
-        let response = match reqwest::get(&url).await {
-            Ok(response) => response,
+        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string()).await {
+            Ok(contents) => contents,
             Err(err) => {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Download Failed".to_string(),
-                    message: format!("Failed to download tool from URL: {}", err),
-                });
+                return Err(err);
             }
         };
-
-        // Get the bytes from the response
-        let bytes = match response.bytes().await {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                return Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Download Failed".to_string(),
-                    message: format!("Failed to read response bytes: {}", err),
-                });
-            }
-        };
-
-        // Create a cursor from the bytes
-        let cursor = std::io::Cursor::new(bytes);
-
-        // Create a zip archive from the cursor
-        let mut archive = match zip::ZipArchive::new(cursor) {
-            Ok(archive) => archive,
-            Err(err) => {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Invalid Zip File".to_string(),
-                    message: format!("Failed to read zip archive: {}", err),
-                });
-            }
-        };
-
-        // Extract and parse tool.json
-        let mut buffer = Vec::new();
-        {
-            let mut tool_file = match archive.by_name("__tool.json") {
-                Ok(file) => file,
-                Err(_) => {
-                    return Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Invalid Tool Archive".to_string(),
-                        message: "Archive does not contain tool.json".to_string(),
-                    });
-                }
-            };
-
-            // Read the tool file contents into a buffer
-            if let Err(err) = tool_file.read_to_end(&mut buffer) {
-                return Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Read Error".to_string(),
-                    message: format!("Failed to read tool.json contents: {}", err),
-                });
-            }
-        } // `tool_file` goes out of scope here
 
         // Parse the JSON into a ShinkaiTool
-        let tool: ShinkaiTool = match serde_json::from_slice(&buffer) {
+        let tool: ShinkaiTool = match serde_json::from_slice(&zip_contents.buffer) {
             Ok(tool) => tool,
             Err(err) => {
                 return Err(APIError {
@@ -1693,7 +1637,7 @@ impl Node {
         // Save the tool to the database
         match db.add_tool(tool).await {
             Ok(tool) => {
-                let archive_clone = archive.clone();
+                let archive_clone = zip_contents.archive.clone();
                 let files = archive_clone.file_names();
                 for file in files {
                     println!("File: {:?}", file);
@@ -1702,7 +1646,7 @@ impl Node {
                     }
                     let mut buffer = Vec::new();
                     {
-                        let file = archive.by_name(file);
+                        let file = zip_contents.archive.by_name(file);
                         let mut tool_file = match file {
                             Ok(file) => file,
                             Err(_) => {
@@ -1727,7 +1671,7 @@ impl Node {
                     let mut file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
                         .join(".tools_storage")
                         .join("tools")
-                        .join(tool.tool_router_key_path());
+                        .join(tool.tool_router_key().convert_to_path());
                     if !file_path.exists() {
                         let s = std::fs::create_dir_all(&file_path);
                         if s.is_err() {
@@ -1752,7 +1696,7 @@ impl Node {
                 Ok(json!({
                     "status": "success",
                     "message": "Tool imported successfully",
-                    "tool_key": tool.tool_router_key(),
+                    "tool_key": tool.tool_router_key().to_string_without_version(),
                     "tool": tool
                 }))
             }
@@ -1987,7 +1931,7 @@ impl Node {
         let _ = db_write.remove_tool_playground(&tool_key);
 
         // Remove the tool from the database
-        match db_write.remove_tool(&tool_key) {
+        match db_write.remove_tool(&tool_key, None) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
                 let _ = res.send(Ok(response)).await;
@@ -2070,7 +2014,7 @@ mod tests {
                         }
                     ],
                     "sticky": true,
-                    "version": "v0.1"
+                    "version": "0.1"
                 }
             }],
             "type": "Workflow"
@@ -2141,7 +2085,7 @@ mod tests {
                         }
                     ],
                     "sticky": true,
-                    "version": "v0.1"
+                    "version": "0.1"
                 }
             }],
             "type": "Workflow"

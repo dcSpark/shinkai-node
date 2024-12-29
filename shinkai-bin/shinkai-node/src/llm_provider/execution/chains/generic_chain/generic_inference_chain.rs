@@ -397,7 +397,7 @@ impl GenericInferenceChain {
                 // Find the ShinkaiTool that has a tool with the function name
                 let shinkai_tool = tools.iter().find(|tool| {
                     tool.name() == function_call.name
-                        || tool.tool_router_key() == function_call.tool_router_key.clone().unwrap_or_default()
+                        || tool.tool_router_key().to_string_without_version() == function_call.tool_router_key.clone().unwrap_or_default()
                 });
                 if shinkai_tool.is_none() {
                     eprintln!("Function not found: {}", function_call.name);
@@ -423,7 +423,7 @@ impl GenericInferenceChain {
                 };
 
                 let mut function_call_with_router_key = function_call.clone();
-                function_call_with_router_key.tool_router_key = Some(shinkai_tool.tool_router_key());
+                function_call_with_router_key.tool_router_key = Some(shinkai_tool.tool_router_key().to_string_without_version());
                 function_call_with_router_key.response = Some(function_response.response.clone());
                 tool_calls_history.push(function_call_with_router_key);
 
@@ -432,7 +432,7 @@ impl GenericInferenceChain {
                     &ws_manager_trait,
                     &Some(full_job.job_id.clone()),
                     &function_response,
-                    shinkai_tool.tool_router_key(),
+                    shinkai_tool.tool_router_key().to_string_without_version(),
                 )
                 .await;
 

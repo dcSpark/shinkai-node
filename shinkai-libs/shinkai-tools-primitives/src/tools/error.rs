@@ -92,3 +92,9 @@ impl From<anyhow::Error> for ToolError {
         ToolError::ParseError(err.to_string())
     }
 }
+
+impl From<String> for ToolError {
+    fn from(err: String) -> ToolError {
+        ToolError::ParseError(err)
+    }
+}

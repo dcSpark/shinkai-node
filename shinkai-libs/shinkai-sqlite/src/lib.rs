@@ -487,31 +487,27 @@ impl SqliteManager {
         Ok(())
     }
 
-    // Updated method to initialize the tools table with name and description columns at the top
     fn initialize_tools_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
-                tool_key TEXT NOT NULL UNIQUE,
+                tool_key TEXT NOT NULL,
+                version INTEGER NOT NULL,
                 embedding_seo TEXT NOT NULL,
                 tool_data BLOB NOT NULL,
                 tool_header BLOB NOT NULL,
                 tool_type TEXT NOT NULL,
                 author TEXT NOT NULL,
-                version TEXT NOT NULL,
                 is_enabled INTEGER NOT NULL,
                 on_demand_price REAL,
-                is_network INTEGER NOT NULL
+                is_network INTEGER NOT NULL,
+                PRIMARY KEY(tool_key, version)
             );",
             [],
         )?;
 
-        // Create indexes for the shinkai_tools table if needed
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_shinkai_tools_key ON shinkai_tools (tool_key);",
-            [],
-        )?;
+        // The index is automatically created by the PRIMARY KEY constraint
 
         Ok(())
     }
@@ -550,7 +546,6 @@ impl SqliteManager {
         Ok(())
     }
 
-    // Updated method to initialize the tool_playground table with non-nullable and unique tool_router_key
     fn initialize_tool_playground_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS tool_playground (
@@ -558,30 +553,34 @@ impl SqliteManager {
                 name TEXT NOT NULL,
                 description TEXT,
                 author TEXT,
-                keywords TEXT, -- Store as a comma-separated list
-                configurations TEXT, -- Store as a JSON string
-                parameters TEXT, -- Store as a JSON string
-                result TEXT, -- Store as a JSON string
-                tool_router_key TEXT NOT NULL UNIQUE, -- Non-nullable and unique
-                job_id TEXT, -- Allow NULL values
-                job_id_history TEXT, -- Store as a comma-separated list
+                keywords TEXT,       -- comma-separated
+                configurations TEXT, -- JSON
+                parameters TEXT,     -- JSON
+                result TEXT,         -- JSON
+                tool_router_key TEXT NOT NULL,
+                tool_version INTEGER NOT NULL,
+                job_id TEXT,
+                job_id_history TEXT, -- comma-separated
                 code TEXT NOT NULL,
                 language TEXT NOT NULL,
-                FOREIGN KEY(tool_router_key) REFERENCES shinkai_tools(tool_key) -- Foreign key constraint
+                FOREIGN KEY (tool_router_key, tool_version)
+                    REFERENCES shinkai_tools (tool_key, version)
+                    ON DELETE CASCADE
             );",
             [],
         )?;
         Ok(())
     }
 
-    // New method to initialize the tool_playground_code_history table
     fn initialize_tool_playground_code_history_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS tool_playground_code_history (
                 message_id TEXT PRIMARY KEY,
-                tool_router_key TEXT NOT NULL,
+                tool_playground_id INTEGER NOT NULL,
                 code TEXT NOT NULL,
-                FOREIGN KEY(tool_router_key) REFERENCES tool_playground(tool_router_key)
+                FOREIGN KEY (tool_playground_id)
+                    REFERENCES tool_playground (id)
+                    ON DELETE CASCADE
             );",
             [],
         )?;

@@ -55,6 +55,7 @@ impl JSToolkit {
             toolkit_name: toolkit_name.to_string(),
             name: tool_name,
             author: definition.author.clone(),
+            version: "1.0.0".to_string(),
             config,
             oauth: None,
             js_code: definition.code.clone().unwrap_or_default(),

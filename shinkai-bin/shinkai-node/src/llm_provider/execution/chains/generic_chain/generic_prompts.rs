@@ -58,15 +58,16 @@ impl JobPromptGenerator {
                     priority = priority.saturating_sub(1);
                 }
             }
-
             let folder = get_app_folder_path(node_env, job_id);
             let current_files = Node::v2_api_list_app_files_internal(folder.clone(), true);
             if let Ok(current_files) = current_files {
-                prompt.add_content(
-                    format!("Current files: {}", current_files.join(", ")),
-                    SubPromptType::ExtraContext,
-                    97,
-                );
+                if !current_files.is_empty() {
+                    prompt.add_content(
+                        format!("<current_files>\n{}\n</current_files>\n", current_files.join("\n")),
+                        SubPromptType::ExtraContext,
+                        97,
+                    );
+                }
             }
         }
 

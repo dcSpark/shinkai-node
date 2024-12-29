@@ -75,6 +75,10 @@ pub enum SqliteManagerError {
     DeserializationError,
     #[error("Chrono parse error: {0}")]
     ChronoParseError(chrono::ParseError),
+    #[error("Version Converson Error: {0}")]
+    VersionConversionError(String),
+    #[error("Tool key not found: {0}")]
+    ToolKeyNotFound(String),
     // Add other error variants as needed
 }
 
@@ -87,5 +91,9 @@ impl From<&str> for SqliteManagerError {
 impl From<chrono::ParseError> for SqliteManagerError {
     fn from(err: chrono::ParseError) -> SqliteManagerError {
         SqliteManagerError::ChronoParseError(err)
+
+impl From<String> for SqliteManagerError {
+    fn from(err: String) -> SqliteManagerError {
+        SqliteManagerError::SomeError(err)
     }
 }
