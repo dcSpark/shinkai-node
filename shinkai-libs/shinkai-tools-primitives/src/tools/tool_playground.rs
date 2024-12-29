@@ -173,6 +173,7 @@ mod tests {
             "metadata": {
                 "name": "Example Tool",
                 "description": "An example tool for testing",
+                "version": "1.0.0",
                 "author": "Author Name",
                 "keywords": ["example", "test"],
                 "configurations": [],
@@ -207,6 +208,7 @@ mod tests {
             "tool_router_key": null,
             "metadata": {
                 "id": "shinkai-tool-coinbase-create-wallet",
+                "version": "1.0.0",
                 "name": "Shinkai: Coinbase Wallet Creator",
                 "description": "Tool for creating a Coinbase wallet",
                 "author": "Shinkai",
@@ -289,6 +291,7 @@ mod tests {
             "metadata": {
                 "name": "SQL Example Tool",
                 "description": "A tool with SQL configuration",
+                "version": "1.0.0",
                 "author": "Author Name",
                 "keywords": ["sql", "test"],
                 "configurations": [],
@@ -337,6 +340,7 @@ mod tests {
                 "name": "Tool With Dependencies",
                 "description": "A tool that depends on other tools",
                 "author": "Test Author",
+                "version": "1.0.0",
                 "keywords": ["test", "dependencies"],
                 "configurations": [],
                 "parameters": {},
@@ -386,6 +390,7 @@ mod tests {
                 "name": "Tool With Invalid Dependencies",
                 "description": "A tool with invalid tool references",
                 "author": "Test Author",
+                "version": "1.0.0",
                 "keywords": ["test", "invalid"],
                 "configurations": [],
                 "parameters": {},
@@ -433,6 +438,7 @@ mod tests {
                 "description": "A tool with empty tool references",
                 "author": "Test Author",
                 "keywords": ["test", "empty"],
+                "version": "1.0.0",
                 "configurations": [],
                 "parameters": {},
                 "result": {
@@ -464,6 +470,7 @@ mod tests {
                 "name": "Tool With Invalid Dependencies",
                 "description": "A tool with non-string tool references",
                 "author": "Test Author",
+                "version": "1.0.0",
                 "keywords": ["test", "invalid"],
                 "configurations": [],
                 "parameters": {},
