@@ -1,7 +1,7 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
-use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage};
 use shinkai_tools_primitives::tools::tool_playground::{ToolPlayground, ToolPlaygroundMetadata};
 
 impl SqliteManager {
@@ -31,6 +31,18 @@ impl SqliteManager {
             params![tool.tool_router_key.as_deref()],
             |row| row.get(0),
         )?;
+
+        // Convert tool.metadata.version to IndexableVersion
+        let tool_version_indexable = IndexableVersion::from_number(tool_version as u64);
+        let tool_metadata_version_indexable = IndexableVersion::from_string(&tool.metadata.version)?;
+
+        // Check if the tool's metadata version matches the tool_version
+        if tool_metadata_version_indexable.to_version_string() != tool_version_indexable.to_version_string() {
+            return Err(SqliteManagerError::VersionMismatch {
+                expected: tool_version_indexable.to_version_string(),
+                found: tool.metadata.version.clone(),
+            });
+        }
 
         // Prepare JSON fields
         let job_id_history_str = tool.job_id_history.join(",");
@@ -150,7 +162,6 @@ impl SqliteManager {
     /// Retrieves a ToolPlayground by router_key (still no version needed for the call)
     pub fn get_tool_playground(&self, tool_router_key: &str) -> Result<ToolPlayground, SqliteManagerError> {
         let conn = self.get_connection()?;
-        // TODO: Add version to the query
         let mut stmt = conn.prepare(
             "SELECT 
                 name, description, author, keywords, configurations, parameters,
@@ -194,6 +205,7 @@ impl SqliteManager {
                     language: code_language,
                     metadata: ToolPlaygroundMetadata {
                         name: row.get(0)?,
+                        version: "1.0.0".to_string(),
                         description: row.get(1)?,
                         author: row.get(2)?,
                         keywords: keywords.split(',').map(String::from).collect(),
@@ -204,7 +216,6 @@ impl SqliteManager {
                         sql_queries: vec![],
                         tools: None,
                         oauth: None,
-                        version: row.get(12)?,
                     },
                     tool_router_key: row.get(7)?,
                     job_id: row.get(8)?,
@@ -263,6 +274,7 @@ impl SqliteManager {
                 language: code_language,
                 metadata: ToolPlaygroundMetadata {
                     name: row.get(0)?,
+                    version: "1.0.0".to_string(),
                     description: row.get(1)?,
                     author: row.get(2)?,
                     keywords: keywords.split(',').map(String::from).collect(),
@@ -273,7 +285,6 @@ impl SqliteManager {
                     sql_queries: vec![],
                     tools: None,
                     oauth: None,
-                    version: row.get(12)?,
                 },
                 tool_router_key: row.get(7)?,
                 job_id: row.get(8)?,
