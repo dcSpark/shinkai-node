@@ -419,7 +419,7 @@ mod tests {
         manager.set_tool_playground(&tool).unwrap();
 
         // Retrieve the tool playground
-        let retrieved_tool = manager.get_tool_playground(&tool_router_key, None).unwrap();
+        let retrieved_tool = manager.get_tool_playground(&tool_router_key).unwrap();
 
         // Verify the retrieved tool matches the original
         assert_eq!(retrieved_tool.metadata.name, tool.metadata.name);
@@ -444,7 +444,7 @@ mod tests {
         manager.remove_tool_playground(&tool_router_key).unwrap();
 
         // Verify the tool playground is removed
-        let result = manager.get_tool_playground(&tool_router_key, None);
+        let result = manager.get_tool_playground(&tool_router_key);
         assert!(matches!(result, Err(SqliteManagerError::ToolPlaygroundNotFound(_))));
     }
 
@@ -523,7 +523,7 @@ mod tests {
         manager.set_tool_playground(&tool_playground).unwrap();
 
         // Retrieve the tool playground
-        let retrieved_tool_playground = manager.get_tool_playground(&tool_router_key, None).unwrap();
+        let retrieved_tool_playground = manager.get_tool_playground(&tool_router_key).unwrap();
 
         // Verify the retrieved tool playground matches the original
         assert_eq!(retrieved_tool_playground.metadata.name, tool_playground.metadata.name);
@@ -611,7 +611,7 @@ mod tests {
             .unwrap();
 
         // Verify the ToolPlayground is removed
-        let result = manager.get_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version(), None);
+        let result = manager.get_tool_playground(&shinkai_tool.tool_router_key().to_string_without_version());
         assert!(matches!(result, Err(SqliteManagerError::ToolPlaygroundNotFound(_))));
 
         // Verify the message is removed

@@ -735,7 +735,7 @@ impl Node {
         }
 
         // Get the playground tool
-        match db.get_tool_playground(&tool_key, None) {
+        match db.get_tool_playground(&tool_key) {
             Ok(tool) => {
                 let response = json!(tool);
                 let _ = res.send(Ok(response)).await;

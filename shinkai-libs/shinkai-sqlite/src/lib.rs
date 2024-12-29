@@ -589,10 +589,7 @@ impl SqliteManager {
             );",
             [],
         )?;
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_tool_playground_tool_router_key_version ON tool_playground (tool_router_key, version);",
-            [],
-        )?;
+    
         Ok(())
     }
 
