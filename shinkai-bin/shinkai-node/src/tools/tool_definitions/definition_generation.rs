@@ -1,5 +1,6 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
@@ -50,7 +51,7 @@ pub async fn get_all_deno_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<Shink
 /// Returns a `Result` containing a `String` with the generated tool definitions or an `APIError`
 /// if an error occurs during the process.
 pub async fn generate_tool_definitions(
-    tools: Vec<String>,
+    tools: Vec<ToolRouterKey>,
     language: CodeLanguage,
     sqlite_manager: Arc<SqliteManager>,
     only_headers: bool,
@@ -74,15 +75,15 @@ pub async fn generate_tool_definitions(
     let all_tools: Vec<ShinkaiToolHeader> = get_all_deno_tools(sqlite_manager.clone())
         .await
         .into_iter()
-        .filter(|tool| tools.contains(&tool.tool_router_key))
-        //
-        // TODO
-        // Only generate definitions for tools that don't have a config
-        //
-        // This is a temporary filter to avoid generating definitions for tools that have a CONFIG
-        // Remove a soon CONFIGS are been passed to the tool.
-        //
-        .filter(|tool| tool.config == None || tool.config.as_ref().unwrap().is_empty())
+        .filter(|tool| {
+            tools.iter().any(|t| {
+                let version = t.version.clone();
+                match version {
+                    Some(v) => t.to_string_without_version() == tool.tool_router_key && v == tool.version,
+                    None => t.to_string_without_version() == tool.tool_router_key,
+                }
+            })
+        })
         .collect();
 
     if all_tools.is_empty() {

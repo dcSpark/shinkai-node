@@ -11,6 +11,7 @@ use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_sqlite::oauth_manager::OAuthToken;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
@@ -257,7 +258,7 @@ pub async fn execute_tool_cmd(
 pub async fn execute_code(
     tool_type: DynamicToolType,
     code: String,
-    tools: Vec<String>,
+    tools: Vec<ToolRouterKey>,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
     oauth: Option<Vec<OAuth>>,
@@ -320,7 +321,7 @@ pub async fn check_code(
     unfiltered_code: String,
     tool_id: String,
     app_id: String,
-    tools: Vec<String>,
+    tools: Vec<ToolRouterKey>,
     sqlite_manager: Arc<SqliteManager>,
 ) -> Result<Vec<String>, ToolError> {
     eprintln!("[check_code] tool_type: {}", tool_type);

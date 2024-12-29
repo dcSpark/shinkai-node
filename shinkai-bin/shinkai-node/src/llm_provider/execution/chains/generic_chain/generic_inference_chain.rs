@@ -229,14 +229,17 @@ impl GenericInferenceChain {
             if can_use_tools && tools_allowed || is_agent {
                 // CASE 2.1: If using an Agent, get its specifically configured tools
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                    for tool_name in &agent.tools {
+                    for tool in &agent.tools {
                         if let Some(tool_router) = &tool_router {
-                            match tool_router.get_tool_by_name(tool_name).await {
+                            match tool_router
+                                .get_tool_by_name_and_version(&tool.to_string_without_version(), tool.version())
+                                .await
+                            {
                                 Ok(Some(tool)) => tools.push(tool),
                                 Ok(None) => {
                                     return Err(LLMProviderError::ToolNotFound(format!(
                                         "Tool not found for name: {}",
-                                        tool_name
+                                        tool.to_string_with_version()
                                     )));
                                 }
                                 Err(e) => {
@@ -397,7 +400,8 @@ impl GenericInferenceChain {
                 // Find the ShinkaiTool that has a tool with the function name
                 let shinkai_tool = tools.iter().find(|tool| {
                     tool.name() == function_call.name
-                        || tool.tool_router_key().to_string_without_version() == function_call.tool_router_key.clone().unwrap_or_default()
+                        || tool.tool_router_key().to_string_without_version()
+                            == function_call.tool_router_key.clone().unwrap_or_default()
                 });
                 if shinkai_tool.is_none() {
                     eprintln!("Function not found: {}", function_call.name);
@@ -423,7 +427,8 @@ impl GenericInferenceChain {
                 };
 
                 let mut function_call_with_router_key = function_call.clone();
-                function_call_with_router_key.tool_router_key = Some(shinkai_tool.tool_router_key().to_string_without_version());
+                function_call_with_router_key.tool_router_key =
+                    Some(shinkai_tool.tool_router_key().to_string_without_version());
                 function_call_with_router_key.response = Some(function_response.response.clone());
                 tool_calls_history.push(function_call_with_router_key);
 

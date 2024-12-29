@@ -79,6 +79,10 @@ pub enum SqliteManagerError {
     VersionConversionError(String),
     #[error("Tool key not found: {0}")]
     ToolKeyNotFound(String),
+    #[error("Version mismatch: expected {expected}, found {found}")]
+    VersionMismatch { expected: String, found: String },
+    #[error("Version parse error: {0}")]
+    VersionParseError(String),
     // Add other error variants as needed
 }
 

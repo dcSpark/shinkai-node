@@ -1,7 +1,7 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
-use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage};
 use shinkai_tools_primitives::tools::tool_playground::{ToolPlayground, ToolPlaygroundMetadata};
 
 impl SqliteManager {
@@ -31,6 +31,18 @@ impl SqliteManager {
             params![tool.tool_router_key.as_deref()],
             |row| row.get(0),
         )?;
+
+        // Convert tool.metadata.version to IndexableVersion
+        let tool_version_indexable = IndexableVersion::from_number(tool_version as u64);
+        let tool_metadata_version_indexable = IndexableVersion::from_string(&tool.metadata.version)?;
+
+        // Check if the tool's metadata version matches the tool_version
+        if tool_metadata_version_indexable.to_version_string() != tool_version_indexable.to_version_string() {
+            return Err(SqliteManagerError::VersionMismatch {
+                expected: tool_version_indexable.to_version_string(),
+                found: tool.metadata.version.clone(),
+            });
+        }
 
         // Prepare JSON fields
         let job_id_history_str = tool.job_id_history.join(",");
@@ -193,6 +205,7 @@ impl SqliteManager {
                     language: code_language,
                     metadata: ToolPlaygroundMetadata {
                         name: row.get(0)?,
+                        version: "1.0.0".to_string(),
                         description: row.get(1)?,
                         author: row.get(2)?,
                         keywords: keywords.split(',').map(String::from).collect(),
@@ -261,6 +274,7 @@ impl SqliteManager {
                 language: code_language,
                 metadata: ToolPlaygroundMetadata {
                     name: row.get(0)?,
+                    version: "1.0.0".to_string(),
                     description: row.get(1)?,
                     author: row.get(2)?,
                     keywords: keywords.split(',').map(String::from).collect(),
@@ -386,6 +400,7 @@ mod tests {
             language: CodeLanguage::Typescript,
             metadata: ToolPlaygroundMetadata {
                 name: "Test Tool".to_string(),
+                version: "1.0.0".to_string(),
                 description: "A tool for testing".to_string(),
                 author: "Test Author".to_string(),
                 keywords: vec!["test".to_string(), "tool".to_string()],

@@ -4,9 +4,9 @@ use shinkai_message_primitives::shinkai_utils::utils;
 
 use crate::tools::error::ToolError;
 
-use super::tool_output_arg::ToolOutputArg;
 use super::parameters::Parameters;
 use super::shinkai_tool::ShinkaiToolHeader;
+use super::tool_output_arg::ToolOutputArg;
 
 #[derive(Debug)]
 pub enum RustToolError {

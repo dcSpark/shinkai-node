@@ -189,7 +189,7 @@ impl ShinkaiTool {
     pub fn json_function_call_format(&self) -> Result<serde_json::Value, ToolError> {
         // Get the ToolRouterKey instance
         let tool_router_key = self.tool_router_key();
-        
+
         // Extract the tool name directly from the ToolRouterKey
         let tool_name = tool_router_key.name.clone();
 
@@ -249,18 +249,18 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(_r, _) => "@@official.shinkai".to_string(),
             ShinkaiTool::Network(n, _) => n.provider.clone().to_string(),
-            ShinkaiTool::Deno(_d, _) => "unknown".to_string(),
-            ShinkaiTool::Python(_p, _) => "unknown".to_string(),
+            ShinkaiTool::Deno(d, _) => d.author.clone(),
+            ShinkaiTool::Python(p, _) => p.author.clone(),
         }
     }
 
     /// Returns the version of the tool
     pub fn version(&self) -> String {
         match self {
-            ShinkaiTool::Rust(_r, _) => "0.1".to_string(),
+            ShinkaiTool::Rust(r, _) => "1.0.0".to_string(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
             ShinkaiTool::Deno(d, _) => d.version.clone(),
-            ShinkaiTool::Python(_p, _) => "unknown".to_string(),
+            ShinkaiTool::Python(p, _) => p.version.clone(),
         }
     }
 

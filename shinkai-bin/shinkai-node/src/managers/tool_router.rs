@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::Instant;
@@ -13,6 +12,7 @@ use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
+use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -27,17 +27,15 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::deno_tools::ToolResult;
 use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_tools_primitives::tools::js_toolkit::JSToolkit;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
-use shinkai_tools_primitives::tools::python_tools::PythonTool;
 use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_runner::built_in_tools;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 
 #[derive(Clone)]
 pub struct ToolRouter {
@@ -75,33 +73,52 @@ impl ToolRouter {
         }
 
         if is_empty {
-            // Add JS tools
-            let _ = self.add_deno_tools().await;
-            let _ = self.add_rust_tools().await;
-            let _ = self.add_python_tools().await;
-            // Add static prompts
-            let _ = self.add_static_prompts(&generator).await;
+            if let Err(e) = self.add_testing_network_tools().await {
+                eprintln!("Error adding testing network tools: {}", e);
+            }
+            if let Err(e) = self.add_rust_tools().await {
+                eprintln!("Error adding rust tools: {}", e);
+            }
+            if let Err(e) = self.add_static_prompts(&generator).await {
+                eprintln!("Error adding static prompts: {}", e);
+            }
         } else if !has_any_js_tools {
-            // Add JS tools
-            let _ = self.add_deno_tools().await;
-            let _ = self.add_rust_tools().await;
-            let _ = self.add_python_tools().await;
+            if let Err(e) = self.add_testing_network_tools().await {
+                eprintln!("Error adding testing network tools: {}", e);
+            }
+            if let Err(e) = self.add_rust_tools().await {
+                eprintln!("Error adding rust tools: {}", e);
+            }
         }
 
         Ok(())
     }
 
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        // Add JS tools
-        let _ = self.add_deno_tools().await;
-        let _ = self.add_rust_tools().await;
-        let _ = self.add_python_tools().await;
-        let _ = self.add_static_prompts(generator).await;
-        let _ = Self::import_tools_from_directory(self.sqlite_manager.clone()).await;
+        if let Err(e) = self.add_testing_network_tools().await {
+            eprintln!("Error adding testing network tools: {}", e);
+        }
+        if let Err(e) = self.add_rust_tools().await {
+            eprintln!("Error adding rust tools: {}", e);
+        }
+        if let Err(e) = self.add_static_prompts(generator).await {
+            eprintln!("Error adding static prompts: {}", e);
+        }
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+            eprintln!("Error importing tools from directory: {}", e);
+        }
         Ok(())
     }
 
     async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
+        if env::var("SKIP_IMPORT_FROM_DIRECTORY")
+            .unwrap_or("false".to_string())
+            .to_lowercase()
+            .eq("true")
+        {
+            return Ok(());
+        }
+
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
             .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
 
@@ -235,47 +252,7 @@ impl ToolRouter {
         Ok(())
     }
 
-    async fn add_deno_tools(&self) -> Result<(), ToolError> {
-        let start_time = Instant::now(); // Start the timer
-
-        let tools = built_in_tools::get_tools();
-
-        let only_testing_js_tools =
-            std::env::var("ONLY_TESTING_JS_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
-        let allowed_tools = vec![
-            "shinkai-tool-echo",
-            "shinkai-tool-coinbase-create-wallet",
-            "shinkai-tool-coinbase-get-my-address",
-            "shinkai-tool-coinbase-get-balance",
-            "shinkai-tool-coinbase-get-transactions",
-            "shinkai-tool-coinbase-send-tx",
-            "shinkai-tool-coinbase-call-faucet",
-        ];
-
-        {
-            for (name, definition) in tools {
-                // Skip tools that start with "demo" if not only_testing_js_tools
-                if !only_testing_js_tools && name.starts_with("demo") {
-                    continue;
-                }
-                // Skip tools that are not in the allowed list if only_testing_js_tools is true
-                if only_testing_js_tools && !allowed_tools.contains(&name.as_str()) {
-                    continue; // Skip tools that are not in the allowed list
-                }
-
-                println!("Adding JS tool: {}", name);
-
-                let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-                for tool in toolkit.tools {
-                    let shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-                    self.sqlite_manager
-                        .add_tool(shinkai_tool)
-                        .await
-                        .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                }
-            }
-        }
-
+    async fn add_testing_network_tools(&self) -> Result<(), ToolError> {
         // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_EXTERNAL_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
             let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
@@ -399,138 +376,23 @@ impl ToolRouter {
             }
         }
 
-        let duration = start_time.elapsed(); // Calculate the duration
-        println!("Time taken to add JS tools: {:?}", duration); // Print the duration
-
-        Ok(())
-    }
-
-    fn generate_google_search_tool() -> PythonTool {
-        // Create parameters for Google search
-        let mut params = Parameters::new();
-        params.add_property(
-            "query".to_string(),
-            "string".to_string(),
-            "The search query to look up".to_string(),
-            true,
-        );
-        params.add_property(
-            "num_results".to_string(),
-            "number".to_string(),
-            "Number of search results to return".to_string(),
-            false,
-        );
-
-        let mut output_arg = ToolOutputArg::empty();
-        output_arg.json = r#"{
-        "query": "string",
-        "results": [
-            {
-                "title": "string",
-                "url": "string", 
-                "description": "string"
-            }
-        ]
-    }"#
-        .to_string();
-
-        let python_tool = PythonTool {
-            toolkit_name: "google_search_shinkai".to_string(),
-            embedding: None,
-            name: "Google Search".to_string(),
-            author: "Shinkai".to_string(),
-            py_code: r#"
-# /// script
-# dependencies = [
-# "googlesearch-python"
-# ]
-# ///
-from googlesearch import search, SearchResult
-from typing import List
-from dataclasses import dataclass
-import json
-
-class CONFIG:
-    pass
-
-class INPUTS:
-    query: str
-    num_results: int = 10
-
-class OUTPUT:
-    results: List[SearchResult]
-    query: str
-
-async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
-    query = p.query
-    if not query:
-        raise ValueError("No search query provided")
-
-    results = []
-    try:
-        results = search(query, num_results=p.num_results, advanced=True)
-    except Exception as e:
-        raise RuntimeError(f"Search failed: {str(e)}")
-
-    output = OUTPUT()
-    output.results = results
-    output.query = query
-    return output
-"#
-            .to_string(),
-            tools: None,
-            config: vec![],
-            description: "Search the web using Google".to_string(),
-            keywords: vec![
-                "web search".to_string(),
-                "google search".to_string(),
-                "internet search".to_string(),
-            ],
-            input_args: params,
-            output_arg,
-            activated: true,
-            result: ToolResult {
-                r#type: "object".to_string(),
-                properties: serde_json::json!({
-                    "query": {"type": "string"},
-                    "results": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "title": {"type": "string"},
-                                "url": {"type": "string"},
-                                "description": {"type": "string"}
-                            },
-                            "required": ["title", "url", "description"]
-                        }
-                    }
-                }),
-                required: vec!["query".to_string(), "results".to_string()],
-            },
-            sql_tables: None,
-            sql_queries: None,
-            file_inbox: None,
-            oauth: None,
-            assets: None,
-        };
-        python_tool
-    }
-
-    async fn add_python_tools(&self) -> Result<(), ToolError> {
-        let python_tools = vec![Self::generate_google_search_tool()];
-        for python_tool in python_tools {
-            self.sqlite_manager
-                .add_tool(ShinkaiTool::Python(python_tool, true))
-                .await
-                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-        }
-
         Ok(())
     }
 
     pub async fn get_tool_by_name(&self, name: &str) -> Result<Option<ShinkaiTool>, ToolError> {
         match self.sqlite_manager.get_tool_by_key(name) {
+            Ok(tool) => Ok(Some(tool)),
+            Err(SqliteManagerError::ToolNotFound(_)) => Ok(None),
+            Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+        }
+    }
+
+    pub async fn get_tool_by_name_and_version(
+        &self,
+        name: &str,
+        version: Option<IndexableVersion>,
+    ) -> Result<Option<ShinkaiTool>, ToolError> {
+        match self.sqlite_manager.get_tool_by_key_and_version(name, version) {
             Ok(tool) => Ok(Some(tool)),
             Err(SqliteManagerError::ToolNotFound(_)) => Ok(None),
             Err(e) => Err(ToolError::DatabaseError(e.to_string())),
@@ -622,7 +484,11 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), python_tool.config.clone()).await?;
+                check_tool_config(
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    python_tool.config.clone(),
+                )
+                .await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -703,7 +569,11 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
                 .await
                 .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-                check_tool_config(shinkai_tool.tool_router_key().to_string_without_version().clone(), deno_tool.config.clone()).await?;
+                check_tool_config(
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    deno_tool.config.clone(),
+                )
+                .await?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -1061,7 +931,11 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
         .await
         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-        check_tool_config(shinkai_tool.tool_router_key().clone().to_string_without_version(), function_config_vec.clone()).await?;
+        check_tool_config(
+            shinkai_tool.tool_router_key().clone().to_string_without_version(),
+            function_config_vec.clone(),
+        )
+        .await?;
 
         let result = js_tool
             .run(
