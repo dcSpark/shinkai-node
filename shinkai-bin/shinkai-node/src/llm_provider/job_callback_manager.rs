@@ -1,4 +1,5 @@
 use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -88,7 +89,7 @@ impl JobCallbackManager {
         db: Arc<SqliteManager>,
         tool_type: DynamicToolType,
         inference_response_content: String,
-        available_tools: Vec<String>,
+        available_tools: Vec<ToolRouterKey>,
         identity_secret_key: &SigningKey,
         user_profile: &ShinkaiName,
         job_id: &str,

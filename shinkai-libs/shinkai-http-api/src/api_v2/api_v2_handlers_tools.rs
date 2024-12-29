@@ -1,14 +1,14 @@
 use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::{Map, Value};
-use shinkai_message_primitives::{schemas::shinkai_tools::{CodeLanguage, DynamicToolType}, shinkai_message::shinkai_message_schemas::JobMessage};
+use shinkai_message_primitives::{schemas::{shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey}, shinkai_message::shinkai_message_schemas::JobMessage};
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiTool, tool_config::OAuth, tool_playground::ToolPlayground};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
 use std::collections::HashMap;
 use futures::TryStreamExt;
-use warp::multipart::{FormData};
+use warp::multipart::FormData;
 use bytes::Buf;
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
@@ -280,7 +280,7 @@ pub async fn tool_definitions_handler(
         .send(NodeCommand::V2ApiGenerateToolDefinitions {
             bearer,
             language: language.unwrap(),
-            tools,
+            tools: tools.iter().filter_map(|t| ToolRouterKey::from_string(t).ok ()).collect(),
             res: res_sender,
         })
         .await
@@ -396,7 +396,7 @@ pub struct ToolMetadata {
 pub struct ToolImplementationRequest {
     pub message: JobMessage,
     pub language: CodeLanguage,
-    pub tools: Vec<String>,
+    pub tools: Vec<ToolRouterKey>,
     pub raw: Option<bool>,
     #[serde(default)]
     // Field to run a check after the tool implementation is generated
@@ -451,7 +451,19 @@ pub async fn tool_implementation_handler(
 pub struct ToolMetadataImplementationRequest {
     pub language: CodeLanguage,
     pub job_id: String,
-    pub tools: Vec<String>,
+    #[serde(deserialize_with = "deserialize_tool_router_keys")]
+    pub tools: Vec<ToolRouterKey>,
+}
+
+fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Vec<ToolRouterKey>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let string_vec: Vec<String> = Vec::deserialize(deserializer)?;
+    string_vec
+        .iter()
+        .map(|s| ToolRouterKey::from_string(s).map_err(serde::de::Error::custom))
+        .collect()
 }
 
 #[utoipa::path(
@@ -939,10 +951,13 @@ pub async fn get_tool_implementation_prompt_handler(
         }));
     }
 
-    let tools: Vec<String> = query_params
+    let tools: Vec<ToolRouterKey> = query_params
         .get("tools")
         .map(|s| s.split(',').map(|t| t.trim().to_string()).collect::<Vec<String>>())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|t| ToolRouterKey::from_string(t).ok())
+        .collect();
 
     let code = query_params
         .get("code")
@@ -984,7 +999,8 @@ pub struct CodeExecutionRequest {
     pub extra_config: Value,
     pub oauth: Option<Vec<OAuth>>,
     pub llm_provider: String,
-    pub tools: Vec<String>,
+    #[serde(deserialize_with = "deserialize_tool_router_keys")]
+    pub tools: Vec<ToolRouterKey>,
     pub mounts: Option<Vec<String>>,
 }
 

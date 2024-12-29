@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
 use super::indexable_version::IndexableVersion;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct ToolRouterKey {
     pub source: String,
     pub toolkit_name: String,
@@ -39,12 +42,12 @@ impl ToolRouterKey {
         let sanitized_name = Self::sanitize(&self.name);
         
         let version_str = self.version.clone().unwrap_or_else(|| "none".to_string());
-        
+
         let key = format!(
             "{}:::{}:::{}:::{}",
             sanitized_source, sanitized_toolkit_name, sanitized_name, version_str
         );
-        
+
         key.replace('/', "|").to_lowercase()
     }
 
@@ -82,7 +85,9 @@ impl ToolRouterKey {
     }
 
     pub fn version(&self) -> Option<IndexableVersion> {
-        self.version.as_ref().and_then(|v| IndexableVersion::from_string(v).ok())
+        self.version
+            .as_ref()
+            .and_then(|v| IndexableVersion::from_string(v).ok())
     }
 }
 
@@ -109,7 +114,10 @@ mod tests {
             "concat_strings".to_string(),
             Some("1.0".to_string()),
         );
-        assert_eq!(key.to_string_with_version(), "local:::rust_toolkit:::concat_strings:::1.0");
+        assert_eq!(
+            key.to_string_with_version(),
+            "local:::rust_toolkit:::concat_strings:::1.0"
+        );
     }
 
     #[test]
@@ -120,7 +128,10 @@ mod tests {
             "concat_strings".to_string(),
             None,
         );
-        assert_eq!(key.to_string_with_version(), "local:::rust_toolkit:::concat_strings:::none");
+        assert_eq!(
+            key.to_string_with_version(),
+            "local:::rust_toolkit:::concat_strings:::none"
+        );
     }
 
     #[test]
