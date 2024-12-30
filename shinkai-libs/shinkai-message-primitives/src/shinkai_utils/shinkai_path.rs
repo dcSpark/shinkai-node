@@ -1,10 +1,11 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde::de::{self, Visitor, MapAccess};
 use std::env;
 use std::fmt;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct ShinkaiPath {
     pub path: PathBuf,
 }
@@ -113,6 +114,52 @@ impl ShinkaiPath {
 impl fmt::Display for ShinkaiPath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ShinkaiPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de>
+    {
+        struct ShinkaiPathVisitor;
+
+        impl<'de> Visitor<'de> for ShinkaiPathVisitor {
+            type Value = ShinkaiPath;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("either a string or an object with a `path` field")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where E: de::Error
+            {
+                Ok(ShinkaiPath::from_str(value))
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where M: MapAccess<'de>
+            {
+                let mut path_field = None;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "path" => {
+                            if path_field.is_some() {
+                                return Err(de::Error::duplicate_field("path"));
+                            }
+                            path_field = Some(map.next_value()?);
+                        }
+                        _ => {
+                            let _ignored: de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+                let actual_path: String = path_field.ok_or_else(|| de::Error::missing_field("path"))?;
+                Ok(ShinkaiPath::from_str(&actual_path))
+            }
+        }
+
+        // deserialize_any will check the JSON token and call visit_str or visit_map accordingly
+        deserializer.deserialize_any(ShinkaiPathVisitor)
     }
 }
 

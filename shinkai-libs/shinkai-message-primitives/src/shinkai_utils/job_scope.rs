@@ -55,7 +55,25 @@ mod tests {
 
         assert!(deserialized.vector_fs_items.is_empty());
         assert_eq!(deserialized.vector_fs_folders.len(), 1);
-        assert_eq!(deserialized.vector_fs_folders[0].as_str(), "/My Files (Private)");
+        assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
+        assert!(deserialized.vector_search_mode.is_empty());
+    }
+
+    #[test]
+    fn test_deserialize_minimal_job_scope_with_string_items() {
+        let json_data = json!({
+            "vector_fs_items": ["/path/to/file1", "/path/to/file2"],
+            "vector_fs_folders": [{"path": "/My Files (Private)"}],
+            "vector_search_mode": []
+        });
+
+        let deserialized: MinimalJobScope = serde_json::from_value(json_data).expect("Failed to deserialize");
+
+        assert_eq!(deserialized.vector_fs_items.len(), 2);
+        assert_eq!(deserialized.vector_fs_items[0].relative_path(), "path/to/file1");
+        assert_eq!(deserialized.vector_fs_items[1].relative_path(), "path/to/file2");
+        assert_eq!(deserialized.vector_fs_folders.len(), 1);
+        assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
         assert!(deserialized.vector_search_mode.is_empty());
     }
 }
