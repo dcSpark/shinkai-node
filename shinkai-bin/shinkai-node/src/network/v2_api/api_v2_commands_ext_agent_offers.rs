@@ -157,7 +157,7 @@ impl Node {
         }
 
         // Get the tool from the database
-        match db.tool_exists(&tool_offering.tool_key) {
+        match db.tool_exists(&tool_offering.tool_key, None) {
             Ok(exists) => {
                 if !exists {
                     let api_error = APIError {
