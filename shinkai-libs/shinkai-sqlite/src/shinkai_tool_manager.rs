@@ -490,20 +490,27 @@ impl SqliteManager {
     }
 
     /// Checks if a tool exists in the shinkai_tools table by its tool_key
-    pub fn tool_exists(&self, tool_key: &str) -> Result<bool, SqliteManagerError> {
+    pub fn tool_exists(&self, tool_key: &str, version: Option<IndexableVersion>) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn
-            .query_row(
+        let exists = match version {
+            Some(version) => conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1 AND version = ?2)",
+                params![tool_key.to_lowercase(), version.get_version_number()],
+                |row| row.get(0),
+            ),
+            None => conn.query_row(
                 "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_key = ?1)",
                 params![tool_key.to_lowercase()],
                 |row| row.get(0),
-            )
-            .map_err(|e| {
+            ),
+        };
+        match exists {
+            Ok(exists) => Ok(exists),
+            Err(e) => {
                 eprintln!("Database error: {}", e);
-                SqliteManagerError::DatabaseError(e)
-            })?;
-
-        Ok(exists)
+                Err(SqliteManagerError::DatabaseError(e))
+            }
+        }
     }
 
     /// Checks if there are any JS tools in the shinkai_tools table

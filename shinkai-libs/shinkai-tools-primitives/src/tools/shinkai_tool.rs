@@ -361,11 +361,13 @@ impl ShinkaiTool {
         matches!(self, ShinkaiTool::Network(_, _))
     }
 
+    pub fn version_indexable(&self) -> Result<IndexableVersion, String> {
+        IndexableVersion::from_string(&self.version())
+    }
+
     /// Returns the version number using IndexableVersion
     pub fn version_number(&self) -> Result<u64, String> {
-        let version_str = self.version();
-
-        let indexable_version = IndexableVersion::from_string(&version_str)?;
+        let indexable_version = self.version_indexable()?;
         Ok(indexable_version.get_version_number())
     }
 }
