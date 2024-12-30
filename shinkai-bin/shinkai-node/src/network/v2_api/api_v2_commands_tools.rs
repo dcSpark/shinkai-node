@@ -1544,6 +1544,9 @@ impl Node {
         let sqlite_manager_read = db;
         match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
             Ok(tool) => {
+                let mut tool = tool.clone();
+                tool.sanitize_config();
+
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
 
                 let name = format!(

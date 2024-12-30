@@ -100,6 +100,19 @@ impl ShinkaiTool {
         }
     }
 
+    /// Sanitize the config by removing key-values from BasicConfig
+    pub fn sanitize_config(&mut self) {
+        match self {
+            ShinkaiTool::Deno(d, _) => {
+                d.config = d.config.clone().iter().map(|config| config.sanitize()).collect();
+            }
+            ShinkaiTool::Python(p, _) => {
+                p.config = p.config.clone().iter().map(|config| config.sanitize()).collect();
+            }
+            _ => (),
+        }
+    }
+
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
         let tool_router_key = ToolRouterKey::new(source, toolkit_name, name, None);
