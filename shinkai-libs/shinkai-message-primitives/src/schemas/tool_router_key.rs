@@ -4,11 +4,20 @@ use utoipa::ToSchema;
 use super::indexable_version::IndexableVersion;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(try_from = "String")]
 pub struct ToolRouterKey {
     pub source: String,
     pub toolkit_name: String,
     pub name: String,
     pub version: Option<String>,
+}
+
+impl TryFrom<String> for ToolRouterKey {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        ToolRouterKey::from_string(&s).map_err(|e| e.to_string())
+    }
 }
 
 impl ToolRouterKey {
