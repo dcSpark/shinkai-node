@@ -47,7 +47,7 @@ mod tests {
     fn test_deserialize_minimal_job_scope() {
         let json_data = json!({
             "vector_fs_items": [],
-            "vector_fs_folders": [{"path": "/My Files (Private)"}],
+            "vector_fs_folders": ["/My Files (Private)"],
             "vector_search_mode": []
         });
 
