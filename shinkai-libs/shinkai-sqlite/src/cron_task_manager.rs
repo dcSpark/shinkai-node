@@ -236,7 +236,8 @@ mod tests {
             message: JobMessage {
                 job_id: "test_job_id".to_string(),
                 content: "test_message".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -265,7 +266,8 @@ mod tests {
             message: JobMessage {
                 job_id: "test_job_id".to_string(),
                 content: "test_message".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -292,7 +294,8 @@ mod tests {
             message: JobMessage {
                 job_id: "job_id_1".to_string(),
                 content: "message_1".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -305,7 +308,8 @@ mod tests {
             message: JobMessage {
                 job_id: "job_id_2".to_string(),
                 content: "message_2".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -338,7 +342,8 @@ mod tests {
             message: JobMessage {
                 job_id: "test_job_id".to_string(),
                 content: "test_message".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -360,7 +365,8 @@ mod tests {
             message: JobMessage {
                 job_id: "updated_job_id".to_string(),
                 content: "updated_message".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -390,7 +396,8 @@ mod tests {
             message: JobMessage {
                 job_id: "test_job_id".to_string(),
                 content: "test_message".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -428,7 +435,8 @@ mod tests {
             message: JobMessage {
                 job_id: "test_job_id".to_string(),
                 content: "test_message".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -468,7 +476,8 @@ mod tests {
             message: JobMessage {
                 job_id: "test_job_id".to_string(),
                 content: "test_message".to_string(),
-                files: vec![],
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,

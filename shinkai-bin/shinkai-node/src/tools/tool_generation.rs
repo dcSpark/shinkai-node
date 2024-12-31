@@ -130,7 +130,8 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         callback: None,
         metadata: None,
         tool_key: None,
-        files: vec![],
+        fs_files_paths: vec![],
+                job_filenames: vec![],
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);

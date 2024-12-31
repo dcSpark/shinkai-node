@@ -567,7 +567,7 @@ impl JobManager {
         _db: Arc<SqliteManager>,
         job_message: &JobMessage,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
-        if job_message.files.is_empty() {
+        if job_message.fs_files_paths.is_empty() {
             return Ok(HashMap::new());
         }
 
@@ -578,7 +578,7 @@ impl JobManager {
         );
 
         let image_files: HashMap<String, String> = job_message
-            .files
+            .fs_files_paths
             .iter()
             .filter_map(|file_path| {
                 if let Some(file_name) = file_path.path.file_name() {

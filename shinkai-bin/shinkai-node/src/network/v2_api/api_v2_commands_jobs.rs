@@ -1438,11 +1438,13 @@ impl Node {
             }
         };
 
+        // TODO: Review and fix this
+
         // Retrieve the filenames in the inboxes
         let file_inboxes = v2_chat_messages
             .iter()
             .flatten()
-            .map(|message| message.job_message.files.clone())
+            .map(|message| message.job_message.fs_files_paths.clone())
             .collect::<Vec<_>>();
 
         // Export the messages in the requested format
@@ -1471,7 +1473,7 @@ impl Node {
                     let content = message.job_message.content;
                     let files = message
                         .job_message
-                        .files
+                        .fs_files_paths
                         .iter()
                         .map(|path| path.relative_path())
                         .collect::<Vec<&str>>()
@@ -1528,7 +1530,7 @@ impl Node {
                                 let files: Vec<String> = message
                                     .clone()
                                     .job_message
-                                    .files
+                                    .fs_files_paths
                                     .into_iter()
                                     .map(|file| file.relative_path().to_string())
                                     .collect();
@@ -1563,7 +1565,7 @@ impl Node {
                     for message in messages {
                         result_messages.push_str(&format!("{}\n\n", message.job_message.content));
 
-                        for file in &message.job_message.files {
+                        for file in &message.job_message.fs_files_paths {
                             result_messages.push_str(&format!("Attached file: {}\n\n", file));
                         }
                     }
@@ -1697,7 +1699,7 @@ impl Node {
                 let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                     job_id.to_string(),
                     message.content,
-                    message.files,
+                    message.fs_files_paths,
                     None,
                     identity_secret_key_clone,
                     node_name.node_name.clone(),

@@ -329,7 +329,9 @@ pub struct JobMessage {
     pub tool_key: Option<String>,
     // Field that lists associated files of the message
     #[serde(default)]
-    pub files: Vec<ShinkaiPath>,
+    pub fs_files_paths: Vec<ShinkaiPath>,
+    #[serde(default)]
+    pub job_filenames: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, ToSchema)]

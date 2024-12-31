@@ -118,6 +118,9 @@ impl ToolRouter {
             return Ok(());
         }
 
+        // Start timing before the HTTP request
+        let start_time = Instant::now();
+
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
             .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
 
@@ -184,6 +187,10 @@ impl ToolRouter {
         });
 
         futures::future::join_all(futures).await;
+
+        // Calculate and print the duration
+        let duration = start_time.elapsed();
+        println!("Total time taken to import tools: {:?}", duration);
 
         Ok(())
     }

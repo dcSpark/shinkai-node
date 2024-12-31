@@ -624,7 +624,8 @@ mod tests {
             callback: None,
             metadata: None,
             tool_key: None,
-            files: vec![],
+            fs_files_paths: vec![],
+            job_filenames: vec![],
         };
 
         CronTask {

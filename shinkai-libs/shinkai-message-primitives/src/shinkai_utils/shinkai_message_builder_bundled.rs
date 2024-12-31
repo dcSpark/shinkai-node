@@ -130,7 +130,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message(
         job_id: String,
         content: String,
-        files: Vec<ShinkaiPath>,
+        fs_files_path: Vec<ShinkaiPath>,
         parent_hash: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
@@ -144,12 +144,13 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
-            files,
+            fs_files_paths: fs_files_path,
             parent: Some(parent_hash),
             sheet_job_data: None,
             callback: None,
             metadata: None,
             tool_key: None,
+            job_filenames: vec![],
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -177,7 +178,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message_unencrypted(
         job_id: String,
         content: String,
-        files: Vec<ShinkaiPath>,
+        fs_files: Vec<ShinkaiPath>,
         parent_hash: String,
         my_signature_secret_key: SigningKey,
         node_sender: ShinkaiNameString,
@@ -189,12 +190,13 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
-            files,
+            fs_files_paths: fs_files,
             parent: Some(parent_hash),
             sheet_job_data: None,
             callback: None,
             metadata: None,
             tool_key: None,
+            job_filenames: vec![],
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -242,7 +244,8 @@ impl ShinkaiMessageBuilder {
             callback: None,
             metadata,
             tool_key: None,
-            files,
+            fs_files_paths: files,
+            job_filenames: vec![],
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

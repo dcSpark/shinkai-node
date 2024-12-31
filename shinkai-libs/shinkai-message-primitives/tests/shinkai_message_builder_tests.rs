@@ -56,7 +56,7 @@ mod tests {
                 let job_message: JobMessage = serde_json::from_str(&shinkai_data.message_raw_content).unwrap();
                 assert_eq!(job_message.job_id, inbox);
                 assert_eq!(job_message.content, "hello hello, are u there?");
-                assert_eq!(job_message.files, vec![]);
+                assert_eq!(job_message.fs_files_paths, vec![]);
             }
         }
 

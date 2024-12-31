@@ -1452,7 +1452,8 @@ impl Node {
             callback: None,
             metadata: None,
             tool_key: None,
-            files: vec![],
+            fs_files_paths: vec![],
+                job_filenames: vec![],
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(

@@ -792,7 +792,7 @@ impl Node {
         {
             Ok(response) => {
                 let success_message = format!("File uploaded and processed successfully for job {}: {}", job_id, filename);
-                let _ = res.send(Ok(serde_json::json!({ "message": success_message, "path": response.relative_path() }))).await;
+                let _ = res.send(Ok(serde_json::json!({ "message": success_message, "filename": response.filename() }))).await;
             }
             Err(e) => {
                 let api_error = APIError {

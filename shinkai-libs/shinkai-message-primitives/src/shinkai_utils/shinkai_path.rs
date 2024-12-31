@@ -108,6 +108,15 @@ impl ShinkaiPath {
     pub fn is_file(&self) -> bool {
         self.path.is_file()
     }
+
+    /// Returns the filename with its extension, if any, and if it's not a directory.
+    pub fn filename(&self) -> Option<&str> {
+        if self.is_file() {
+            self.path.file_name().and_then(|name| name.to_str())
+        } else {
+            None
+        }
+    }
 }
 
 // Implement Display for ShinkaiPath to easily print it
@@ -278,5 +287,29 @@ mod tests {
         fs::write(shinkai_path.as_path(), "test".as_bytes()).unwrap();
 
         assert!(shinkai_path.is_file());
+    }
+
+    #[test]
+    #[serial]
+    fn test_filename() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+        
+        // Create a file to test the filename method
+        let path_with_extension = "word_files/christmas.docx";
+        let shinkai_path_with_extension = ShinkaiPath::from_string(path_with_extension.to_string());
+        fs::create_dir_all(shinkai_path_with_extension.as_path().parent().unwrap()).unwrap();
+        fs::write(shinkai_path_with_extension.as_path(), "test".as_bytes()).unwrap();
+        assert_eq!(shinkai_path_with_extension.filename(), Some("christmas.docx"));
+
+        // Create a file without an extension
+        let path_without_extension = "word_files/christmas";
+        let shinkai_path_without_extension = ShinkaiPath::from_string(path_without_extension.to_string());
+        fs::write(shinkai_path_without_extension.as_path(), "test".as_bytes()).unwrap();
+        assert_eq!(shinkai_path_without_extension.filename(), Some("christmas"));
+
+        // Test a directory path
+        let path_with_no_filename = "word_files/";
+        let shinkai_path_with_no_filename = ShinkaiPath::from_string(path_with_no_filename.to_string());
+        assert_eq!(shinkai_path_with_no_filename.filename(), None);
     }
 }
