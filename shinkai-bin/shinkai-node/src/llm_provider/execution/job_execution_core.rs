@@ -222,7 +222,6 @@ impl JobManager {
         job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<(), LLMProviderError> {
         let job_id = full_job.job_id().to_string();
@@ -317,16 +316,6 @@ impl JobManager {
             format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
         );
 
-        // TODO: remove this
-        // // Save response data to DB
-        // db.write().await.add_step_history(
-        //     job_message.job_id.clone(),
-        //     job_message.content,
-        //     Some(image_files),
-        //     inference_response_content.to_string(),
-        //     None,
-        //     None,
-        // )?;
         db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None, ws_manager)
             .await?;
 
@@ -393,6 +382,8 @@ impl JobManager {
                 // Decompose the uploaded_files into two separate vectors
                 let (files_inbox, file_names): (Vec<String>, Vec<String>) =
                     input_string.uploaded_files.iter().cloned().unzip();
+
+                unimplemented!();
 
                 // TODO: fix this
                 // Self::process_specified_files_for_vector_resources(
@@ -579,7 +570,7 @@ impl JobManager {
         if job_message.files.is_empty() {
             return Ok(HashMap::new());
         }
-        
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,

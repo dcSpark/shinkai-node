@@ -348,7 +348,7 @@ impl SqliteManager {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS job_queues (
                 job_id TEXT NOT NULL,
-                queue_data BLOB NOT NULL
+                queue_data TEXT NOT NULL
             );",
             [],
         )?;

@@ -461,7 +461,6 @@ impl Node {
                 return Ok(());
             }
         };
-        eprintln!("smart_inboxes: {:?}", smart_inboxes);
 
         // Convert SmartInbox to V2SmartInbox
         let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes

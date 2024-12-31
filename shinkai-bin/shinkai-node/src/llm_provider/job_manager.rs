@@ -89,9 +89,13 @@ impl JobManager {
         }
 
         let db_prefix = "job_manager_abcdeprefix_";
-        let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix.to_string()))
-            .await
-            .unwrap();
+        let job_queue_result = JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix.to_string())).await;
+
+        if let Err(ref e) = job_queue_result {
+            eprintln!("Error initializing JobQueueManager: {:?}", e);
+        }
+
+        let job_queue = job_queue_result.unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
         let thread_number = env::var("JOB_MANAGER_THREADS")

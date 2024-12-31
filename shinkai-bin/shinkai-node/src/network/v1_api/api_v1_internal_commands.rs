@@ -363,7 +363,6 @@ impl Node {
                 })
             }
         };
-
         let result = match db.get_llm_providers_for_profile(profile_name) {
             Ok(llm_providers) => llm_providers,
             Err(e) => {
@@ -692,3 +691,4 @@ impl Node {
         Ok(())
     }
 }
+
