@@ -594,7 +594,7 @@ pub enum NodeCommand {
     V2ApiVecFSGetFolderNameForJob {
         bearer: String,
         job_id: String,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     V2ApiVecFSCreateFolder {
         bearer: String,

@@ -15,6 +15,7 @@ use futures::StreamExt;
 use utoipa::OpenApi;
 use warp::multipart::FormData;
 use warp::Filter;
+use std::collections::HashMap;
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -110,14 +111,14 @@ pub fn vecfs_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<String>())
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(retrieve_files_for_job_handler);
 
     let get_folder_name_for_job_route = warp::path("get_folder_name_for_job")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::query::<String>())
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(get_folder_name_for_job_handler);
 
     let upload_file_to_job_route = warp::path("upload_file_to_job")
@@ -726,29 +727,37 @@ pub async fn retrieve_source_file_handler(
 pub async fn retrieve_files_for_job_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    job_id: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .send(NodeCommand::V2ApiVecFSRetrieveFilesForJob {
-            bearer,
-            job_id,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    if let Some(job_id) = query_params.get("job_id") {
+        let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::V2ApiVecFSRetrieveFilesForJob {
+                bearer,
+                job_id: job_id.clone(),
+                res: res_sender,
+            })
+            .await
+            .map_err(|_| warp::reject::reject())?;
+        let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        match result {
+            Ok(response) => {
+                let response = create_success_response(response);
+                Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+            }
+            Err(error) => Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap(),
+            )),
         }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
+    } else {
+        Err(warp::reject::custom(APIError::new(
+            StatusCode::BAD_REQUEST,
+            "Bad Request",
+            "Missing job_id parameter",
+        )))
     }
 }
 
@@ -764,29 +773,37 @@ pub async fn retrieve_files_for_job_handler(
 pub async fn get_folder_name_for_job_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
-    job_id: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .send(NodeCommand::V2ApiVecFSGetFolderNameForJob {
-            bearer,
-            job_id,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    if let Some(job_id) = query_params.get("job_id") {
+        let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::V2ApiVecFSGetFolderNameForJob {
+                bearer,
+                job_id: job_id.clone(),
+                res: res_sender,
+            })
+            .await
+            .map_err(|_| warp::reject::reject())?;
+        let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
-    match result {
-        Ok(response) => {
-            let response = create_success_response(response);
-            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        match result {
+            Ok(response) => {
+                let response = create_success_response(response);
+                Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+            }
+            Err(error) => Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap(),
+            )),
         }
-        Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
-            StatusCode::from_u16(error.code).unwrap(),
-        )),
+    } else {
+        Err(warp::reject::custom(APIError::new(
+            StatusCode::BAD_REQUEST,
+            "Bad Request",
+            "Missing job_id parameter",
+        )))
     }
 }
 

@@ -845,7 +845,7 @@ impl Node {
         _identity_manager: Arc<Mutex<IdentityManager>>,
         job_id: String,
         bearer: String,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -857,7 +857,10 @@ impl Node {
 
         match folder_name_result {
             Ok(folder_name) => {
-                let _ = res.send(Ok(folder_name.relative_path().to_string())).await;
+                let folder_name_json = serde_json::json!({
+                    "folder_name": folder_name.relative_path().to_string()
+                });
+                let _ = res.send(Ok(folder_name_json)).await;
             }
             Err(e) => {
                 let api_error = APIError {
