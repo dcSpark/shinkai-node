@@ -12,6 +12,7 @@ use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
 use regex::Regex;
+use shinkai_fs;
 
 use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentity};
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
@@ -19,7 +20,6 @@ use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::{
@@ -145,16 +145,35 @@ impl Node {
         inbox_id: String,
         new_name: String,
     ) -> Result<(), String> {
-        match db.update_smart_inbox_name(&inbox_id, &new_name) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    format!("Failed to update inbox name: {}", e).as_str(),
-                );
-                Err(format!("Failed to update inbox name: {}", e))
+        // Parse the inbox name to check if it's a job inbox
+        let inbox_name = InboxName::new(inbox_id.clone()).map_err(|e| format!("Failed to parse inbox name: {}", e))?;
+        
+        // Get the job ID if it's a job inbox
+        let job_id = inbox_name.get_job_id();
+        
+        if let Some(job_id) = job_id {
+            // Get the current folder name before updating
+            let old_folder = db.get_job_folder_name(&job_id).map_err(|e| format!("Failed to get old folder name: {}", e))?;
+            
+            // Update the inbox name
+            db.unsafe_update_smart_inbox_name(&inbox_id, &new_name)
+                .map_err(|e| format!("Failed to update inbox name: {}", e))?;
+            
+            // Get the new folder name after updating
+            let new_folder = db.get_job_folder_name(&job_id).map_err(|e| format!("Failed to get new folder name: {}", e))?;
+            
+            // Move the folder if it exists
+            if old_folder.exists() {
+                use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+                ShinkaiFileManager::move_folder(old_folder, new_folder, &db)
+                    .map_err(|e| format!("Failed to move folder: {}", e))?;
             }
+            
+            Ok(())
+        } else {
+            // If it's not a job inbox, just update the name
+            db.unsafe_update_smart_inbox_name(&inbox_id, &new_name)
+                .map_err(|e| format!("Failed to update inbox name: {}", e))
         }
     }
 
@@ -462,7 +481,7 @@ impl Node {
                                 }
                             };
                             db.add_permission(&inbox_name.to_string(), &sender_standard, InboxPermission::Admin)?;
-                            db.update_smart_inbox_name(
+                            db.unsafe_update_smart_inbox_name(
                                 &inbox_name.to_string(),
                                 "Welcome to Shinkai! Brief onboarding here.",
                             )?;

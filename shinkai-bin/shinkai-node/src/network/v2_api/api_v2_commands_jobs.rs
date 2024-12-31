@@ -25,7 +25,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
+        signatures::clone_signature_secret_key, shinkai_path::ShinkaiPath,
     },
 };
 
@@ -40,7 +40,6 @@ use crate::{
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-
 impl Node {
     pub fn convert_smart_inbox_to_v2_smart_inbox(smart_inbox: SmartInbox) -> Result<V2SmartInbox, NodeError> {
         let last_message = match smart_inbox.last_message {
@@ -526,18 +525,90 @@ impl Node {
             return Ok(());
         }
 
-        // Update the smart inbox name
-        match db.update_smart_inbox_name(&inbox_name, &custom_name) {
-            Ok(_) => {
-                let _ = res.send(Ok(())).await;
-            }
+        // Parse the inbox name to check if it's a job inbox
+        let inbox = match InboxName::new(inbox_name.clone()) {
+            Ok(inbox) => inbox,
             Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse inbox name: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Get the job ID if it's a job inbox
+        if let Some(job_id) = inbox.get_job_id() {
+            // Get the current folder name before updating
+            let old_folder = match db.get_job_folder_name(&job_id) {
+                Ok(folder) => folder,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get old folder name: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            // Update the inbox name
+            if let Err(e) = db.unsafe_update_smart_inbox_name(&inbox_name, &custom_name) {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to update inbox name: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            // Get the new folder name after updating
+            let new_folder = match db.get_job_folder_name(&job_id) {
+                Ok(folder) => folder,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get new folder name: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            // Move the folder if it exists
+            if old_folder.exists() {
+                use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+                if let Err(e) = ShinkaiFileManager::move_folder(old_folder, new_folder, &db) {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to move folder: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+
+            let _ = res.send(Ok(())).await;
+        } else {
+            // If it's not a job inbox, just update the name
+            match db.unsafe_update_smart_inbox_name(&inbox_name, &custom_name) {
+                Ok(_) => {
+                    let _ = res.send(Ok(())).await;
+                }
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to update inbox name: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                }
             }
         }
 
@@ -1656,3 +1727,4 @@ impl Node {
         Ok(())
     }
 }
+

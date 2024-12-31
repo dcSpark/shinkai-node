@@ -31,6 +31,7 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 
 const NUM_THREADS: usize = 4;
 
@@ -460,6 +461,40 @@ impl JobManager {
         }
     }
 
+    async fn update_job_folder_name(
+        &self,
+        job_id: &str,
+        content: &str,
+        db_arc: &SqliteManager,
+    ) -> Result<(), LLMProviderError> {
+        // Parse the inbox name to check if it's a job inbox
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
+        
+        // Get the current folder name before updating
+        let old_folder = db_arc.get_job_folder_name(job_id)
+            .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
+        
+        // Update the inbox name
+        let mut truncated_content = content.to_string();
+        if truncated_content.chars().count() > 120 {
+            truncated_content = format!("{}...", truncated_content.chars().take(120).collect::<String>());
+        }
+        db_arc.unsafe_update_smart_inbox_name(&inbox_name.to_string(), &truncated_content)
+            .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
+        
+        // Get the new folder name after updating
+        let new_folder = db_arc.get_job_folder_name(job_id)
+            .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
+        
+        // Move the folder if it exists
+        if old_folder.exists() {
+            ShinkaiFileManager::move_folder(old_folder, new_folder, db_arc)
+                .map_err(|e| LLMProviderError::SomeError(format!("Failed to move folder: {}", e)))?;
+        }
+        
+        Ok(())
+    }
+
     pub async fn add_to_job_processing_queue(
         &mut self,
         message: ShinkaiMessage,
@@ -480,13 +515,7 @@ impl JobManager {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
-            let mut content = job_message.clone().content;
-            if content.chars().count() > 120 {
-                let truncated_content: String = content.chars().take(120).collect();
-                content = format!("{}...", truncated_content);
-            }
-            let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
-            db_arc.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
+            self.update_job_folder_name(&job_message.job_id, &job_message.content, &db_arc).await?;
         }
 
         db_arc

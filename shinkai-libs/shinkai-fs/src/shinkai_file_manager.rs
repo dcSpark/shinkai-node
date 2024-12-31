@@ -549,7 +549,7 @@ mod tests {
 
         // Update the smart inbox name
         let new_inbox_name = "Updated Inbox Name";
-        db.update_smart_inbox_name(&job_inbox, new_inbox_name).unwrap();
+        db.unsafe_update_smart_inbox_name(&job_inbox, new_inbox_name).unwrap();
 
         // Get and create the job folder
         let folder_path = db.get_and_create_job_folder(&job_id).unwrap();

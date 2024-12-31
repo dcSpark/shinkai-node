@@ -628,7 +628,9 @@ impl SqliteManager {
         Ok(smart_inboxes)
     }
 
-    pub fn update_smart_inbox_name(&self, inbox_id: &str, new_name: &str) -> Result<(), SqliteManagerError> {
+    // Note: This is unsafe because it does not update folder names which depend on the inbox name
+    pub fn unsafe_update_smart_inbox_name(&self, inbox_id: &str, new_name: &str) -> Result<(), SqliteManagerError> {
+        // Update the name in the database
         let conn = self.get_connection()?;
         conn.execute(
             "UPDATE inboxes SET smart_inbox_name = ?1 WHERE inbox_name = ?2",
