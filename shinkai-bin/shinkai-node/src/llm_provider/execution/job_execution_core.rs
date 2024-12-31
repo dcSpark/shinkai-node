@@ -564,10 +564,10 @@ impl JobManager {
 
     /// Retrieves image files associated with a job message and converts them to base64
     pub async fn get_image_files_from_message(
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
         job_message: &JobMessage,
     ) -> Result<HashMap<String, String>, LLMProviderError> {
-        if job_message.fs_files_paths.is_empty() {
+        if job_message.fs_files_paths.is_empty() && job_message.job_filenames.is_empty() {
             return Ok(HashMap::new());
         }
 
@@ -577,33 +577,53 @@ impl JobManager {
             format!("Retrieving files for job message: {}", job_message.job_id).as_str(),
         );
 
-        let image_files: HashMap<String, String> = job_message
-            .fs_files_paths
-            .iter()
-            .filter_map(|file_path| {
-                if let Some(file_name) = file_path.path.file_name() {
-                    let filename_lower = file_name.to_string_lossy().to_lowercase();
-                    if filename_lower.ends_with(".png")
-                        || filename_lower.ends_with(".jpg")
-                        || filename_lower.ends_with(".jpeg")
-                        || filename_lower.ends_with(".gif")
-                    {
+        let mut image_files = HashMap::new();
+
+        // Process fs_files_paths
+        for file_path in &job_message.fs_files_paths {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".png")
+                    || filename_lower.ends_with(".jpg")
+                    || filename_lower.ends_with(".jpeg")
+                    || filename_lower.ends_with(".gif")
+                {
+                    // Retrieve the file content
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::encode(&content);
+                            image_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process job_filenames
+        for filename in &job_message.job_filenames {
+            let filename_lower = filename.to_lowercase();
+            if filename_lower.ends_with(".png")
+                || filename_lower.ends_with(".jpg")
+                || filename_lower.ends_with(".jpeg")
+                || filename_lower.ends_with(".gif")
+            {
+                // Construct the job file path
+                match ShinkaiFileManager::construct_job_file_path(&job_message.job_id, filename, &db) {
+                    Ok(file_path) => {
                         // Retrieve the file content
                         match ShinkaiFileManager::get_file_content(file_path.clone()) {
                             Ok(content) => {
                                 let base64_content = base64::encode(&content);
-                                Some((file_path.relative_path().to_string(), base64_content))
+                                image_files.insert(filename.clone(), base64_content);
                             }
-                            Err(_) => None,
+                            Err(_) => continue,
                         }
-                    } else {
-                        None
                     }
-                } else {
-                    None
+                    Err(_) => continue,
                 }
-            })
-            .collect();
+            }
+        }
 
         Ok(image_files)
     }
