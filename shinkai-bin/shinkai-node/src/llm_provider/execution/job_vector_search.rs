@@ -471,6 +471,15 @@ impl JobManager {
         // Perform a vector search on all parsed files
         let search_results = sqlite_manager.search_chunks(&parsed_file_ids, query_embedding, num_of_top_results)?;
 
+        // If there are no initial results, just return early
+        if search_results.is_empty() {
+            eprintln!("No initial results found for search");
+            return Ok(ShinkaiFileChunkCollection {
+                chunks: vec![],
+                paths: Some(paths_map),
+            });
+        }
+
         // Count the total number of characters in the search results using map-reduce
         let total_characters: usize = search_results
             .iter()
@@ -482,14 +491,6 @@ impl JobManager {
 
         // Calculate the total amount of extra chunks we need to fetch to fill up to max_tokens_in_prompt
         let extra_chunks_needed = (max_tokens_in_prompt - total_characters) / average_chunk_size;
-
-        // If there are no initial results, just return early
-        if search_results.is_empty() {
-            return Ok(ShinkaiFileChunkCollection {
-                chunks: vec![],
-                paths: Some(paths_map),
-            });
-        }
 
         // Distribute the extra chunks across the search results
         let total_results = search_results.len();

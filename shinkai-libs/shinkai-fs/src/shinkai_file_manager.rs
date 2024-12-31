@@ -25,6 +25,9 @@ pub struct FileInfo {
     #[serde(serialize_with = "serialize_system_time")]
     pub modified_time: Option<SystemTime>,
     pub has_embeddings: bool,
+    // Notes:
+    // Add filesize (Option) so None for folders
+    // Add name -- unlike path it doesn't have the full path
 }
 
 #[derive(PartialEq, Serialize, Deserialize, Clone, ToSchema)]
@@ -190,6 +193,25 @@ impl ShinkaiFileManager {
         Ok(contents)
     }
 
+    /// Constructs the full path for a file within a job folder.
+    pub fn construct_job_file_path(
+        job_id: &str,
+        file_name: &str,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<ShinkaiPath, ShinkaiFsError> {
+        // Get the job folder path
+        let folder_path = sqlite_manager.get_and_create_job_folder(job_id)?;
+        
+        // Get the relative path from the job folder to avoid double base path
+        let relative_path = folder_path.relative_path();
+        
+        // Construct the relative path for the file
+        let file_relative_path = format!("{}/{}", relative_path, file_name);
+        
+        // Create a new ShinkaiPath from the relative path
+        Ok(ShinkaiPath::from_string(file_relative_path))
+    }
+
     /// Save a file to a job-specific directory and process it for embeddings.
     /// This function determines the job folder path, constructs the file path,
     /// and then saves and processes the file using the specified mode and generator.
@@ -200,16 +222,14 @@ impl ShinkaiFileManager {
         sqlite_manager: &SqliteManager,
         mode: FileProcessingMode,
         generator: &dyn EmbeddingGenerator,
-    ) -> Result<(), ShinkaiFsError> {
-        // Get the job folder path
-        let folder_path = sqlite_manager.get_and_create_job_folder(job_id)?;
-
-        // Construct the full path for the file within the job folder
-        let full_path = folder_path.as_path().join(file_name);
-        let shinkai_path = ShinkaiPath::from_string(full_path.to_string_lossy().to_string());
+    ) -> Result<ShinkaiPath, ShinkaiFsError> {
+        // Use the new construct_job_file_path function
+        let shinkai_path = Self::construct_job_file_path(job_id, &file_name, sqlite_manager)?;
 
         // Use the existing save_and_process_file function to save and process the file
-        Self::save_and_process_file(shinkai_path, data, sqlite_manager, mode, generator).await
+        Self::save_and_process_file(shinkai_path.clone(), data, sqlite_manager, mode, generator).await?;
+
+        Ok(shinkai_path)
     }
 
     /// Get the content of a file based on a ShinkaiPath.
@@ -589,5 +609,32 @@ mod tests {
         // Assert the content is as expected
         assert!(content.is_ok());
         assert_eq!(content.unwrap(), b"Hello, Shinkai!\n".to_vec());
+    }
+
+    #[test]
+    #[serial]
+    fn test_construct_job_file_path() {
+        let db = setup_test_db();
+        let job_id = "test_job";
+        let agent_id = "agent_test";
+        let scope = MinimalJobScope::default();
+
+        // Create a new job in the database
+        db.create_new_job(job_id.to_string(), agent_id.to_string(), scope, false, None, None)
+            .expect("Failed to create a new job");
+
+        // Call the construct_job_file_path function
+        let file_name = "test_file.txt";
+        let result = ShinkaiFileManager::construct_job_file_path(job_id, file_name, &db);
+        eprintln!("result: {:?}", result);
+
+        // Assert the result is Ok
+        assert!(result.is_ok());
+
+        // Verify the constructed path
+        let shinkai_path = result.unwrap();
+        let expected_folder_path = db.get_and_create_job_folder(job_id).unwrap();
+        let expected_path = expected_folder_path.as_path().join(file_name);
+        assert_eq!(shinkai_path.as_path().to_string_lossy(), expected_path.to_string_lossy());
     }
 }
