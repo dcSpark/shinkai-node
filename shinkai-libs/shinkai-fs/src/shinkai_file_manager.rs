@@ -25,9 +25,9 @@ pub struct FileInfo {
     #[serde(serialize_with = "serialize_system_time")]
     pub modified_time: Option<SystemTime>,
     pub has_embeddings: bool,
-    // Notes:
-    // Add filesize (Option) so None for folders
-    // Add name -- unlike path it doesn't have the full path
+    pub children: Option<Vec<FileInfo>>,
+    pub size: Option<u64>,  // None if directory
+    pub name: String,       // e.g. "my_doc.docx"
 }
 
 #[derive(PartialEq, Serialize, Deserialize, Clone, ToSchema)]
@@ -146,50 +146,73 @@ impl ShinkaiFileManager {
         Self::list_directory_contents(folder_path, sqlite_manager)
     }
 
-    /// List all files and folders in a directory with additional metadata.
+    /// Single-level listing only (no recursion).
     pub fn list_directory_contents(
         path: ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        let mut contents = Vec::new();
-        let mut file_map = HashMap::new();
+        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/0, /*max_depth=*/0)
+    }
 
+    /// Recursively list files/folders up to `max_depth`.
+    pub fn list_directory_contents_with_depth(
+        path: ShinkaiPath,
+        sqlite_manager: &SqliteManager,
+        max_depth: usize,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/0, max_depth)
+    }
+
+    /// Private helper that does the actual directory reading.
+    /// - `current_depth` starts at 0
+    /// - If `current_depth < max_depth`, we recurse into subdirectories
+    fn gather_directory_contents(
+        path: &ShinkaiPath,
+        sqlite_manager: &SqliteManager,
+        current_depth: usize,
+        max_depth: usize,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        let mut contents = Vec::new();
         let rel_path = path.relative_path();
 
-        // Read directory contents and store in a hash map
-        for entry in fs::read_dir(path.as_path())? {
+        for entry in std::fs::read_dir(path.as_path())? {
             let entry = entry?;
             let metadata = entry.metadata()?;
+
             let file_name = entry.file_name().into_string().unwrap_or_default();
             let shinkai_path = ShinkaiPath::new(&format!("{}/{}", rel_path, file_name));
-            file_map.insert(file_name.clone(), metadata.is_dir());
 
-            let file_info = FileInfo {
+            let mut file_info = FileInfo {
                 path: shinkai_path.relative_path().to_string(),
                 is_directory: metadata.is_dir(),
                 created_time: metadata.created().ok(),
                 modified_time: metadata.modified().ok(),
-                has_embeddings: false, // Default to false, will update if found in DB
+                has_embeddings: false,
+                children: None,
+                size: if metadata.is_file() {
+                    Some(metadata.len())
+                } else {
+                    None
+                },
+                name: file_name.clone(),
             };
+
+            // If it's a directory and we can still go deeper, recurse
+            if file_info.is_directory && current_depth < max_depth {
+                file_info.children = Some(Self::gather_directory_contents(
+                    &shinkai_path,
+                    sqlite_manager,
+                    current_depth + 1,
+                    max_depth,
+                )?);
+            } else if !file_info.is_directory {
+                // Lookup embeddings directly in the DB
+                let maybe_parsed_file = sqlite_manager.get_parsed_file_by_rel_path(&file_info.path)?;
+                file_info.has_embeddings = maybe_parsed_file.is_some();
+            }
+
             contents.push(file_info);
         }
-
-        // Use the relative path for querying the database
-        let files_with_embeddings = sqlite_manager.get_processed_files_in_directory(&rel_path)?;
-
-        // Create a hash map for files with embeddings
-        let embeddings_map: std::collections::HashSet<_> = files_with_embeddings
-            .into_iter()
-            .map(|file| file.relative_path)
-            .collect();
-
-        // Update the contents with embedding information
-        for file_info in &mut contents {
-            if embeddings_map.contains(&file_info.path) {
-                file_info.has_embeddings = true;
-            }
-        }
-
         Ok(contents)
     }
 
@@ -636,5 +659,75 @@ mod tests {
         let expected_folder_path = db.get_and_create_job_folder(job_id).unwrap();
         let expected_path = expected_folder_path.as_path().join(file_name);
         assert_eq!(shinkai_path.as_path().to_string_lossy(), expected_path.to_string_lossy());
+    }
+
+    #[test]
+    #[serial]
+    fn test_list_directory_contents_with_depth() {
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
+
+        // Create a temporary directory structure
+        let base_dir = ShinkaiPath::from_base_path();
+        let level1_dir = base_dir.as_path().join("level1");
+        let level2_dir = level1_dir.join("level2");
+        let level3_dir = level2_dir.join("level3");
+
+        fs::create_dir_all(&level3_dir.as_path()).unwrap();
+
+        // Create files at different levels
+        let file1_path = level1_dir.join("file1.txt");
+        let file2_path = level2_dir.join("file2.txt");
+        let file3_path = level3_dir.join("file3.txt");
+
+        File::create(&file1_path.as_path()).unwrap();
+        File::create(&file2_path.as_path()).unwrap();
+        File::create(&file3_path.as_path()).unwrap();
+
+        // Add parsed files with embeddings to the database
+        let pf1 = create_test_parsed_file(1, &ShinkaiPath::from_string("level1/file1.txt".to_string()).relative_path());
+        let pf2 = create_test_parsed_file(2, &ShinkaiPath::from_string("level1/level2/file2.txt".to_string()).relative_path());
+        db.add_parsed_file(&pf1).unwrap();
+        db.add_parsed_file(&pf2).unwrap();
+
+        // Call the function to list directory contents with depth 3
+        let contents = ShinkaiFileManager::list_directory_contents_with_depth(base_dir, &db, 3).unwrap();
+        eprintln!("contents: {:?}", contents);
+
+        // Check that the directory contents are correct
+        assert_eq!(contents.len(), 1); // Only one top-level directory
+
+        let level1_info = &contents[0];
+        assert_eq!(level1_info.path, "level1");
+        assert!(level1_info.is_directory);
+        assert!(level1_info.children.is_some());
+
+        let level2_contents = level1_info.children.as_ref().unwrap();
+        assert_eq!(level2_contents.len(), 2); // One directory and one file
+
+        let file1_info = level2_contents.iter().find(|info| info.path == "level1/file1.txt").unwrap();
+        assert!(!file1_info.is_directory);
+        assert!(file1_info.has_embeddings, "File 'level1/file1.txt' should have embeddings.");
+
+        let level2_info = level2_contents.iter().find(|info| info.path == "level1/level2").unwrap();
+        assert!(level2_info.is_directory);
+        assert!(level2_info.children.is_some());
+
+        let level3_contents = level2_info.children.as_ref().unwrap();
+        assert_eq!(level3_contents.len(), 2); // One directory and one file
+
+        let file2_info = level3_contents.iter().find(|info| info.path == "level1/level2/file2.txt").unwrap();
+        assert!(!file2_info.is_directory);
+        assert!(file2_info.has_embeddings, "File 'level1/level2/file2.txt' should have embeddings.");
+
+        let level3_info = level3_contents.iter().find(|info| info.path == "level1/level2/level3").unwrap();
+        assert!(level3_info.is_directory);
+        assert!(level3_info.children.is_some());
+
+        let level3_files = level3_info.children.as_ref().unwrap();
+        assert_eq!(level3_files.len(), 1); // Only one file
+
+        let file3_info = level3_files.iter().find(|info| info.path == "level1/level2/level3/file3.txt").unwrap();
+        assert!(!file3_info.is_directory);
+        assert!(!file3_info.has_embeddings, "File 'level1/level2/level3/file3.txt' should not have embeddings.");
     }
 }
