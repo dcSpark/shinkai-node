@@ -23,7 +23,12 @@ impl ShinkaiPath {
                 base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
             }
         } else {
-            base_path.join(path_buf)
+            // Check if base_path is part of path_buf
+            if path_buf.starts_with(&base_path) {
+                path_buf
+            } else {
+                base_path.join(path_buf)
+            }
         };
 
         ShinkaiPath { path: final_path }
