@@ -10,6 +10,7 @@ use shinkai_message_primitives::schemas::{
 };
 use shinkai_vector_resources::embeddings::Embedding;
 
+use super::tool_playground::{SqlQuery, SqlTable};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
     tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
@@ -175,6 +176,24 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => "Network",
             ShinkaiTool::Deno(_, _) => "Deno",
             ShinkaiTool::Python(_, _) => "Python",
+        }
+    }
+
+    /// Returns the SQL queries of the tool
+    pub fn sql_queries(&self) -> Vec<SqlQuery> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.sql_queries.clone().unwrap_or_default(),
+            ShinkaiTool::Python(p, _) => p.sql_queries.clone().unwrap_or_default(),
+            _ => vec![],
+        }
+    }
+
+    /// Returns the SQL tables of the tool
+    pub fn sql_tables(&self) -> Vec<SqlTable> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.sql_tables.clone().unwrap_or_default(),
+            ShinkaiTool::Python(p, _) => p.sql_tables.clone().unwrap_or_default(),
+            _ => vec![],
         }
     }
 
