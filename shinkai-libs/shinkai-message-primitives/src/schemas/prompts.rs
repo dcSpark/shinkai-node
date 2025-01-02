@@ -440,8 +440,6 @@ impl Prompt {
             }
         }
 
-        eprintln!("(before combine) generate_chat_completion_messages tiktoken_messages: {:?}", tiktoken_messages);
-
         // Combine ExtraContext and UserLastMessage into one message
         if !extra_context_content.is_empty() || last_user_message.is_some() {
             let combined_content = format!(
@@ -476,8 +474,6 @@ impl Prompt {
         for response in function_call_responses {
             tiktoken_messages.push(response);
         }
-
-        eprintln!("(after combine) generate_chat_completion_messages tiktoken_messages: {:?}", tiktoken_messages);
 
         (tiktoken_messages, current_length)
     }

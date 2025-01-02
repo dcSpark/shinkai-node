@@ -42,7 +42,6 @@ impl JobPromptGenerator {
         let has_ret_nodes = !ret_nodes.is_empty();
 
         // Add previous messages
-        // TODO: this should be full messages with assets and not just strings
         if let Some(step_history) = job_step_history {
             prompt.add_step_history(step_history, 97);
         }
