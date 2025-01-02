@@ -3,7 +3,7 @@ use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
 use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embeddings::Embedding;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
@@ -26,7 +26,7 @@ use tokio::sync::{Mutex, RwLock};
 use async_trait::async_trait;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::params_from_iter;
+use rusqlite::{params_from_iter, Params, ToSql};
 
 // LLM Tool
 pub struct SQLProcessorTool {
@@ -72,8 +72,7 @@ SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DES
                 input_args: {
                     let mut params = Parameters::new();
                     params.add_property("query".to_string(), "string".to_string(), "The SQL query to execute".to_string(), true);
-                    params.add_property("query_params".to_string(), "any[]".to_string(), "The parameters to pass to the query".to_string(), false);
-                    params.add_property("database_name".to_string(), "string".to_string(), "Use 'default' for default database".to_string(), true);
+                    params.add_property("params".to_string(), "any[]".to_string(), "The parameters to pass to the query".to_string(), false);
                     params
                 },
                 output_arg: ToolOutputArg {
@@ -88,11 +87,50 @@ SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DES
     }
 }
 
+fn get_folder_path(app_id: String) -> Result<PathBuf, ToolError> {
+    let node_env = fetch_node_environment();
+    let node_storage_path = node_env
+        .node_storage_path
+        .clone()
+        .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+    let p = Path::new(&node_storage_path)
+        .join("tools_storage")
+        .join(app_id)
+        .join("home")
+        .join("db.sqlite");
+    Ok(p)
+}
+
+pub async fn get_current_tables(app_id: String) -> Result<Vec<String>, ToolError> {
+    let full_path = get_folder_path(app_id)?;
+    let manager = SqliteConnectionManager::file(full_path.clone());
+    let pool = Pool::new(manager)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to create connection pool: {}", e)))?;
+
+    let conn = pool
+        .get()
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get connection: {}", e)))?;
+
+    let query = "SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+
+    let tables = conn
+        .prepare(query)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to prepare query: {}", e)))?
+        .query_map(params_from_iter(&[] as &[&dyn ToSql]), |row| {
+            let table_sql: String = row.get(0).unwrap_or_default();
+            Ok(table_sql.replace("\n", ""))
+        })
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to execute query: {}", e)))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to collect results: {}", e)))?;
+    Ok(tables)
+}
+
 #[async_trait]
 impl ToolExecutor for SQLProcessorTool {
     async fn execute(
         _bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         _db_clone: Arc<SqliteManager>,
         _vector_fs_clone: Arc<VectorFS>,
@@ -110,20 +148,8 @@ impl ToolExecutor for SQLProcessorTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| ToolError::ExecutionError("Query parameter is required".to_string()))?;
 
-        let node_env = fetch_node_environment();
-        let node_storage_path = node_env
-            .node_storage_path
-            .clone()
-            .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-        let full_path = Path::new(&node_storage_path)
-            .join("tools_storage")
-            .join(app_id)
-            .join("home")
-            .join(tool_id)
-            .join("db.sqlite");
-
         let query_params = parameters
-            .get("query_params")
+            .get("params")
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -131,7 +157,7 @@ impl ToolExecutor for SQLProcessorTool {
                     .collect::<Vec<&str>>()
             })
             .unwrap_or(vec![]);
-
+        let full_path = get_folder_path(app_id)?;
         // Ensure parent directory exists
         if let Some(parent) = full_path.parent() {
             std::fs::create_dir_all(parent)

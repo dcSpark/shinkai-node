@@ -165,9 +165,11 @@ impl SqliteManager {
         let mut stmt = conn.prepare(
             "SELECT 
                 name, description, author, keywords, configurations, parameters,
-                result, tool_router_key, job_id, job_id_history, code, language
+                result, tool_router_key, job_id, job_id_history, code, language, tool_version
              FROM tool_playground 
-             WHERE tool_router_key = ?1",
+             WHERE tool_router_key = ?1
+             ORDER BY tool_version DESC
+             LIMIT 1",
         )?;
 
         let tool = stmt
@@ -205,7 +207,7 @@ impl SqliteManager {
                     language: code_language,
                     metadata: ToolPlaygroundMetadata {
                         name: row.get(0)?,
-                        version: "1.0.0".to_string(),
+                        version: row.get(12)?,
                         description: row.get(1)?,
                         author: row.get(2)?,
                         keywords: keywords.split(',').map(String::from).collect(),
@@ -241,7 +243,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare(
             "SELECT
                 name, description, author, keywords, configurations, parameters, 
-                result, tool_router_key, job_id, job_id_history, code, language
+                result, tool_router_key, job_id, job_id_history, code, language, tool_version
              FROM tool_playground",
         )?;
 
@@ -274,7 +276,7 @@ impl SqliteManager {
                 language: code_language,
                 metadata: ToolPlaygroundMetadata {
                     name: row.get(0)?,
-                    version: "1.0.0".to_string(),
+                    version: row.get(12)?,
                     description: row.get(1)?,
                     author: row.get(2)?,
                     keywords: keywords.split(',').map(String::from).collect(),
@@ -313,7 +315,7 @@ impl SqliteManager {
         // 1) Find the ID of the playground row
         let playground_id: i64 = conn
             .query_row(
-                "SELECT id FROM tool_playground WHERE tool_router_key = ?1",
+                "SELECT id FROM tool_playground WHERE tool_router_key = ?1 order by tool_version desc limit 1",
                 params![tool_router_key],
                 |row| row.get(0),
             )

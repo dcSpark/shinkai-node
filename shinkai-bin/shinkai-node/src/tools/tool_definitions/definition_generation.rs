@@ -3,7 +3,7 @@ use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -103,42 +103,50 @@ pub async fn generate_tool_definitions(
         };
     }
 
-    for tool in all_tools {
-        let tool_playground: Option<ToolPlayground> =
-            match sqlite_manager.get_tool_playground(&tool.tool_router_key) {
-                Ok(tool_playground) => Some(tool_playground),
-                Err(SqliteManagerError::ToolPlaygroundNotFound(_)) => None,
-                Err(e) => return Err(APIError::from(e.to_string())),
-            };
+    for tool_header in all_tools {
+        let tool_data = match sqlite_manager.get_tool_by_key(&tool_header.tool_router_key) {
+            Ok(tool_data) => tool_data,
+            Err(e) => return Err(APIError::from(e.to_string())),
+        };
 
         match language {
             CodeLanguage::Typescript => {
                 let function_name =
-                    crate::tools::llm_language_support::generate_typescript::create_function_name_set(&tool);
+                    crate::tools::llm_language_support::generate_typescript::create_function_name_set(&tool_header);
                 if generated_names.contains(&function_name) {
                     eprintln!(
                         "Warning: Duplicate function name '{}' found for tool '{}'. Skipping generation.",
                         function_name,
-                        tool.name.clone()
+                        tool_header.name.clone()
                     );
                     continue;
                 }
                 generated_names.insert(function_name);
-                output.push_str(&generate_typescript_definition(tool, only_headers, tool_playground));
+                output.push_str(&generate_typescript_definition(
+                    tool_header,
+                    tool_data.sql_tables(),
+                    tool_data.sql_queries(),
+                    only_headers,
+                ));
             }
             CodeLanguage::Python => {
                 let function_name =
-                    crate::tools::llm_language_support::generate_python::create_function_name_set(&tool);
+                    crate::tools::llm_language_support::generate_python::create_function_name_set(&tool_header);
                 if generated_names.contains(&function_name) {
                     eprintln!(
                         "Warning: Duplicate function name '{}' found for tool '{}'. Skipping generation.",
                         function_name,
-                        tool.name.clone()
+                        tool_header.name.clone()
                     );
                     continue;
                 }
                 generated_names.insert(function_name);
-                output.push_str(&generate_python_definition(tool, only_headers, tool_playground));
+                output.push_str(&generate_python_definition(
+                    tool_header,
+                    tool_data.sql_tables(),
+                    tool_data.sql_queries(),
+                    only_headers,
+                ));
             }
         }
     }
