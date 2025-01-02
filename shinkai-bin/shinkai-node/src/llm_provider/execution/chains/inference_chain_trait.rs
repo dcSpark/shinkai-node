@@ -1,5 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
@@ -20,7 +21,7 @@ use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::fmt;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 /// Trait that abstracts top level functionality between the inference chains. This allows
 /// the inference chain router to work with them all easily.
@@ -77,6 +78,7 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>>;
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>>;
+    fn job_callback_manager(&self) -> Option<Arc<Mutex<JobCallbackManager>>>;
     // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>>;
     fn llm_stopper(&self) -> Arc<LLMStopper>;
 
@@ -182,6 +184,10 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.ext_agent_payments_manager.clone()
     }
 
+    fn job_callback_manager(&self) -> Option<Arc<Mutex<JobCallbackManager>>> {
+        self.job_callback_manager.clone()
+    }
+
     // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
     //     self.sqlite_logger.clone()
     // }
@@ -220,6 +226,7 @@ pub struct InferenceChainContext {
     pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+    pub job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
     // pub sqlite_logger: Option<Arc<SqliteLogger>>,
     pub llm_stopper: Arc<LLMStopper>,
 }
@@ -245,6 +252,7 @@ impl InferenceChainContext {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
@@ -269,6 +277,7 @@ impl InferenceChainContext {
             sheet_manager,
             my_agent_payments_manager,
             ext_agent_payments_manager,
+            job_callback_manager,
             // sqlite_logger,
             llm_stopper,
         }
@@ -308,6 +317,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("sheet_manager", &self.sheet_manager.is_some())
             .field("my_agent_payments_manager", &self.my_agent_payments_manager.is_some())
             .field("ext_agent_payments_manager", &self.ext_agent_payments_manager.is_some())
+            .field("job_callback_manager", &self.job_callback_manager.is_some())
             // .field("sqlite_logger", &self.sqlite_logger.is_some())
             .finish()
     }
@@ -502,6 +512,10 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).ext_agent_payments_manager()
     }
 
+    fn job_callback_manager(&self) -> Option<Arc<Mutex<JobCallbackManager>>> {
+        (**self).job_callback_manager()
+    }
+
     // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>> {
     //     (**self).sqlite_logger()
     // }
@@ -682,6 +696,10 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
     }
 
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>> {
+        unimplemented!()
+    }
+
+    fn job_callback_manager(&self) -> Option<Arc<Mutex<JobCallbackManager>>> {
         unimplemented!()
     }
 

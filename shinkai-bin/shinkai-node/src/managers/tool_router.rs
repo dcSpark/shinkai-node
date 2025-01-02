@@ -4,9 +4,11 @@ use std::time::Instant;
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
+use crate::llm_provider::job_manager::JobManager;
 use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
+use crate::tools::tool_execution::execution_custom::execute_custom_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool_config, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
@@ -34,10 +36,22 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use tokio::sync::Mutex;
+
+use ed25519_dalek::SigningKey;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+use super::identity_manager::IdentityManagerTrait;
+use super::IdentityManager;
 
 #[derive(Clone)]
 pub struct ToolRouter {
     pub sqlite_manager: Arc<SqliteManager>,
+    pub identity_manager: Arc<Mutex<IdentityManager>>,
+    pub encryption_secret_key: EncryptionStaticKey,
+    pub encryption_public_key: EncryptionPublicKey,
+    pub signing_secret_key: SigningKey,
+    pub job_manager: Option<Arc<Mutex<JobManager>>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -47,8 +61,22 @@ pub struct ToolCallFunctionResponse {
 }
 
 impl ToolRouter {
-    pub fn new(sqlite_manager: Arc<SqliteManager>) -> Self {
-        ToolRouter { sqlite_manager }
+    pub fn new(
+        sqlite_manager: Arc<SqliteManager>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
+    ) -> Self {
+        ToolRouter {
+            sqlite_manager,
+            identity_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+            job_manager,
+        }
     }
 
     pub async fn initialization(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
@@ -453,7 +481,7 @@ impl ToolRouter {
         let function_args = function_call.arguments.clone();
 
         match shinkai_tool {
-            ShinkaiTool::Python(python_tool, _) => {
+            ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
                 let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
 
@@ -520,25 +548,56 @@ impl ToolRouter {
                     function_call,
                 });
             }
-            ShinkaiTool::Rust(_, _) => {
-                unimplemented!("Rust tool calls are not supported yet");
-                // if let Some(rust_function) = RustToolFunctions::get_tool_function(&function_name) {
-                //     let args: Vec<Box<dyn Any + Send>> = RustTool::convert_args_from_fn_call(function_args)?;
-                //     let result = rust_function(context, args)
-                //         .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-                //     let result_str = result
-                //         .downcast_ref::<String>()
-                //         .ok_or_else(|| {
-                //             LLMProviderError::InvalidFunctionResult(format!("Invalid result: {:?}", result))
-                //         })?
-                //         .clone();
-                //     return Ok(ToolCallFunctionResponse {
-                //         response: result_str,
-                //         function_call,
-                //     });
-                // }
+            ShinkaiTool::Rust(_rust_tool, _is_enabled) => {
+                let app_id = context.full_job().job_id().to_string();
+                let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
+                let function_config = shinkai_tool.get_config_from_env();
+                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+
+                let vector_fs = context.vector_fs();
+                let db = context.db();
+                let llm_provider = context.agent().get_llm_provider_id().to_string();
+                let bearer = db.read_api_v2_key().unwrap_or_default().unwrap_or_default();
+
+
+                let job_callback_manager = context.job_callback_manager();
+                let mut job_manager: Option<Arc<Mutex<JobManager>>> = None;
+                if let Some(job_callback_manager) = &job_callback_manager {
+                    let job_callback_manager = job_callback_manager.lock().await;
+                    job_manager = job_callback_manager.job_manager.clone();
+                }
+
+                if job_manager.is_none() {
+                    return Err(LLMProviderError::FunctionExecutionError("Job manager is not available".to_string()));
+                }
+
+                let result = execute_custom_tool(
+                    &shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    function_args,
+                    tool_id,
+                    app_id,
+                    function_config_vec,
+                    bearer,
+                    db.clone(),
+                    vector_fs,
+                    llm_provider,
+                    node_name,
+                    self.identity_manager.clone(),
+                    job_manager.unwrap(),
+                    self.encryption_secret_key.clone(),
+                    self.encryption_public_key.clone(),
+                    self.signing_secret_key.clone(),
+                )
+                .await?;
+
+                let result_str = serde_json::to_string(&result)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                return Ok(ToolCallFunctionResponse {
+                    response: result_str,
+                    function_call,
+                });
             }
-            ShinkaiTool::Deno(deno_tool, _) => {
+            ShinkaiTool::Deno(deno_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
                 let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
 
@@ -605,7 +664,7 @@ impl ToolRouter {
                     function_call,
                 });
             }
-            ShinkaiTool::Network(network_tool, _) => {
+            ShinkaiTool::Network(network_tool, _is_enabled) => {
                 eprintln!("network tool with name {:?}", network_tool.name);
 
                 let agent_payments_manager = context.my_agent_payments_manager();

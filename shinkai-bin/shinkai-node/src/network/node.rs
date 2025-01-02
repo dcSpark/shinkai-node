@@ -288,7 +288,14 @@ impl Node {
         });
 
         // Initialize ToolRouter
-        let tool_router = ToolRouter::new(db_arc.clone());
+        let tool_router = ToolRouter::new(
+            db_arc.clone(),
+            identity_manager.clone(),
+            clone_static_secret_key(&encryption_secret_key),
+            encryption_public_key,
+            clone_signature_secret_key(&identity_secret_key),
+            None,
+        );
 
         // Read wallet_manager from db if it exists, if not, None
         let mut wallet_manager: Option<WalletManager> = match db_arc.read_wallet_manager() {
