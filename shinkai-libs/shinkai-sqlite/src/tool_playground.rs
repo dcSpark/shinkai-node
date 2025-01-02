@@ -180,6 +180,7 @@ impl SqliteManager {
                 let result: String = row.get(6)?;
                 let job_id_history: String = row.get(9)?;
                 let language: String = row.get(11)?;
+                let version: IndexableVersion = IndexableVersion::from_number(row.get(12)?);
 
                 let code_language = match language.as_str() {
                     "typescript" => CodeLanguage::Typescript,
@@ -207,7 +208,7 @@ impl SqliteManager {
                     language: code_language,
                     metadata: ToolPlaygroundMetadata {
                         name: row.get(0)?,
-                        version: row.get(12)?,
+                        version: version.to_version_string(),
                         description: row.get(1)?,
                         author: row.get(2)?,
                         keywords: keywords.split(',').map(String::from).collect(),
@@ -254,7 +255,7 @@ impl SqliteManager {
             let result: String = row.get(6)?;
             let job_id_history: String = row.get(9)?;
             let language: String = row.get(11)?;
-
+            let version: IndexableVersion = IndexableVersion::from_number(row.get(12)?);
             let code_language = match language.as_str() {
                 "typescript" => CodeLanguage::Typescript,
                 "python" => CodeLanguage::Python,
@@ -276,7 +277,7 @@ impl SqliteManager {
                 language: code_language,
                 metadata: ToolPlaygroundMetadata {
                     name: row.get(0)?,
-                    version: row.get(12)?,
+                    version: version.to_version_string(),
                     description: row.get(1)?,
                     author: row.get(2)?,
                     keywords: keywords.split(',').map(String::from).collect(),
