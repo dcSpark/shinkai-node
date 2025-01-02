@@ -10,11 +10,11 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
-    schemas::{identity::Identity, shinkai_fs::ShinkaiFileChunkCollection},
+    schemas::shinkai_fs::ShinkaiFileChunkCollection,
     shinkai_message::shinkai_message_schemas::{
-        APIConvertFilesAndSaveToFolder, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder,
-        APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-        APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
+        APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+        APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
+        APIVecFsSearchItems,
     },
     shinkai_utils::shinkai_path::ShinkaiPath,
 };
@@ -41,8 +41,8 @@ impl Node {
 
         let vr_path = ShinkaiPath::from_string(input_payload.path);
 
-        // Use list_directory_contents to get directory contents
-        let directory_contents = ShinkaiFileManager::list_directory_contents(vr_path, &db);
+        // Use list_directory_contents_with_depth to get directory contents with depth 1
+        let directory_contents = ShinkaiFileManager::list_directory_contents_with_depth(vr_path, &db, 1);
 
         if let Err(e) = directory_contents {
             let api_error = APIError {
@@ -521,7 +521,10 @@ impl Node {
             Ok(parsed_files) => {
                 for parsed_file in parsed_files {
                     parsed_file_ids.push(parsed_file.id.unwrap());
-                    paths_map.insert(parsed_file.id.unwrap(), ShinkaiPath::from_string(parsed_file.relative_path.clone()));
+                    paths_map.insert(
+                        parsed_file.id.unwrap(),
+                        ShinkaiPath::from_string(parsed_file.relative_path.clone()),
+                    );
                 }
             }
             Err(e) => {
@@ -791,8 +794,15 @@ impl Node {
         .await
         {
             Ok(response) => {
-                let success_message = format!("File uploaded and processed successfully for job {}: {}", job_id, filename);
-                let _ = res.send(Ok(serde_json::json!({ "message": success_message, "filename": response.filename() }))).await;
+                let success_message = format!(
+                    "File uploaded and processed successfully for job {}: {}",
+                    job_id, filename
+                );
+                let _ = res
+                    .send(Ok(
+                        serde_json::json!({ "message": success_message, "filename": response.filename() }),
+                    ))
+                    .await;
             }
             Err(e) => {
                 let api_error = APIError {
