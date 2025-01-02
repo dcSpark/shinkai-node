@@ -576,8 +576,12 @@ pub async fn get_folder_name_for_job(
         .await
         .unwrap();
 
-    // Receive and return the folder name
-    res_receiver.recv().await.unwrap()
+    // Receive and convert the Value to String
+    res_receiver
+        .recv()
+        .await
+        .unwrap()
+        .map(|value| value.as_str().unwrap_or_default().to_string())
 }
 
 pub async fn get_files_for_job(

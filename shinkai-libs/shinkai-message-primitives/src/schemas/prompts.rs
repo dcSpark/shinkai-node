@@ -250,12 +250,14 @@ impl Prompt {
         self.add_sub_prompts(updated_sub_prompts);
     }
 
-    /// Adds previous results from step history into the Prompt, up to max_tokens
+    /// Adds previous results from step history into the Prompt, up to max_tokens.
+    /// Note: The last message in the history is not added.
     /// Of note, priority value must be between 0-100.
     pub fn add_step_history(&mut self, history: Vec<ShinkaiMessage>, priority_value: u8) {
         let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
         let sub_prompts_list: Vec<SubPrompt> = history
             .iter()
+            .take(history.len().saturating_sub(1)) // Skip the last message
             .filter_map(|step| Some(step.to_prompt()))
             .flat_map(|prompt| prompt.sub_prompts.clone())
             .collect();
@@ -438,6 +440,8 @@ impl Prompt {
             }
         }
 
+        eprintln!("(before combine) generate_chat_completion_messages tiktoken_messages: {:?}", tiktoken_messages);
+
         // Combine ExtraContext and UserLastMessage into one message
         if !extra_context_content.is_empty() || last_user_message.is_some() {
             let combined_content = format!(
@@ -472,6 +476,8 @@ impl Prompt {
         for response in function_call_responses {
             tiktoken_messages.push(response);
         }
+
+        eprintln!("(after combine) generate_chat_completion_messages tiktoken_messages: {:?}", tiktoken_messages);
 
         (tiktoken_messages, current_length)
     }

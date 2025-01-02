@@ -45,7 +45,7 @@ impl ShinkaiMessage {
         };
 
         // Add the job message content as an Omni sub-prompt
-        println!("Adding omni sub-prompt with content: {}", job_message.content);
+        // println!("Adding omni sub-prompt with content: {}", job_message.content);
         prompt.add_omni(job_message.content, HashMap::new(), sub_prompt_type, 100);
 
         prompt
