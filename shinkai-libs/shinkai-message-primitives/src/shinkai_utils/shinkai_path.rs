@@ -1,11 +1,12 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, Visitor, MapAccess};
 use std::env;
 use std::fmt;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
+use serde_json;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShinkaiPath {
     pub path: PathBuf,
 }
@@ -177,6 +178,16 @@ impl<'de> Deserialize<'de> for ShinkaiPath {
     }
 }
 
+impl Serialize for ShinkaiPath {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize the relative path as a string
+        serializer.serialize_str(self.relative_path())
+    }
+}
+
 // Add tests for the new functionality
 #[cfg(test)]
 mod tests {
@@ -316,5 +327,20 @@ mod tests {
         let path_with_no_filename = "word_files/";
         let shinkai_path_with_no_filename = ShinkaiPath::from_string(path_with_no_filename.to_string());
         assert_eq!(shinkai_path_with_no_filename.filename(), None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_serialize_relative_path() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+        
+        // Create a ShinkaiPath instance
+        let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
+        
+        // Serialize the ShinkaiPath
+        let serialized_path = serde_json::to_string(&path).unwrap();
+        
+        // Check if the serialized output matches the expected relative path
+        assert_eq!(serialized_path, "\"word_files/christmas.docx\"");
     }
 }
