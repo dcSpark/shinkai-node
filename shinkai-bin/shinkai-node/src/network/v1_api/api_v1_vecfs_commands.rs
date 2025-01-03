@@ -626,7 +626,7 @@ impl Node {
     }
 
     pub async fn api_vec_fs_delete_folder(
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
         encryption_secret_key: EncryptionStaticKey,
@@ -660,7 +660,7 @@ impl Node {
             return Ok(());
         }
 
-        match ShinkaiFileManager::remove_folder(folder_path) {
+        match ShinkaiFileManager::remove_folder(folder_path, &db) {
             Ok(_) => {
                 let success_message = format!("Folder successfully deleted: {}", input_payload.path);
                 let _ = res.send(Ok(success_message)).await;
