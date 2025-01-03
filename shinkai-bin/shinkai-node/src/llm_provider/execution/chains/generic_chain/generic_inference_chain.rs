@@ -4,6 +4,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{
 };
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
@@ -84,6 +85,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
+            self.context.job_callback_manager.clone(),
             // self.context.sqlite_logger.clone(),
             self.context.llm_stopper.clone(),
             fetch_node_environment(),
@@ -124,6 +126,7 @@ impl GenericInferenceChain {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
         node_env: NodeEnvironment,
@@ -401,6 +404,7 @@ impl GenericInferenceChain {
                     sheet_manager.clone(),
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
+                    job_callback_manager.clone(),
                     // sqlite_logger.clone(),
                     llm_stopper.clone(),
                 );

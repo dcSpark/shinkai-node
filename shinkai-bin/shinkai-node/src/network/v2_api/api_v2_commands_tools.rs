@@ -604,8 +604,18 @@ impl Node {
         }
 
         // Create a longer-lived binding for the db clone
-
-        match db.tool_exists(&shinkai_tool.tool_router_key().to_string_without_version()) {
+        let version = shinkai_tool.version_indexable();
+        if version.is_err() {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to get version: {}", version.err().unwrap()),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        let version = Some(version.unwrap());
+        match db.tool_exists(&shinkai_tool.tool_router_key().to_string_without_version(), version) {
             Ok(true) => {
                 // Tool already exists, update it
                 match db.update_tool(shinkai_tool).await {
@@ -1544,6 +1554,9 @@ impl Node {
         let sqlite_manager_read = db;
         match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
             Ok(tool) => {
+                let mut tool = tool.clone();
+                tool.sanitize_config();
+
                 let tool_bytes = serde_json::to_vec(&tool).unwrap();
 
                 let name = format!(

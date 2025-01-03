@@ -127,6 +127,7 @@ impl JobManager {
             job_queue_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            job_callback_manager.clone(),
             // sqlite_logger.clone(),
             llm_stopper.clone(),
         )
@@ -278,6 +279,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            job_callback_manager.clone(),
             // sqlite_logger.clone(),
             llm_stopper.clone(),
         )
@@ -356,6 +358,7 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<bool, LLMProviderError> {
@@ -426,6 +429,7 @@ impl JobManager {
                 Some(sheet_manager.clone()),
                 my_agent_payments_manager.clone(),
                 ext_agent_payments_manager.clone(),
+                job_callback_manager.clone(),
                 // sqlite_logger.clone(),
                 llm_stopper.clone(),
             )

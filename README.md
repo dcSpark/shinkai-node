@@ -14,6 +14,10 @@ More In Depth Codebase Documentation (Mutable.ai): [https://wiki.mutable.ai/dcSp
 
 ## Installation (Local Compilation)
 
+### Prerequisites
+
+- Rust version >= 1.81 (required for `std::fs::exists` functionality)
+
 Please refer to the installation instructions for your operating system:
 
 - [Windows Installation Instructions](docs/installation/windows.md)

@@ -36,7 +36,6 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
-    // TODO: if it is, find it and call it
 
     // Check if the tool_router_key contains "rust_toolkit"
     if !tool_router_key.contains("rust_toolkit") {

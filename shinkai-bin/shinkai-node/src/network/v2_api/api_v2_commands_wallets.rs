@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::{
     wallet_mixed::{Network, NetworkIdentifier},
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::{
     network::{node_error::NodeError, Node},

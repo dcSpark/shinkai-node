@@ -4,11 +4,20 @@ use utoipa::ToSchema;
 use super::indexable_version::IndexableVersion;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(try_from = "String")]
 pub struct ToolRouterKey {
     pub source: String,
     pub toolkit_name: String,
     pub name: String,
     pub version: Option<String>,
+}
+
+impl TryFrom<String> for ToolRouterKey {
+    type Error = String;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        ToolRouterKey::from_string(&s).map_err(|e| e.to_string())
+    }
 }
 
 impl ToolRouterKey {
@@ -18,6 +27,51 @@ impl ToolRouterKey {
             toolkit_name,
             name,
             version,
+        }
+    }
+
+    pub fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Option<Vec<Self>>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let string_vec: Option<Vec<String>> = Option::deserialize(deserializer)?;
+    
+        match string_vec {
+            Some(vec) => {
+                let router_keys = vec
+                    .into_iter()
+                    .map(|s| Self::from_string(&s))
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(serde::de::Error::custom)?;
+                Ok(Some(router_keys))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn serialize_tool_router_keys<S>(
+        keys: &Option<Vec<ToolRouterKey>>, 
+        serializer: S
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match keys {
+            Some(keys) => {
+                let strings: Vec<String> = keys
+                    .iter()
+                    .map(|k| {
+                        // If version is Some, use to_string_with_version()
+                        if k.version.is_some() {
+                            k.to_string_with_version()
+                        } else {
+                            k.to_string_without_version()
+                        }
+                    })
+                    .collect();
+                strings.serialize(serializer)
+            }
+            None => serializer.serialize_none(),
         }
     }
 

@@ -3,6 +3,7 @@ use super::inference_chain_trait::{InferenceChain, InferenceChainContext, Infere
 use super::sheet_ui_chain::sheet_ui_inference_chain::SheetUIInferenceChain;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
@@ -39,6 +40,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
@@ -80,6 +82,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            Some(job_callback_manager.clone()),
             // sqlite_logger.clone(),
             llm_stopper.clone(),
         );
