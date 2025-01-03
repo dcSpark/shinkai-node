@@ -34,7 +34,6 @@ use super::api_v1_handlers::api_vec_fs_search_item_handler;
 use super::api_v1_handlers::available_llm_providers_handler;
 use super::api_v1_handlers::change_job_agent_handler;
 use super::api_v1_handlers::change_nodes_name_handler;
-use super::api_v1_handlers::create_files_inbox_with_symmetric_key_handler;
 use super::api_v1_handlers::create_job_handler;
 use super::api_v1_handlers::create_registration_code_handler;
 use super::api_v1_handlers::create_sheet_handler;
@@ -43,7 +42,6 @@ use super::api_v1_handlers::export_sheet_handler;
 use super::api_v1_handlers::get_all_inboxes_for_profile_handler;
 use super::api_v1_handlers::get_all_smart_inboxes_for_profile_handler;
 use super::api_v1_handlers::get_all_subidentities_handler;
-use super::api_v1_handlers::get_filenames_message_handler;
 use super::api_v1_handlers::get_last_messages_from_inbox_handler;
 use super::api_v1_handlers::get_last_messages_from_inbox_with_branches_handler;
 use super::api_v1_handlers::get_last_notifications_handler;
@@ -55,7 +53,6 @@ use super::api_v1_handlers::get_sheet_handler;
 use super::api_v1_handlers::get_shinkai_tool_handler;
 use super::api_v1_handlers::get_subscription_links_handler;
 use super::api_v1_handlers::get_workflow_info_handler;
-use super::api_v1_handlers::handle_file_upload;
 use super::api_v1_handlers::identity_name_to_external_profile_data_handler;
 use super::api_v1_handlers::import_sheet_handler;
 use super::api_v1_handlers::job_message_handler;
@@ -370,16 +367,6 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| job_message_handler(node_commands_sender.clone(), message))
     };
 
-    let get_filenames = {
-        let node_commands_sender = node_commands_sender.clone();
-        warp::path!("get_filenames_for_file_inbox")
-            .and(warp::post())
-            .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                get_filenames_message_handler(node_commands_sender.clone(), message)
-            })
-    };
-
     let mark_as_read_up_to = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("mark_as_read_up_to")
@@ -431,29 +418,6 @@ pub fn v1_routes(
             .and_then(move |message: ShinkaiMessage| {
                 get_last_messages_from_inbox_with_branches_handler(node_commands_sender.clone(), message)
             })
-    };
-
-    let create_files_inbox_with_symmetric_key = {
-        let node_commands_sender = node_commands_sender.clone();
-        warp::path!("create_files_inbox_with_symmetric_key")
-            .and(warp::post())
-            .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                create_files_inbox_with_symmetric_key_handler(node_commands_sender.clone(), message)
-            })
-    };
-
-    let add_file_to_inbox_with_symmetric_key = {
-        let node_commands_sender = node_commands_sender.clone();
-        warp::path!("add_file_to_inbox_with_symmetric_key" / String / String)
-            .and(warp::post())
-            .and(warp::body::content_length_limit(1024 * 1024 * 200)) // 200MB
-            .and(warp::multipart::form().max_length(1024 * 1024 * 200))
-            .and_then(
-                move |string1: String, string2: String, form: warp::multipart::FormData| {
-                    handle_file_upload(node_commands_sender.clone(), string1, string2, form)
-                },
-            )
     };
 
     let update_job_to_finished = {
@@ -844,15 +808,12 @@ pub fn v1_routes(
         .or(update_smart_inbox_name)
         .or(create_job)
         .or(job_message)
-        .or(get_filenames)
         .or(mark_as_read_up_to)
         .or(create_registration_code)
         .or(use_registration_code)
         .or(change_nodes_name)
         .or(get_all_subidentities)
         .or(get_last_messages_from_inbox_with_branches)
-        .or(create_files_inbox_with_symmetric_key)
-        .or(add_file_to_inbox_with_symmetric_key)
         .or(update_job_to_finished)
         .or(api_available_shared_items)
         .or(api_available_shared_items_open)

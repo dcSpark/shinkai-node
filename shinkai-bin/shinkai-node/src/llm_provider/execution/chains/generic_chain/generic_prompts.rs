@@ -1,16 +1,17 @@
+use serde_json::json;
 use std::collections::HashMap;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
+
 use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::utils::environment::NodeEnvironment;
-use serde_json::json;
-use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
 
 impl JobPromptGenerator {
     /// A basic generic prompt generator
@@ -21,9 +22,9 @@ impl JobPromptGenerator {
         custom_user_prompt: Option<String>,
         user_message: String,
         image_files: HashMap<String, String>,
-        ret_nodes: Vec<RetrievedNode>,
+        ret_nodes: ShinkaiFileChunkCollection,
         _summary_text: Option<String>,
-        job_step_history: Option<Vec<JobStepResult>>,
+        job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<ToolCallFunctionResponse>,
         job_id: String,
@@ -41,7 +42,6 @@ impl JobPromptGenerator {
         let has_ret_nodes = !ret_nodes.is_empty();
 
         // Add previous messages
-        // TODO: this should be full messages with assets and not just strings
         if let Some(step_history) = job_step_history {
             prompt.add_step_history(step_history, 97);
         }
@@ -76,9 +76,9 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
             }
-            for node in ret_nodes {
-                prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
-            }
+            
+            prompt.add_ret_node_content(ret_nodes, SubPromptType::ExtraContext, 96);
+
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
             }

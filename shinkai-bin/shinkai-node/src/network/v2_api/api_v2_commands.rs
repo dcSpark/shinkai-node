@@ -10,14 +10,16 @@ use async_channel::Sender;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 
+use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
     node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::job_scope::JobScope,
+    schemas::ws_types::WSUpdateHandler,
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -39,10 +41,6 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::{
-    embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType, shinkai_time::ShinkaiStringTime,
-};
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -241,7 +239,7 @@ impl Node {
         payload: InitialRegistrationRequest,
         public_https_certificate: Option<String>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
-        vector_fs: Arc<VectorFS>,
+
         first_device_needs_registration_code: bool,
         embedding_generator: Arc<RemoteEmbeddingGenerator>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -265,7 +263,6 @@ impl Node {
 
         match Self::handle_registration_code_usage(
             db,
-            vector_fs,
             node_name,
             first_device_needs_registration_code,
             embedding_generator,
@@ -390,71 +387,6 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to update default embedding model: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn v2_api_update_supported_embedding_models(
-        db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        bearer: String,
-        models: Vec<String>,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let requester_name = match identity_manager.lock().await.get_main_identity() {
-            Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
-            _ => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Wrong identity type. Expected Standard identity.".to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Convert the strings to EmbeddingModelType
-        let new_supported_models: Vec<EmbeddingModelType> = models
-            .into_iter()
-            .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse embedding model"))
-            .collect();
-
-        // Update the supported embedding models in the database
-        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to update supported embedding models: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        match vector_fs
-            .set_profile_supported_models(&requester_name, &requester_name, new_supported_models)
-            .await
-        {
-            Ok(_) => {
-                let _ = res
-                    .send(Ok("Supported embedding models updated successfully".to_string()))
-                    .await;
-                Ok(())
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to update supported embedding models: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
@@ -905,72 +837,6 @@ impl Node {
         }
     }
 
-    pub async fn v2_api_download_file_from_inbox(
-        db: Arc<SqliteManager>,
-        bearer: String,
-        inbox_name: String,
-        filename: String,
-        res: Sender<Result<Vec<u8>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Try to decode the filename first to check if it's already encoded
-        let encoded_filename = if urlencoding::decode(&filename).is_ok() {
-            filename.clone()
-        } else {
-            urlencoding::encode(&filename).into_owned()
-        };
-
-        // Retrieve the file from the inbox
-        match db.get_file_from_inbox(inbox_name, encoded_filename) {
-            Ok(file_data) => {
-                let _ = res.send(Ok(file_data)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve file from inbox: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn v2_api_list_files_in_inbox(
-        db: Arc<SqliteManager>,
-        bearer: String,
-        inbox_name: String,
-        res: Sender<Result<Vec<String>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // List the files in the inbox
-        match db.get_all_filenames_from_inbox(inbox_name) {
-            Ok(file_list) => {
-                let _ = res.send(Ok(file_list)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to list files in inbox: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-        }
-
-        Ok(())
-    }
-
     pub async fn v2_api_stop_llm(
         db: Arc<SqliteManager>,
         stopper: Arc<LLMStopper>,
@@ -1264,6 +1130,11 @@ impl Node {
                 .map_or(existing_agent.knowledge.clone(), |v| {
                     v.iter().filter_map(|s| s.as_str().map(String::from)).collect()
                 }),
+            scope: partial_agent
+                .get("scope")
+                .and_then(|v| v.as_str())
+                .map(|s| serde_json::from_str::<MinimalJobScope>(s).unwrap_or(existing_agent.scope.clone()))
+                .unwrap_or(existing_agent.scope.clone()),
             storage_path: partial_agent
                 .get("storage_path")
                 .and_then(|v| v.as_str())
@@ -1452,7 +1323,7 @@ impl Node {
                 match tool_generation::v2_create_and_send_job_message(
                     bearer.clone(),
                     JobCreationInfo {
-                        scope: JobScope::new_default(),
+                        scope: MinimalJobScope::default(),
                         is_hidden: Some(true),
                         associated_ui: None,
                     },

@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, Weak};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex};
 
 type MutexQueue<T> = Arc<Mutex<Vec<T>>>;
 type Subscriber<T> = mpsc::Sender<T>;
@@ -261,7 +261,7 @@ mod tests {
         schemas::shinkai_name::ShinkaiName,
         shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
     };
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -316,7 +316,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::123::false".to_string(),
                 content: "my content".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -348,7 +349,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::123::false".to_string(),
                 content: "my content".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -362,7 +364,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::123::false".to_string(),
                 content: "my content 2".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -461,7 +464,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::a1::false".to_string(),
                 content: "content a1".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -475,7 +479,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::a2::false".to_string(),
                 content: "content a2".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -489,7 +494,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::a3::false".to_string(),
                 content: "content a3".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -504,7 +510,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::b1::false".to_string(),
                 content: "content b1".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -519,7 +526,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::c1::false".to_string(),
                 content: "content c1".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
@@ -534,7 +542,8 @@ mod tests {
             JobMessage {
                 job_id: "job_id::c2::false".to_string(),
                 content: "content c2".to_string(),
-                files_inbox: "".to_string(),
+                fs_files_paths: vec![],
+                job_filenames: vec![],
                 parent: None,
                 sheet_job_data: None,
                 callback: None,

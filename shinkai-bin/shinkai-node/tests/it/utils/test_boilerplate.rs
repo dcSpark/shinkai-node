@@ -1,14 +1,14 @@
-use super::db_handlers::setup;
+use super::db_handlers::{setup, setup_node_storage_path};
 use async_channel::{bounded, Receiver, Sender};
 
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::managers::tool_router::ToolRouter;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use tokio::sync::{Mutex, RwLock};
+
+use tokio::sync::Mutex;
 
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -48,11 +48,11 @@ pub struct TestEnvironment {
     pub node1_device_identity_pk: VerifyingKey,
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
-    pub node1_vecfs: Arc<VectorFS>,
     pub node1_db: Arc<SqliteManager>,
     pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
     pub node1_tool_router: Option<Arc<ToolRouter>>,
+    pub node1_api_key: String,
     pub node1_abort_handler: AbortHandle,
 }
 
@@ -83,6 +83,7 @@ where
     F: FnOnce(TestEnvironment) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + 'static,
 {
     setup();
+    setup_node_storage_path();
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
@@ -104,12 +105,11 @@ where
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
 
         // Fetch the PROXY_ADDRESS environment variable
         let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
 
-        let api_v2_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
+        let node1_api_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -127,17 +127,15 @@ where
             proxy_identity,
             false,
             vec![],
-            node1_fs_db_path,
             Some(RemoteEmbeddingGenerator::new_default()),
             None,
             default_embedding_model(),
             supported_embedding_models(),
-            Some(api_v2_key),
+            Some(node1_api_key.clone()),
         )
         .await;
 
         let node1_locked = node1.lock().await;
-        let node1_vecfs = node1_locked.vector_fs.clone();
         let node1_db = node1_locked.db.clone();
         let node1_sheet_manager = node1_locked.sheet_manager.clone();
         let node1_callback_manager = node1_locked.callback_manager.clone();
@@ -172,12 +170,12 @@ where
             node1_device_identity_pk,
             node1_device_encryption_sk,
             node1_device_encryption_pk,
-            node1_vecfs,
             node1_db,
             node1_sheet_manager,
             node1_callback_manager,
             node1_tool_router,
             node1_abort_handler,
+            node1_api_key,
         };
 
         let interactions_handler = tokio::spawn(interactions_handler_logic(env));

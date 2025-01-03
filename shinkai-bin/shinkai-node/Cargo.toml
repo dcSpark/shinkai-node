@@ -13,7 +13,7 @@ shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 [features]
 default = []
 console = ["console-subscriber"]
-static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
+# static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]
 doctest = false
@@ -49,13 +49,13 @@ keyphrases = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
 shinkai_job_queue_manager = { workspace = true }
-shinkai_vector_resources = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
 shinkai_tcp_relayer = { workspace = true }
-shinkai_vector_fs = { workspace = true }
 shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_sheet = { workspace = true }
+shinkai_embedding = { workspace = true }
+shinkai_fs = { workspace = true }
 # shinkai_baml = { workspace = true }
 bincode = { workspace = true }
 qrcode = "0.12"

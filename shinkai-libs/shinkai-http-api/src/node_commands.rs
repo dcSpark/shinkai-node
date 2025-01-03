@@ -24,17 +24,15 @@ use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIConvertFilesAndSaveToFolder,
-            APICreateShareableFolder, APIExportSheetPayload, APIGetLastNotifications, APIGetMySubscribers,
-            APIGetNotificationsBeforeTimestamp, APIImportSheetPayload, APISetSheetUploadedFilesPayload,
-            APISubscribeToSharedFolder, APIUnshareFolder, APIUnsubscribeToSharedFolder, APIUpdateShareableFolder,
-            APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
-            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-            APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage,
-            RegistrationCodeType, V2ChatMessage,
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIExportSheetPayload,
+            APIImportSheetPayload, APISetSheetUploadedFilesPayload, APIVecFsCopyFolder, APIVecFsCopyItem,
+            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
+            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
+            ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType,
+            V2ChatMessage,
         },
     },
-    shinkai_utils::job_scope::JobScope,
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 
 use shinkai_tools_primitives::tools::{
@@ -206,21 +204,6 @@ pub enum NodeCommand {
     CreateJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
-    },
-    APICreateFilesInboxWithSymmetricKey {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIGetFilenamesInInbox {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
-    },
-    APIAddFileToInboxWithSymmetricKey {
-        filename: String,
-        file: Vec<u8>,
-        public_key: String,
-        encrypted_nonce: String,
-        res: Sender<Result<String, APIError>>,
     },
     APIJobMessage {
         msg: ShinkaiMessage,
@@ -603,21 +586,15 @@ pub enum NodeCommand {
         path: String,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiConvertFilesAndSaveToFolder {
+    V2ApiVecFSRetrieveFilesForJob {
         bearer: String,
-        payload: APIConvertFilesAndSaveToFolder,
-        res: Sender<Result<Vec<Value>, APIError>>,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
     },
-    V2ApiDownloadFileFromInbox {
+    V2ApiVecFSGetFolderNameForJob {
         bearer: String,
-        inbox_name: String,
-        filename: String,
-        res: Sender<Result<Vec<u8>, APIError>>,
-    },
-    V2ApiListFilesInInbox {
-        bearer: String,
-        inbox_name: String,
-        res: Sender<Result<Vec<String>, APIError>>,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
     },
     V2ApiVecFSCreateFolder {
         bearer: String,
@@ -657,7 +634,7 @@ pub enum NodeCommand {
     V2ApiSearchItems {
         bearer: String,
         payload: APIVecFsSearchItems,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     V2ApiCreateFilesInbox {
         bearer: String, //
@@ -678,7 +655,15 @@ pub enum NodeCommand {
         file_datetime: Option<DateTime<Utc>>,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiRetrieveSourceFile {
+    V2ApiUploadFileToJob {
+        bearer: String,
+        job_id: String,
+        filename: String,
+        file: Vec<u8>,
+        file_datetime: Option<DateTime<Utc>>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRetrieveFile {
         bearer: String,
         payload: APIVecFsRetrieveSourceFile,
         res: Sender<Result<String, APIError>>,
@@ -918,7 +903,7 @@ pub enum NodeCommand {
     V2ApiUpdateJobScope {
         bearer: String,
         job_id: String,
-        job_scope: JobScope,
+        job_scope: MinimalJobScope,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetJobScope {

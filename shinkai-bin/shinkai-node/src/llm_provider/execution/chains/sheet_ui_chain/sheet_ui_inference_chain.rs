@@ -15,16 +15,16 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
+use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPath};
 use std::any::Any;
 use std::collections::HashSet;
 use std::fmt;
@@ -62,13 +62,13 @@ impl InferenceChain for SheetUIInferenceChain {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = SheetUIInferenceChain::start_chain(
             self.context.db.clone(),
-            self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
+            self.context.fs_files_paths.clone(),
+            self.context.job_filenames.clone(),
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
-            self.context.execution_context.clone(),
             self.context.generator.clone(),
             self.context.user_profile.clone(),
             self.context.max_iterations,
@@ -85,8 +85,7 @@ impl InferenceChain for SheetUIInferenceChain {
             fetch_node_environment(),
         )
         .await?;
-        let job_execution_context = self.context.execution_context.clone();
-        Ok(InferenceChainResult::new(response, job_execution_context))
+        Ok(InferenceChainResult::new(response))
     }
 }
 
@@ -108,13 +107,13 @@ impl SheetUIInferenceChain {
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
-        execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_iterations: u64,
@@ -155,7 +154,7 @@ impl SheetUIInferenceChain {
         // 1) Vector search for knowledge if the scope isn't empty
         // Check if the sheet has uploaded files and add them to the job scope
         let job_scope = if let Some(sheet_manager) = &sheet_manager {
-            let mut job_scope = full_job.scope_with_files.clone().unwrap();
+            let mut job_scope = full_job.scope().clone();
 
             let sheet = {
                 let sheet_manager_guard = sheet_manager.lock().await;
@@ -177,42 +176,43 @@ impl SheetUIInferenceChain {
                         job_scope
                             .vector_fs_items
                             .iter()
-                            .any(|fs_item| fs_item.path.format_to_string() == *path)
+                            .any(|fs_item| fs_item.relative_path() == *path)
                     })
                     .collect();
 
                 // Add new FS items to the job scope
                 for file in vr_files {
-                    let vr_path = VRPath::from_string(&file)?;
-                    let reader = vector_fs
-                        .new_reader(user_profile.clone(), vr_path, user_profile.clone())
-                        .await?;
-                    let fs_item = vector_fs.retrieve_fs_entry(&reader).await?.as_item()?.as_scope_entry();
-                    job_scope.vector_fs_items.push(fs_item);
+                    let vr_path = ShinkaiPath::from_string(file);
+                    job_scope.vector_fs_items.push(vr_path);
                 }
             }
             job_scope
         } else {
-            full_job.scope_with_files.clone().unwrap()
+            full_job.scope().clone()
         };
 
         let scope_is_empty = job_scope.is_empty();
-        let mut ret_nodes: Vec<RetrievedNode> = vec![];
+        let mut ret_nodes: ShinkaiFileChunkCollection = ShinkaiFileChunkCollection {
+            chunks: vec![],
+            paths: None,
+        };
+        // tODO: remove this
         let mut summary_node_text = None;
         if !scope_is_empty {
-            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
-                db.clone(),
-                vector_fs.clone(),
+            let ret = JobManager::search_for_chunks_in_resources(
+                fs_files_paths.clone(),
+                job_filenames.clone(),
+                full_job.job_id.clone(),
                 &job_scope,
+                db.clone(),
                 user_message.clone(),
-                &user_profile,
-                generator.clone(),
                 20,
                 max_tokens_in_prompt,
+                generator.clone(),
             )
             .await?;
             ret_nodes = ret;
-            summary_node_text = summary;
+            // summary_node_text = summary;
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
@@ -381,14 +381,14 @@ impl SheetUIInferenceChain {
                     let parsed_message = ParsedUserMessage::new(user_message.clone());
                     let context = InferenceChainContext::new(
                         db.clone(),
-                        vector_fs.clone(),
                         full_job.clone(),
                         parsed_message,
                         None, // TODO: hook this up
+                        fs_files_paths.clone(),
+                        job_filenames.clone(),
                         message_hash_id.clone(),
                         image_files.clone(),
                         llm_provider.clone(),
-                        execution_context.clone(),
                         generator.clone(),
                         user_profile.clone(),
                         max_iterations,

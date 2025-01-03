@@ -3,12 +3,12 @@ use std::env;
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
 use serde_json::{self, Value};
+
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::{
     indexable_version::IndexableVersion,
     shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
 };
-use shinkai_vector_resources::embeddings::Embedding;
 
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
@@ -189,7 +189,7 @@ impl ShinkaiTool {
     }
 
     /// Sets the embedding for the tool
-    pub fn set_embedding(&mut self, embedding: Embedding) {
+    pub fn set_embedding(&mut self, embedding: Vec<f32>) {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
@@ -231,7 +231,7 @@ impl ShinkaiTool {
     }
 
     /// Returns the embedding if it exists
-    pub fn get_embedding(&self) -> Option<Embedding> {
+    pub fn get_embedding(&self) -> Option<Vec<f32>> {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
@@ -537,10 +537,7 @@ mod tests {
                     "toolkit_name": "shinkai-tool-coinbase-get-my-address",
                     "sql_tables": [],
                     "sql_queries": [],
-                    "embedding": {
-                        "id": "",
-                        "vector": []
-                    },
+                    "embedding": [],
                     "oauth": null,
                     "config": [],
                     "keywords": [

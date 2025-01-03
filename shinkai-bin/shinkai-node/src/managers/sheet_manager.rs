@@ -8,7 +8,7 @@ use shinkai_message_primitives::schemas::ws_types::{WSMessageType, WSUpdateHandl
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     CallbackAction, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, WSTopic,
 };
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_sheet::cell_name_converter::CellNameConverter;
 use shinkai_sheet::sheet::{Sheet, SheetUpdate};
 use shinkai_sqlite::errors::SqliteManagerError;
@@ -209,7 +209,7 @@ impl SheetManager {
 
         for job_data in jobs {
             let job_creation_info = JobCreationInfo {
-                scope: JobScope::new_default(),
+                scope: MinimalJobScope::default(),
                 is_hidden: Some(true),
                 associated_ui: None,
             };
@@ -224,12 +224,13 @@ impl SheetManager {
             let job_message = JobMessage {
                 job_id: job_id.clone(),
                 content: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
-                files_inbox: "".to_string(), // it could be in the sheet_job_data (indirectly through reading the cell)
                 parent: None,
                 sheet_job_data: Some(serde_json::to_string(&job_data).unwrap()),
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                fs_files_paths: vec![],
+                job_filenames: vec![],
             };
 
             job_messages.push((job_message, job_data));

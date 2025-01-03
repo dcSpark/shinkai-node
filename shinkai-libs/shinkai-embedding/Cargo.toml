@@ -1,0 +1,31 @@
+[package]
+name = "shinkai_embedding"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+bincode = { workspace = true }
+serde_json = { workspace = true }
+rand = { workspace = true }
+blake3 = { workspace = true }
+chrono = { workspace = true }
+thiserror = "2.0.3"
+reqwest = { workspace = true, features = [
+    "json",
+    "tokio-native-tls",
+    "blocking",
+    "multipart",
+    "default-tls",
+] }
+lazy_static = "1.5.0"
+async-trait = { workspace = true }
+keyphrases = { workspace = true }
+futures = { workspace = true }
+csv = "1.1.6"
+utoipa = "4.2.3"
+regex = { workspace = true }
+
+[dependencies.serde]
+workspace = true
+features = ["derive"]

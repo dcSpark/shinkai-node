@@ -1,10 +1,13 @@
 mod tests {
 
+    use serde_json;
     use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
     use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
     use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
     use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
     use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+    use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
     use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
     use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 
@@ -12,7 +15,7 @@ mod tests {
     fn test_encode_decode_message() {
         // Initialize the message
         let (my_encryption_secret_key, my_encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
-        let (my_signature_secret_key, my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
+        let (my_signature_secret_key, _my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
         let receiver_public_key = my_encryption_public_key.clone();
 
         let message = ShinkaiMessageBuilder::new(
@@ -138,5 +141,55 @@ mod tests {
             message.calculate_message_hash_for_pagination(),
             deserialized_message.calculate_message_hash_for_pagination()
         );
+    }
+
+    #[test]
+    fn test_serialize_deserialize_job_message() {
+        // Create a sample JobMessage
+        let job_message = JobMessage {
+            job_id: "test_job_id".to_string(),
+            content: "This is a test message".to_string(),
+            parent: Some("parent_id".to_string()),
+            sheet_job_data: Some("sheet_data".to_string()),
+            callback: None,
+            metadata: None,
+            tool_key: Some("tool_key".to_string()),
+            fs_files_paths: vec![],
+            job_filenames: vec![],
+        };
+
+        // Serialize the JobMessage to a JSON string
+        let serialized = serde_json::to_string(&job_message).expect("Failed to serialize JobMessage");
+
+        // Deserialize the JSON string back to a JobMessage
+        let deserialized: JobMessage = serde_json::from_str(&serialized).expect("Failed to deserialize JobMessage");
+
+        // Assert that the original and deserialized JobMessages are the same
+        assert_eq!(job_message, deserialized);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_job_message_with_files() {
+        // Create a sample JobMessage with a ShinkaiPath in files
+        let job_message = JobMessage {
+            job_id: "test_job_id".to_string(),
+            content: "This is a test message with files".to_string(),
+            parent: Some("parent_id".to_string()),
+            sheet_job_data: Some("sheet_data".to_string()),
+            callback: None,
+            metadata: None,
+            tool_key: Some("tool_key".to_string()),
+            fs_files_paths: vec![ShinkaiPath::new("/path/to/file")],
+            job_filenames: vec!["file1.txt".to_string()],
+        };
+
+        // Serialize the JobMessage to a JSON string
+        let serialized = serde_json::to_string(&job_message).expect("Failed to serialize JobMessage");
+
+        // Deserialize the JSON string back to a JobMessage
+        let deserialized: JobMessage = serde_json::from_str(&serialized).expect("Failed to deserialize JobMessage");
+
+        // Assert that the original and deserialized JobMessages are the same
+        assert_eq!(job_message, deserialized);
     }
 }

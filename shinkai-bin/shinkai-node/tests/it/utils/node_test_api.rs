@@ -1,4 +1,6 @@
 use async_channel::Sender;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use serde_json::{Map, Value};
@@ -12,7 +14,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
@@ -411,14 +412,15 @@ pub async fn api_message_job(
     recipient_subidentity: &str,
     job_id: &str,
     content: &str,
-    files_inbox: &str,
+    files: &[&str],
     parent: &str,
 ) {
     {
+        let files_vec = files.iter().map(|f| ShinkaiPath::new(f)).collect::<Vec<_>>();
         let job_message = ShinkaiMessageBuilder::job_message(
             job_id.to_string(),
             content.to_string(),
-            files_inbox.to_string(),
+            files_vec,
             parent.to_string(),
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
@@ -454,7 +456,7 @@ pub async fn api_create_job(
     sender_subidentity: &str,
     recipient_subidentity: &str,
 ) -> String {
-    let job_scope = JobScope::new_default();
+    let job_scope = MinimalJobScope::default();
     api_create_job_with_scope(
         node_commands_sender,
         subidentity_encryption_sk,
@@ -476,7 +478,7 @@ pub async fn api_create_job_with_scope(
     sender: &str,
     sender_subidentity: &str,
     recipient_subidentity: &str,
-    job_scope: JobScope,
+    job_scope: MinimalJobScope,
 ) -> String {
     {
         let full_sender = format!("{}/{}", sender, sender_subidentity);

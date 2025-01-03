@@ -18,7 +18,7 @@ impl SqliteManager {
         };
 
         let serialized_queue =
-            bincode::serialize(queue).map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
+            serde_json::to_string(queue).map_err(|e| SqliteManagerError::SerializationError(e.to_string()))?;
 
         let conn = self.get_connection()?;
         conn.execute(
@@ -45,8 +45,8 @@ impl SqliteManager {
 
         let rows = stmt.query_map(params![], |row| {
             let mut job_id: String = row.get(0)?;
-            let serialized_queue: Vec<u8> = row.get(1)?;
-            let queue: Vec<T> = bincode::deserialize(&serialized_queue).map_err(|e| {
+            let serialized_queue: String = row.get(1)?;
+            let queue: Vec<T> = serde_json::from_str(&serialized_queue).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?;
 
