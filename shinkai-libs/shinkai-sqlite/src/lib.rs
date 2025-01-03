@@ -889,7 +889,7 @@ impl SqliteManager {
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3"];
+        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions

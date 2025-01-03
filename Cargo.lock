@@ -1099,9 +1099,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.23"
+version = "4.5.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3135e7ec2ef7b10c6ed8950f0f792ed96ee093fa088608f1c76e569722700c84"
+checksum = "fb3b4b9e5a7c7514dfa52869339ee98b3156b0bfb4e8a77c4ff4babb64b1604f"
 dependencies = [
  "clap_builder",
  "clap_derive 4.5.18",
@@ -1109,13 +1109,13 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.23"
+version = "4.5.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30582fc632330df2bd26877bde0c1f4470d57c582bbc070376afcd04d8cb4838"
+checksum = "b17a95aa67cc7b5ebd32aa5370189aa0d79069ef1c64ce893bd30fb24bff20ec"
 dependencies = [
  "anstream",
  "anstyle",
- "clap_lex 0.7.4",
+ "clap_lex 0.7.3",
  "strsim 0.11.1",
  "terminal_size",
 ]
@@ -1156,9 +1156,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.7.4"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
+checksum = "afb84c814227b90d6895e01398aee0d8033c00e7466aca416fb6a8e0eb19d8a7"
 
 [[package]]
 name = "coins-bip32"
@@ -1240,7 +1240,7 @@ version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0436149c9f6a1935b13306206c739b1ba84fa81f551b5eb87fc2ca7a13700af"
 dependencies = [
- "clap 4.5.23",
+ "clap 4.5.21",
  "derive_builder",
  "entities",
  "memchr",
@@ -6573,7 +6573,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai-spreadsheet-llm"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6588,7 +6588,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "dashmap",
@@ -6604,7 +6604,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_embedding"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6625,7 +6625,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6656,7 +6656,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -6681,7 +6681,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "serde",
@@ -6695,7 +6695,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -6722,14 +6722,14 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mini_libs"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "base64 0.22.1",
 ]
 
 [[package]]
 name = "shinkai_node"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -6801,7 +6801,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "image 0.25.5",
@@ -6816,7 +6816,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sheet"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-channel 1.9.0",
  "chrono",
@@ -6830,7 +6830,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "bincode",
  "blake3",
@@ -6861,7 +6861,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -6880,7 +6880,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "regex",
@@ -7367,9 +7367,9 @@ dependencies = [
 
 [[package]]
 name = "terminal_size"
-version = "0.4.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5352447f921fda68cf61b4101566c0bdb5104eff6804d0678e5227580ab6a4e9"
+checksum = "4f599bd7ca042cfdf8f4512b277c02ba102247820f9d9d4a9f521f496751a6ef"
 dependencies = [
  "rustix",
  "windows-sys 0.59.0",
