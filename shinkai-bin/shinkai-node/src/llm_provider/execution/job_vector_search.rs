@@ -1,5 +1,4 @@
 use crate::llm_provider::job_manager::JobManager;
-use keyphrases::KeyPhraseExtractor;
 use shinkai_embedding::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::shinkai_fs::{ShinkaiFileChunk, ShinkaiFileChunkCollection};
@@ -407,7 +406,10 @@ impl JobManager {
     // }
 
     /// Searches all resources in the given job scope and returns the search results.
-    pub async fn search_all_resources_in_job_scope(
+    pub async fn search_for_chunks_in_resources(
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,
+        job_id: String,
         scope: &MinimalJobScope,
         sqlite_manager: Arc<SqliteManager>,
         query_text: String,
@@ -427,13 +429,49 @@ impl JobManager {
             }
         };
 
+        // Process fs_files_paths
+        for path in &fs_files_paths {
+            if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(path).unwrap() {
+                let file_id = parsed_file.id.unwrap();
+                parsed_file_ids.push(file_id);
+                paths_map.insert(file_id, path.clone());
+
+                if let Some(file_tokens) = parsed_file.total_tokens {
+                    total_tokens += file_tokens;
+                } else {
+                    all_files_have_token_count = false;
+                }
+            }
+        }
+
+        // Process job_filenames
+        for filename in &job_filenames {
+            let file_path =
+                match ShinkaiFileManager::construct_job_file_path(&job_id, filename, &sqlite_manager) {
+                    Ok(path) => path,
+                    Err(_) => continue,
+                };
+
+            if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(&file_path).unwrap() {
+                let file_id = parsed_file.id.unwrap();
+                parsed_file_ids.push(file_id);
+                paths_map.insert(file_id, file_path);
+
+                if let Some(file_tokens) = parsed_file.total_tokens {
+                    total_tokens += file_tokens;
+                } else {
+                    all_files_have_token_count = false;
+                }
+            }
+        }
+
         // Retrieve each file in the job scope
         for path in &scope.vector_fs_items {
             if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(path).unwrap() {
                 let file_id = parsed_file.id.unwrap();
                 parsed_file_ids.push(file_id);
                 paths_map.insert(file_id, path.clone());
-                
+
                 // Count tokens while we're here
                 if let Some(file_tokens) = parsed_file.total_tokens {
                     total_tokens += file_tokens;
@@ -464,7 +502,7 @@ impl JobManager {
                         let file_id = parsed_file.id.unwrap();
                         parsed_file_ids.push(file_id);
                         paths_map.insert(file_id, file_path);
-                        
+
                         // Count tokens while we're here
                         if let Some(file_tokens) = parsed_file.total_tokens {
                             total_tokens += file_tokens;

@@ -25,6 +25,7 @@ use shinkai_message_primitives::schemas::ws_types::{
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
 use std::fmt;
@@ -69,6 +70,8 @@ impl InferenceChain for GenericInferenceChain {
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
             self.context.user_tool_selected.clone(),
+            self.context.fs_files_paths.clone(),
+            self.context.job_filenames.clone(),
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
@@ -107,6 +110,8 @@ impl GenericInferenceChain {
         full_job: Job,
         user_message: String,
         user_tool_selected: Option<String>,
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
@@ -153,9 +158,11 @@ impl GenericInferenceChain {
             paths: None,
         };
 
-        if !scope_is_empty {
-            // Previously we used: keyword_chained_job_scope_vector_search
-            let ret = JobManager::search_all_resources_in_job_scope(
+        if !scope_is_empty || !fs_files_paths.is_empty() || !job_filenames.is_empty() {    
+            let ret = JobManager::search_for_chunks_in_resources(
+                fs_files_paths.clone(),
+                job_filenames.clone(),
+                full_job.job_id.clone(),
                 full_job.scope(),
                 db.clone(),
                 user_message.clone(),
@@ -380,6 +387,8 @@ impl GenericInferenceChain {
                     full_job.clone(),
                     parsed_message,
                     None,
+                    fs_files_paths.clone(),
+                    job_filenames.clone(),
                     message_hash_id.clone(),
                     image_files.clone(),
                     llm_provider.clone(),

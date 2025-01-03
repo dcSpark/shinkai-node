@@ -66,6 +66,8 @@ impl JobManager {
             full_job.clone(),
             parsed_user_message,
             job_message.tool_key,
+            job_message.fs_files_paths,
+            job_message.job_filenames,
             message_hash_id,
             image_files,
             llm_provider,

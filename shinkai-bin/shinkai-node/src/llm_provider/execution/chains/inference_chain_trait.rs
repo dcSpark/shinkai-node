@@ -15,6 +15,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FunctionCallMetadata;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
 use std::fmt;
@@ -192,6 +193,8 @@ pub struct InferenceChainContext {
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
     pub user_tool_selected: Option<String>,
+    pub fs_files_paths: Vec<ShinkaiPath>,
+    pub job_filenames: Vec<String>, 
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
     pub llm_provider: ProviderOrAgent,
@@ -218,6 +221,8 @@ impl InferenceChainContext {
         full_job: Job,
         user_message: ParsedUserMessage,
         user_tool_selected: Option<String>,
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,   
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
@@ -238,6 +243,8 @@ impl InferenceChainContext {
             full_job,
             user_message,
             user_tool_selected,
+            fs_files_paths,
+            job_filenames,
             message_hash_id,
             image_files,
             llm_provider,
@@ -275,6 +282,8 @@ impl fmt::Debug for InferenceChainContext {
             .field("full_job", &self.full_job)
             .field("user_message", &self.user_message)
             .field("user_tool_selected", &self.user_tool_selected)
+            .field("fs_files_paths", &self.fs_files_paths)
+            .field("job_filenames", &self.job_filenames)
             .field("message_hash_id", &self.message_hash_id)
             .field("image_files", &self.image_files.len())
             .field("llm_provider", &self.llm_provider)

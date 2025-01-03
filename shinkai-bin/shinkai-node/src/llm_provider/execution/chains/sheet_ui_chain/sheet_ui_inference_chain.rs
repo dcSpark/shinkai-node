@@ -63,6 +63,8 @@ impl InferenceChain for SheetUIInferenceChain {
             self.context.db.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
+            self.context.fs_files_paths.clone(),
+            self.context.job_filenames.clone(),
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
@@ -105,6 +107,8 @@ impl SheetUIInferenceChain {
         db: Arc<SqliteManager>,
         full_job: Job,
         user_message: String,
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
@@ -192,8 +196,11 @@ impl SheetUIInferenceChain {
         // tODO: remove this
         let mut summary_node_text = None;
         if !scope_is_empty {
-            let ret = JobManager::search_all_resources_in_job_scope(
-                full_job.scope(),
+            let ret = JobManager::search_for_chunks_in_resources(
+                fs_files_paths.clone(),
+                job_filenames.clone(),
+                full_job.job_id.clone(),
+                &job_scope,
                 db.clone(),
                 user_message.clone(),
                 20,
@@ -374,6 +381,8 @@ impl SheetUIInferenceChain {
                         full_job.clone(),
                         parsed_message,
                         None, // TODO: hook this up
+                        fs_files_paths.clone(),
+                        job_filenames.clone(),
                         message_hash_id.clone(),
                         image_files.clone(),
                         llm_provider.clone(),
