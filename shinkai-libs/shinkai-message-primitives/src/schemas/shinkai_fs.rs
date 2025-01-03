@@ -66,36 +66,6 @@ pub struct ShinkaiFileChunkCollection {
 }
 
 impl ShinkaiFileChunkCollection {
-    /// Formats the data of all chunks into a single string that can be used as context.
-    /// Respects a maximum character limit (`max_characters`).
-    
-    // TODO: this needs to be updated to support paths
-    pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
-        let mut result = String::new();
-        let mut remaining_chars = max_characters;
-
-        for chunk in &self.chunks {
-            let mut content = chunk.content.clone();
-            if content.len() > remaining_chars {
-                content = content.chars().take(remaining_chars).collect();
-            }
-
-            if content.is_empty() {
-                break;
-            }
-
-            result.push_str(&content);
-            result.push_str("\n\n");
-            remaining_chars = remaining_chars.saturating_sub(content.len());
-        }
-
-        if result.is_empty() {
-            None
-        } else {
-            Some(result)
-        }
-    }
-
     /// Checks if the collection of chunks is empty.
     pub fn is_empty(&self) -> bool {
         self.chunks.is_empty()

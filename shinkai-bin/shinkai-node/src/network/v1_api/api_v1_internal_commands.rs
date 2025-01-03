@@ -20,6 +20,7 @@ use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+use shinkai_message_primitives::shinkai_utils::search_mode::VectorSearchMode;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::{
@@ -448,7 +449,7 @@ impl Node {
                             let job_scope = MinimalJobScope {
                                 vector_fs_items: vec![],
                                 vector_fs_folders: vec![shinkai_folder_fs],
-                                vector_search_mode: vec![],
+                                vector_search_mode: VectorSearchMode::FillUpTo25k,
                             };
                             let job_creation = JobCreationInfo {
                                 scope: job_scope,

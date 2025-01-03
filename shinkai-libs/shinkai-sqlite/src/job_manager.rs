@@ -403,8 +403,6 @@ impl SqliteManager {
         let associated_ui_text: Option<String> = row.get(7)?;
         let config_text: Option<String> = row.get(8)?;
 
-        eprintln!("Retrieved config_text: {:?}", config_text);
-
         if let Some(ref text) = config_text {
             match serde_json::from_str::<JobConfig>(text) {
                 Ok(config) => eprintln!("Deserialized config: {:?}", config),

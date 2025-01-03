@@ -220,7 +220,7 @@ fn native_tool_test_knowledge() {
                     let job_scope = MinimalJobScope {
                         vector_fs_items: vec![],
                         vector_fs_folders: vec![vector_fs_folder],
-                        vector_search_mode: vec![VectorSearchMode::FillUpTo25k],
+                        vector_search_mode: VectorSearchMode::FillUpTo25k,
                     };
 
                     job_id = api_create_job_with_scope(

@@ -9,7 +9,10 @@ impl LocalFileParser {
         let pdf_parser = PDFParser::new().map_err(|_| ShinkaiFsError::FailedPDFParsing)?;
         let parsed_pages = pdf_parser
             .process_pdf_file(file_buffer)
-            .map_err(|_| ShinkaiFsError::FailedPDFParsing)?;
+            .map_err(|e| {
+                println!("Error processing PDF file: {:?}", e);
+                ShinkaiFsError::FailedPDFParsing
+            })?;
 
         let mut text_groups = Vec::new();
 

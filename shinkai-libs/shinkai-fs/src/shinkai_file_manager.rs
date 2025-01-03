@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_message_primitives::schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
+use shinkai_message_primitives::shinkai_utils::utils::count_tokens_from_message_llama3;
 use shinkai_sqlite::SqliteManager;
 use utoipa::ToSchema;
 
@@ -96,6 +97,14 @@ impl ShinkaiFileManager {
             text_group.embedding = Some(embedding);
         }
 
+        // Calculate total characters from all text groups
+        let total_characters = text_groups.iter().map(|group| group.text.chars().count() as i64).sum();
+
+        // Calculate total tokens using llama3 token counting
+        let total_tokens = text_groups.iter()
+            .map(|group| count_tokens_from_message_llama3(&group.text) as i64)
+            .sum();
+
         // Add the parsed file to the database
         let parsed_file = ParsedFile {
             id: None, // Expected. The DB will auto-generate the id.
@@ -108,9 +117,10 @@ impl ShinkaiFileManager {
             distribution_info: None, // TODO: connect this
             created_time: Some(Self::current_timestamp()),
             tags: None,             // TODO: connect this
-            total_tokens: None,     // TODO: connect this
-            total_characters: None, // TODO: connect this
+            total_tokens: Some(total_tokens),
+            total_characters: Some(total_characters),
         };
+        
         sqlite_manager.add_parsed_file(&parsed_file)?;
 
         // Retrieve the parsed file ID

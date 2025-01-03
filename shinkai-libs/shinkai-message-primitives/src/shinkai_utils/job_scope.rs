@@ -7,8 +7,13 @@ use super::{search_mode::VectorSearchMode, shinkai_path::ShinkaiPath};
 pub struct MinimalJobScope {
     pub vector_fs_items: Vec<ShinkaiPath>, // TODO: rename this to non-vector-fs-items
     pub vector_fs_folders: Vec<ShinkaiPath>,
-    #[serde(default)]
-    pub vector_search_mode: Vec<VectorSearchMode>,
+    #[serde(default = "default_vector_search_mode")]
+    pub vector_search_mode: VectorSearchMode,
+}
+
+// Function to provide the default value for vector_search_mode
+fn default_vector_search_mode() -> VectorSearchMode {
+    VectorSearchMode::FillUpTo25k
 }
 
 impl MinimalJobScope {
@@ -33,7 +38,7 @@ impl Default for MinimalJobScope {
         Self {
             vector_fs_items: Vec::new(),
             vector_fs_folders: Vec::new(),
-            vector_search_mode: Vec::new(),
+            vector_search_mode: VectorSearchMode::FillUpTo25k,
         }
     }
 }
@@ -48,7 +53,7 @@ mod tests {
         let json_data = json!({
             "vector_fs_items": [],
             "vector_fs_folders": ["/My Files (Private)"],
-            "vector_search_mode": []
+            "vector_search_mode": "FillUpTo25k"
         });
 
         let deserialized: MinimalJobScope = serde_json::from_value(json_data).expect("Failed to deserialize");
@@ -56,7 +61,7 @@ mod tests {
         assert!(deserialized.vector_fs_items.is_empty());
         assert_eq!(deserialized.vector_fs_folders.len(), 1);
         assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
-        assert!(deserialized.vector_search_mode.is_empty());
+        assert_eq!(deserialized.vector_search_mode, VectorSearchMode::FillUpTo25k);
     }
 
     #[test]
@@ -64,7 +69,7 @@ mod tests {
         let json_data = json!({
             "vector_fs_items": ["/path/to/file1", "/path/to/file2"],
             "vector_fs_folders": [{"path": "/My Files (Private)"}],
-            "vector_search_mode": []
+            "vector_search_mode": "FillUpTo25k"
         });
 
         let deserialized: MinimalJobScope = serde_json::from_value(json_data).expect("Failed to deserialize");
@@ -74,6 +79,6 @@ mod tests {
         assert_eq!(deserialized.vector_fs_items[1].relative_path(), "path/to/file2");
         assert_eq!(deserialized.vector_fs_folders.len(), 1);
         assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
-        assert!(deserialized.vector_search_mode.is_empty());
+        assert_eq!(deserialized.vector_search_mode, VectorSearchMode::FillUpTo25k);
     }
 }

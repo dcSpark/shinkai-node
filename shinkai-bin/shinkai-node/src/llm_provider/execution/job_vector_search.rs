@@ -417,7 +417,9 @@ impl JobManager {
     ) -> Result<ShinkaiFileChunkCollection, SqliteManagerError> {
         let mut parsed_file_ids = Vec::new();
         let mut paths_map = HashMap::new();
-        
+        let mut total_tokens: i64 = 0;
+        let mut all_files_have_token_count = true;
+
         let query_embedding = match embedding_generator.generate_embedding_default(&query_text).await {
             Ok(embedding) => embedding,
             Err(e) => {
@@ -431,6 +433,13 @@ impl JobManager {
                 let file_id = parsed_file.id.unwrap();
                 parsed_file_ids.push(file_id);
                 paths_map.insert(file_id, path.clone());
+                
+                // Count tokens while we're here
+                if let Some(file_tokens) = parsed_file.total_tokens {
+                    total_tokens += file_tokens;
+                } else {
+                    all_files_have_token_count = false;
+                }
             }
         }
 
@@ -455,6 +464,13 @@ impl JobManager {
                         let file_id = parsed_file.id.unwrap();
                         parsed_file_ids.push(file_id);
                         paths_map.insert(file_id, file_path);
+                        
+                        // Count tokens while we're here
+                        if let Some(file_tokens) = parsed_file.total_tokens {
+                            total_tokens += file_tokens;
+                        } else {
+                            all_files_have_token_count = false;
+                        }
                     }
                 }
             }
@@ -462,11 +478,26 @@ impl JobManager {
 
         // Determine the vector search mode configured in the job scope.
         let max_tokens_in_prompt =
-            if scope.vector_search_mode.contains(&VectorSearchMode::FillUpTo25k) && max_tokens_in_prompt > 25000 {
+            if scope.vector_search_mode == VectorSearchMode::FillUpTo25k && max_tokens_in_prompt > 25000 {
                 25000
             } else {
                 max_tokens_in_prompt
             };
+
+        // If we have token counts for all files and they fit within the limit,
+        // we can include all chunks from all files
+        if all_files_have_token_count && total_tokens <= max_tokens_in_prompt as i64 {
+            let mut all_chunks = Vec::new();
+            for file_id in parsed_file_ids {
+                let file_chunks = sqlite_manager.get_chunks_for_parsed_file(file_id)?;
+                all_chunks.extend(file_chunks);
+            }
+
+            return Ok(ShinkaiFileChunkCollection {
+                chunks: all_chunks,
+                paths: Some(paths_map),
+            });
+        }
 
         // Perform a vector search on all parsed files
         let search_results = sqlite_manager.search_chunks(&parsed_file_ids, query_embedding, num_of_top_results)?;
