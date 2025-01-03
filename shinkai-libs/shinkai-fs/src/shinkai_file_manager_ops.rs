@@ -22,7 +22,6 @@ impl ShinkaiFileManager {
 
     /// Remove file: deletes file from filesystem and DB.
     pub fn remove_file(path: ShinkaiPath, sqlite_manager: &SqliteManager) -> Result<(), ShinkaiFsError> {
-        eprintln!("remove_file> path: {:?}", path);
         // Check if file exists on filesystem
         if !path.exists() {
             return Err(ShinkaiFsError::FileNotFoundOnFilesystem);
@@ -34,15 +33,11 @@ impl ShinkaiFileManager {
         // Update DB
         let rel_path = path.relative_path();
         if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
-            eprintln!("remove_file> parsed_file: {:?}", parsed_file);
             if let Some(parsed_file_id) = parsed_file.id {
                 // Remove associated chunks if they exist
-                eprintln!("remove_file> parsed_file_id: {:?}", parsed_file_id);
                 if let Ok(chunks) = sqlite_manager.get_chunks_for_parsed_file(parsed_file_id) {
-                    eprintln!("remove_file> chunks: {:?}", chunks);
                     for chunk in chunks {
                         if let Some(chunk_id) = chunk.chunk_id {
-                            eprintln!("remove_file> chunk_id: {:?}", chunk_id);
                             sqlite_manager.remove_chunk_with_embedding(chunk_id)?;
                         }
                     }
@@ -67,24 +62,19 @@ impl ShinkaiFileManager {
     /// should have been removed first. If not, scanning the DB for files
     /// might be necessary.
     pub fn remove_folder(path: ShinkaiPath, sqlite_manager: &SqliteManager) -> Result<(), ShinkaiFsError> {
-        eprintln!("remove_folder> path: {:?}", path);
         if !path.exists() {
-            eprintln!("remove_folder> path does not exist: {:?}", path);
             return Err(ShinkaiFsError::FolderNotFoundOnFilesystem);
         }
 
         // Iterate over each file or directory in the directory
         for entry in fs::read_dir(path.as_path())? {
-            eprintln!("remove_folder> entry: {:?}", entry);
             let entry = entry?;
             let file_path = ShinkaiPath::from_str(entry.path().to_str().unwrap());
 
             if file_path.is_file() {
                 // Remove the file and its embeddings
-                eprintln!("remove_folder> file_path is a file: {:?}", file_path);
                 Self::remove_file(file_path, sqlite_manager)?;
             } else if file_path.as_path().is_dir() {
-                eprintln!("remove_folder> file_path is a directory: {:?}", file_path);
                 // Recursively remove subdirectories
                 Self::remove_folder(file_path, sqlite_manager)?;
             }
@@ -108,8 +98,6 @@ impl ShinkaiFileManager {
         }
 
         let new_rel_path = new_path.relative_path();
-        // Debugging: Print the new path
-        eprintln!("Renaming to new path: {:?}", new_rel_path);
 
         // Check if the parent directory of the new path exists
         let parent_dir = new_path.as_path().parent().unwrap();
@@ -157,8 +145,6 @@ impl ShinkaiFileManager {
         }
 
         let new_rel_path = new_path.relative_path();
-        // Debugging: Print the new path
-        eprintln!("Moving to new path: {:?}", new_rel_path);
 
         // Check if the parent directory of the new path exists
         let parent_dir = new_path.as_path().parent().unwrap();
@@ -179,28 +165,6 @@ impl ShinkaiFileManager {
 
         Ok(())
     }
-
-    // /// Scan a folder: recursively discover all files in a directory, and `process_file` them.
-    // /// Files that have not been seen before are added, changed files are re-processed, and
-    // /// removed files should be cleaned up (if desired).
-    // pub fn scan_folder(
-    //     directory: ShinkaiPath,
-    //     sqlite_manager: &SqliteManager
-    // ) -> Result<(), FileManagerError> {
-    //     if !directory.exists() {
-    //         return Err(FileManagerError::FolderNotFoundOnFilesystem);
-    //     }
-
-    //     let files = Self::get_files_in_directory(directory)?;
-    //     for file_path in files {
-    //         Self::process_file(file_path, base_dir, sqlite_manager)?;
-    //     }
-
-    //     // Optionally, remove entries from DB that no longer exist on filesystem by comparing DB entries with filesystem.
-    //     // This step is optional and depends on your desired behavior.
-
-    //     Ok(())
-    // }
 
     /// Check if file is supported for embedding (placeholder).
     pub fn is_supported_for_embedding(parsed_file: &ParsedFile) -> bool {
