@@ -81,4 +81,21 @@ mod tests {
         assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
         assert_eq!(deserialized.vector_search_mode, VectorSearchMode::FillUpTo25k);
     }
+
+    #[test]
+    fn test_deserialize_minimal_job_scope_without_vector_search_mode() {
+        let json_data = json!({
+            "vector_fs_items": ["/path/to/file1"],
+            "vector_fs_folders": ["/My Files (Private)"]
+            // vector_search_mode is intentionally omitted
+        });
+
+        let deserialized: MinimalJobScope = serde_json::from_value(json_data).expect("Failed to deserialize");
+
+        assert_eq!(deserialized.vector_fs_items.len(), 1);
+        assert_eq!(deserialized.vector_fs_items[0].relative_path(), "path/to/file1");
+        assert_eq!(deserialized.vector_fs_folders.len(), 1);
+        assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
+        assert_eq!(deserialized.vector_search_mode, VectorSearchMode::FillUpTo25k); // Check default
+    }
 }

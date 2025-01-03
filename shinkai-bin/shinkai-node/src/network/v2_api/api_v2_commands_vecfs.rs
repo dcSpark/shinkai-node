@@ -205,15 +205,6 @@ impl Node {
         }
 
         let destination_path = ShinkaiPath::from_string(input_payload.destination_path.clone());
-        if destination_path.exists() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: format!("Destination path already exists: {}", input_payload.destination_path),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
 
         // Copy the file using ShinkaiFileManager
         match ShinkaiFileManager::copy_file(origin_path, destination_path) {

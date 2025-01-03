@@ -209,12 +209,19 @@ impl ShinkaiFileManager {
     }
 
     /// Copy file: copies a file from `input_path` to `destination_path`.
+    /// `destination_path` is the directory where the file should be copied.
     pub fn copy_file(input_path: ShinkaiPath, destination_path: ShinkaiPath) -> Result<(), ShinkaiFsError> {
         // Ensure the parent directory of the destination path exists
-        fs::create_dir_all(destination_path.as_path().parent().unwrap())?;
+        fs::create_dir_all(destination_path.as_path())?;
+
+        // Derive the file name from the input path
+        let file_name = input_path.as_path().file_name().unwrap();
+
+        // Construct the full destination path
+        let full_destination_path = destination_path.as_path().join(file_name);
 
         // Copy the file
-        fs::copy(input_path.as_path(), destination_path.as_path())?;
+        fs::copy(input_path.as_path(), full_destination_path)?;
 
         Ok(())
     }
@@ -441,17 +448,21 @@ mod tests {
         std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
         
         let input_path = ShinkaiPath::from_string("input_file.txt".to_string());
-        let destination_path = ShinkaiPath::from_string("destination_file.txt".to_string());
+        let destination_dir = ShinkaiPath::from_string("destination_dir".to_string());
         let data = b"Hello, Shinkai!".to_vec();
 
         // Add the input file
         assert!(ShinkaiFileManager::write_file_to_fs(input_path.clone(), data.clone()).is_ok());
 
+        // Create the destination directory
+        assert!(ShinkaiFileManager::create_folder(destination_dir.clone()).is_ok());
+
         // Copy the file
-        assert!(ShinkaiFileManager::copy_file(input_path.clone(), destination_path.clone()).is_ok());
+        assert!(ShinkaiFileManager::copy_file(input_path.clone(), destination_dir.clone()).is_ok());
 
         // Verify the destination file exists and contains the correct data
-        let mut file = File::open(destination_path.as_path()).unwrap();
+        let destination_file_path = destination_dir.as_path().join("input_file.txt");
+        let mut file = File::open(destination_file_path).unwrap();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents).unwrap();
         assert_eq!(contents, data);
