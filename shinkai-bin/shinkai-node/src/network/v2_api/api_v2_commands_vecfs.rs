@@ -682,17 +682,6 @@ impl Node {
         };
         let full_path = ShinkaiPath::from_string(full_path_str.clone());
 
-        // Check if the file already exists
-        if full_path.exists() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: format!("File already exists: {}", full_path_str),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
         // Save and process the file
         match ShinkaiFileManager::save_and_process_file(
             full_path.clone(),
