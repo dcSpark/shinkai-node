@@ -388,7 +388,7 @@ impl Node {
         }
 
         // Delete the folder using ShinkaiFileManager
-        match ShinkaiFileManager::remove_folder(folder_path) {
+        match ShinkaiFileManager::remove_folder(folder_path, &db) {
             Ok(_) => {
                 let success_message = format!("Folder successfully deleted: {}", input_payload.path);
                 let _ = res.send(Ok(success_message)).await;

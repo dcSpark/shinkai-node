@@ -22,6 +22,7 @@ impl ShinkaiFileManager {
 
     /// Remove file: deletes file from filesystem and DB.
     pub fn remove_file(path: ShinkaiPath, sqlite_manager: &SqliteManager) -> Result<(), ShinkaiFsError> {
+        eprintln!("remove_file> path: {:?}", path);
         // Check if file exists on filesystem
         if !path.exists() {
             return Err(ShinkaiFsError::FileNotFoundOnFilesystem);
@@ -33,19 +34,22 @@ impl ShinkaiFileManager {
         // Update DB
         let rel_path = path.relative_path();
         if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
+            eprintln!("remove_file> parsed_file: {:?}", parsed_file);
             if let Some(parsed_file_id) = parsed_file.id {
-                // Remove associated chunks
-                let chunks = sqlite_manager.get_chunks_for_parsed_file(parsed_file_id)?;
-                for chunk in chunks {
-                    sqlite_manager.remove_chunk_with_embedding(chunk.chunk_id.unwrap())?;
+                // Remove associated chunks if they exist
+                eprintln!("remove_file> parsed_file_id: {:?}", parsed_file_id);
+                if let Ok(chunks) = sqlite_manager.get_chunks_for_parsed_file(parsed_file_id) {
+                    eprintln!("remove_file> chunks: {:?}", chunks);
+                    for chunk in chunks {
+                        if let Some(chunk_id) = chunk.chunk_id {
+                            eprintln!("remove_file> chunk_id: {:?}", chunk_id);
+                            sqlite_manager.remove_chunk_with_embedding(chunk_id)?;
+                        }
+                    }
                 }
                 // Remove the parsed file entry
                 sqlite_manager.remove_parsed_file(parsed_file_id)?;
-            } else {
-                // return Err(ShinkaiFsError::FailedToRetrieveParsedFileID);
             }
-        } else {
-            // return Err(ShinkaiFsError::FileNotFoundInDatabase);
         }
 
         Ok(())
@@ -58,20 +62,35 @@ impl ShinkaiFileManager {
         Ok(())
     }
 
-    /// Remove folder: remove a directory from the filesystem.
+    /// Remove folder: remove a directory and all its contents from the filesystem.
     /// This does not directly affect the DB, but any files in that folder
     /// should have been removed first. If not, scanning the DB for files
     /// might be necessary.
-    pub fn remove_folder(path: ShinkaiPath) -> Result<(), ShinkaiFsError> {
+    pub fn remove_folder(path: ShinkaiPath, sqlite_manager: &SqliteManager) -> Result<(), ShinkaiFsError> {
+        eprintln!("remove_folder> path: {:?}", path);
         if !path.exists() {
+            eprintln!("remove_folder> path does not exist: {:?}", path);
             return Err(ShinkaiFsError::FolderNotFoundOnFilesystem);
         }
 
-        // Check if the folder is empty
-        if fs::read_dir(path.as_path())?.next().is_some() {
-            return Err(ShinkaiFsError::FolderNotFoundOnFilesystem);
+        // Iterate over each file or directory in the directory
+        for entry in fs::read_dir(path.as_path())? {
+            eprintln!("remove_folder> entry: {:?}", entry);
+            let entry = entry?;
+            let file_path = ShinkaiPath::from_str(entry.path().to_str().unwrap());
+
+            if file_path.is_file() {
+                // Remove the file and its embeddings
+                eprintln!("remove_folder> file_path is a file: {:?}", file_path);
+                Self::remove_file(file_path, sqlite_manager)?;
+            } else if file_path.as_path().is_dir() {
+                eprintln!("remove_folder> file_path is a directory: {:?}", file_path);
+                // Recursively remove subdirectories
+                Self::remove_folder(file_path, sqlite_manager)?;
+            }
         }
 
+        // Remove the directory itself
         fs::remove_dir(path.as_path())?;
         Ok(())
     }
@@ -232,6 +251,7 @@ mod tests {
     use crate::shinkai_file_manager::FileProcessingMode;
 
     use super::*;
+    use serial_test::serial;
     use shinkai_embedding::mock_generator::MockGenerator;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunk;
@@ -268,6 +288,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_remove_empty_folder() {
         let dir = tempdir().unwrap();
         let path = ShinkaiPath::from_string(dir.path().to_string_lossy().to_string());
@@ -275,31 +296,65 @@ mod tests {
         // Create an empty folder
         fs::create_dir_all(path.as_path()).unwrap();
 
+        // Setup the test database
+        let sqlite_manager = setup_test_db();
+
         // Attempt to remove the empty folder
-        assert!(ShinkaiFileManager::remove_folder(path.clone()).is_ok());
+        assert!(ShinkaiFileManager::remove_folder(path.clone(), &sqlite_manager).is_ok());
 
         // Ensure the folder is removed
         assert!(!path.exists());
     }
 
     #[test]
+    #[serial]
     fn test_remove_non_empty_folder() {
         let dir = tempdir().unwrap();
-        let path = ShinkaiPath::from_string(dir.path().to_string_lossy().to_string());
 
-        // Create a folder and add a file inside it
-        fs::create_dir_all(path.as_path()).unwrap();
-        let file_path = path.as_path().join("test_file.txt");
-        File::create(&file_path).unwrap();
+        // Set the environment variable to the temporary directory path
+        std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
+
+        let folder_path = ShinkaiPath::new("test_folder");
+        fs::create_dir_all(folder_path.as_path()).unwrap();
+
+        let file_path = ShinkaiPath::new("test_folder/test_file.txt");
+        File::create(file_path.as_path()).unwrap();
+
+        // let base_path = ShinkaiPath::from_base_path();
+        // eprintln!("base_path: {:?}", base_path);
+
+        // Setup the test database
+        let sqlite_manager = setup_test_db();
+
+        // Add a parsed file and chunks to the database
+        let parsed_file = create_test_parsed_file(1, "test_folder/test_file.txt");
+        sqlite_manager.add_parsed_file(&parsed_file).unwrap();
+
+        let chunk = ShinkaiFileChunk {
+            chunk_id: None,
+            parsed_file_id: parsed_file.id.unwrap(),
+            position: 1,
+            content: "This is a test chunk.".to_string(),
+        };
+        sqlite_manager.create_chunk_with_embedding(&chunk, None).unwrap();
 
         // Attempt to remove the non-empty folder
-        assert!(ShinkaiFileManager::remove_folder(path.clone()).is_err());
+        assert!(ShinkaiFileManager::remove_folder(folder_path.clone(), &sqlite_manager).is_ok());
 
-        // Ensure the folder still exists
-        assert!(path.exists());
+        // Ensure the folder is removed
+        assert!(!folder_path.exists());
+
+        // Verify the file and its chunks are removed from the database
+        let chunks = sqlite_manager.get_chunks_for_parsed_file(parsed_file.id.unwrap());
+
+        assert!(
+            chunks.unwrap().is_empty(),
+            "Chunks should be removed from the database."
+        );
     }
 
     #[test]
+    #[serial]
     fn test_add_file() {
         let dir = tempdir().unwrap();
         let path = ShinkaiPath::from_string(dir.path().join("test_file.txt").to_string_lossy().to_string());
@@ -316,6 +371,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_rename_file_without_embeddings() {
         let dir = tempdir().unwrap();
 
@@ -363,6 +419,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_rename_file_with_embeddings() {
         let dir = tempdir().unwrap();
 
@@ -441,12 +498,13 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_copy_file() {
         let dir = tempdir().unwrap();
 
         // Set the environment variable to the temporary directory path
         std::env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
-        
+
         let input_path = ShinkaiPath::from_string("input_file.txt".to_string());
         let destination_dir = ShinkaiPath::from_string("destination_dir".to_string());
         let data = b"Hello, Shinkai!".to_vec();
@@ -469,6 +527,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_remove_file_and_folder() {
         let dir = tempdir().unwrap();
 
@@ -507,19 +566,23 @@ mod tests {
         assert!(!file_path.exists(), "The file should not exist after removal.");
         let chunks = sqlite_manager.get_chunks_for_parsed_file(parsed_file.id.unwrap());
         eprintln!("chunks after delete: {:?}", chunks);
-        assert!(chunks.unwrap().is_empty(), "Chunks should be removed from the database.");
+        assert!(
+            chunks.unwrap().is_empty(),
+            "Chunks should be removed from the database."
+        );
 
         // Create a folder
         assert!(ShinkaiFileManager::create_folder(folder_path.clone()).is_ok());
 
         // Remove the folder
-        assert!(ShinkaiFileManager::remove_folder(folder_path.clone()).is_ok());
+        assert!(ShinkaiFileManager::remove_folder(folder_path.clone(), &sqlite_manager).is_ok());
 
         // Verify the folder is removed
         assert!(!folder_path.exists(), "The folder should not exist after removal.");
     }
 
     #[test]
+    #[serial]
     fn test_move_folder() {
         let dir = tempdir().unwrap();
         let base_dir = dir.path();
@@ -561,10 +624,84 @@ mod tests {
         assert!(new_file2_path.exists(), "File 2 should exist in the new location.");
 
         // Verify the files have been moved in the database
-        let updated_file1 = sqlite_manager.get_parsed_file_by_rel_path("new_test_folder/file1.txt").unwrap();
-        let updated_file2 = sqlite_manager.get_parsed_file_by_rel_path("new_test_folder/file2.txt").unwrap();
+        let updated_file1 = sqlite_manager
+            .get_parsed_file_by_rel_path("new_test_folder/file1.txt")
+            .unwrap();
+        let updated_file2 = sqlite_manager
+            .get_parsed_file_by_rel_path("new_test_folder/file2.txt")
+            .unwrap();
 
         assert!(updated_file1.is_some(), "File 1 should be updated in the database.");
         assert!(updated_file2.is_some(), "File 2 should be updated in the database.");
+    }
+
+    #[test]
+    #[serial]
+    fn test_remove_folder_with_subfolder_and_embeddings() {
+        let dir = tempdir().unwrap();
+        let base_dir = dir.path();
+
+        // Set the environment variable to the temporary directory path
+        std::env::set_var("NODE_STORAGE_PATH", base_dir.to_string_lossy().to_string());
+
+        let main_folder_path = ShinkaiPath::from_string("main_folder".to_string());
+        let subfolder_path = ShinkaiPath::from_string("main_folder/subfolder".to_string());
+
+        let file1_path = ShinkaiPath::from_string("main_folder/file1.txt".to_string());
+        let file2_path = ShinkaiPath::from_string("main_folder/subfolder/file2.txt".to_string());
+
+        let data1 = b"File 1 content".to_vec();
+        let data2 = b"File 2 content".to_vec();
+
+        // Setup the test database
+        let sqlite_manager = setup_test_db();
+
+        // Create the main folder, subfolder, and add files
+        assert!(ShinkaiFileManager::create_folder(main_folder_path.clone()).is_ok());
+        assert!(ShinkaiFileManager::create_folder(subfolder_path.clone()).is_ok());
+        assert!(ShinkaiFileManager::write_file_to_fs(file1_path.clone(), data1.clone()).is_ok());
+        assert!(ShinkaiFileManager::write_file_to_fs(file2_path.clone(), data2.clone()).is_ok());
+
+        // Add parsed files and chunks to the database
+        let parsed_file1 = create_test_parsed_file(1, "main_folder/file1.txt");
+        let parsed_file2 = create_test_parsed_file(2, "main_folder/subfolder/file2.txt");
+        sqlite_manager.add_parsed_file(&parsed_file1).unwrap();
+        sqlite_manager.add_parsed_file(&parsed_file2).unwrap();
+
+        let chunk1 = ShinkaiFileChunk {
+            chunk_id: None,
+            parsed_file_id: parsed_file1.id.unwrap(),
+            position: 1,
+            content: "This is a test chunk for file 1.".to_string(),
+        };
+        sqlite_manager.create_chunk_with_embedding(&chunk1, None).unwrap();
+
+        let chunk2 = ShinkaiFileChunk {
+            chunk_id: None,
+            parsed_file_id: parsed_file2.id.unwrap(),
+            position: 1,
+            content: "This is a test chunk for file 2.".to_string(),
+        };
+        sqlite_manager.create_chunk_with_embedding(&chunk2, None).unwrap();
+
+        // Remove the main folder
+        assert!(ShinkaiFileManager::remove_folder(main_folder_path.clone(), &sqlite_manager).is_ok());
+
+        // Verify the main folder and subfolder are removed
+        assert!(!main_folder_path.exists(), "The main folder should not exist after removal.");
+        assert!(!subfolder_path.exists(), "The subfolder should not exist after removal.");
+
+        // Verify the files and their chunks are removed from the database
+        let chunks1 = sqlite_manager.get_chunks_for_parsed_file(parsed_file1.id.unwrap());
+        assert!(
+            chunks1.unwrap().is_empty(),
+            "Chunks for file 1 should be removed from the database."
+        );
+
+        let chunks2 = sqlite_manager.get_chunks_for_parsed_file(parsed_file2.id.unwrap());
+        assert!(
+            chunks2.unwrap().is_empty(),
+            "Chunks for file 2 should be removed from the database."
+        );
     }
 }
