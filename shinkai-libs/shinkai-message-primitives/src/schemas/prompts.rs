@@ -116,13 +116,11 @@ impl Prompt {
         prompt_type: SubPromptType,
         priority_value: u8,
     ) {
-        let content = retrieved_node.chunks.iter()
-            .map(|chunk| chunk.content.clone())
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        if !content.trim().is_empty() {
-            self.add_content(content, prompt_type, priority_value);
+        for chunk in retrieved_node.chunks.iter() {
+            let content = chunk.content.clone();
+            if !content.trim().is_empty() {
+                self.add_content(content, prompt_type.clone(), priority_value);
+            }
         }
     }
 
