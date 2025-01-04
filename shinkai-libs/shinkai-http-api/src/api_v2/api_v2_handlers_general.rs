@@ -122,23 +122,6 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(add_ollama_models_handler);
 
-        // TODO: Convert to download file from path
-    // let download_file_from_inbox_route = warp::path("download_file_from_inbox")
-    //     .and(warp::get())
-    //     .and(with_sender(node_commands_sender.clone()))
-    //     .and(warp::header::<String>("authorization"))
-    //     .and(warp::path::param::<String>())
-    //     .and(warp::path::param::<String>())
-    //     .and_then(download_file_from_inbox_handler);
-
-    // TODO: Convert to list files from job
-    // let list_files_in_inbox_route = warp::path("list_files_in_inbox")
-    //     .and(warp::get())
-    //     .and(with_sender(node_commands_sender.clone()))
-    //     .and(warp::header::<String>("authorization"))
-    //     .and(warp::path::param::<String>())
-    //     .and_then(list_files_in_inbox_handler);
-
     let stop_llm_route = warp::path("stop_llm")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
