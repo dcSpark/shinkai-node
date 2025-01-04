@@ -201,6 +201,7 @@ impl SheetUIInferenceChain {
         if !scope_is_empty {
             let ret = JobManager::search_for_chunks_in_resources(
                 fs_files_paths.clone(),
+                Vec::new(), // fs_folder_paths
                 job_filenames.clone(),
                 full_job.job_id.clone(),
                 &job_scope,

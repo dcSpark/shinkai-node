@@ -405,9 +405,51 @@ impl JobManager {
     //     }
     // }
 
+    /// Helper function to process folders and collect file information
+    async fn process_folder_contents(
+        folder: &ShinkaiPath,
+        sqlite_manager: &SqliteManager,
+        parsed_file_ids: &mut Vec<i64>,
+        paths_map: &mut HashMap<i64, ShinkaiPath>,
+        total_tokens: &mut i64,
+        all_files_have_token_count: &mut bool,
+    ) -> Result<(), SqliteManagerError> {
+        let files = match ShinkaiFileManager::list_directory_contents(folder.clone(), sqlite_manager) {
+            Ok(files) => files,
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    &format!("Error listing directory contents: {:?}", e),
+                );
+                return Err(SqliteManagerError::SomeError(format!("ShinkaiFsError: {:?}", e)));
+            }
+        };
+
+        for file_info in files {
+            if !file_info.is_directory && file_info.has_embeddings {
+                let file_path = ShinkaiPath::from_string(file_info.path);
+                if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(&file_path).unwrap() {
+                    let file_id = parsed_file.id.unwrap();
+                    parsed_file_ids.push(file_id);
+                    paths_map.insert(file_id, file_path);
+
+                    // Count tokens while we're here
+                    if let Some(file_tokens) = parsed_file.total_tokens {
+                        *total_tokens += file_tokens;
+                    } else {
+                        *all_files_have_token_count = false;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Searches all resources in the given job scope and returns the search results.
     pub async fn search_for_chunks_in_resources(
         fs_files_paths: Vec<ShinkaiPath>,
+        fs_folder_paths: Vec<ShinkaiPath>,
         job_filenames: Vec<String>,
         job_id: String,
         scope: &MinimalJobScope,
@@ -481,37 +523,30 @@ impl JobManager {
             }
         }
 
+        // Process fs_folder_paths
+        for folder in &fs_folder_paths {
+            Self::process_folder_contents(
+                folder,
+                &sqlite_manager,
+                &mut parsed_file_ids,
+                &mut paths_map,
+                &mut total_tokens,
+                &mut all_files_have_token_count,
+            )
+            .await?;
+        }
+
         // Retrieve files inside vector_fs_folders
         for folder in &scope.vector_fs_folders {
-            let files = match ShinkaiFileManager::list_directory_contents(folder.clone(), &sqlite_manager) {
-                Ok(files) => files,
-                Err(e) => {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Error,
-                        &format!("Error listing directory contents: {:?}", e),
-                    );
-                    return Err(SqliteManagerError::SomeError(format!("ShinkaiFsError: {:?}", e)));
-                }
-            };
-
-            for file_info in files {
-                if !file_info.is_directory && file_info.has_embeddings {
-                    let file_path = ShinkaiPath::from_string(file_info.path);
-                    if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(&file_path).unwrap() {
-                        let file_id = parsed_file.id.unwrap();
-                        parsed_file_ids.push(file_id);
-                        paths_map.insert(file_id, file_path);
-
-                        // Count tokens while we're here
-                        if let Some(file_tokens) = parsed_file.total_tokens {
-                            total_tokens += file_tokens;
-                        } else {
-                            all_files_have_token_count = false;
-                        }
-                    }
-                }
-            }
+            Self::process_folder_contents(
+                folder,
+                &sqlite_manager,
+                &mut parsed_file_ids,
+                &mut paths_map,
+                &mut total_tokens,
+                &mut all_files_have_token_count,
+            )
+            .await?;
         }
 
         // Determine the vector search mode configured in the job scope.
