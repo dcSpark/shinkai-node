@@ -161,9 +161,22 @@ impl GenericInferenceChain {
             paths: None,
         };
 
-        if !scope_is_empty || !fs_files_paths.is_empty() || !job_filenames.is_empty() {    
+        // Merge agent scope fs_files_paths if llm_provider is an agent
+        let mut merged_fs_files_paths = fs_files_paths.clone();
+        let mut merged_fs_folder_paths = Vec::new();
+        if let ProviderOrAgent::Agent(agent) = &llm_provider {
+            merged_fs_files_paths.extend(agent.scope.vector_fs_items.clone());
+            merged_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
+        }
+
+        if !scope_is_empty
+            || !merged_fs_files_paths.is_empty()
+            || !merged_fs_folder_paths.is_empty()
+            || !job_filenames.is_empty()
+        {
             let ret = JobManager::search_for_chunks_in_resources(
-                fs_files_paths.clone(),
+                merged_fs_files_paths,
+                merged_fs_folder_paths,
                 job_filenames.clone(),
                 full_job.job_id.clone(),
                 full_job.scope(),

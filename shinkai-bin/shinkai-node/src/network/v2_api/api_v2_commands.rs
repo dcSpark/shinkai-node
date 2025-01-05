@@ -1132,8 +1132,7 @@ impl Node {
                 }),
             scope: partial_agent
                 .get("scope")
-                .and_then(|v| v.as_str())
-                .map(|s| serde_json::from_str::<MinimalJobScope>(s).unwrap_or(existing_agent.scope.clone()))
+                .map(|v| serde_json::from_value::<MinimalJobScope>(v.clone()).unwrap_or(existing_agent.scope.clone()))
                 .unwrap_or(existing_agent.scope.clone()),
             storage_path: partial_agent
                 .get("storage_path")
