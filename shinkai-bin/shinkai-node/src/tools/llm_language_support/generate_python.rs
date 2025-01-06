@@ -1,6 +1,9 @@
 use super::language_helpers::to_snake_case;
 use serde_json::Value;
-use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
+use shinkai_tools_primitives::tools::{
+    shinkai_tool::ShinkaiToolHeader,
+    tool_playground::{SqlQuery, SqlTable},
+};
 
 // Example output:
 /*
@@ -181,8 +184,9 @@ fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
 
 pub fn generate_python_definition(
     tool: ShinkaiToolHeader,
+    sql_tables: Vec<SqlTable>,
+    sql_queries: Vec<SqlQuery>,
     generate_pyi: bool,
-    tool_playground: Option<ToolPlayground>,
 ) -> String {
     let mut python_output = String::new();
     let function_name = create_function_name_set(&tool);
@@ -195,48 +199,7 @@ pub fn generate_python_definition(
 
         // Add docstring to .pyi
         python_output.push_str(&generate_docstring(&tool, "    "));
-        python_output.push_str("\n    ...\n");
-
-        // If SQL tables exist, generate query function stub with docs
-        if let Some(playground) = tool_playground {
-            if !playground.metadata.sql_tables.is_empty() {
-                python_output.push_str("\n\n");
-                python_output.push_str(&format!(
-                    "async def query_{}(query: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:\n",
-                    function_name
-                ));
-
-                // Add query function documentation
-                python_output.push_str(&format!(
-                    "    \"\"\"Query the SQL database for results from {}\n\n",
-                    function_name
-                ));
-                python_output.push_str("    Available SQL Tables:\n");
-                for table in &playground.metadata.sql_tables {
-                    python_output.push_str(&format!("    {}:\n        {}\n", table.name, table.definition));
-                }
-
-                if !playground.metadata.sql_queries.is_empty() {
-                    python_output.push_str("\n    Example / Reference SQL Queries:\n");
-                    for query in &playground.metadata.sql_queries {
-                        python_output.push_str(&format!("    {}:\n        {}\n", query.name, query.query));
-                    }
-                }
-
-                python_output.push_str(
-                    r#"
-    Args:
-        query (str): SQL query to execute
-        params (Optional[List[Any]], optional): Query parameters. Defaults to None.
-
-    Returns:
-        List[Dict[str, Any]]: Query results
-    """
-    ...
-"#,
-                );
-            }
-        }
+        python_output.push_str("\n    pass\n");
 
         return python_output;
     } else {
@@ -295,6 +258,50 @@ pub fn generate_python_definition(
         raise Exception(error_message)
 "#,
         );
+    }
+
+    // Add SQL query function if tables exist
+    if !sql_tables.is_empty() {
+        python_output.push_str("\n\n");
+        python_output.push_str(&format!(
+            "async def query_{}(query: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:\n",
+            function_name
+        ));
+
+        // Add query function documentation
+        python_output.push_str(&format!(
+            "    \"\"\"Query the SQL database for results from {}\n\n",
+            function_name
+        ));
+        python_output.push_str("    Available SQL Tables:\n");
+        for table in sql_tables {
+            python_output.push_str(&format!("    {}:\n        {}\n", table.name, table.definition));
+        }
+
+        if !sql_queries.is_empty() {
+            python_output.push_str("\n    Example / Reference SQL Queries:\n");
+            for query in sql_queries {
+                python_output.push_str(&format!("    {}:\n        {}\n", query.name, query.query));
+            }
+        }
+
+        python_output.push_str(
+            r#"
+    Args:
+        query (str): SQL query to execute
+        params (Optional[List[Any]], optional): Query parameters. Defaults to None.
+
+    Returns:
+        List[Dict[str, Any]]: Query results
+    """
+"#,
+        );
+
+        if generate_pyi {
+            python_output.push_str("    pass\n");
+        } else {
+            python_output.push_str("    return shinkai_sqlite_query_executor(query, params)\n");
+        }
     }
 
     python_output

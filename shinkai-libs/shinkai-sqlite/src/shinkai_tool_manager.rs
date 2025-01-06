@@ -517,7 +517,7 @@ impl SqliteManager {
         let conn = self.get_connection()?;
         let exists: bool = conn
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'JS')",
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'Deno')",
                 [],
                 |row| row.get(0),
             )
