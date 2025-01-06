@@ -36,7 +36,7 @@ mod tests {
         let message_result = ShinkaiMessageBuilder::job_message(
             inbox.clone(),
             message_raw_content.clone(),
-            "".to_string(),
+            vec![],
             "".to_string(),
             my_encryption_sk.clone(),
             my_signature_sk.clone(),
@@ -56,7 +56,7 @@ mod tests {
                 let job_message: JobMessage = serde_json::from_str(&shinkai_data.message_raw_content).unwrap();
                 assert_eq!(job_message.job_id, inbox);
                 assert_eq!(job_message.content, "hello hello, are u there?");
-                assert_eq!(job_message.files_inbox, "");
+                assert_eq!(job_message.fs_files_paths, vec![]);
             }
         }
 

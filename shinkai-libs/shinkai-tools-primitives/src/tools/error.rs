@@ -1,6 +1,5 @@
 use reqwest::Error as ReqwestError;
 use serde_json::Error as SerdeError;
-use shinkai_vector_resources::resource_errors::VRError;
 use std::error::Error;
 use std::fmt::{self};
 
@@ -13,7 +12,6 @@ pub enum ToolError {
     ToolkitVersionAlreadyInstalled(String, String),
     RequestError(ReqwestError),
     ToolNotFound(String),
-    VRError(VRError),
     ToolAlreadyInstalled(String),
     ToolkitAlreadyActivated(String),
     ToolkitAlreadyDeactivated(String),
@@ -44,7 +42,6 @@ impl fmt::Display for ToolError {
             }
             ToolError::RequestError(ref e) => write!(f, "Request error: {}", e),
             ToolError::ToolNotFound(ref t) => write!(f, "Tool not found: {}", t),
-            ToolError::VRError(ref e) => write!(f, "{}", e),
             ToolError::ToolAlreadyInstalled(ref t) => write!(f, "Tool already installed: {}", t),
             ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
             ToolError::ToolkitAlreadyDeactivated(ref t) => write!(f, "Toolkit is already deactivated: {}", t),
@@ -66,12 +63,6 @@ impl fmt::Display for ToolError {
 }
 
 impl Error for ToolError {}
-
-impl From<VRError> for ToolError {
-    fn from(err: VRError) -> ToolError {
-        ToolError::VRError(err)
-    }
-}
 
 impl From<ReqwestError> for ToolError {
     fn from(err: ReqwestError) -> ToolError {

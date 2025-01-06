@@ -1,8 +1,8 @@
 use std::fmt;
 
+use shinkai_message_primitives::shinkai_utils::utils;
+
 use crate::tools::error::ToolError;
-use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource::VRPath;
 
 use super::parameters::Parameters;
 use super::shinkai_tool::ShinkaiToolHeader;
@@ -31,7 +31,7 @@ pub struct RustTool {
     pub description: String,
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
-    pub tool_embedding: Option<Embedding>,
+    pub tool_embedding: Option<Vec<f32>>,
     pub tool_router_key: String,
 }
 
@@ -41,11 +41,11 @@ impl RustTool {
         description: String,
         input_args: Parameters,
         output_arg: ToolOutputArg,
-        tool_embedding: Option<Embedding>,
+        tool_embedding: Option<Vec<f32>>,
         tool_router_key: String,
     ) -> Self {
         Self {
-            name: VRPath::clean_string(&name),
+            name: utils::clean_string(&name),
             description,
             input_args,
             output_arg,

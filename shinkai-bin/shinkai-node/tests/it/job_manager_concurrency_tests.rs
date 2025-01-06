@@ -1,4 +1,5 @@
 use ed25519_dalek::SigningKey;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -19,14 +20,12 @@ use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::llm_stopper::LLMStopper;
 use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+
 use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::time::Duration;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::utils;
@@ -81,31 +80,17 @@ fn node_name() -> ShinkaiName {
     ShinkaiName::new("@@localhost.shinkai".to_string()).unwrap()
 }
 
-async fn setup_default_vector_fs(db: Arc<SqliteManager>) -> VectorFS {
-    let generator = RemoteEmbeddingGenerator::new_default();
-    let profile_list = vec![default_test_profile()];
-    let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-        OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-    )];
-
-    VectorFS::new(generator, supported_embedding_models, profile_list, db, node_name())
-        .await
-        .unwrap()
-}
-
 #[tokio::test]
 async fn test_process_job_queue_concurrency() {
     let num_threads = 8;
     let db = utils::db_handlers::setup_test_db();
     let db = Arc::new(db);
-    let vector_fs = Arc::new(setup_default_vector_fs(db.clone()).await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<SqliteManager>,
-                              _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
@@ -143,7 +128,6 @@ async fn test_process_job_queue_concurrency() {
     };
 
     let db_weak = Arc::downgrade(&db);
-    let vector_fs_weak = Arc::downgrade(&vector_fs);
     let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), None)
         .await
         .unwrap();
@@ -158,7 +142,6 @@ async fn test_process_job_queue_concurrency() {
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager.clone(),
         db_weak.clone(),
-        vector_fs_weak.clone(),
         node_name.clone(),
         num_threads,
         clone_signature_secret_key(&node_identity_sk),
@@ -173,7 +156,6 @@ async fn test_process_job_queue_concurrency() {
         llm_stopper.clone(),
         move |job,
               _db,
-              _vector_fs,
               node_name,
               identity_sk,
               generator,
@@ -189,7 +171,6 @@ async fn test_process_job_queue_concurrency() {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
-                vector_fs_weak.clone(),
                 node_name.clone(),
                 identity_sk,
                 generator,
@@ -207,12 +188,13 @@ async fn test_process_job_queue_concurrency() {
             JobMessage {
                 job_id: format!("job_id::{}::false", i).to_string(),
                 content: format!("my content {}", i).to_string(),
-                files_inbox: "".to_string(),
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                fs_files_paths: vec![],
+                job_filenames: vec![],
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -251,14 +233,12 @@ async fn test_sequential_process_for_same_job_id() {
     let num_threads = 8;
     let db = utils::db_handlers::setup_test_db();
     let db = Arc::new(db);
-    let vector_fs = Arc::new(setup_default_vector_fs(db.clone()).await);
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let node_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
     // Mock job processing function
     let mock_processing_fn = |job: JobForProcessing,
                               db: Weak<SqliteManager>,
-                              _vector_fs: Weak<VectorFS>,
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
@@ -296,7 +276,6 @@ async fn test_sequential_process_for_same_job_id() {
     };
 
     let db_weak = Arc::downgrade(&db);
-    let vector_fs_weak = Arc::downgrade(&vector_fs);
     let mut job_queue = JobQueueManager::<JobForProcessing>::new(db_weak.clone(), None)
         .await
         .unwrap();
@@ -311,7 +290,6 @@ async fn test_sequential_process_for_same_job_id() {
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager.clone(),
         db_weak.clone(),
-        vector_fs_weak.clone(),
         node_name.clone(),
         num_threads,
         clone_signature_secret_key(&node_identity_sk),
@@ -325,7 +303,6 @@ async fn test_sequential_process_for_same_job_id() {
         llm_stopper.clone(),
         move |job,
               _db,
-              _vector_fs,
               node_name,
               identity_sk,
               generator,
@@ -340,7 +317,6 @@ async fn test_sequential_process_for_same_job_id() {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
-                vector_fs_weak.clone(),
                 node_name.clone(),
                 identity_sk,
                 generator,
@@ -357,12 +333,13 @@ async fn test_sequential_process_for_same_job_id() {
             JobMessage {
                 job_id: "job_id::123::false".to_string(),
                 content: format!("my content {}", i).to_string(),
-                files_inbox: "".to_string(),
                 parent: None,
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                fs_files_paths: vec![],
+                job_filenames: vec![],
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,

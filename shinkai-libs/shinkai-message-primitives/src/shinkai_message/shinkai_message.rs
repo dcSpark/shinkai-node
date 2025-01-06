@@ -1,7 +1,6 @@
 use super::shinkai_message_schemas::MessageSchemaType;
 use crate::shinkai_utils::encryption::EncryptionMethod;
 use serde::{Deserialize, Serialize};
-use shinkai_vector_resources::source::ShinkaiNameString;
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
@@ -20,10 +19,8 @@ pub struct ShinkaiBody {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct InternalMetadata {
-    #[schema(value_type = String)]
-    pub sender_subidentity: ShinkaiNameString,
-    #[schema(value_type = String)]
-    pub recipient_subidentity: ShinkaiNameString,
+    pub sender_subidentity: String,
+    pub recipient_subidentity: String,
     pub inbox: String,
     pub signature: String,
     pub encryption: EncryptionMethod,
@@ -33,14 +30,11 @@ pub struct InternalMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct ExternalMetadata {
-    #[schema(value_type = String)]
-    pub sender: ShinkaiNameString,
-    #[schema(value_type = String)]
-    pub recipient: ShinkaiNameString,
+    pub sender: String,
+    pub recipient: String,
     pub scheduled_time: String,
     pub signature: String,
-    #[schema(value_type = String)]
-    pub intra_sender: ShinkaiNameString,
+    pub intra_sender: String,
     pub other: String,
 }
 

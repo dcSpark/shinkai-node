@@ -36,7 +36,10 @@ export async function shinkaiDownloadPages(input: {urls: any[]}): Promise<{
 }
 */
 use serde_json::Value;
-use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_playground::ToolPlayground};
+use shinkai_tools_primitives::tools::{
+    shinkai_tool::ShinkaiToolHeader,
+    tool_playground::{SqlQuery, SqlTable},
+};
 
 pub fn create_function_name_set(tool: &ShinkaiToolHeader) -> String {
     crate::tools::llm_language_support::language_helpers::to_camel_case(&tool.name)
@@ -96,8 +99,9 @@ fn arg_type_to_typescript(arg_type: &str) -> String {
 
 pub fn generate_typescript_definition(
     tool: ShinkaiToolHeader,
+    sql_tables: Vec<SqlTable>,
+    sql_queries: Vec<SqlQuery>,
     generate_dts: bool,
-    tool_playground: Option<ToolPlayground>,
 ) -> String {
     let mut typescript_output = String::new();
     let function_name = create_function_name_set(&tool);
@@ -216,53 +220,49 @@ pub fn generate_typescript_definition(
     }
 
     // If SQL tables exist, generate a query function
-    if let Some(playground) = &tool_playground {
-        if !playground.metadata.sql_tables.is_empty() {
-            // Combine SQL documentation into a single format! macro
-            typescript_output.push_str(&format!(
-                "/**
+    if !sql_tables.is_empty() {
+        // Combine SQL documentation into a single format! macro
+        typescript_output.push_str(&format!(
+            "/**
  * Query the SQL database for results from {}
  * 
  * Available SQL Tables:
 ",
-                function_name
-            ));
+            function_name
+        ));
 
-            for table in &playground.metadata.sql_tables {
-                typescript_output.push_str(&format!(" * {}\n * {}\n", table.name, table.definition));
+        for table in sql_tables {
+            typescript_output.push_str(&format!(" * {}\n * {}\n", table.name, table.definition));
+        }
+
+        if !sql_queries.is_empty() {
+            typescript_output.push_str(" *\n * Example / Reference SQL Queries:\n");
+            for query in sql_queries {
+                typescript_output.push_str(&format!(" * {}\n * {}\n\n", query.name, query.query));
             }
+        }
 
-            if !playground.metadata.sql_queries.is_empty() {
-                typescript_output.push_str(
-                    " * 
-                     * Example / Reference SQL Queries:\n",
-                );
-                for query in &playground.metadata.sql_queries {
-                    typescript_output.push_str(&format!(" * {}\n * {}\n", query.name, query.query));
-                }
-            }
-
-            // Combine parameter documentation
-            typescript_output.push_str(
-                " * 
+        // Combine parameter documentation
+        typescript_output.push_str(
+            " * 
 * @param query - SQL query to execute
 * @param params - Optional array of parameters for the query
 * @returns Query results
 */
 ",
-            );
+        );
 
-            // Combine function definition and implementation
-            typescript_output.push_str(&format!(
-                "
-async function query_{}(query: string, params?: any[]) {{
-    return shinkaiSqliteQueryExecutor('{}', query, params);
-}}
-",
-                function_name,
-                "default" // TODO: make this dynamic
-            ));
-        }
+        // Combine function definition and implementation
+        typescript_output.push_str(&format!(
+            "
+async function query_{}(query: string, params?: any[]){}",
+            function_name,
+            if generate_dts {
+                ";"
+            } else {
+                " {\n    return shinkaiSqliteQueryExecutor(query, params)\n}"
+            }
+        ));
     }
 
     typescript_output.push_str("\n");

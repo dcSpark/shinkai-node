@@ -701,6 +701,5 @@ fn add_options_to_payload(
     // Add options to payload if not empty
     if !options.is_empty() {
         payload["options"] = serde_json::Value::Object(options);
-        eprintln!("options: {:?}", payload);
     }
 }

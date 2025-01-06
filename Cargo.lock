@@ -1867,18 +1867,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
-name = "docx-rust"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21507309413f0ba54ec1f2beeda534d116d3db94bffea9c18991bea116f3e522"
-dependencies = [
- "derive_more 0.99.18",
- "hard-xml",
- "log",
- "zip 1.1.4",
-]
-
-[[package]]
 name = "dotenv"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2949,31 +2937,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hard-xml"
-version = "1.36.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a344e0cef8802f37dc47f17c01a04354d3e66d9f6c8744108b0912f616efe266"
-dependencies = [
- "hard-xml-derive",
- "jetscii",
- "lazy_static",
- "memchr",
- "xmlparser",
-]
-
-[[package]]
-name = "hard-xml-derive"
-version = "1.36.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bfae7cdfe23e50ea96929ccf1948d9ae1d8608353556461e5de247463d3a4f6"
-dependencies = [
- "bitflags 2.6.0",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3763,12 +3726,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
 
 [[package]]
-name = "jetscii"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47f142fe24a9c9944451e8349de0a56af5f3e7226dc46f3ed4d4ecc0b85af75e"
-
-[[package]]
 name = "jobserver"
 version = "0.1.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3938,7 +3895,7 @@ checksum = "c0ff37bd590ca25063e35af745c343cb7a0271906fb7b37e4813e8f79f00268d"
 dependencies = [
  "bitflags 2.6.0",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.5.7",
 ]
 
 [[package]]
@@ -4020,15 +3977,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31e24f1ad8321ca0e8a1e0ac13f23cb668e6f5466c2c57319f6a5cf1cc8e3b1c"
 dependencies = [
  "linked-hash-map",
-]
-
-[[package]]
-name = "lz4_flex"
-version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75761162ae2b0e580d7e7c390558127e5f01b4194debd6221fd8c207fc80e3f5"
-dependencies = [
- "twox-hash",
 ]
 
 [[package]]
@@ -4595,15 +4543,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
-name = "ordered-float"
-version = "3.9.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1e1c390732d15f1d48471625cd92d154e66db2c56645e29a9cd26f4699f72dc"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "os_str_bytes"
 version = "6.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4674,6 +4613,17 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d17b78036a60663b797adeaee46f5c9dfebb86948d1255007a1d6be0271ff99"
+dependencies = [
+ "instant",
+ "lock_api",
+ "parking_lot_core 0.8.6",
+]
+
+[[package]]
+name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bf18183cf54e8d6059647fc3063646a1801cf30896933ec2311622cc4b9a27"
@@ -4696,13 +4646,27 @@ dependencies = [
 
 [[package]]
 name = "parking_lot_core"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60a2cfe6f0ad2bfc16aefa463b497d5c7a5ecd44a23efa72aa342d90177356dc"
+dependencies = [
+ "cfg-if",
+ "instant",
+ "libc",
+ "redox_syscall 0.2.16",
+ "smallvec 1.13.2",
+ "winapi",
+]
+
+[[package]]
+name = "parking_lot_core"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e401f977ab385c9e4e3ab30627d6f26d00e2c73eef317493c4ec6d468726cf8"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.5.7",
  "smallvec 1.13.2",
  "windows-targets 0.52.6",
 ]
@@ -5679,6 +5643,15 @@ dependencies = [
 
 [[package]]
 name = "redox_syscall"
+version = "0.2.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
+dependencies = [
+ "bitflags 1.3.2",
+]
+
+[[package]]
+name = "redox_syscall"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b6dfecf2c74bce2466cabf93f6664d6998a69eb21e39f4207930065b27b771f"
@@ -6495,6 +6468,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "serial_test"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0bccbcf40c8938196944a3da0e133e031a33f4d6b72db3bda3cc556e361905d"
+dependencies = [
+ "lazy_static",
+ "parking_lot 0.11.2",
+ "serial_test_derive",
+]
+
+[[package]]
+name = "serial_test_derive"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2acd6defeddb41eb60bb468f8825d0cfd0c2a76bc03bfd235b6a1dc4f6a1ad5"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "servo_arc"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6578,7 +6573,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai-spreadsheet-llm"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6593,7 +6588,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "dashmap",
@@ -6608,8 +6603,60 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai_embedding"
+version = "0.9.4"
+dependencies = [
+ "async-trait",
+ "bincode",
+ "blake3",
+ "chrono",
+ "csv",
+ "futures",
+ "keyphrases",
+ "lazy_static",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.3",
+ "utoipa",
+]
+
+[[package]]
+name = "shinkai_fs"
+version = "0.9.4"
+dependencies = [
+ "async-trait",
+ "bincode",
+ "blake3",
+ "chrono",
+ "comrak",
+ "csv",
+ "futures",
+ "keyphrases",
+ "lazy_static",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "scraper",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "shinkai_embedding",
+ "shinkai_message_primitives",
+ "shinkai_ocr",
+ "shinkai_sqlite",
+ "tempfile",
+ "thiserror 2.0.3",
+ "tokio",
+ "urlencoding",
+ "utoipa",
+]
+
+[[package]]
 name = "shinkai_http_api"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -6634,21 +6681,21 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "shinkai_embedding",
  "shinkai_message_primitives",
  "shinkai_sqlite",
- "shinkai_vector_resources",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -6663,7 +6710,8 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "shinkai_vector_resources",
+ "serial_test",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -6674,14 +6722,14 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mini_libs"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "base64 0.22.1",
 ]
 
 [[package]]
 name = "shinkai_node"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -6727,6 +6775,8 @@ dependencies = [
  "serde",
  "serde_json",
  "shinkai_crypto_identities",
+ "shinkai_embedding",
+ "shinkai_fs",
  "shinkai_http_api",
  "shinkai_job_queue_manager",
  "shinkai_message_primitives",
@@ -6735,15 +6785,13 @@ dependencies = [
  "shinkai_tcp_relayer",
  "shinkai_tools_primitives",
  "shinkai_tools_runner",
- "shinkai_vector_fs",
- "shinkai_vector_resources",
  "tempfile",
  "tiny-bip39",
  "tokio",
  "tokio-tungstenite 0.15.0",
  "tokio-util",
  "umya-spreadsheet",
- "urlencoding 2.1.3",
+ "urlencoding",
  "utoipa",
  "uuid 1.11.0",
  "warp",
@@ -6753,7 +6801,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "image 0.25.5",
@@ -6768,7 +6816,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sheet"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "async-channel 1.9.0",
  "chrono",
@@ -6782,7 +6830,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "bincode",
  "blake3",
@@ -6799,10 +6847,10 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "shinkai_embedding",
  "shinkai_message_primitives",
  "shinkai_sheet",
  "shinkai_tools_primitives",
- "shinkai_vector_resources",
  "sqlite-vec",
  "tempfile",
  "thiserror 2.0.3",
@@ -6813,7 +6861,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -6832,7 +6880,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "0.9.3"
+version = "0.9.4"
 dependencies = [
  "anyhow",
  "regex",
@@ -6841,7 +6889,6 @@ dependencies = [
  "serde_json",
  "shinkai_message_primitives",
  "shinkai_tools_runner",
- "shinkai_vector_resources",
  "tokio",
 ]
 
@@ -6878,53 +6925,6 @@ dependencies = [
  "tokio-util",
  "toml_edit",
  "zip 2.2.1",
-]
-
-[[package]]
-name = "shinkai_vector_fs"
-version = "0.9.3"
-dependencies = [
- "bincode",
- "blake3",
- "chrono",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "shinkai_message_primitives",
- "shinkai_sqlite",
- "shinkai_vector_resources",
- "tokio",
-]
-
-[[package]]
-name = "shinkai_vector_resources"
-version = "0.9.3"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "blake3",
- "chrono",
- "comrak",
- "csv",
- "docx-rust",
- "futures",
- "hex",
- "keyphrases",
- "lazy_static",
- "lz4_flex",
- "num-traits",
- "ordered-float",
- "rand 0.8.5",
- "regex",
- "reqwest 0.11.27",
- "scraper",
- "serde",
- "serde_json",
- "shinkai_ocr",
- "tokio",
- "umya-spreadsheet",
- "urlencoding 1.3.3",
- "utoipa",
 ]
 
 [[package]]
@@ -7977,16 +7977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "twox-hash"
-version = "1.6.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
-dependencies = [
- "cfg-if",
- "static_assertions",
-]
-
-[[package]]
 name = "typed-arena"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8144,12 +8134,6 @@ dependencies = [
  "idna 1.0.3",
  "percent-encoding",
 ]
-
-[[package]]
-name = "urlencoding"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a1f0175e03a0973cf4afd476bef05c26e228520400eb1fd473ad417b1c00ffb"
 
 [[package]]
 name = "urlencoding"
@@ -8813,12 +8797,6 @@ name = "xdg"
 version = "2.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
-
-[[package]]
-name = "xmlparser"
-version = "0.13.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "yaml-rust"

@@ -9,7 +9,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMes
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -125,12 +124,13 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     let job_message = JobMessage {
         job_id: job_id.clone(),
         content,
-        files_inbox: "".to_string(),
         parent: None,
         sheet_job_data: None,
         callback: None,
         metadata: None,
         tool_key: None,
+        fs_files_paths: vec![],
+                job_filenames: vec![],
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);

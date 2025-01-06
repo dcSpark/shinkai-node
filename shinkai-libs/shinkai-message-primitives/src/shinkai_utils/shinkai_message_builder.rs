@@ -3,7 +3,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime},
+    schemas::inbox_name::InboxName,
     shinkai_message::{
         shinkai_message::{
             ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
@@ -18,8 +18,7 @@ use crate::{
 };
 
 use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string},
-    signatures::{clone_signature_secret_key, signature_secret_key_to_string},
+    encryption::{clone_static_secret_key, encryption_secret_key_to_string}, shinkai_time::ShinkaiStringTime, signatures::{clone_signature_secret_key, signature_secret_key_to_string}
 };
 
 pub type ShinkaiNameString = String;

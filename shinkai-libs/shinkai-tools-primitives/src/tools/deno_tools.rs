@@ -20,7 +20,6 @@ use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
-use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -31,7 +30,8 @@ pub struct DenoTool {
     pub version: String,
     pub js_code: String,
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_tool_router_keys")]
+    #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
+    #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys")]
     pub tools: Option<Vec<ToolRouterKey>>,
     pub config: Vec<ToolConfig>,
     pub description: String,
@@ -39,31 +39,13 @@ pub struct DenoTool {
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub activated: bool,
-    pub embedding: Option<Embedding>,
+    pub embedding: Option<Vec<f32>>,
     pub result: ToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
     pub assets: Option<Vec<String>>,
-}
-
-fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Option<Vec<ToolRouterKey>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let string_vec: Option<Vec<String>> = Option::deserialize(deserializer)?;
-
-    match string_vec {
-        Some(vec) => {
-            let router_keys = vec
-                .into_iter()
-                .filter_map(|s| ToolRouterKey::from_string(&s).ok())
-                .collect();
-            Ok(Some(router_keys))
-        }
-        None => Ok(None),
-    }
 }
 
 impl DenoTool {

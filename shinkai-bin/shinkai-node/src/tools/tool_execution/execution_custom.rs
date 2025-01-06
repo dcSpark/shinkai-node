@@ -8,12 +8,9 @@ use ed25519_dalek::SigningKey;
 
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-use shinkai_tools_primitives::tools::tool_config::OAuth;
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 
-use tokio::sync::RwLock;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -30,7 +27,6 @@ pub async fn execute_custom_tool(
     _extra_config: Vec<ToolConfig>,
     bearer: String,
     db: Arc<SqliteManager>,
-    vector_fs: Arc<VectorFS>,
     llm_provider: String,
     node_name: ShinkaiName,
     identity_manager: Arc<Mutex<IdentityManager>>,
@@ -40,7 +36,6 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
-    // TODO: if it is, find it and call it
 
     // Check if the tool_router_key contains "rust_toolkit"
     if !tool_router_key.contains("rust_toolkit") {
@@ -57,7 +52,6 @@ pub async fn execute_custom_tool(
                 tool_id,
                 app_id,
                 db,
-                vector_fs,
                 node_name,
                 identity_manager,
                 job_manager,
@@ -75,7 +69,6 @@ pub async fn execute_custom_tool(
                 tool_id,
                 app_id,
                 db,
-                vector_fs,
                 node_name,
                 identity_manager,
                 job_manager,
@@ -93,7 +86,6 @@ pub async fn execute_custom_tool(
                 tool_id,
                 app_id,
                 db,
-                vector_fs,
                 node_name,
                 identity_manager,
                 job_manager,

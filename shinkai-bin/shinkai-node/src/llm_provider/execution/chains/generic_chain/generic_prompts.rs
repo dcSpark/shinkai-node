@@ -1,16 +1,20 @@
+use serde_json::json;
 use std::collections::HashMap;
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
+
 use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
+use crate::tools::tool_implementation::native_tools::sql_processor::get_current_tables;
 use crate::utils::environment::NodeEnvironment;
-use serde_json::json;
-use shinkai_message_primitives::schemas::job::JobStepResult;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+use std::sync::mpsc;
+use tokio::runtime::Runtime;
 
 impl JobPromptGenerator {
     /// A basic generic prompt generator
@@ -21,9 +25,9 @@ impl JobPromptGenerator {
         custom_user_prompt: Option<String>,
         user_message: String,
         image_files: HashMap<String, String>,
-        ret_nodes: Vec<RetrievedNode>,
+        ret_nodes: ShinkaiFileChunkCollection,
         _summary_text: Option<String>,
-        job_step_history: Option<Vec<JobStepResult>>,
+        job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<ToolCallFunctionResponse>,
         job_id: String,
@@ -41,7 +45,6 @@ impl JobPromptGenerator {
         let has_ret_nodes = !ret_nodes.is_empty();
 
         // Add previous messages
-        // TODO: this should be full messages with assets and not just strings
         if let Some(step_history) = job_step_history {
             prompt.add_step_history(step_history, 97);
         }
@@ -51,13 +54,42 @@ impl JobPromptGenerator {
             let mut priority = 98;
             for (i, tool) in tools.iter().enumerate() {
                 if let Ok(tool_content) = tool.json_function_call_format() {
+                    match tool_content.get("function") {
+                        Some(function) => {
+                            let tool_router_key = function["tool_router_key"].as_str().unwrap_or("");
+                            if tool_router_key == "local:::rust_toolkit:::shinkai_sqlite_query_executor" {
+                                let (tx, rx) = mpsc::channel();
+                                let job_id_clone = job_id.clone();
+                                // Spawn the async task on a runtime
+                                std::thread::spawn(move || {
+                                    let runtime = Runtime::new().unwrap();
+                                    let result = runtime.block_on(get_current_tables(job_id_clone));
+                                    tx.send(result).unwrap();
+                                });
+                                // Wait for the result
+                                let current_tables = rx.recv().unwrap();
+                                if let Ok(current_tables) = current_tables {
+                                    prompt.add_content(
+                                        format!(
+                                            "<current_tables>\n{}\n</current_tables>\n",
+                                            current_tables.join("; \n")
+                                        ),
+                                        SubPromptType::ExtraContext,
+                                        97,
+                                    );
+                                }
+                            }
+                        }
+                        None => {}
+                    }
+
                     prompt.add_tool(tool_content, SubPromptType::AvailableTool, priority);
                 }
                 if (i + 1) % 2 == 0 {
                     priority = priority.saturating_sub(1);
                 }
             }
-            let folder = get_app_folder_path(node_env, job_id);
+            let folder = get_app_folder_path(node_env, job_id.clone());
             let current_files = Node::v2_api_list_app_files_internal(folder.clone(), true);
             if let Ok(current_files) = current_files {
                 if !current_files.is_empty() {
@@ -76,9 +108,9 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
             }
-            for node in ret_nodes {
-                prompt.add_ret_node_content(node, SubPromptType::ExtraContext, 96);
-            }
+            
+            prompt.add_ret_node_content(ret_nodes, SubPromptType::ExtraContext, 96);
+
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
             }

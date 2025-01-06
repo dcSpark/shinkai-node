@@ -1,3 +1,4 @@
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_message_primitives::schemas::identity::{StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
@@ -15,7 +16,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::NamedTempFile;

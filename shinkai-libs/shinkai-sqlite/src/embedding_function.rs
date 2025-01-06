@@ -1,7 +1,7 @@
 use reqwest::Client;
 use rusqlite::Result;
 use serde::{Deserialize, Serialize};
-use shinkai_vector_resources::model_type::EmbeddingModelType;
+use shinkai_embedding::model_type::EmbeddingModelType;
 
 #[derive(Serialize, Deserialize)]
 struct OllamaResponse {

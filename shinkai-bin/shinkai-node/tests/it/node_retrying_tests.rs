@@ -9,8 +9,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
-use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -77,9 +77,7 @@ fn node_retrying_test() {
             bounded(100);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
-        let node2_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node2_identity_name));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -97,7 +95,7 @@ fn node_retrying_test() {
             None,
             true,
             vec![],
-            node1_fs_db_path,
+            
             None,
             None,
             default_embedding_model(),
@@ -121,7 +119,7 @@ fn node_retrying_test() {
             None,
             true,
             vec![],
-            node2_fs_db_path,
+            
             None,
             None,
             default_embedding_model(),

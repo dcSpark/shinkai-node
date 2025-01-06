@@ -3,7 +3,8 @@ use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionP
 use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::tool_router_key::ToolRouterKey;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
-use crate::shinkai_utils::job_scope::JobScope;
+use crate::shinkai_utils::job_scope::MinimalJobScope;
+use crate::shinkai_utils::shinkai_path::ShinkaiPath;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
@@ -300,7 +301,7 @@ pub enum AssociatedUI {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct JobCreationInfo {
-    pub scope: JobScope,
+    pub scope: MinimalJobScope,
     pub is_hidden: Option<bool>,
     pub associated_ui: Option<AssociatedUI>,
 }
@@ -318,7 +319,6 @@ pub enum CallbackAction {
 pub struct JobMessage {
     pub job_id: String,
     pub content: String,
-    pub files_inbox: String,
     pub parent: Option<String>,
     pub sheet_job_data: Option<String>,
     // Whenever we need to chain actions, we can use this
@@ -327,6 +327,11 @@ pub struct JobMessage {
     pub metadata: Option<MessageMetadata>,
     // Whenever we want to force the use of a specific tool, we can use this
     pub tool_key: Option<String>,
+    // Field that lists associated files of the message
+    #[serde(default)]
+    pub fs_files_paths: Vec<ShinkaiPath>,
+    #[serde(default)]
+    pub job_filenames: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, ToSchema)]

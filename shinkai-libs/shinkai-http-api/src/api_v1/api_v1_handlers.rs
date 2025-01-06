@@ -838,65 +838,6 @@ pub async fn get_last_messages_from_inbox_with_branches_handler(
     .await
 }
 
-pub async fn handle_file_upload(
-    node_commands_sender: Sender<NodeCommand>,
-    public_key: String,
-    encrypted_nonce: String,
-    form: warp::multipart::FormData,
-) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
-    let mut stream = Box::pin(form.filter_map(|part_result| async move {
-        if let Ok(part) = part_result {
-            shinkai_log(
-                ShinkaiLogOption::Identity,
-                ShinkaiLogLevel::Debug,
-                format!("Received file: {:?}", part).as_str(),
-            );
-            if let Some(filename) = part.filename() {
-                let filename = filename.to_string();
-                let stream = part
-                    .stream()
-                    .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
-                return Some((filename, stream));
-            }
-        }
-        None
-    }));
-
-    if let Some((filename, mut file_stream)) = stream.next().await {
-        let mut file_data = Vec::new();
-        while let Some(Ok(node)) = file_stream.next().await {
-            file_data.extend(node);
-        }
-
-        let (res_sender, res_receiver) = async_channel::bounded(1);
-        node_commands_sender
-            .clone()
-            .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                filename,
-                file: file_data,
-                public_key,
-                encrypted_nonce,
-                res: res_sender,
-            })
-            .map_err(|_| warp::reject::reject())
-            .await?;
-        let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-        match result {
-            Ok(message) => Ok(Box::new(warp::reply::with_status(
-                warp::reply::json(&message),
-                StatusCode::OK,
-            ))),
-            Err(error) => Ok(Box::new(warp::reply::with_status(
-                warp::reply::json(&error),
-                StatusCode::from_u16(error.code).unwrap(),
-            ))),
-        }
-    } else {
-        Err(warp::reject::reject())
-    }
-}
-
 pub async fn get_public_key_handler(
     node_commands_sender: Sender<NodeCommand>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -1093,38 +1034,12 @@ pub async fn job_message_handler(
     }
 }
 
-pub async fn get_filenames_message_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    message: ShinkaiMessage,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
-        NodeCommand::APIGetFilenamesInInbox {
-            msg: message,
-            res: res_sender,
-        }
-    })
-    .await
-}
-
 pub async fn mark_as_read_up_to_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     handle_node_command(node_commands_sender, message, |_, message, res_sender| {
         NodeCommand::APIMarkAsReadUpTo {
-            msg: message,
-            res: res_sender,
-        }
-    })
-    .await
-}
-
-pub async fn create_files_inbox_with_symmetric_key_handler(
-    node_commands_sender: Sender<NodeCommand>,
-    message: ShinkaiMessage,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
-        NodeCommand::APICreateFilesInboxWithSymmetricKey {
             msg: message,
             res: res_sender,
         }

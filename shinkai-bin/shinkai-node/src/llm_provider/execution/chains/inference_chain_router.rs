@@ -3,6 +3,7 @@ use super::inference_chain_trait::{InferenceChain, InferenceChainContext, Infere
 use super::sheet_ui_chain::sheet_ui_inference_chain::SheetUIInferenceChain;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
+use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
@@ -10,14 +11,13 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage};
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -28,13 +28,11 @@ impl JobManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn inference_chain_router(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         llm_provider_found: Option<ProviderOrAgent>,
         full_job: Job,
         job_message: JobMessage,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
-        prev_execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -42,6 +40,7 @@ impl JobManager {
         sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Result<InferenceChainResult, LLMProviderError> {
@@ -66,14 +65,14 @@ impl JobManager {
         // Create the inference chain context
         let chain_context = InferenceChainContext::new(
             db,
-            vector_fs,
             full_job.clone(),
             parsed_user_message,
             job_message.tool_key,
+            job_message.fs_files_paths,
+            job_message.job_filenames,
             message_hash_id,
             image_files,
             llm_provider,
-            prev_execution_context,
             generator,
             user_profile,
             3,
@@ -83,6 +82,7 @@ impl JobManager {
             sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
+            Some(job_callback_manager.clone()),
             // sqlite_logger.clone(),
             llm_stopper.clone(),
         );

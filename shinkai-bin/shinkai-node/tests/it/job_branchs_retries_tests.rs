@@ -195,7 +195,7 @@ fn job_branchs_retries_tests() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     "hello are u there? (1)",
-                    "",
+                    &[],
                     "",
                 )
                 .await;
@@ -224,7 +224,7 @@ fn job_branchs_retries_tests() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     "hello are u there? (3)",
-                    "",
+                    &[],
                     "",
                 )
                 .await;
@@ -287,7 +287,7 @@ fn job_branchs_retries_tests() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     "hello are u there? (5)",
-                    "",
+                    &[],
                     message2_hash.unwrap().as_str(),
                 )
                 .await;

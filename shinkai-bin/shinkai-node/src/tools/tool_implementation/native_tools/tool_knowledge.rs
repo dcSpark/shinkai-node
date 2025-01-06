@@ -1,11 +1,9 @@
-use futures::StreamExt;
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::subprompts::SubPrompt;
-use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
@@ -21,7 +19,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
 
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use async_trait::async_trait;
 
@@ -76,7 +74,6 @@ impl ToolExecutor for KnowledgeTool {
         _tool_id: String,
         _app_id: String,
         db_clone: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         _identity_manager_clone: Arc<Mutex<IdentityManager>>,
         _job_manager: Arc<Mutex<JobManager>>,
@@ -90,7 +87,7 @@ impl ToolExecutor for KnowledgeTool {
         // TODO: how do we use app_id here? is it linked to a job somehow?
         // TODO: create e2e test using this fn so we can test it with some real data
 
-        let mut scope = JobScope::new_default();
+        let mut scope = MinimalJobScope::default();
 
         // Checks if job_id is provided in the parameters
         if let Some(job_id_value) = parameters.get("job_id") {
@@ -102,69 +99,34 @@ impl ToolExecutor for KnowledgeTool {
                     Err(e) => return Err(ToolError::ExecutionError(format!("Failed to fetch job data: {}", e))),
                 };
 
-                if let Some(scope_with_files) = full_job.scope_with_files().clone() {
-                    scope = scope_with_files.clone();
-                } else {
-                    return Err(ToolError::ExecutionError(
-                        "Failed to extract scope with files".to_string(),
-                    ));
-                }
+                scope = full_job.scope().clone();
             }
         }
 
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Runtime::new()
-                .map_err(|e| ToolError::ExecutionError(e.to_string()))?
-                .block_on(async {
-                    // TODO: if scope empty then return an error?
+        // Use the new method to retrieve resources
+        let resource_collections = JobManager::retrieve_all_resources_in_job_scope(&scope, &db_clone)
+            .await
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to retrieve resources: {:?}", e)))?;
 
-                    let resource_stream = {
-                        // Note(Nico): in the future we will get rid of this old fashion way to do embeddings
-                        let user_profile =
-                            ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string()).unwrap();
+        let mut processed_embeddings = Vec::new();
 
-                        JobManager::retrieve_all_resources_in_job_scope_stream(vector_fs.clone(), &scope, &user_profile)
-                            .await
-                    };
+        for collection in resource_collections {
+            let subprompts = SubPrompt::convert_chunks_into_subprompts_with_extra_info(&collection.chunks, 97);
+            let embedding = subprompts
+                .iter()
+                .map(|subprompt| subprompt.get_content().clone())
+                .collect::<Vec<String>>()
+                .join(" ");
+            processed_embeddings.push(embedding);
+        }
 
-                    let mut chunks = resource_stream.chunks(5);
-                    let mut processed_embeddings = Vec::new();
-
-                    while let Some(resources) = chunks.next().await {
-                        let futures = resources.into_iter().map(|resource| async move {
-                            let subprompts = SubPrompt::convert_resource_into_subprompts_with_extra_info(&resource, 97);
-                            let embedding = subprompts
-                                .iter()
-                                .map(|subprompt| subprompt.get_content().clone())
-                                .collect::<Vec<String>>()
-                                .join(" ");
-                            Ok::<_, ToolError>(embedding)
-                        });
-
-                        let results = futures::future::join_all(futures).await;
-
-                        for result in results {
-                            match result {
-                                Ok(processed) => processed_embeddings.push(processed),
-                                Err(e) => {
-                                    // Log error but continue processing
-                                    eprintln!("Error processing embedding: {}", e);
-                                }
-                            }
-                        }
-                    }
-
-                    let joined_results = processed_embeddings.join(":::");
-                    Ok::<_, ToolError>(json!({
-                        "result": joined_results,
-                        "type": "embeddings",
-                        "rowCount": processed_embeddings.len(),
-                        "rowsAffected": processed_embeddings.len(),
-                    }))
-                })
-        })?;
-
-        Ok(result)
+        let joined_results = processed_embeddings.join(":::");
+        Ok(json!({
+            "result": joined_results,
+            "type": "embeddings",
+            "rowCount": processed_embeddings.len(),
+            "rowsAffected": processed_embeddings.len(),
+        }))
     }
 }
 

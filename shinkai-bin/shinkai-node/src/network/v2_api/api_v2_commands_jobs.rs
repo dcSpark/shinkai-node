@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-    usize,
-};
+use std::{collections::HashMap, sync::Arc, usize};
 
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -28,7 +24,8 @@ use shinkai_message_primitives::{
         },
     },
     shinkai_utils::{
-        job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key, shinkai_path::ShinkaiPath,
     },
 };
 
@@ -43,7 +40,6 @@ use crate::{
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-
 impl Node {
     pub fn convert_smart_inbox_to_v2_smart_inbox(smart_inbox: SmartInbox) -> Result<V2SmartInbox, NodeError> {
         let last_message = match smart_inbox.last_message {
@@ -206,7 +202,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job_with_options(&job_message.job_id, false, false) {
+        let llm_provider = match db.get_job_with_options(&job_message.job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -529,77 +525,94 @@ impl Node {
             return Ok(());
         }
 
-        // Update the smart inbox name
-        match db.update_smart_inbox_name(&inbox_name, &custom_name) {
-            Ok(_) => {
-                let _ = res.send(Ok(())).await;
-            }
+        // Parse the inbox name to check if it's a job inbox
+        let inbox = match InboxName::new(inbox_name.clone()) {
+            Ok(inbox) => inbox,
             Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse inbox name: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Get the job ID if it's a job inbox
+        if let Some(job_id) = inbox.get_job_id() {
+            // Get the current folder name before updating
+            let old_folder = match db.get_job_folder_name(&job_id) {
+                Ok(folder) => folder,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get old folder name: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            // Update the inbox name
+            if let Err(e) = db.unsafe_update_smart_inbox_name(&inbox_name, &custom_name) {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to update inbox name: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
+                return Ok(());
             }
-        }
 
-        Ok(())
-    }
-
-    // TODO: Remove this endpoint. No need to create inboxes in SQLite, they are managed in the VectorFSDB
-    pub async fn v2_create_files_inbox(
-        db: Arc<SqliteManager>,
-        bearer: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), APIError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        let hash_hex = uuid::Uuid::new_v4().to_string();
-
-        if let Err(_) = res.send(Ok(hash_hex)).await {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: "Failed to send response".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-        }
-        Ok(())
-    }
-
-    pub async fn v2_add_file_to_inbox(
-        db: Arc<SqliteManager>,
-        file_inbox_name: String,
-        filename: String,
-        file: Vec<u8>,
-        bearer: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), APIError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        match db.add_file_to_files_message_inbox(file_inbox_name, filename, file) {
-            Ok(_) => {
-                let _ = res.send(Ok("File added successfully".to_string())).await;
-                Ok(())
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
+            // Get the new folder name after updating
+            let new_folder = match db.get_job_folder_name(&job_id) {
+                Ok(folder) => folder,
+                Err(e) => {
+                    let api_error = APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
-                        message: format!("Failed to add file to inbox: {}", err),
-                    }))
-                    .await;
-                Ok(())
+                        message: format!("Failed to get new folder name: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            // Move the folder if it exists
+            if old_folder.exists() {
+                use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+                if let Err(e) = ShinkaiFileManager::move_folder(old_folder, new_folder, &db) {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to move folder: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+
+            let _ = res.send(Ok(())).await;
+        } else {
+            // If it's not a job inbox, just update the name
+            match db.unsafe_update_smart_inbox_name(&inbox_name, &custom_name) {
+                Ok(_) => {
+                    let _ = res.send(Ok(())).await;
+                }
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to update inbox name: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                }
             }
         }
+
+        Ok(())
     }
 
     pub async fn v2_api_change_job_llm_provider(
@@ -646,7 +659,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job_with_options(&job_id, false, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the config
                 match db.update_job_config(&job_id, config) {
@@ -692,7 +705,7 @@ impl Node {
         // TODO: Get default values for Ollama
 
         // Check if the job exists
-        match db.get_job_with_options(&job_id, false, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 let config = job.config().cloned().unwrap_or_else(|| JobConfig {
                     custom_system_prompt: None,
@@ -975,7 +988,7 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         job_id: String,
-        job_scope: JobScope,
+        job_scope: MinimalJobScope,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -984,7 +997,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job_with_options(&job_id, false, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(_) => {
                 // Job exists, proceed with updating the job scope
                 match db.update_job_scope(job_id.clone(), job_scope.clone()) {
@@ -1039,7 +1052,7 @@ impl Node {
         }
 
         // Check if the job exists
-        match db.get_job_with_options(&job_id, false, false) {
+        match db.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 // Job exists, proceed with getting the job scope
                 let job_scope = job.scope();
@@ -1102,7 +1115,7 @@ impl Node {
         };
 
         // Retrieve the job
-        let source_job = match db.get_job_with_options(&job_id, false, true) {
+        let source_job = match db.get_job_with_options(&job_id, false) {
             Ok(job) => job,
             Err(err) => {
                 let api_error = APIError {
@@ -1184,7 +1197,7 @@ impl Node {
         match db.create_new_job(
             forked_job_id.clone(),
             source_job.parent_agent_or_llm_provider_id,
-            source_job.scope_with_files.clone().unwrap(),
+            source_job.scope.clone(),
             source_job.is_hidden,
             source_job.associated_ui,
             source_job.config,
@@ -1344,14 +1357,6 @@ impl Node {
             }
         };
 
-        // Retrieve the file inboxes
-        let file_inboxes = v2_chat_messages
-            .iter()
-            .flatten()
-            .map(|message| message.job_message.files_inbox.clone())
-            .filter(|inbox| !inbox.is_empty())
-            .collect::<HashSet<_>>();
-
         // Remove the job
         match db.remove_job(&job_id) {
             Ok(_) => {}
@@ -1366,21 +1371,22 @@ impl Node {
             }
         }
 
+        // TODO: remove the files from the job folder
         // Remove the file inboxes
-        for file_inbox in file_inboxes {
-            match db.remove_inbox(&file_inbox) {
-                Ok(_) => {}
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to remove file inbox: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        }
+        // for file_inbox in file_inboxes {
+        //     match db.remove_inbox(&file_inbox) {
+        //         Ok(_) => {}
+        //         Err(err) => {
+        //             let api_error = APIError {
+        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        //                 error: "Internal Server Error".to_string(),
+        //                 message: format!("Failed to remove file inbox: {}", err),
+        //             };
+        //             let _ = res.send(Err(api_error)).await;
+        //             return Ok(());
+        //         }
+        //     }
+        // }
 
         let _ = res
             .send(Ok(SendResponseBody {
@@ -1432,30 +1438,14 @@ impl Node {
             }
         };
 
+        // TODO: Review and fix this
+
         // Retrieve the filenames in the inboxes
         let file_inboxes = v2_chat_messages
             .iter()
             .flatten()
-            .map(|message| message.job_message.files_inbox.clone())
+            .map(|message| message.job_message.fs_files_paths.clone())
             .collect::<Vec<_>>();
-        let mut inbox_filenames = HashMap::new();
-
-        for inbox in file_inboxes {
-            let files = match db.get_all_filenames_from_inbox(inbox.clone()) {
-                Ok(files) => files,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to get files from inbox: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
-
-            inbox_filenames.insert(inbox, files);
-        }
 
         // Export the messages in the requested format
         match format {
@@ -1481,9 +1471,12 @@ impl Node {
                     let sender = message.sender_subidentity;
                     let receiver = message.receiver_subidentity;
                     let content = message.job_message.content;
-                    let files = inbox_filenames
-                        .get(&message.job_message.files_inbox)
-                        .unwrap_or(&vec![])
+                    let files = message
+                        .job_message
+                        .fs_files_paths
+                        .iter()
+                        .map(|path| path.relative_path())
+                        .collect::<Vec<&str>>()
                         .join(", ");
 
                     let row = vec![timestamp, sender, receiver, content, files];
@@ -1534,9 +1527,17 @@ impl Node {
                         messages
                             .into_iter()
                             .map(|message| {
+                                let files: Vec<String> = message
+                                    .clone()
+                                    .job_message
+                                    .fs_files_paths
+                                    .into_iter()
+                                    .map(|file| file.relative_path().to_string())
+                                    .collect();
+
                                 json!({
                                     "message": message,
-                                    "files": inbox_filenames.get(&message.job_message.files_inbox).unwrap_or(&vec![]),
+                                    "files": files,
                                 })
                             })
                             .collect::<Vec<serde_json::Value>>()
@@ -1564,8 +1565,8 @@ impl Node {
                     for message in messages {
                         result_messages.push_str(&format!("{}\n\n", message.job_message.content));
 
-                        if let Some(files) = inbox_filenames.get(&message.job_message.files_inbox) {
-                            result_messages.push_str(&format!("Attached files: [{}]\n\n", files.join(", ")));
+                        for file in &message.job_message.fs_files_paths {
+                            result_messages.push_str(&format!("Attached file: {}\n\n", file));
                         }
                     }
                 }
@@ -1612,7 +1613,7 @@ impl Node {
         };
 
         // Retrieve the job to get the llm_provider
-        let llm_provider = match db.get_job_with_options(&job_id, false, false) {
+        let llm_provider = match db.get_job_with_options(&job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
                 let api_error = APIError {
@@ -1698,7 +1699,7 @@ impl Node {
                 let ai_shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                     job_id.to_string(),
                     message.content,
-                    message.files_inbox,
+                    message.fs_files_paths,
                     None,
                     identity_secret_key_clone,
                     node_name.node_name.clone(),
@@ -1728,3 +1729,4 @@ impl Node {
         Ok(())
     }
 }
+

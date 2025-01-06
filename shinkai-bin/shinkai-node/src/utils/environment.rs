@@ -2,11 +2,11 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
+use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 
 #[derive(Debug, Clone)]
 pub struct NodeEnvironment {
@@ -69,6 +69,13 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
         .collect();
 
     let mut llm_providers = Vec::new();
+
+    if initial_agent_names.len() != initial_agent_urls.len()
+        || initial_agent_names.len() != initial_agent_models.len()
+        || initial_agent_names.len() != initial_agent_api_keys.len()
+    {
+        panic!("INITIAL_AGENT_NAMES, INITIAL_AGENT_URLS, INITIAL_AGENT_MODELS, and INITIAL_AGENT_API_KEYS must have the same number of elements");
+    }
 
     for i in 0..initial_agent_names.len() {
         let model: Result<LLMProviderInterface, _> = LLMProviderInterface::from_str(&initial_agent_models[i]);

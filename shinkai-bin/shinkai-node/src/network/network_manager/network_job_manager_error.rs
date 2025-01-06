@@ -1,8 +1,6 @@
 use std::fmt;
 
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
-use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
-
 use crate::network::agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError;
 
 // Define your new error type
@@ -70,12 +68,6 @@ impl From<ShinkaiNameError> for NetworkJobQueueError {
 impl From<&str> for NetworkJobQueueError {
     fn from(err: &str) -> NetworkJobQueueError {
         NetworkJobQueueError::Other(err.to_string())
-    }
-}
-
-impl From<VectorFSError> for NetworkJobQueueError {
-    fn from(err: VectorFSError) -> NetworkJobQueueError {
-        NetworkJobQueueError::Other(format!("VectorFS error: {}", err))
     }
 }
 

@@ -21,7 +21,6 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
 };
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -38,7 +37,6 @@ use super::external_agent_offerings_manager::AgentOfferingManagerError;
 
 pub struct MyAgentOfferingsManager {
     pub db: Weak<SqliteManager>,
-    pub vector_fs: Weak<VectorFS>,
     pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     pub node_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -58,7 +56,6 @@ impl MyAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: Weak<SqliteManager>,
-        vector_fs: Weak<VectorFS>,
         identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
         node_name: ShinkaiName,
         my_signature_secret_key: SigningKey,
@@ -69,7 +66,6 @@ impl MyAgentOfferingsManager {
     ) -> Self {
         Self {
             db,
-            vector_fs,
             node_name,
             my_signature_secret_key,
             my_encryption_secret_key,

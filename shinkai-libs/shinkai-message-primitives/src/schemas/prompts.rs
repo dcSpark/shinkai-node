@@ -2,11 +2,12 @@ use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+
+use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 use super::{
-    job::JobStepResult,
     llm_message::{DetailedFunctionCall, LlmMessage},
+    shinkai_fs::ShinkaiFileChunkCollection,
     subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType},
 };
 
@@ -111,13 +112,14 @@ impl Prompt {
     /// Adds RetrievedNode content into the prompt if it is a Text-holding node. Otherwise skips.
     pub fn add_ret_node_content(
         &mut self,
-        retrieved_node: RetrievedNode,
+        retrieved_node: ShinkaiFileChunkCollection,
         prompt_type: SubPromptType,
         priority_value: u8,
     ) {
-        if let Some(content) = retrieved_node.format_for_prompt(3500) {
+        for chunk in retrieved_node.chunks.iter() {
+            let content = chunk.content.clone();
             if !content.trim().is_empty() {
-                self.add_content(content, prompt_type, priority_value);
+                self.add_content(content, prompt_type.clone(), priority_value);
             }
         }
     }
@@ -249,13 +251,15 @@ impl Prompt {
         self.add_sub_prompts(updated_sub_prompts);
     }
 
-    /// Adds previous results from step history into the Prompt, up to max_tokens
+    /// Adds previous results from step history into the Prompt, up to max_tokens.
+    /// Note: The last message in the history is not added.
     /// Of note, priority value must be between 0-100.
-    pub fn add_step_history(&mut self, history: Vec<JobStepResult>, priority_value: u8) {
+    pub fn add_step_history(&mut self, history: Vec<ShinkaiMessage>, priority_value: u8) {
         let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
         let sub_prompts_list: Vec<SubPrompt> = history
             .iter()
-            .filter_map(|step| step.get_result_prompt())
+            .take(history.len().saturating_sub(1)) // Skip the last message
+            .filter_map(|step| Some(step.to_prompt()))
             .flat_map(|prompt| prompt.sub_prompts.clone())
             .collect();
         self.add_sub_prompts_with_new_priority(sub_prompts_list, capped_priority_value);
@@ -418,12 +422,12 @@ impl Prompt {
                 SubPrompt::Omni(prompt_type, _, _, _) => {
                     // Process the current sub-prompt
                     let new_message = sub_prompt.into_chat_completion_request_message();
-                    
+
                     if let SubPromptType::UserLastMessage = prompt_type {
                         last_user_message = Some(new_message);
                     } else {
                         current_length +=
-                        sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
+                            sub_prompt.count_tokens_with_pregenerated_completion_message(&new_message, token_counter);
                         tiktoken_messages.push(new_message);
                     }
                 }

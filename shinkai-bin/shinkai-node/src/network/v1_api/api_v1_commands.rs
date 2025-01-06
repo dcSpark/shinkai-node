@@ -18,6 +18,8 @@ use log::error;
 use reqwest::StatusCode;
 use serde_json::{json, Value as JsonValue};
 
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
@@ -51,9 +53,7 @@ use shinkai_message_primitives::{
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::model_type::EmbeddingModelType;
+
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -617,7 +617,7 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_registration_code_usage(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
+        
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
         first_device_needs_registration_code: bool,
@@ -711,7 +711,6 @@ impl Node {
 
         Self::handle_registration_code_usage(
             db,
-            vector_fs,
             node_name,
             first_device_needs_registration_code,
             embedding_generator,
@@ -733,7 +732,6 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     pub async fn handle_registration_code_usage(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         node_name: ShinkaiName,
         first_device_needs_registration_code: bool,
         embedding_generator: Arc<RemoteEmbeddingGenerator>,
@@ -835,7 +833,7 @@ impl Node {
 
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
-        let profile_list = match db.get_all_profiles(node_name.clone()) {
+        let profile_list: Vec<ShinkaiName> = match db.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
@@ -844,15 +842,16 @@ impl Node {
             let models = supported_embedding_models.lock().await;
             models.clone()
         };
-        vector_fs
-            .initialize_new_profiles(
-                &node_name,
-                profile_list,
-                embedding_generator.model_type.clone(),
-                supported_models,
-                create_default_folders,
-            )
-            .await?;
+        // TODO: migrate
+        // vector_fs
+        //     .initialize_new_profiles(
+        //         &node_name,
+        //         profile_list,
+        //         embedding_generator.model_type.clone(),
+        //         supported_models,
+        //         create_default_folders,
+        //     )
+        //     .await?;
 
         match result {
             Ok(success) => {
@@ -2556,135 +2555,6 @@ impl Node {
         Ok(hash_hex)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub async fn api_get_filenames_in_inbox(
-        db: Arc<SqliteManager>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        encryption_public_key: EncryptionPublicKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the message
-        let validation_result = Self::validate_message(
-            encryption_secret_key.clone(),
-            identity_manager.clone(),
-            &node_name,
-            potentially_encrypted_msg,
-            Some(MessageSchemaType::TextContent),
-        )
-        .await;
-        let msg = match validation_result {
-            Ok((msg, _)) => msg,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Decrypt the message
-        let decrypted_msg = msg.decrypt_outer_layer(&encryption_secret_key, &encryption_public_key)?;
-
-        // Extract the content of the message
-        let hex_blake3_hash = decrypted_msg.get_message_content()?;
-
-        match db.get_all_filenames_from_inbox(hex_blake3_hash) {
-            Ok(filenames) => {
-                let _ = res.send(Ok(filenames)).await;
-                Ok(())
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("{}", err),
-                    }))
-                    .await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn api_add_file_to_inbox_with_symmetric_key(
-        db: Arc<SqliteManager>,
-        filename: String,
-        file_data: Vec<u8>,
-        hex_blake3_hash: String,
-        encrypted_nonce: String,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        let private_key_array = {
-            match db.read_symmetric_key(&hex_blake3_hash) {
-                Ok(key) => key,
-                Err(_) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Bad Request".to_string(),
-                            message: "Invalid public key".to_string(),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            }
-        };
-
-        let private_key_slice = &private_key_array[..];
-        let private_key_generic_array = GenericArray::from_slice(private_key_slice);
-        let cipher = Aes256Gcm::new(private_key_generic_array);
-
-        // Assuming `encrypted_nonce` is a hex string of the nonce used in encryption
-        let nonce_bytes = hex::decode(&encrypted_nonce).unwrap();
-        let nonce = GenericArray::from_slice(&nonce_bytes);
-
-        // Decrypt file
-        let decrypted_file_result = cipher.decrypt(nonce, file_data.as_ref());
-        let decrypted_file = match decrypted_file_result {
-            Ok(file) => file,
-            Err(_) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: "Failed to decrypt the file.".to_string(),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
-
-        shinkai_log(
-            ShinkaiLogOption::DetailedAPI,
-            ShinkaiLogLevel::Debug,
-            format!(
-                "api_add_file_to_inbox_with_symmetric_key> filename: {}, hex_blake3_hash: {}, decrypted_file.len(): {}",
-                filename,
-                hex_blake3_hash,
-                decrypted_file.len()
-            )
-            .as_str(),
-        );
-
-        match db.add_file_to_files_message_inbox(hex_blake3_hash, filename, decrypted_file) {
-            Ok(_) => {
-                let _ = res.send(Ok("File added successfully".to_string())).await;
-                Ok(())
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("{}", err),
-                    }))
-                    .await;
-                Ok(())
-            }
-        }
-    }
-
     pub async fn api_is_pristine(db: Arc<SqliteManager>, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
         let has_any_profile = db.has_any_profile().unwrap_or(false);
         let _ = res.send(Ok(!has_any_profile)).await;
@@ -3088,81 +2958,6 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to update default embedding model: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
-            }
-        }
-    }
-
-    pub async fn api_update_supported_embedding_models(
-        db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        encryption_secret_key: EncryptionStaticKey,
-        potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    ) -> Result<(), NodeError> {
-        let (new_supported_models_str, requester_name) = match Self::validate_and_extract_payload::<Vec<String>>(
-            node_name.clone(),
-            identity_manager.clone(),
-            encryption_secret_key,
-            potentially_encrypted_msg,
-            MessageSchemaType::UpdateSupportedEmbeddingModels,
-        )
-        .await
-        {
-            Ok(data) => data,
-            Err(api_error) => {
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Validation: requester_name node should be me
-        if requester_name.get_node_name_string() != node_name.clone().get_node_name_string() {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Invalid node name provided".to_string(),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Convert the strings to EmbeddingModelType
-        let new_supported_models: Vec<EmbeddingModelType> = new_supported_models_str
-            .into_iter()
-            .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse embedding model"))
-            .collect();
-
-        // Update the supported embedding models in the database
-        if let Err(err) = db.update_supported_embedding_models(new_supported_models.clone()) {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to update supported embedding models: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        match vector_fs
-            .set_profile_supported_models(&requester_name, &requester_name, new_supported_models)
-            .await
-        {
-            Ok(_) => {
-                let _ = res
-                    .send(Ok("Supported embedding models updated successfully".to_string()))
-                    .await;
-                Ok(())
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to update supported embedding models: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())

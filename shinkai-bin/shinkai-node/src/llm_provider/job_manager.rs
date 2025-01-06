@@ -8,6 +8,7 @@ use crate::network::agent_payments_manager::external_agent_offerings_manager::Ex
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
@@ -23,8 +24,6 @@ use shinkai_message_primitives::{
     shinkai_utils::signatures::clone_signature_secret_key,
 };
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::collections::HashSet;
 use std::env;
 use std::pin::Pin;
@@ -32,6 +31,7 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 
 const NUM_THREADS: usize = 4;
 
@@ -70,7 +70,6 @@ impl JobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
-        vector_fs: Weak<VectorFS>,
         embedding_generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
@@ -91,9 +90,13 @@ impl JobManager {
         }
 
         let db_prefix = "job_manager_abcdeprefix_";
-        let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix.to_string()))
-            .await
-            .unwrap();
+        let job_queue_result = JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix.to_string())).await;
+
+        if let Err(ref e) = job_queue_result {
+            eprintln!("Error initializing JobQueueManager: {:?}", e);
+        }
+
+        let job_queue = job_queue_result.unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
         let thread_number = env::var("JOB_MANAGER_THREADS")
@@ -105,7 +108,6 @@ impl JobManager {
         let job_queue_handler = JobManager::process_job_queue(
             job_queue_manager.clone(),
             db.clone(),
-            vector_fs.clone(),
             node_profile_name.clone(),
             thread_number,
             clone_signature_secret_key(&identity_secret_key),
@@ -120,7 +122,6 @@ impl JobManager {
             llm_stopper.clone(),
             |job,
              db,
-             vector_fs,
              node_profile_name,
              identity_sk,
              generator,
@@ -136,7 +137,6 @@ impl JobManager {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
                     db,
-                    vector_fs,
                     node_profile_name,
                     identity_sk,
                     generator,
@@ -170,7 +170,6 @@ impl JobManager {
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<SqliteManager>,
-        vector_fs: Weak<VectorFS>,
         node_profile_name: ShinkaiName,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
@@ -186,7 +185,6 @@ impl JobManager {
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Weak<SqliteManager>,
-                Weak<VectorFS>,
                 ShinkaiName,
                 SigningKey,
                 RemoteEmbeddingGenerator,
@@ -207,7 +205,6 @@ impl JobManager {
         let job_queue_manager = Arc::clone(&job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
         let db_clone = db.clone();
-        let vector_fs_clone = vector_fs.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
         // let sqlite_logger = sqlite_logger.clone();
@@ -268,7 +265,6 @@ impl JobManager {
                         let processing_jobs = Arc::clone(&processing_jobs);
                         let semaphore = Arc::clone(&semaphore);
                         let db_clone_2 = db_clone.clone();
-                        let vector_fs_clone_2 = vector_fs_clone.clone();
                         let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                         let job_processing_fn = Arc::clone(&job_processing_fn);
                         let cloned_generator = generator.clone();
@@ -298,7 +294,6 @@ impl JobManager {
                                         let result = (job_processing_fn)(
                                             job,
                                             db_clone_2,
-                                            vector_fs_clone_2,
                                             node_profile_name,
                                             identity_sk_clone,
                                             cloned_generator,
@@ -466,6 +461,40 @@ impl JobManager {
         }
     }
 
+    async fn update_job_folder_name(
+        &self,
+        job_id: &str,
+        content: &str,
+        db_arc: &SqliteManager,
+    ) -> Result<(), LLMProviderError> {
+        // Parse the inbox name to check if it's a job inbox
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
+        
+        // Get the current folder name before updating
+        let old_folder = db_arc.get_job_folder_name(job_id)
+            .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
+        
+        // Update the inbox name
+        let mut truncated_content = content.to_string();
+        if truncated_content.chars().count() > 120 {
+            truncated_content = format!("{}...", truncated_content.chars().take(120).collect::<String>());
+        }
+        db_arc.unsafe_update_smart_inbox_name(&inbox_name.to_string(), &truncated_content)
+            .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
+        
+        // Get the new folder name after updating
+        let new_folder = db_arc.get_job_folder_name(job_id)
+            .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
+        
+        // Move the folder if it exists
+        if old_folder.exists() {
+            ShinkaiFileManager::move_folder(old_folder, new_folder, db_arc)
+                .map_err(|e| LLMProviderError::SomeError(format!("Failed to move folder: {}", e)))?;
+        }
+        
+        Ok(())
+    }
+
     pub async fn add_to_job_processing_queue(
         &mut self,
         message: ShinkaiMessage,
@@ -486,13 +515,7 @@ impl JobManager {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
-            let mut content = job_message.clone().content;
-            if content.chars().count() > 120 {
-                let truncated_content: String = content.chars().take(120).collect();
-                content = format!("{}...", truncated_content);
-            }
-            let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
-            db_arc.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
+            self.update_job_folder_name(&job_message.job_id, &job_message.content, &db_arc).await?;
         }
 
         db_arc

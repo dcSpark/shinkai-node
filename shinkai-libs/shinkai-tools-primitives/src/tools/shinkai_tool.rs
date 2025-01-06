@@ -3,13 +3,14 @@ use std::env;
 use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
 use serde_json::{self, Value};
+
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::{
     indexable_version::IndexableVersion,
     shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
 };
-use shinkai_vector_resources::embeddings::Embedding;
 
+use super::tool_playground::{SqlQuery, SqlTable};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
     tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
@@ -100,6 +101,19 @@ impl ShinkaiTool {
         }
     }
 
+    /// Sanitize the config by removing key-values from BasicConfig
+    pub fn sanitize_config(&mut self) {
+        match self {
+            ShinkaiTool::Deno(d, _) => {
+                d.config = d.config.clone().iter().map(|config| config.sanitize()).collect();
+            }
+            ShinkaiTool::Python(p, _) => {
+                p.config = p.config.clone().iter().map(|config| config.sanitize()).collect();
+            }
+            _ => (),
+        }
+    }
+
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
         let tool_router_key = ToolRouterKey::new(source, toolkit_name, name, None);
@@ -165,6 +179,24 @@ impl ShinkaiTool {
         }
     }
 
+    /// Returns the SQL queries of the tool
+    pub fn sql_queries(&self) -> Vec<SqlQuery> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.sql_queries.clone().unwrap_or_default(),
+            ShinkaiTool::Python(p, _) => p.sql_queries.clone().unwrap_or_default(),
+            _ => vec![],
+        }
+    }
+
+    /// Returns the SQL tables of the tool
+    pub fn sql_tables(&self) -> Vec<SqlTable> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.sql_tables.clone().unwrap_or_default(),
+            ShinkaiTool::Python(p, _) => p.sql_tables.clone().unwrap_or_default(),
+            _ => vec![],
+        }
+    }
+
     /// Returns a formatted summary of the tool
     pub fn formatted_tool_summary_for_ui(&self) -> String {
         format!(
@@ -176,7 +208,7 @@ impl ShinkaiTool {
     }
 
     /// Sets the embedding for the tool
-    pub fn set_embedding(&mut self, embedding: Embedding) {
+    pub fn set_embedding(&mut self, embedding: Vec<f32>) {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding = Some(embedding),
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
@@ -218,7 +250,7 @@ impl ShinkaiTool {
     }
 
     /// Returns the embedding if it exists
-    pub fn get_embedding(&self) -> Option<Embedding> {
+    pub fn get_embedding(&self) -> Option<Vec<f32>> {
         match self {
             ShinkaiTool::Rust(r, _) => r.tool_embedding.clone(),
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
@@ -348,11 +380,13 @@ impl ShinkaiTool {
         matches!(self, ShinkaiTool::Network(_, _))
     }
 
+    pub fn version_indexable(&self) -> Result<IndexableVersion, String> {
+        IndexableVersion::from_string(&self.version())
+    }
+
     /// Returns the version number using IndexableVersion
     pub fn version_number(&self) -> Result<u64, String> {
-        let version_str = self.version();
-
-        let indexable_version = IndexableVersion::from_string(&version_str)?;
+        let indexable_version = self.version_indexable()?;
         Ok(indexable_version.get_version_number())
     }
 }
@@ -522,10 +556,7 @@ mod tests {
                     "toolkit_name": "shinkai-tool-coinbase-get-my-address",
                     "sql_tables": [],
                     "sql_queries": [],
-                    "embedding": {
-                        "id": "",
-                        "vector": []
-                    },
+                    "embedding": [],
                     "oauth": null,
                     "config": [],
                     "keywords": [

@@ -4,7 +4,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 use crate::tools::error::ToolError;
-use serde::Deserialize;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
@@ -13,7 +12,6 @@ use shinkai_tools_runner::tools::python_runner::PythonRunner;
 use shinkai_tools_runner::tools::python_runner_options::PythonRunnerOptions;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
-use shinkai_vector_resources::embeddings::Embedding;
 use tokio::runtime::Runtime;
 
 use super::deno_tools::ToolResult;
@@ -30,7 +28,9 @@ pub struct PythonTool {
     pub name: String,
     pub author: String,
     pub py_code: String,
-    #[serde(deserialize_with = "deserialize_tool_router_keys")]
+    #[serde(default)]
+    #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
+    #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys")]
     pub tools: Option<Vec<ToolRouterKey>>,
     pub config: Vec<ToolConfig>,
     pub description: String,
@@ -38,32 +38,13 @@ pub struct PythonTool {
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub activated: bool,
-    pub embedding: Option<Embedding>,
+    pub embedding: Option<Vec<f32>>,
     pub result: ToolResult,
     pub sql_tables: Option<Vec<SqlTable>>,
     pub sql_queries: Option<Vec<SqlQuery>>,
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
     pub assets: Option<Vec<String>>,
-}
-
-fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Option<Vec<ToolRouterKey>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let string_vec: Option<Vec<String>> = Option::deserialize(deserializer)?;
-
-    match string_vec {
-        Some(vec) => {
-            let router_keys = vec
-                .into_iter()
-                .map(|s| ToolRouterKey::from_string(&s))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(serde::de::Error::custom)?;
-            Ok(Some(router_keys))
-        }
-        None => Ok(None),
-    }
 }
 
 impl PythonTool {
