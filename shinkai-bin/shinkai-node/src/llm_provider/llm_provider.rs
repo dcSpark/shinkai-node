@@ -69,7 +69,7 @@ impl LLMProvider {
         });
 
         match handle.await {
-            Ok(response) => Ok(LLMInferenceResponse::new(content, response, None, None)),
+            Ok(response) => Ok(LLMInferenceResponse::new(content, response, Vec::new(), None)),
             Err(_e) => Err(LLMProviderError::InferenceFailed),
         }
     }

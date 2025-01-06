@@ -217,7 +217,7 @@ impl LLMService for Gemini {
                         }
                     }
                 }
-                Ok(LLMInferenceResponse::new(response_text, json!({}), None, None))
+                Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None))
             } else {
                 Err(LLMProviderError::ApiKeyNotSet)
             }

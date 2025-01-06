@@ -330,93 +330,100 @@ impl SheetUIInferenceChain {
             let response = response_res?;
 
             // 5) Check response if it requires a function call
-            if let Some(function_call) = response.function_call {
-                // 6) Call workflow or tooling
-                // Find the ShinkaiTool that has a tool with the function name
-                let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name);
-                if shinkai_tool.is_none() {
-                    eprintln!("Function not found: {}", function_call.name);
-                    return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
-                }
+            if !response.is_function_calls_empty() {
+                let mut last_function_response = None;
 
-                // Check if the tool is Rust-based or JS/workflow
-                let function_response = if shinkai_tool.unwrap().is_rust_based() {
-                    // Rust-based tool
-                    let function = SheetRustFunctions::get_tool_function(function_call.name.clone());
-                    if function.is_none() {
+                for function_call in response.function_calls {
+                    // 6) Call workflow or tooling
+                    // Find the ShinkaiTool that has a tool with the function name
+                    let shinkai_tool = tools.iter().find(|tool| tool.name() == function_call.name);
+                    if shinkai_tool.is_none() {
                         eprintln!("Function not found: {}", function_call.name);
                         return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                     }
 
-                    let function = function.unwrap();
-                    let sheet_manager_clone = sheet_manager.clone().unwrap();
-                    let sheet_id_clone = sheet_id.clone();
-                    let mut args = HashMap::new();
-                    for (key, value) in function_call.clone().arguments {
-                        let mut val = value.to_string();
-                        if val.starts_with('"') && val.ends_with('"') {
-                            val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
+                    // Check if the tool is Rust-based or JS/workflow
+                    let function_response = if shinkai_tool.unwrap().is_rust_based() {
+                        // Rust-based tool
+                        let function = SheetRustFunctions::get_tool_function(function_call.name.clone());
+                        if function.is_none() {
+                            eprintln!("Function not found: {}", function_call.name);
+                            return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                         }
-                        args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
-                    }
 
-                    let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
-
-                    let response = match handle.await {
-                        Ok(Ok(response)) => response,
-                        Ok(Err(e)) => {
-                            eprintln!("Error calling function: {:?}", e);
-                            return Err(LLMProviderError::FunctionExecutionError(e));
+                        let function = function.unwrap();
+                        let sheet_manager_clone = sheet_manager.clone().unwrap();
+                        let sheet_id_clone = sheet_id.clone();
+                        let mut args = HashMap::new();
+                        for (key, value) in function_call.clone().arguments {
+                            let mut val = value.to_string();
+                            if val.starts_with('"') && val.ends_with('"') {
+                                val = val.strip_prefix('"').unwrap().strip_suffix('"').unwrap().to_string();
+                            }
+                            args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
                         }
-                        Err(e) => {
-                            eprintln!("Task join error: {:?}", e);
-                            return Err(LLMProviderError::FunctionExecutionError(e.to_string()));
+
+                        let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
+
+                        let response = match handle.await {
+                            Ok(Ok(response)) => response,
+                            Ok(Err(e)) => {
+                                eprintln!("Error calling function: {:?}", e);
+                                return Err(LLMProviderError::FunctionExecutionError(e));
+                            }
+                            Err(e) => {
+                                eprintln!("Task join error: {:?}", e);
+                                return Err(LLMProviderError::FunctionExecutionError(e.to_string()));
+                            }
+                        };
+
+                        ToolCallFunctionResponse {
+                            response,
+                            function_call: function_call.clone(),
+                        }
+                    } else {
+                        let parsed_message = ParsedUserMessage::new(user_message.clone());
+                        let context = InferenceChainContext::new(
+                            db.clone(),
+                            full_job.clone(),
+                            parsed_message,
+                            None, // TODO: hook this up
+                            fs_files_paths.clone(),
+                            job_filenames.clone(),
+                            message_hash_id.clone(),
+                            image_files.clone(),
+                            llm_provider.clone(),
+                            generator.clone(),
+                            user_profile.clone(),
+                            max_iterations,
+                            max_tokens_in_prompt,
+                            ws_manager_trait.clone(),
+                            tool_router.clone(),
+                            sheet_manager.clone(),
+                            my_agent_payments_manager.clone(),
+                            ext_agent_payments_manager.clone(),
+                            job_callback_manager.clone(),
+                            // sqlite_logger.clone(),
+                            llm_stopper.clone(),
+                        );
+                        // JS or workflow tool
+                        match tool_router
+                            .as_ref()
+                            .unwrap()
+                            .call_function(function_call, &context, shinkai_tool.unwrap(), user_profile.clone())
+                            .await
+                        {
+                            Ok(response) => response,
+                            Err(e) => {
+                                eprintln!("Error calling function: {:?}", e);
+                                return Err(e);
+                            }
                         }
                     };
 
-                    ToolCallFunctionResponse {
-                        response,
-                        function_call: function_call.clone(),
-                    }
-                } else {
-                    let parsed_message = ParsedUserMessage::new(user_message.clone());
-                    let context = InferenceChainContext::new(
-                        db.clone(),
-                        full_job.clone(),
-                        parsed_message,
-                        None, // TODO: hook this up
-                        fs_files_paths.clone(),
-                        job_filenames.clone(),
-                        message_hash_id.clone(),
-                        image_files.clone(),
-                        llm_provider.clone(),
-                        generator.clone(),
-                        user_profile.clone(),
-                        max_iterations,
-                        max_tokens_in_prompt,
-                        ws_manager_trait.clone(),
-                        tool_router.clone(),
-                        sheet_manager.clone(),
-                        my_agent_payments_manager.clone(),
-                        ext_agent_payments_manager.clone(),
-                        job_callback_manager.clone(),
-                        // sqlite_logger.clone(),
-                        llm_stopper.clone(),
-                    );
-                    // JS or workflow tool
-                    match tool_router
-                        .as_ref()
-                        .unwrap()
-                        .call_function(function_call, &context, shinkai_tool.unwrap(), user_profile.clone())
-                        .await
-                    {
-                        Ok(response) => response,
-                        Err(e) => {
-                            eprintln!("Error calling function: {:?}", e);
-                            return Err(e);
-                        }
-                    }
-                };
+                    // Store the last function response to use in the next prompt
+                    last_function_response = Some(function_response);
+                }
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -428,7 +435,7 @@ impl SheetUIInferenceChain {
                     summary_node_text.clone(),
                     Some(full_job.step_history.clone()),
                     tools.clone(),
-                    Some(function_response),
+                    last_function_response,
                     full_job.job_id.clone(),
                     node_env.clone(),
                 );

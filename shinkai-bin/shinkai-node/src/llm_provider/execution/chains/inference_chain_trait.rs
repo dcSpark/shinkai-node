@@ -376,24 +376,23 @@ impl FunctionCall {
 #[derive(Debug, Clone)]
 pub struct LLMInferenceResponse {
     pub response_string: String,
-    pub function_call: Option<FunctionCall>,
+    pub function_calls: Vec<FunctionCall>,
     pub json: JsonValue,
     pub tps: Option<f64>,
 }
 
 impl LLMInferenceResponse {
-    pub fn new(
-        original_response_string: String,
-        json: JsonValue,
-        function_call: Option<FunctionCall>,
-        tps: Option<f64>,
-    ) -> Self {
+    pub fn new(response_string: String, json: JsonValue, function_calls: Vec<FunctionCall>, tps: Option<f64>) -> Self {
         Self {
-            response_string: original_response_string,
+            response_string,
             json,
-            function_call,
+            function_calls,
             tps,
         }
+    }
+
+    pub fn is_function_calls_empty(&self) -> bool {
+        self.function_calls.is_empty()
     }
 }
 

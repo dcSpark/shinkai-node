@@ -203,7 +203,7 @@ async fn handle_streaming_response(
                         llm_stopper.reset(&inbox_name.to_string());
 
                         // Return early since we never got a response
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), None, None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
                     }
                 }
             },
@@ -236,7 +236,7 @@ async fn process_stream(
     let mut previous_json_chunk: String = String::new();
     let mut final_eval_count = None;
     let mut final_eval_duration = None;
-    let mut final_function_call = None;
+    let mut final_function_calls = Vec::new();
 
     while let Some(item) = stream.next().await {
         if let Some(ref inbox_name) = inbox_name {
@@ -278,7 +278,7 @@ async fn process_stream(
                 return Ok(LLMInferenceResponse::new(
                     response_text,
                     json!({}),
-                    final_function_call,
+                    Vec::new(),
                     None,
                 ));
             }
@@ -321,12 +321,14 @@ async fn process_stream(
                                     })
                                 });
 
-                                final_function_call = Some(FunctionCall {
+                                let function_call = FunctionCall {
                                     name: name.clone(),
                                     arguments: arguments.clone(),
                                     tool_router_key,
                                     response: None,
-                                });
+                                };
+
+                                final_function_calls.push(function_call.clone());
 
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
@@ -336,37 +338,35 @@ async fn process_stream(
 
                                 if let Some(ref manager) = ws_manager_trait {
                                     if let Some(ref inbox_name) = inbox_name {
-                                        if let Some(ref function_call) = final_function_call {
-                                            let m = manager.lock().await;
-                                            let inbox_name_string = inbox_name.to_string();
-                                            let function_call_json = serde_json::to_value(function_call)
-                                                .unwrap_or_else(|_| serde_json::json!({}));
+                                        let m = manager.lock().await;
+                                        let inbox_name_string = inbox_name.to_string();
+                                        let function_call_json = serde_json::to_value(&function_call)
+                                            .unwrap_or_else(|_| serde_json::json!({}));
 
-                                            let tool_metadata = ToolMetadata {
-                                                tool_name: name.clone(),
-                                                tool_router_key: None,
-                                                args: function_call_json.as_object().cloned().unwrap_or_default(),
-                                                result: None,
-                                                status: ToolStatus {
-                                                    type_: ToolStatusType::Running,
-                                                    reason: None,
-                                                },
-                                            };
+                                        let tool_metadata = ToolMetadata {
+                                            tool_name: name.clone(),
+                                            tool_router_key: None,
+                                            args: function_call_json.as_object().cloned().unwrap_or_default(),
+                                            result: None,
+                                            status: ToolStatus {
+                                                type_: ToolStatusType::Running,
+                                                reason: None,
+                                            },
+                                        };
 
-                                            let ws_message_type =
-                                                WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+                                        let ws_message_type =
+                                            WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
-                                            let _ = m
-                                                .queue_message(
-                                                    WSTopic::Inbox,
-                                                    inbox_name_string,
-                                                    serde_json::to_string(&tool_call)
-                                                        .unwrap_or_else(|_| "Error serializing tool call".to_string()),
-                                                    ws_message_type,
-                                                    true,
-                                                )
-                                                .await;
-                                        }
+                                        let _ = m
+                                            .queue_message(
+                                                WSTopic::Inbox,
+                                                inbox_name_string,
+                                                serde_json::to_string(&function_call)
+                                                    .unwrap_or_else(|_| "Error serializing tool call".to_string()),
+                                                ws_message_type,
+                                                true,
+                                            )
+                                            .await;
                                     }
                                 }
                             }
@@ -446,7 +446,7 @@ async fn process_stream(
     Ok(LLMInferenceResponse::new(
         response_text,
         json!({}),
-        final_function_call,
+        final_function_calls,
         tps,
     ))
 }
@@ -477,7 +477,7 @@ async fn handle_non_streaming_response(
                             "LLM job stopped by user request before response arrived",
                         );
                         llm_stopper.reset(&inbox_name.to_string());
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), None, None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
                     }
                 }
             },
@@ -489,79 +489,77 @@ async fn handle_non_streaming_response(
                 if let Some(message) = response_json.get("message") {
                     if let Some(content) = message.get("content") {
                         if let Some(content_str) = content.as_str() {
-                            let function_call = message
-                                .get("tool_calls")
-                                .and_then(|tool_calls| {
-                                    tool_calls.as_array().and_then(|calls| {
-                                        calls.iter().find_map(|call| {
-                                            call.get("function").map(|function| {
-                                                let name = function.get("name")?.as_str()?.to_string();
-                                                let arguments = function.get("arguments")
-                                                    .and_then(|args_value| args_value.as_object().cloned())
-                                                    .unwrap_or_else(|| serde_json::Map::new());
+                            let mut function_calls = Vec::new();
 
-                                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                                    tools_array.iter().find_map(|tool| {
-                                                        if tool.get("name")?.as_str()? == name {
-                                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                                        } else {
-                                                            None
-                                                        }
-                                                    })
-                                                });
-
-                                                Some(FunctionCall {
-                                                    name,
-                                                    arguments,
-                                                    tool_router_key,
-                                                    response: None,
+                            if let Some(tool_calls) = message.get("tool_calls").and_then(|tc| tc.as_array()) {
+                                for tool_call in tool_calls {
+                                    if let Some(function) = tool_call.get("function") {
+                                        if let (Some(name), Some(arguments)) = (
+                                            function.get("name").and_then(|n| n.as_str()),
+                                            function.get("arguments").and_then(|a| a.as_object()),
+                                        ) {
+                                            let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                                tools_array.iter().find_map(|tool| {
+                                                    if tool.get("name")?.as_str()? == name {
+                                                        tool.get("tool_router_key")
+                                                            .and_then(|key| key.as_str().map(|s| s.to_string()))
+                                                    } else {
+                                                        None
+                                                    }
                                                 })
-                                            })
-                                        })
-                                    })
-                                })
-                                .flatten();
+                                            });
+
+                                            let function_call = FunctionCall {
+                                                name: name.to_string(),
+                                                arguments: arguments.clone(),
+                                                tool_router_key,
+                                                response: None,
+                                            };
+
+                                            function_calls.push(function_call.clone());
+
+                                            if let Some(ref manager) = ws_manager_trait {
+                                                if let Some(ref inbox_name) = inbox_name {
+                                                    let m = manager.lock().await;
+                                                    let inbox_name_string = inbox_name.to_string();
+                                                    let function_call_json = serde_json::to_value(&function_call)
+                                                        .unwrap_or_else(|_| serde_json::json!({}));
+
+                                                    let tool_metadata = ToolMetadata {
+                                                        tool_name: name.to_string(),
+                                                        tool_router_key: None,
+                                                        args: function_call_json.as_object().cloned().unwrap_or_default(),
+                                                        result: None,
+                                                        status: ToolStatus {
+                                                            type_: ToolStatusType::Running,
+                                                            reason: None,
+                                                        },
+                                                    };
+
+                                                    let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                                                    let _ = m
+                                                        .queue_message(
+                                                            WSTopic::Inbox,
+                                                            inbox_name_string,
+                                                            serde_json::to_string(&function_call)
+                                                                .unwrap_or_else(|_| "{}".to_string()),
+                                                            ws_message_type,
+                                                            true,
+                                                        )
+                                                        .await;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             shinkai_log(
                                 ShinkaiLogOption::JobExecution,
                                 ShinkaiLogLevel::Info,
-                                format!("Function Call: {:?}", function_call).as_str(),
+                                format!("Function Calls: {:?}", function_calls).as_str(),
                             );
-
-                            if let Some(ref manager) = ws_manager_trait {
-                                if let Some(ref inbox_name) = inbox_name {
-                                    if let Some(ref function_call) = function_call {
-                                        let m = manager.lock().await;
-                                        let inbox_name_string = inbox_name.to_string();
-                                        let function_call_json = serde_json::to_value(function_call)
-                                            .unwrap_or_else(|_| serde_json::json!({}));
-
-                                        let tool_metadata = ToolMetadata {
-                                            tool_name: function_call.name.clone(),
-                                            tool_router_key: None,
-                                            args: function_call_json.as_object().cloned().unwrap_or_default(),
-                                            result: None,
-                                            status: ToolStatus {
-                                                type_: ToolStatusType::Running,
-                                                reason: None,
-                                            },
-                                        };
-
-                                        let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                        let _ = m
-                                            .queue_message(
-                                                WSTopic::Inbox,
-                                                inbox_name_string,
-                                                serde_json::to_string(&function_call)
-                                                    .unwrap_or_else(|_| "{}".to_string()),
-                                                ws_message_type,
-                                                true,
-                                            )
-                                            .await;
-                                    }
-                                }
-                            }
 
                             let eval_count = response_json.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0);
                             let eval_duration = response_json.get("eval_duration").and_then(|v| v.as_u64()).unwrap_or(1);
@@ -574,7 +572,7 @@ async fn handle_non_streaming_response(
                             break Ok(LLMInferenceResponse::new(
                                 content_str.to_string(),
                                 json!({}),
-                                function_call,
+                                function_calls,
                                 tps,
                             ));
                         } else {

@@ -395,77 +395,84 @@ impl GenericInferenceChain {
             let response = response_res?;
 
             // 5) Check response if it requires a function call
-            if let Some(function_call) = response.function_call {
-                let parsed_message = ParsedUserMessage::new(user_message.clone());
-                let image_files = HashMap::new();
-                let context = InferenceChainContext::new(
-                    db.clone(),
-                    full_job.clone(),
-                    parsed_message,
-                    None,
-                    fs_files_paths.clone(),
-                    job_filenames.clone(),
-                    message_hash_id.clone(),
-                    image_files.clone(),
-                    llm_provider.clone(),
-                    generator.clone(),
-                    user_profile.clone(),
-                    max_iterations,
-                    max_tokens_in_prompt,
-                    ws_manager_trait.clone(),
-                    tool_router.clone(),
-                    sheet_manager.clone(),
-                    my_agent_payments_manager.clone(),
-                    ext_agent_payments_manager.clone(),
-                    job_callback_manager.clone(),
-                    // sqlite_logger.clone(),
-                    llm_stopper.clone(),
-                );
+            if !response.is_function_calls_empty() {
+                let mut last_function_response = None;
 
-                // 6) Call workflow or tooling
-                // Find the ShinkaiTool that has a tool with the function name
-                let shinkai_tool = tools.iter().find(|tool| {
-                    tool.name() == function_call.name
-                        || tool.tool_router_key().to_string_without_version()
-                            == function_call.tool_router_key.clone().unwrap_or_default()
-                });
-                if shinkai_tool.is_none() {
-                    eprintln!("Function not found: {}", function_call.name);
-                    return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
-                }
-                let shinkai_tool = shinkai_tool.unwrap();
+                for function_call in response.function_calls {
+                    let parsed_message = ParsedUserMessage::new(user_message.clone());
+                    let image_files = HashMap::new();
+                    let context = InferenceChainContext::new(
+                        db.clone(),
+                        full_job.clone(),
+                        parsed_message,
+                        None,
+                        fs_files_paths.clone(),
+                        job_filenames.clone(),
+                        message_hash_id.clone(),
+                        image_files.clone(),
+                        llm_provider.clone(),
+                        generator.clone(),
+                        user_profile.clone(),
+                        max_iterations,
+                        max_tokens_in_prompt,
+                        ws_manager_trait.clone(),
+                        tool_router.clone(),
+                        sheet_manager.clone(),
+                        my_agent_payments_manager.clone(),
+                        ext_agent_payments_manager.clone(),
+                        job_callback_manager.clone(),
+                        // sqlite_logger.clone(),
+                        llm_stopper.clone(),
+                    );
 
-                // Note: here we can add logic to handle the case that we have network tools
-
-                // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
-                let function_response = match tool_router
-                    .as_ref()
-                    .unwrap()
-                    .call_function(function_call.clone(), &context, &shinkai_tool, user_profile.clone())
-                    .await
-                {
-                    Ok(response) => response,
-                    Err(e) => {
-                        eprintln!("Error calling function: {:?}", e);
-                        // Handle different error types here if needed
-                        return Err(e);
+                    // 6) Call workflow or tooling
+                    // Find the ShinkaiTool that has a tool with the function name
+                    let shinkai_tool = tools.iter().find(|tool| {
+                        tool.name() == function_call.name
+                            || tool.tool_router_key().to_string_without_version()
+                                == function_call.tool_router_key.clone().unwrap_or_default()
+                    });
+                    if shinkai_tool.is_none() {
+                        eprintln!("Function not found: {}", function_call.name);
+                        return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                     }
-                };
+                    let shinkai_tool = shinkai_tool.unwrap();
 
-                let mut function_call_with_router_key = function_call.clone();
-                function_call_with_router_key.tool_router_key =
-                    Some(shinkai_tool.tool_router_key().to_string_without_version());
-                function_call_with_router_key.response = Some(function_response.response.clone());
-                tool_calls_history.push(function_call_with_router_key);
+                    // Note: here we can add logic to handle the case that we have network tools
 
-                // Trigger WS update after receiving function_response
-                Self::trigger_ws_update(
-                    &ws_manager_trait,
-                    &Some(full_job.job_id.clone()),
-                    &function_response,
-                    shinkai_tool.tool_router_key().to_string_without_version(),
-                )
-                .await;
+                    // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
+                    let function_response = match tool_router
+                        .as_ref()
+                        .unwrap()
+                        .call_function(function_call.clone(), &context, &shinkai_tool, user_profile.clone())
+                        .await
+                    {
+                        Ok(response) => response,
+                        Err(e) => {
+                            eprintln!("Error calling function: {:?}", e);
+                            // Handle different error types here if needed
+                            return Err(e);
+                        }
+                    };
+
+                    let mut function_call_with_router_key = function_call.clone();
+                    function_call_with_router_key.tool_router_key =
+                        Some(shinkai_tool.tool_router_key().to_string_without_version());
+                    function_call_with_router_key.response = Some(function_response.response.clone());
+                    tool_calls_history.push(function_call_with_router_key);
+
+                    // Trigger WS update after receiving function_response
+                    Self::trigger_ws_update(
+                        &ws_manager_trait,
+                        &Some(full_job.job_id.clone()),
+                        &function_response,
+                        shinkai_tool.tool_router_key().to_string_without_version(),
+                    )
+                    .await;
+
+                    // Store the last function response to use in the next prompt
+                    last_function_response = Some(function_response);
+                }
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -477,7 +484,7 @@ impl GenericInferenceChain {
                     None,
                     Some(full_job.step_history.clone()),
                     tools.clone(),
-                    Some(function_response),
+                    last_function_response,
                     full_job.job_id.clone(),
                     node_env.clone(),
                 );

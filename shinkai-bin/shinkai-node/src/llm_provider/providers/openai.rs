@@ -179,7 +179,7 @@ async fn handle_streaming_response(
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
-    let mut function_call: Option<FunctionCall> = None;
+    let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut error_message: Option<String> = None;
 
     while let Some(item) = stream.next().await {
@@ -193,7 +193,7 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), None, None));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
             }
         }
 
@@ -245,7 +245,7 @@ async fn handle_streaming_response(
                                                 })
                                             });
 
-                                            function_call = Some(FunctionCall {
+                                            function_calls.push(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
                                                 arguments: fc_arguments.clone(),
                                                 tool_router_key,
@@ -260,18 +260,18 @@ async fn handle_streaming_response(
                         // Updated WS message handling for tooling
                         if let Some(ref manager) = ws_manager_trait {
                             if let Some(ref inbox_name) = inbox_name {
-                                if let Some(ref function_call) = function_call {
+                                if let Some(last_function_call) = function_calls.last() {
                                     let m = manager.lock().await;
                                     let inbox_name_string = inbox_name.to_string();
 
                                     // Serialize FunctionCall to JSON value
                                     let function_call_json =
-                                        serde_json::to_value(function_call).unwrap_or_else(|_| serde_json::json!({}));
+                                        serde_json::to_value(last_function_call).unwrap_or_else(|_| serde_json::json!({}));
 
                                     // Prepare ToolMetadata
                                     let tool_metadata = ToolMetadata {
-                                        tool_name: function_call.name.clone(),
-                                        tool_router_key: function_call.tool_router_key.clone(),
+                                        tool_name: last_function_call.name.clone(),
+                                        tool_router_key: last_function_call.tool_router_key.clone(),
                                         args: function_call_json.as_object().cloned().unwrap_or_default(),
                                         result: None,
                                         status: ToolStatus {
@@ -287,7 +287,7 @@ async fn handle_streaming_response(
                                         .queue_message(
                                             WSTopic::Inbox,
                                             inbox_name_string,
-                                            serde_json::to_string(&function_call).unwrap_or_else(|_| "{}".to_string()),
+                                            serde_json::to_string(last_function_call).unwrap_or_else(|_| "{}".to_string()),
                                             ws_message_type,
                                             true,
                                         )
@@ -323,7 +323,7 @@ async fn handle_streaming_response(
         }
     }
 
-    Ok(LLMInferenceResponse::new(response_text, json!({}), function_call, None))
+    Ok(LLMInferenceResponse::new(response_text, json!({}), function_calls, None))
 }
 
 async fn handle_non_streaming_response(
@@ -357,7 +357,7 @@ async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), None, None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
                     }
                 }
             },
@@ -477,7 +477,7 @@ async fn handle_non_streaming_response(
                         return Ok(LLMInferenceResponse::new(
                             response_string,
                             json!({}),
-                            function_call,
+                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
                             None,
                         ));
                     }
