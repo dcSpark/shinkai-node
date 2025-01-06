@@ -28,6 +28,7 @@ pub struct NodeEnvironment {
     pub default_embedding_model: EmbeddingModelType,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
     pub api_v2_key: Option<String>,
+    pub shinkai_emails_api_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +200,8 @@ pub fn fetch_node_environment() -> NodeEnvironment {
 
     let api_https_listen_address = SocketAddr::new(api_ip, api_https_port);
 
+    let shinkai_emails_api_url: Option<String> = env::var("SHINKAI_EMAILS_API_URL").ok();
+
     NodeEnvironment {
         global_identity_name,
         listen_address,
@@ -218,5 +221,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         supported_embedding_models,
         api_v2_key,
         api_https_listen_address,
+        shinkai_emails_api_url,
     }
 }
+
