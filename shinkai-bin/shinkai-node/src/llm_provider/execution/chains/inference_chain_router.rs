@@ -75,7 +75,7 @@ impl JobManager {
             llm_provider,
             generator,
             user_profile,
-            3,
+            5,
             max_tokens_in_prompt,
             ws_manager_trait.clone(),
             tool_router.clone(),

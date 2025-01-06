@@ -171,7 +171,7 @@ async fn handle_streaming_response(
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
-    let mut function_call: Option<FunctionCall> = None;
+    let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut is_done_sent = false; // Track if any WS message with is_done: true has been sent
 
     while let Some(item) = stream.next().await {
@@ -185,7 +185,7 @@ async fn handle_streaming_response(
                 );
                 llm_stopper.reset(&inbox_name.to_string());
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), None, None));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
             }
         }
 
@@ -228,7 +228,7 @@ async fn handle_streaming_response(
                                                 })
                                             });
 
-                                            function_call = Some(FunctionCall {
+                                            function_calls.push(FunctionCall {
                                                 name: name.as_str().unwrap_or("").to_string(),
                                                 arguments: fc_arguments.clone(),
                                                 tool_router_key,
@@ -327,7 +327,7 @@ async fn handle_streaming_response(
         }
     }
 
-    Ok(LLMInferenceResponse::new(response_text, json!({}), function_call, None))
+    Ok(LLMInferenceResponse::new(response_text, json!({}), function_calls, None))
 }
 
 async fn handle_non_streaming_response(
@@ -361,7 +361,7 @@ async fn handle_non_streaming_response(
                         );
                         llm_stopper.reset(&inbox_name.to_string());
 
-                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), None, None));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
                     }
                 }
             },
@@ -438,7 +438,7 @@ async fn handle_non_streaming_response(
                         return Ok(LLMInferenceResponse::new(
                             response_string,
                             json!({}),
-                            function_call,
+                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
                             None,
                         ));
                     }

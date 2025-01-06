@@ -198,8 +198,8 @@ impl LLMService for Exo {
                 format!("Cleaned Response Text: {:?}", response_text).as_str(),
             );
 
-            // Directly return response_text with an empty JSON object
-            Ok(LLMInferenceResponse::new(response_text, json!({}), None, None))
+            // Return response_text with an empty JSON object and empty function calls vector
+            Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None))
         } else {
             Err(LLMProviderError::UrlNotSet)
         }

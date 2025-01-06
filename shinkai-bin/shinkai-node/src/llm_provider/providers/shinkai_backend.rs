@@ -185,7 +185,7 @@ impl LLMService for ShinkaiBackend {
                             Ok(LLMInferenceResponse::new(
                                 response_string,
                                 json!({}),
-                                function_call,
+                                function_call.map_or_else(Vec::new, |fc| vec![fc]),
                                 None,
                             ))
                         } else {
@@ -217,7 +217,7 @@ impl LLMService for ShinkaiBackend {
                             Ok(LLMInferenceResponse::new(
                                 response_string,
                                 json!({}),
-                                function_call,
+                                function_call.map_or_else(Vec::new, |fc| vec![fc]),
                                 None,
                             ))
                         }

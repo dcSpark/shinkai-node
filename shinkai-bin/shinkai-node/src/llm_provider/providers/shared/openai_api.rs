@@ -96,9 +96,21 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         .into_iter()
         .partition(|message| message.role.is_some());
 
+
     // Convert both sets of messages to serde Value
     let messages_json = serde_json::to_value(messages_with_role)?;
-    let tools_json = serde_json::to_value(tools)?;
+
+    // Convert tools to serde Value with name transformation
+    let tools_json = serde_json::to_value(
+        tools.clone().into_iter().map(|mut tool| {
+            if let Some(functions) = tool.functions.as_mut() {
+                for function in functions {
+                    function.name = function.name.to_lowercase().replace(" ", "_");
+                }
+            }
+            tool
+        }).collect::<Vec<_>>()
+    )?;
 
     // Convert messages_json and tools_json to Vec<serde_json::Value>
     let messages_vec = match messages_json {
