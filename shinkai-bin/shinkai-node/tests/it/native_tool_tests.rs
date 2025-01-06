@@ -1,35 +1,33 @@
 use async_channel::{bounded, Receiver, Sender};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Map};
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair,
 };
-use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, VectorFSFolderScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+use shinkai_message_primitives::shinkai_utils::search_mode::VectorSearchMode;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
-use shinkai_vector_resources::utils::hash_string;
-use shinkai_vector_resources::vector_resource::{VRPath, VectorSearchMode};
 use std::fs;
+use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
-use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
 use crate::it::utils::vecfs_test_utils::{create_folder, upload_file};
 
 use super::utils::db_handlers::setup_node_storage_path;
-use super::utils::node_test_api::{api_message_job, api_registration_device_node_profile_main};
+use super::utils::node_test_api::api_registration_device_node_profile_main;
 use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use mockito::Server;
@@ -70,7 +68,6 @@ fn native_tool_test_knowledge() {
         let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node1_identity_name));
 
         let node1_profile_name = "main";
         let api_key_bearer = "my_api_key".to_string();
@@ -140,7 +137,6 @@ fn native_tool_test_knowledge() {
             None,
             true,
             vec![agent],
-            node1_fs_db_path,
             None,
             None,
             default_embedding_model(),
@@ -202,14 +198,9 @@ fn native_tool_test_knowledge() {
                     let file_path = Path::new("../../files/shinkai_intro.vrkai");
                     upload_file(
                         &node1_commands_sender,
-                        node1_profile_encryption_sk.clone(),
-                        clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk,
-                        node1_identity_name,
-                        node1_profile_name,
                         "/test_folder",
                         file_path,
-                        0,
+                        &api_key_bearer.clone(),
                     )
                     .await;
                 }
@@ -224,18 +215,12 @@ fn native_tool_test_knowledge() {
                         ShinkaiLogLevel::Debug,
                         &format!("Creating a Job for Agent {}", agent_subidentity.clone()),
                     );
-                    let vr_path = VRPath::root();
-                    let vector_fs_folder = VectorFSFolderScopeEntry {
-                        name: "test_folder".to_string(),
-                        path: vr_path,
-                    };
+                    let vector_fs_folder = ShinkaiPath::from_string("test_folder".to_string());
 
-                    let job_scope = JobScope {
-                        local_vrkai: vec![],
-                        local_vrpack: vec![],
+                    let job_scope = MinimalJobScope {
                         vector_fs_items: vec![],
                         vector_fs_folders: vec![vector_fs_folder],
-                        vector_search_mode: vec![VectorSearchMode::FillUpTo25k],
+                        vector_search_mode: VectorSearchMode::FillUpTo25k,
                     };
 
                     job_id = api_create_job_with_scope(

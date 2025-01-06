@@ -3,7 +3,7 @@ use errors::SqliteManagerError;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
-use shinkai_vector_resources::model_type::EmbeddingModelType;
+use shinkai_embedding::model_type::EmbeddingModelType;
 use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
@@ -14,6 +14,7 @@ pub mod cron_task_manager;
 pub mod embedding_function;
 pub mod errors;
 pub mod file_inbox_manager;
+pub mod file_system;
 pub mod files;
 pub mod identity_manager;
 pub mod identity_registration;
@@ -33,8 +34,6 @@ pub mod shinkai_tool_manager;
 pub mod source_file_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
-pub mod vector_fs_manager;
-pub mod vector_resource_manager;
 pub mod wallet_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
@@ -144,6 +143,7 @@ impl SqliteManager {
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
+        // TODO: remove this
         Self::initialize_file_inboxes_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
@@ -163,19 +163,13 @@ impl SqliteManager {
         Self::initialize_retry_messages_table(conn)?;
         Self::initialize_settings_table(conn)?;
         Self::initialize_sheets_table(conn)?;
-        Self::initialize_source_file_maps_table(conn)?;
-        Self::initialize_step_history_table(conn)?;
         Self::initialize_tools_table(conn)?;
         Self::initialize_tool_micropayments_requirements_table(conn)?;
         Self::initialize_tool_playground_table(conn)?;
         Self::initialize_tool_playground_code_history_table(conn)?;
-        Self::initialize_vector_fs_internals_table(conn)?;
-        Self::initialize_vector_resources_table(conn)?;
-        Self::initialize_vector_resource_embeddings_tables(conn)?;
-        Self::initialize_vector_resource_nodes_table(conn)?;
-        Self::initialize_vector_resource_headers_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
+        Self::initialize_filesystem_tables(conn)?;
         Self::initialize_oauth_table(conn)?;
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
@@ -202,7 +196,8 @@ impl SqliteManager {
                 storage_path TEXT NOT NULL,
                 tools TEXT NOT NULL,
                 debug_mode INTEGER NOT NULL,
-                config TEXT -- Store as a JSON string
+                config TEXT, -- Store as a JSON string
+                scope TEXT NOT NULL -- Change this line to use TEXT instead of BLOB
             );",
             [],
         )?;
@@ -325,25 +320,10 @@ impl SqliteManager {
                 datetime_created TEXT NOT NULL,
                 is_finished INTEGER NOT NULL,
                 parent_agent_or_llm_provider_id TEXT NOT NULL,
-                scope BLOB NOT NULL,
-                scope_with_files BLOB,
+                scope TEXT NOT NULL,
                 conversation_inbox_name TEXT NOT NULL,
-                execution_context BLOB,
-                associated_ui BLOB,
-                config BLOB
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_step_history_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS step_history (
-                message_key TEXT NOT NULL,
-                job_id TEXT NOT NULL,
-                job_step_result BLOB NOT NULL
+                associated_ui TEXT,
+                config TEXT
             );",
             [],
         )?;
@@ -368,7 +348,7 @@ impl SqliteManager {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS job_queues (
                 job_id TEXT NOT NULL,
-                queue_data BLOB NOT NULL
+                queue_data TEXT NOT NULL
             );",
             [],
         )?;
@@ -798,181 +778,34 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_source_file_maps_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS source_file_maps (
-                profile_name TEXT NOT NULL,
-                vector_resource_id TEXT NOT NULL,
-                vr_path TEXT NOT NULL,
-                source_file_type TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-                file_type TEXT NOT NULL,
-                distribution_info BLOB
-            );",
-            [],
-        )?;
+    // fn initialize_source_file_maps_table(conn: &rusqlite::Connection) -> Result<()> {
+    //     conn.execute(
+    //         "CREATE TABLE IF NOT EXISTS source_file_maps (
+    //             profile_name TEXT NOT NULL,
+    //             vector_resource_id TEXT NOT NULL,
+    //             vr_path TEXT NOT NULL,
+    //             source_file_type TEXT NOT NULL,
+    //             file_name TEXT NOT NULL,
+    //             file_type TEXT NOT NULL,
+    //             distribution_info BLOB
+    //         );",
+    //         [],
+    //     )?;
 
-        // Create an index for the profile_name column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_source_file_maps_profile_name ON source_file_maps (profile_name);",
-            [],
-        )?;
+    //     // Create an index for the profile_name column
+    //     conn.execute(
+    //         "CREATE INDEX IF NOT EXISTS idx_source_file_maps_profile_name ON source_file_maps (profile_name);",
+    //         [],
+    //     )?;
 
-        // Create an index for the vector_resource_id column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_source_file_maps_vector_resource_id ON source_file_maps (vector_resource_id);",
-            [],
-        )?;
+    //     // Create an index for the vector_resource_id column
+    //     conn.execute(
+    //         "CREATE INDEX IF NOT EXISTS idx_source_file_maps_vector_resource_id ON source_file_maps (vector_resource_id);",
+    //         [],
+    //     )?;
 
-        Ok(())
-    }
-
-    fn initialize_vector_fs_internals_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS vector_fs_internals (
-                profile_name TEXT NOT NULL UNIQUE,
-                core_resource_id TEXT NOT NULL,
-                permissions_index BLOB NOT NULL,
-                subscription_index BLOB NOT NULL,
-                supported_embedding_models BLOB NOT NULL,
-                last_read_index BLOB NOT NULL
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_vector_resources_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS vector_resources (
-                profile_name TEXT NOT NULL,
-                vector_resource_id TEXT NOT NULL UNIQUE,
-                name TEXT NOT NULL,
-                description TEXT,
-                source TEXT NOT NULL,
-                resource_id TEXT NOT NULL,
-                resource_base_type TEXT NOT NULL,
-                embedding_model_used_string TEXT NOT NULL,
-                node_count INTEGER NOT NULL,
-                data_tag_index BLOB NOT NULL,
-                created_datetime TEXT NOT NULL,
-                last_written_datetime TEXT NOT NULL,
-                metadata_index BLOB NOT NULL,
-                merkle_root TEXT,
-                keywords BLOB NOT NULL,
-                distribution_info BLOB NOT NULL
-            );",
-            [],
-        )?;
-
-        // Create an index for the profile_name column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vector_resources_profile_name ON vector_resources (profile_name);",
-            [],
-        )?;
-
-        // Create an index for the vector_resource_id column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vector_resources_vector_resource_id ON vector_resources (vector_resource_id);",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_vector_resource_embeddings_tables(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resource_embeddings_384 USING vec0 (
-                profile_name text,
-                vector_resource_id text partition key,
-                is_resource_embedding integer,
-                id text,
-                embedding float[384]
-            );",
-            [],
-        )?;
-
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS vector_resource_embeddings_768 USING vec0 (
-                profile_name text,
-                vector_resource_id text partition key,
-                is_resource_embedding integer,
-                id text,
-                embedding float[768]
-            );",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_vector_resource_nodes_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS vector_resource_nodes (
-                profile_name TEXT NOT NULL,
-                vector_resource_id TEXT NOT NULL,
-                id TEXT NOT NULL,
-                content_type TEXT NOT NULL,
-                content_value TEXT NOT NULL,
-                metadata TEXT,
-                data_tag_names TEXT NOT NULL,
-                last_written_datetime TEXT NOT NULL,
-                merkle_hash TEXT
-            );",
-            [],
-        )?;
-
-        // Create an index for the profile_name column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vector_resource_nodes_profile_name ON vector_resource_nodes (profile_name);",
-            [],
-        )?;
-
-        // Create an index for the vector_resource_id column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vector_resource_nodes_vector_resource_id ON vector_resource_nodes (vector_resource_id);",
-            [],
-        )?;
-
-        Ok(())
-    }
-
-    fn initialize_vector_resource_headers_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS vector_resource_headers (
-                profile_name TEXT NOT NULL,
-                vector_resource_id TEXT NOT NULL UNIQUE,
-                resource_name TEXT NOT NULL,
-                resource_id TEXT NOT NULL,
-                resource_base_type TEXT NOT NULL,
-                resource_source TEXT NOT NULL,
-                resource_created_datetime TEXT NOT NULL,
-                resource_last_written_datetime TEXT NOT NULL,
-                resource_embedding_model_used TEXT NOT NULL,
-                resource_merkle_root TEXT,
-                resource_keywords BLOB NOT NULL,
-                resource_distribution_info BLOB NOT NULL,
-                data_tag_names TEXT NOT NULL,
-                metadata_index_keys TEXT NOT NULL
-            );",
-            [],
-        )?;
-
-        // Create an index for the profile_name column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vector_resource_headers_profile_name ON vector_resource_headers (profile_name);",
-            [],
-        )?;
-
-        // Create an index for the vector_resource_id column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_vector_resource_headers_vector_resource_id ON vector_resource_headers (vector_resource_id);",
-            [],
-        )?;
-
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     // New method to initialize the embedding model type table
     fn initialize_embedding_model_type_table(conn: &rusqlite::Connection) -> Result<()> {
@@ -1056,7 +889,7 @@ impl SqliteManager {
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3"];
+        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions
@@ -1092,10 +925,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_vector_resources::model_type::OllamaTextEmbeddingsInference;
     use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
     use std::thread;
+    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
 

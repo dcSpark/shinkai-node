@@ -18,7 +18,6 @@ use shinkai_tools_primitives::tools::error::ToolError;
 
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
 use tokio::sync::Mutex;
 
 use crate::managers::IdentityManager;
@@ -117,7 +116,6 @@ pub async fn execute_tool_cmd(
     bearer: String,
     node_name: ShinkaiName,
     db: Arc<SqliteManager>,
-    vector_fs: Arc<VectorFS>,
     tool_router_key: String,
     parameters: Map<String, Value>,
     tool_id: String,
@@ -144,7 +142,7 @@ pub async fn execute_tool_cmd(
             extra_config,
             bearer,
             db,
-            vector_fs,
+            // vector_fs,
             llm_provider,
             node_name,
             identity_manager,

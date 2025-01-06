@@ -12,21 +12,23 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
+use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::{
     ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::vector_resource::RetrievedNode;
+
 use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
@@ -66,14 +68,14 @@ impl InferenceChain for GenericInferenceChain {
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError> {
         let response = GenericInferenceChain::start_chain(
             self.context.db.clone(),
-            self.context.vector_fs.clone(),
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
             self.context.user_tool_selected.clone(),
+            self.context.fs_files_paths.clone(),
+            self.context.job_filenames.clone(),
             self.context.message_hash_id.clone(),
             self.context.image_files.clone(),
             self.context.llm_provider.clone(),
-            self.context.execution_context.clone(),
             self.context.generator.clone(),
             self.context.user_profile.clone(),
             self.context.max_iterations,
@@ -107,14 +109,14 @@ impl GenericInferenceChain {
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: String,
         user_tool_selected: Option<String>,
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
-        execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_iterations: u64,
@@ -153,23 +155,39 @@ impl GenericInferenceChain {
         */
 
         // 1) Vector search for knowledge if the scope isn't empty
-        let scope_is_empty = full_job.scope_with_files().unwrap().is_empty();
-        let mut ret_nodes: Vec<RetrievedNode> = vec![];
-        let mut summary_node_text = None;
-        if !scope_is_empty {
-            let (ret, summary) = JobManager::keyword_chained_job_scope_vector_search(
+        let scope_is_empty = full_job.scope().is_empty();
+        let mut ret_nodes: ShinkaiFileChunkCollection = ShinkaiFileChunkCollection {
+            chunks: vec![],
+            paths: None,
+        };
+
+        // Merge agent scope fs_files_paths if llm_provider is an agent
+        let mut merged_fs_files_paths = fs_files_paths.clone();
+        let mut merged_fs_folder_paths = Vec::new();
+        if let ProviderOrAgent::Agent(agent) = &llm_provider {
+            merged_fs_files_paths.extend(agent.scope.vector_fs_items.clone());
+            merged_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
+        }
+
+        if !scope_is_empty
+            || !merged_fs_files_paths.is_empty()
+            || !merged_fs_folder_paths.is_empty()
+            || !job_filenames.is_empty()
+        {
+            let ret = JobManager::search_for_chunks_in_resources(
+                merged_fs_files_paths,
+                merged_fs_folder_paths,
+                job_filenames.clone(),
+                full_job.job_id.clone(),
+                full_job.scope(),
                 db.clone(),
-                vector_fs.clone(),
-                full_job.scope_with_files().unwrap(),
                 user_message.clone(),
-                &user_profile,
-                generator.clone(),
                 20,
                 max_tokens_in_prompt,
+                generator.clone(),
             )
             .await?;
             ret_nodes = ret;
-            summary_node_text = summary;
         }
 
         // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
@@ -332,7 +350,7 @@ impl GenericInferenceChain {
             user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
-            summary_node_text.clone(),
+            None,
             Some(full_job.step_history.clone()),
             tools.clone(),
             None,
@@ -382,14 +400,14 @@ impl GenericInferenceChain {
                 let image_files = HashMap::new();
                 let context = InferenceChainContext::new(
                     db.clone(),
-                    vector_fs.clone(),
                     full_job.clone(),
                     parsed_message,
                     None,
+                    fs_files_paths.clone(),
+                    job_filenames.clone(),
                     message_hash_id.clone(),
                     image_files.clone(),
                     llm_provider.clone(),
-                    execution_context.clone(),
                     generator.clone(),
                     user_profile.clone(),
                     max_iterations,
@@ -456,7 +474,7 @@ impl GenericInferenceChain {
                     user_message.clone(),
                     image_files.clone(),
                     ret_nodes.clone(),
-                    summary_node_text.clone(),
+                    None,
                     Some(full_job.step_history.clone()),
                     tools.clone(),
                     Some(function_response),
@@ -471,7 +489,6 @@ impl GenericInferenceChain {
                     response.response_string,
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
-                    execution_context.clone(),
                     Some(tool_calls_history.clone()),
                 );
 

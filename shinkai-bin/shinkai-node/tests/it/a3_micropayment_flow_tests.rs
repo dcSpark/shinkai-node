@@ -14,12 +14,12 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_vector_resources::utils::hash_string;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -110,7 +110,6 @@ fn micropayment_flow_test() {
             None,
             true,
             vec![],
-            node1_fs_db_path,
             None,
             None,
             default_embedding_model(),
@@ -134,7 +133,6 @@ fn micropayment_flow_test() {
             None,
             true,
             vec![],
-            node2_fs_db_path,
             None,
             None,
             default_embedding_model(),

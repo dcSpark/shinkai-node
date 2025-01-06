@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::schemas::{job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey};
+use crate::{schemas::{job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey}, shinkai_utils::job_scope::MinimalJobScope};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +17,8 @@ pub struct Agent {
     pub tools: Vec<ToolRouterKey>,
     pub debug_mode: bool,
     pub config: Option<JobConfig>,
+    #[serde(default)]
+    pub scope: MinimalJobScope,
 }
 
 fn deserialize_tools<'de, D>(deserializer: D) -> Result<Vec<ToolRouterKey>, D::Error>

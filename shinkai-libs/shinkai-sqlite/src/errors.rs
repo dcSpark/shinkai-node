@@ -1,4 +1,3 @@
-use shinkai_vector_resources::resource_errors::VRError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -57,16 +56,25 @@ pub enum SqliteManagerError {
     InboxNotFound(String),
     #[error("Lock error")]
     LockError,
-    #[error("VR error: {0}")]
-    VRError(VRError),
     #[error("Invalid data")]
     InvalidData,
     #[error("Failed fetching value")]
     FailedFetchingValue,
     #[error("Query error: {query}, source: {source}")]
-    QueryError { query: String, source: rusqlite::Error },
+    QueryError {
+        query: String,
+        source: rusqlite::Error,
+    },
+    #[error("Directory not empty")]
+    DirectoryNotEmpty,
+    #[error("Directory not found")]
+    DirectoryNotFound,
     #[error("Unsupported embedding length: {0}")]
     UnsupportedEmbeddingLength(usize),
+    #[error("Deserialization error")]
+    DeserializationError,
+    #[error("Chrono parse error: {0}")]
+    ChronoParseError(chrono::ParseError),
     #[error("Version Converson Error: {0}")]
     VersionConversionError(String),
     #[error("Tool key not found: {0}")]
@@ -78,15 +86,15 @@ pub enum SqliteManagerError {
     // Add other error variants as needed
 }
 
-impl From<VRError> for SqliteManagerError {
-    fn from(err: VRError) -> SqliteManagerError {
-        SqliteManagerError::VRError(err)
-    }
-}
-
 impl From<&str> for SqliteManagerError {
     fn from(err: &str) -> SqliteManagerError {
         SqliteManagerError::SomeError(err.to_string())
+    }
+}
+
+impl From<chrono::ParseError> for SqliteManagerError {
+    fn from(err: chrono::ParseError) -> SqliteManagerError {
+        SqliteManagerError::ChronoParseError(err)
     }
 }
 

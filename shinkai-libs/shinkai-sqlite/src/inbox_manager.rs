@@ -17,8 +17,8 @@ use shinkai_message_primitives::{
         shinkai_message::{NodeApiData, ShinkaiMessage},
         shinkai_message_schemas::WSTopic,
     },
+    shinkai_utils::shinkai_time::ShinkaiStringTime,
 };
-use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 use tokio::sync::Mutex;
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -532,7 +532,7 @@ impl SqliteManager {
             let is_finished = if inbox_id.starts_with("job_inbox::") {
                 match InboxName::new(inbox_id.clone()).map_err(|e| SqliteManagerError::SomeError(e.to_string()))? {
                     InboxName::JobInbox { unique_id, .. } => {
-                        let job = self.get_job_with_options(&unique_id, false, false)?;
+                        let job = self.get_job_with_options(&unique_id, false)?;
                         let scope_value = job.scope.to_json_value()?;
                         job_scope_value = Some(scope_value);
                         job_config_value = job.config;
@@ -555,7 +555,7 @@ impl SqliteManager {
                             {
                                 InboxName::JobInbox { unique_id, .. } => {
                                     // Start the timer
-                                    let job = self.get_job_with_options(&unique_id, false, false)?;
+                                    let job = self.get_job_with_options(&unique_id, false)?;
                                     let agent_id = job.parent_agent_or_llm_provider_id;
 
                                     // Check if the agent_id is an LLM provider
@@ -628,13 +628,25 @@ impl SqliteManager {
         Ok(smart_inboxes)
     }
 
-    pub fn update_smart_inbox_name(&self, inbox_id: &str, new_name: &str) -> Result<(), SqliteManagerError> {
+    // Note: This is unsafe because it does not update folder names which depend on the inbox name
+    pub fn unsafe_update_smart_inbox_name(&self, inbox_id: &str, new_name: &str) -> Result<(), SqliteManagerError> {
+        // Update the name in the database
         let conn = self.get_connection()?;
         conn.execute(
             "UPDATE inboxes SET smart_inbox_name = ?1 WHERE inbox_name = ?2",
             params![new_name, inbox_id],
         )?;
         Ok(())
+    }
+
+    pub fn get_smart_inbox_name(&self, conversation_inbox_name: &str) -> Result<String, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT smart_inbox_name FROM inboxes WHERE inbox_name = ?1")?;
+        let mut rows = stmt.query(params![conversation_inbox_name])?;
+
+        let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
+        let smart_inbox_name: String = row.get(0)?;
+        Ok(smart_inbox_name)
     }
 
     pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, SqliteManagerError> {
@@ -664,6 +676,7 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use ed25519_dalek::SigningKey;
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::{
         schemas::identity::StandardIdentityType,
         shinkai_message::{
@@ -676,7 +689,6 @@ mod tests {
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
         },
     };
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
     use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};

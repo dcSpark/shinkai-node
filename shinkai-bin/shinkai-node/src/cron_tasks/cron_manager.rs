@@ -612,19 +612,20 @@ impl CronManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Timelike, Utc};
+    use chrono::Timelike;
     use shinkai_message_primitives::schemas::crontab::CronTaskAction;
 
     fn create_test_cron_task(cron: &str) -> CronTask {
         let job_message = JobMessage {
             job_id: "job_id".to_string(),
             content: "message".to_string(),
-            files_inbox: "".to_string(),
             parent: None,
             sheet_job_data: None,
             callback: None,
             metadata: None,
             tool_key: None,
+            fs_files_paths: vec![],
+            job_filenames: vec![],
         };
 
         CronTask {

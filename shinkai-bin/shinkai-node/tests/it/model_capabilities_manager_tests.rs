@@ -14,7 +14,7 @@ mod tests {
     use tokio::sync::RwLock;
 
     use shinkai_sqlite::SqliteManager;
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use tempfile::NamedTempFile;
 
     fn setup_test_db() -> SqliteManager {

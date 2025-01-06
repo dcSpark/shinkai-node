@@ -10,15 +10,15 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FunctionCallMetadata;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
-// use shinkai_sqlite::SqliteLogger;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+
 use std::fmt;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -60,13 +60,11 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn update_message(&mut self, new_message: ParsedUserMessage);
 
     fn db(&self) -> Arc<SqliteManager>;
-    fn vector_fs(&self) -> Arc<VectorFS>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
     fn message_hash_id(&self) -> Option<String>;
     fn image_files(&self) -> &HashMap<String, String>;
     fn agent(&self) -> &ProviderOrAgent;
-    fn execution_context(&self) -> &HashMap<String, String>;
     fn generator(&self) -> &RemoteEmbeddingGenerator;
     fn user_profile(&self) -> &ShinkaiName;
     fn max_iterations(&self) -> u64;
@@ -111,11 +109,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
     fn db(&self) -> Arc<SqliteManager> {
         Arc::clone(&self.db)
     }
-
-    fn vector_fs(&self) -> Arc<VectorFS> {
-        Arc::clone(&self.vector_fs)
-    }
-
+    
     fn full_job(&self) -> &Job {
         &self.full_job
     }
@@ -134,10 +128,6 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn agent(&self) -> &ProviderOrAgent {
         &self.llm_provider
-    }
-
-    fn execution_context(&self) -> &HashMap<String, String> {
-        &self.execution_context
     }
 
     fn generator(&self) -> &RemoteEmbeddingGenerator {
@@ -206,15 +196,15 @@ impl InferenceChainContextTrait for InferenceChainContext {
 #[derive(Clone)]
 pub struct InferenceChainContext {
     pub db: Arc<SqliteManager>,
-    pub vector_fs: Arc<VectorFS>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
     pub user_tool_selected: Option<String>,
+    pub fs_files_paths: Vec<ShinkaiPath>,
+    pub job_filenames: Vec<String>, 
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
     pub llm_provider: ProviderOrAgent,
     /// Job's execution context, used to store potentially relevant data across job steps.
-    pub execution_context: HashMap<String, String>,
     pub generator: RemoteEmbeddingGenerator,
     pub user_profile: ShinkaiName,
     pub max_iterations: u64,
@@ -235,14 +225,14 @@ impl InferenceChainContext {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<SqliteManager>,
-        vector_fs: Arc<VectorFS>,
         full_job: Job,
         user_message: ParsedUserMessage,
         user_tool_selected: Option<String>,
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,   
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
-        execution_context: HashMap<String, String>,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
         max_iterations: u64,
@@ -258,14 +248,14 @@ impl InferenceChainContext {
     ) -> Self {
         Self {
             db,
-            vector_fs,
             full_job,
             user_message,
             user_tool_selected,
+            fs_files_paths,
+            job_filenames,
             message_hash_id,
             image_files,
             llm_provider,
-            execution_context,
             generator,
             user_profile,
             max_iterations,
@@ -298,14 +288,14 @@ impl fmt::Debug for InferenceChainContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InferenceChainContext")
             .field("db", &self.db)
-            .field("vector_fs", &self.vector_fs)
             .field("full_job", &self.full_job)
             .field("user_message", &self.user_message)
             .field("user_tool_selected", &self.user_tool_selected)
+            .field("fs_files_paths", &self.fs_files_paths)
+            .field("job_filenames", &self.job_filenames)
             .field("message_hash_id", &self.message_hash_id)
             .field("image_files", &self.image_files.len())
             .field("llm_provider", &self.llm_provider)
-            .field("execution_context", &self.execution_context)
             .field("generator", &self.generator)
             .field("user_profile", &self.user_profile)
             .field("max_iterations", &self.max_iterations)
@@ -329,15 +319,13 @@ pub struct InferenceChainResult {
     pub response: String,
     pub tps: Option<String>,
     pub answer_duration: Option<String>,
-    pub new_job_execution_context: HashMap<String, String>,
     pub tool_calls: Option<Vec<FunctionCall>>,
 }
 
 impl InferenceChainResult {
-    pub fn new(response: String, new_job_execution_context: HashMap<String, String>) -> Self {
+    pub fn new(response: String) -> Self {
         Self {
             response,
-            new_job_execution_context,
             tps: None,
             answer_duration: None,
             tool_calls: None,
@@ -348,24 +336,14 @@ impl InferenceChainResult {
         response: String,
         tps: Option<String>,
         answer_duration_ms: Option<String>,
-        new_job_execution_context: HashMap<String, String>,
         tool_calls: Option<Vec<FunctionCall>>,
     ) -> Self {
         Self {
             response,
             tps,
             answer_duration: answer_duration_ms,
-            new_job_execution_context,
             tool_calls,
         }
-    }
-
-    pub fn new_empty_execution_context(response: String) -> Self {
-        Self::new(response, HashMap::new())
-    }
-
-    pub fn new_empty() -> Self {
-        Self::new_empty_execution_context(String::new())
     }
 
     pub fn tool_calls_metadata(&self) -> Option<Vec<FunctionCallMetadata>> {
@@ -440,10 +418,6 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).db()
     }
 
-    fn vector_fs(&self) -> Arc<VectorFS> {
-        (**self).vector_fs()
-    }
-
     fn full_job(&self) -> &Job {
         (**self).full_job()
     }
@@ -462,10 +436,6 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 
     fn agent(&self) -> &ProviderOrAgent {
         (**self).agent()
-    }
-
-    fn execution_context(&self) -> &HashMap<String, String> {
-        (**self).execution_context()
     }
 
     fn generator(&self) -> &RemoteEmbeddingGenerator {
@@ -533,14 +503,12 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 pub struct MockInferenceChainContext {
     pub user_message: ParsedUserMessage,
     pub image_files: HashMap<String, String>,
-    pub execution_context: HashMap<String, String>,
     pub user_profile: ShinkaiName,
     pub max_iterations: u64,
     pub iteration_count: u64,
     pub max_tokens_in_prompt: usize,
     pub raw_files: RawFiles,
     pub db: Option<Arc<SqliteManager>>,
-    pub vector_fs: Option<Arc<VectorFS>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     pub llm_stopper: Arc<LLMStopper>,
@@ -551,14 +519,12 @@ impl MockInferenceChainContext {
     #[allow(dead_code)]
     pub fn new(
         user_message: ParsedUserMessage,
-        execution_context: HashMap<String, String>,
         user_profile: ShinkaiName,
         max_iterations: u64,
         iteration_count: u64,
         max_tokens_in_prompt: usize,
         raw_files: Option<Arc<Vec<(String, Vec<u8>)>>>,
         db: Option<Arc<SqliteManager>>,
-        vector_fs: Option<Arc<VectorFS>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         llm_stopper: Arc<LLMStopper>,
@@ -566,14 +532,12 @@ impl MockInferenceChainContext {
         Self {
             user_message,
             image_files: HashMap::new(),
-            execution_context,
             user_profile,
             max_iterations,
             iteration_count,
             max_tokens_in_prompt,
             raw_files,
             db,
-            vector_fs,
             my_agent_payments_manager,
             ext_agent_payments_manager,
             llm_stopper,
@@ -591,14 +555,12 @@ impl Default for MockInferenceChainContext {
         Self {
             user_message,
             image_files: HashMap::new(),
-            execution_context: HashMap::new(),
             user_profile,
             max_iterations: 10,
             iteration_count: 0,
             max_tokens_in_prompt: 1000,
             raw_files: None,
             db: None,
-            vector_fs: None,
             my_agent_payments_manager: None,
             ext_agent_payments_manager: None,
             llm_stopper: Arc::new(LLMStopper::new()),
@@ -627,10 +589,6 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
         self.db.clone().expect("DB is not set")
     }
 
-    fn vector_fs(&self) -> Arc<VectorFS> {
-        self.vector_fs.clone().expect("VectorFS is not set")
-    }
-
     fn full_job(&self) -> &Job {
         unimplemented!()
     }
@@ -649,10 +607,6 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn agent(&self) -> &ProviderOrAgent {
         unimplemented!()
-    }
-
-    fn execution_context(&self) -> &HashMap<String, String> {
-        &self.execution_context
     }
 
     fn generator(&self) -> &RemoteEmbeddingGenerator {
@@ -721,14 +675,12 @@ impl Clone for MockInferenceChainContext {
         Self {
             user_message: self.user_message.clone(),
             image_files: self.image_files.clone(),
-            execution_context: self.execution_context.clone(),
             user_profile: self.user_profile.clone(),
             max_iterations: self.max_iterations,
             iteration_count: self.iteration_count,
             max_tokens_in_prompt: self.max_tokens_in_prompt,
             raw_files: self.raw_files.clone(),
             db: self.db.clone(),
-            vector_fs: self.vector_fs.clone(),
             my_agent_payments_manager: self.my_agent_payments_manager.clone(),
             ext_agent_payments_manager: self.ext_agent_payments_manager.clone(),
             llm_stopper: self.llm_stopper.clone(),

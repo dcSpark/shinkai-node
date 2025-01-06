@@ -4,7 +4,6 @@ use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_vector_resources::embeddings::Embedding;
 use std::collections::HashSet;
 
 impl SqliteManager {
@@ -12,7 +11,7 @@ impl SqliteManager {
     pub async fn add_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => embedding.vector,
+            Some(embedding) => embedding,
             None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
@@ -47,7 +46,7 @@ impl SqliteManager {
 
         // Clone the tool to make it mutable
         let mut tool_clone = tool.clone();
-        tool_clone.set_embedding(Embedding::new("", embedding.clone()));
+        tool_clone.set_embedding(embedding.clone());
 
         // Determine if the tool can be enabled
         let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
@@ -376,7 +375,7 @@ impl SqliteManager {
     pub async fn update_tool(&self, tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
         // Generate or retrieve the embedding
         let embedding = match tool.get_embedding() {
-            Some(embedding) => embedding.vector,
+            Some(embedding) => embedding,
             None => self.generate_embeddings(&tool.format_embedding_string()).await?,
         };
 
@@ -776,6 +775,8 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_embedding::model_type::EmbeddingModelType;
+    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::AssetPayment;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
@@ -787,8 +788,6 @@ mod tests {
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
     use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-    use shinkai_vector_resources::embeddings::Embedding;
-    use shinkai_vector_resources::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -1074,7 +1073,7 @@ mod tests {
         let mut updated_tool_2 = shinkai_tool_2.clone();
         if let ShinkaiTool::Deno(ref mut deno_tool, _) = updated_tool_2 {
             deno_tool.description = "Updated second Deno tool".to_string();
-            deno_tool.embedding = Some(Embedding::new("test", SqliteManager::generate_vector_for_testing(0.21)));
+            deno_tool.embedding = Some(SqliteManager::generate_vector_for_testing(0.21));
         }
         eprintln!("Updating tool: {:?}", updated_tool_2);
 

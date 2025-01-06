@@ -1,13 +1,12 @@
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManagerError;
 use anyhow::Error as AnyhowError;
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, prompts::PromptError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::{error::ToolError, rust_tools::RustToolError};
-use shinkai_vector_fs::vector_fs::vector_fs_error::VectorFSError;
-use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
 
@@ -27,13 +26,11 @@ pub enum LLMProviderError {
     MessageTypeParseFailed,
     IO(String),
     ShinkaiDB(SqliteManagerError),
-    VectorFS(VectorFSError),
     ShinkaiNameError(ShinkaiNameError),
     LLMProviderNotFound,
     ContentParseFailed,
     InferenceJSONResponseMissingField(String),
     JSONSerializationError(String),
-    VectorResource(VRError),
     InvalidSubidentity(ShinkaiNameError),
     InvalidProfileSubidentity(String),
     SerdeError(serde_json::Error),
@@ -86,6 +83,7 @@ pub enum LLMProviderError {
     ToolSearchError(String),
     AgentNotFound(String),
     MessageTooLargeForLLM { max_tokens: usize, used_tokens: usize },
+    SomeError(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -116,7 +114,6 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
             LLMProviderError::IO(err) => write!(f, "IO error: {}", err),
             LLMProviderError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
-            LLMProviderError::VectorFS(err) => write!(f, "VectorFS error: {}", err),
             LLMProviderError::LLMProviderNotFound => write!(f, "Agent not found"),
             LLMProviderError::ContentParseFailed => write!(f, "Failed to parse content"),
             LLMProviderError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
@@ -124,7 +121,6 @@ impl fmt::Display for LLMProviderError {
                 write!(f, "Response from LLM does not include needed key/field: {}", s)
             }
             LLMProviderError::JSONSerializationError(s) => write!(f, "JSON Serialization error: {}", s),
-            LLMProviderError::VectorResource(err) => write!(f, "VectorResource error: {}", err),
             LLMProviderError::InvalidSubidentity(err) => write!(f, "Invalid subidentity: {}", err),
             LLMProviderError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
             LLMProviderError::SerdeError(err) => write!(f, "Serde error: {}", err),
@@ -178,7 +174,8 @@ impl fmt::Display for LLMProviderError {
             LLMProviderError::AgentNotFound(s) => write!(f, "Agent not found: {}", s),
             LLMProviderError::MessageTooLargeForLLM { max_tokens, used_tokens } => {
                 write!(f, "Message too large for LLM: Used {} tokens, but the maximum allowed is {}.", used_tokens, max_tokens)
-            }
+            },
+            LLMProviderError::SomeError(s) => write!(f, "{}", s),
         }
     }
 }
@@ -201,13 +198,11 @@ impl LLMProviderError {
             LLMProviderError::MessageTypeParseFailed => "MessageTypeParseFailed",
             LLMProviderError::IO(_) => "IO",
             LLMProviderError::ShinkaiDB(_) => "ShinkaiDB",
-            LLMProviderError::VectorFS(_) => "VectorFS",
             LLMProviderError::ShinkaiNameError(_) => "ShinkaiNameError",
             LLMProviderError::LLMProviderNotFound => "LLMProviderNotFound",
             LLMProviderError::ContentParseFailed => "ContentParseFailed",
             LLMProviderError::InferenceJSONResponseMissingField(_) => "InferenceJSONResponseMissingField",
             LLMProviderError::JSONSerializationError(_) => "JSONSerializationError",
-            LLMProviderError::VectorResource(_) => "VectorResource",
             LLMProviderError::InvalidSubidentity(_) => "InvalidSubidentity",
             LLMProviderError::InvalidProfileSubidentity(_) => "InvalidProfileSubidentity",
             LLMProviderError::SerdeError(_) => "SerdeError",
@@ -260,6 +255,7 @@ impl LLMProviderError {
             LLMProviderError::ToolSearchError(_) => "ToolSearchError",
             LLMProviderError::AgentNotFound(_) => "AgentNotFound",
             LLMProviderError::MessageTooLargeForLLM { .. } => "MessageTooLargeForLLM",
+            LLMProviderError::SomeError(_) => "SomeError",
         };
 
         format!("Error {} with message: {}", error_name, self)
@@ -313,12 +309,6 @@ impl From<serde_json::Error> for LLMProviderError {
     }
 }
 
-impl From<VRError> for LLMProviderError {
-    fn from(error: VRError) -> Self {
-        LLMProviderError::VectorResource(error)
-    }
-}
-
 impl From<JoinError> for LLMProviderError {
     fn from(err: JoinError) -> LLMProviderError {
         LLMProviderError::TaskJoinError(err.to_string())
@@ -340,12 +330,6 @@ impl From<InboxNameError> for LLMProviderError {
 impl From<ModelCapabilitiesManagerError> for LLMProviderError {
     fn from(error: ModelCapabilitiesManagerError) -> Self {
         LLMProviderError::LLMProviderCapabilitiesManagerError(error)
-    }
-}
-
-impl From<VectorFSError> for LLMProviderError {
-    fn from(err: VectorFSError) -> LLMProviderError {
-        LLMProviderError::VectorFS(err)
     }
 }
 
@@ -373,5 +357,11 @@ impl From<RustToolError> for LLMProviderError {
             RustToolError::InvalidFunctionArguments(msg) => LLMProviderError::InvalidFunctionArguments(msg),
             RustToolError::FailedJSONParsing => LLMProviderError::ContentParseFailed,
         }
+    }
+}
+
+impl From<ShinkaiFsError> for LLMProviderError {
+    fn from(err: ShinkaiFsError) -> LLMProviderError {
+        LLMProviderError::IO(err.to_string())
     }
 }

@@ -122,21 +122,6 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(add_ollama_models_handler);
 
-    let download_file_from_inbox_route = warp::path("download_file_from_inbox")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::path::param::<String>())
-        .and(warp::path::param::<String>())
-        .and_then(download_file_from_inbox_handler);
-
-    let list_files_in_inbox_route = warp::path("list_files_in_inbox")
-        .and(warp::get())
-        .and(with_sender(node_commands_sender.clone()))
-        .and(warp::header::<String>("authorization"))
-        .and(warp::path::param::<String>())
-        .and_then(list_files_in_inbox_handler);
-
     let stop_llm_route = warp::path("stop_llm")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -213,8 +198,8 @@ pub fn general_routes(
         .or(is_pristine_route)
         .or(scan_ollama_models_route)
         .or(add_ollama_models_route)
-        .or(download_file_from_inbox_route)
-        .or(list_files_in_inbox_route)
+        // .or(download_file_from_inbox_route)
+        // .or(list_files_in_inbox_route)
         .or(stop_llm_route)
         .or(add_agent_route)
         .or(remove_agent_route)
@@ -230,76 +215,6 @@ pub fn general_routes(
 pub struct InitialRegistrationRequest {
     pub profile_encryption_pk: String,
     pub profile_identity_pk: String,
-}
-
-#[utoipa::path(
-    get,
-    path = "/v2/download_file_from_inbox/{inbox_name}/{filename}",
-    responses(
-        (status = 200, description = "Successfully downloaded file", body = Vec<u8>),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn download_file_from_inbox_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    inbox_name: String,
-    filename: String,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiDownloadFileFromInbox {
-            bearer,
-            inbox_name,
-            filename,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(file_data) => Ok(warp::reply::with_header(
-            file_data,
-            "Content-Type",
-            "application/octet-stream",
-        )),
-        Err(error) => Err(warp::reject::custom(error)),
-    }
-}
-
-#[utoipa::path(
-    get,
-    path = "/v2/list_files_in_inbox/{inbox_name}",
-    responses(
-        (status = 200, description = "Successfully listed files in inbox", body = Vec<String>),
-        (status = 500, description = "Internal server error", body = APIError)
-    )
-)]
-pub async fn list_files_in_inbox_handler(
-    sender: Sender<NodeCommand>,
-    authorization: String,
-    inbox_name: String,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    sender
-        .send(NodeCommand::V2ApiListFilesInInbox {
-            bearer,
-            inbox_name,
-            res: res_sender,
-        })
-        .await
-        .map_err(|_| warp::reject::reject())?;
-
-    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-
-    match result {
-        Ok(file_list) => Ok(warp::reply::json(&file_list)),
-        Err(error) => Err(warp::reject::custom(error)),
-    }
 }
 
 #[utoipa::path(
@@ -1084,8 +999,8 @@ pub async fn test_llm_provider_handler(
 #[derive(OpenApi)]
 #[openapi(
     paths(
-        download_file_from_inbox_handler,
-        list_files_in_inbox_handler,
+        // download_file_from_inbox_handler,
+        // list_files_in_inbox_handler,
         get_public_keys,
         health_check,
         initial_registration_handler,

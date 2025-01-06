@@ -18,12 +18,15 @@ use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use reqwest::StatusCode;
+use shinkai_embedding::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
@@ -40,9 +43,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tcp_relayer::NetworkMessage;
-use shinkai_vector_fs::vector_fs::vector_fs::VectorFS;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::model_type::EmbeddingModelType;
 use std::convert::TryInto;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
@@ -50,6 +50,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use std::fs;
+use std::path::Path;
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
@@ -102,8 +104,6 @@ pub struct Node {
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // Cron Manager
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
-    // The Node's VectorFS
-    pub vector_fs: Arc<VectorFS>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
     /// Rate Limiter
@@ -161,7 +161,6 @@ impl Node {
         proxy_identity: Option<String>,
         first_device_needs_registration_code: bool,
         initial_llm_providers: Vec<SerializedLLMProvider>,
-        vector_fs_db_path: String,
         embedding_generator: Option<RemoteEmbeddingGenerator>,
         ws_address: Option<SocketAddr>,
         default_embedding_model: EmbeddingModelType,
@@ -205,27 +204,6 @@ impl Node {
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
-
-        // Fetch list of existing profiles from the node to push into the VectorFS
-        let profile_list = match db_arc.get_all_profiles(node_name.clone()) {
-            Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
-            Err(e) => panic!("Failed to fetch profiles: {}", e),
-        };
-
-        // Initialize/setup the VectorFS.
-        let vector_fs = VectorFS::new(
-            embedding_generator.clone(),
-            vec![embedding_generator.model_type.clone()],
-            profile_list,
-            db_arc.clone(),
-            node_name.clone(),
-        )
-        .await
-        .unwrap_or_else(|e| {
-            eprintln!("Error: {:?}", e);
-            panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
-        });
-        let vector_fs_arc = Arc::new(vector_fs);
 
         let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
             .unwrap_or_else(|_| "5".to_string())
@@ -331,7 +309,6 @@ impl Node {
         let my_agent_payments_manager = Arc::new(Mutex::new(
             MyAgentOfferingsManager::new(
                 Arc::downgrade(&db_arc),
-                Arc::downgrade(&vector_fs_arc),
                 Arc::downgrade(&identity_manager_trait),
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
@@ -346,7 +323,6 @@ impl Node {
         let ext_agent_payments_manager = Arc::new(Mutex::new(
             ExtAgentOfferingsManager::new(
                 Arc::downgrade(&db_arc),
-                Arc::downgrade(&vector_fs_arc),
                 Arc::downgrade(&identity_manager_trait),
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
@@ -361,7 +337,6 @@ impl Node {
         // Create NetworkJobManager with a weak reference to this node
         let network_manager = NetworkJobManager::new(
             Arc::downgrade(&db_arc),
-            Arc::downgrade(&vector_fs_arc),
             node_name.clone(),
             clone_static_secret_key(&encryption_secret_key),
             clone_signature_secret_key(&identity_secret_key),
@@ -424,7 +399,6 @@ impl Node {
             cron_manager: None,
             first_device_needs_registration_code,
             initial_llm_providers,
-            vector_fs: vector_fs_arc.clone(),
             embedding_generator,
             conn_limiter,
             network_job_manager: Arc::new(Mutex::new(network_manager)),
@@ -449,7 +423,17 @@ impl Node {
     // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
         let db_weak = Arc::downgrade(&self.db);
-        let vector_fs_weak = Arc::downgrade(&self.vector_fs);
+
+        {
+            let vr_path = ShinkaiPath::from_base_path();
+
+            // Check if the directory exists, and create it if it doesn't
+            if !Path::new(&vr_path.as_path()).exists() {
+                fs::create_dir_all(&vr_path.as_path()).map_err(|e| {
+                    NodeError::from(format!("Failed to create directory {}: {}", vr_path.as_path().display(), e))
+                })?;
+            }
+        }
 
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(
@@ -457,7 +441,6 @@ impl Node {
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
                 self.node_name.clone(),
-                vector_fs_weak.clone(),
                 self.embedding_generator.clone(),
                 self.ws_manager_trait.clone(),
                 self.tool_router.clone(),

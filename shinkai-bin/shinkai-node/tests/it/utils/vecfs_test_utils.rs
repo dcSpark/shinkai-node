@@ -1,29 +1,22 @@
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::SigningKey;
 use rust_decimal::Decimal;
 use serde_json::Value;
 
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
+use shinkai_http_api::node_api_router::APIError;
+use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscription;
 use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APIConvertFilesAndSaveToFolder, APICreateShareableFolder, APIVecFsCreateFolder,
-    APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials,
-    MessageSchemaType,
+    APIAvailableSharedItems, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
+    APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
-use shinkai_message_primitives::shinkai_utils::file_encryption::{
-    aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
-    unsafe_deterministic_aes_encryption_key,
-};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_http_api::node_api_router::APIError;
-use shinkai_vector_resources::resource_errors::VRError;
+
 use std::path::Path;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -201,102 +194,6 @@ pub fn generate_message_with_payload<T: ToString>(
         .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
         .build()
         .unwrap()
-}
-
-// Function to recursively check if the actual response contains the expected structure
-pub fn check_structure(actual: &Value, expected: &Value) -> bool {
-    if let (Some(mut actual_folders), Some(mut expected_folders)) = (
-        actual["child_folders"].as_array().cloned(),
-        expected["child_folders"].as_array().cloned(),
-    ) {
-        if actual_folders.len() != expected_folders.len() {
-            eprintln!("Folder count mismatch: expected {}, found {}", expected_folders.len(), actual_folders.len());
-            return false;
-        }
-        sort_folders(&mut actual_folders);
-        sort_folders(&mut expected_folders);
-        for (actual_folder, expected_folder) in actual_folders.iter().zip(expected_folders.iter()) {
-            if !check_folder(actual_folder, expected_folder) {
-                return false;
-            }
-        }
-    } else {
-        eprintln!("Expected and actual folders structure mismatch");
-        return false;
-    }
-    true
-}
-
-pub fn sort_folders(folders: &mut [Value]) {
-    folders.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-}
-
-pub fn sort_items(items: &mut [Value]) {
-    items.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
-}
-
-pub fn check_folder(actual_folder: &Value, expected_folder: &Value) -> bool {
-    let actual_name = actual_folder["name"].as_str().unwrap_or("Unknown Folder");
-    let expected_name = expected_folder["name"].as_str().unwrap_or("Unknown Folder");
-    if actual_name != expected_name {
-        eprintln!("Folder name mismatch: expected '{}', found '{}'", expected_name, actual_name);
-        return false;
-    }
-
-    let actual_path = actual_folder["path"].as_str().unwrap_or("Unknown Path");
-    let expected_path = expected_folder["path"].as_str().unwrap_or("Unknown Path");
-    if actual_path != expected_path {
-        eprintln!("Folder path mismatch: expected '{}', found '{}'", expected_path, actual_path);
-        return false;
-    }
-
-    let mut actual_subfolders = actual_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
-    let mut expected_subfolders = expected_folder["child_folders"].as_array().unwrap_or(&vec![]).to_vec();
-    if actual_subfolders.len() != expected_subfolders.len() {
-        eprintln!("Subfolder count mismatch in '{}': expected {}, found {}", actual_name, expected_subfolders.len(), actual_subfolders.len());
-        return false;
-    }
-    sort_folders(&mut actual_subfolders);
-    sort_folders(&mut expected_subfolders);
-    for (actual_subfolder, expected_subfolder) in actual_subfolders.iter().zip(expected_subfolders.iter()) {
-        if !check_folder(actual_subfolder, expected_subfolder) {
-            return false;
-        }
-    }
-
-    let mut actual_items = actual_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
-    let mut expected_items = expected_folder["child_items"].as_array().unwrap_or(&vec![]).to_vec();
-    if actual_items.len() != expected_items.len() {
-        eprintln!("Item count mismatch in '{}': expected {}, found {}", actual_name, expected_items.len(), actual_items.len());
-        return false;
-    }
-    sort_items(&mut actual_items);
-    sort_items(&mut expected_items);
-    for (actual_item, expected_item) in actual_items.iter().zip(expected_items.iter()) {
-        if !check_item(actual_item, expected_item) {
-            return false;
-        }
-    }
-
-    true
-}
-
-pub fn check_item(actual_item: &Value, expected_item: &Value) -> bool {
-    let actual_name = actual_item["name"].as_str().unwrap_or("Unknown Item");
-    let expected_name = expected_item["name"].as_str().unwrap_or("Unknown Item");
-    if actual_name != expected_name {
-        eprintln!("Item name mismatch: expected '{}', found '{}'", expected_name, actual_name);
-        return false;
-    }
-
-    let actual_path = actual_item["path"].as_str().unwrap_or("Unknown Path");
-    let expected_path = expected_item["path"].as_str().unwrap_or("Unknown Path");
-    if actual_path != expected_path {
-        eprintln!("Item path mismatch: expected '{}', found '{}'", expected_path, actual_path);
-        return false;
-    }
-
-    true
 }
 
 pub async fn fetch_last_messages(
@@ -582,14 +479,9 @@ pub fn print_subtree(folder: &serde_json::Value, indent: &str, is_last: bool) {
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
     commands_sender: &Sender<NodeCommand>,
-    encryption_sk: EncryptionStaticKey,
-    signature_sk: SigningKey,
-    encryption_pk: EncryptionPublicKey,
-    identity_name: &str,
-    profile_name: &str,
     folder_name: &str,
     file_path: &Path,
-    symmetric_key_index: u32,
+    bearer_token: &str,
 ) {
     eprintln!("file_path: {:?}", file_path);
 
@@ -597,79 +489,119 @@ pub async fn upload_file(
     let current_dir = std::env::current_dir().unwrap();
     println!("Current directory: {:?}", current_dir);
 
-
-    let symmetrical_sk = unsafe_deterministic_aes_encryption_key(symmetric_key_index);
-    eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-
-    let message_content = aes_encryption_key_to_string(symmetrical_sk);
-    let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
-        encryption_sk.clone(),
-        signature_sk.clone(),
-        encryption_pk,
-        "job::test::false".to_string(),
-        message_content.clone(),
-        profile_name.to_string(),
-        identity_name.to_string(),
-        identity_name.to_string(),
-    )
-    .unwrap();
-
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    commands_sender
-        .send(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res: res_sender })
-        .await
+    // Read file data
+    let file_data = std::fs::read(file_path)
+        .map_err(|_| ShinkaiFsError::FailedPDFParsing)
         .unwrap();
-    let _ = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
 
-    // Upload file
-    let file_data = std::fs::read(file_path).map_err(|_| VRError::FailedPDFParsing).unwrap();
+    // Extract the file name and extension
+    let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
 
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
-    let nonce = GenericArray::from_slice(&[0u8; 12]);
-    let nonce_slice = nonce.as_slice();
-    let nonce_str = aes_nonce_to_hex_string(nonce_slice);
-    let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
-
+    // Prepare the response channel
     let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command using V2ApiUploadFileToFolder
     commands_sender
-        .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-            filename: file_path.to_string_lossy().to_string(),
-            file: ciphertext,
-            public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
-            encrypted_nonce: nonce_str,
+        .send(NodeCommand::V2ApiUploadFileToFolder {
+            bearer: bearer_token.to_string(),
+            filename, // Use the extracted filename
+            file: file_data,
+            path: folder_name.to_string(),
+            file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
             res: res_sender,
         })
         .await
         .unwrap();
-    let res = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-    eprintln!("upload_file resp to inbox: {:?}", res);
 
-    // Convert File and Save to Folder
-    let payload = APIConvertFilesAndSaveToFolder {
-        path: folder_name.to_string(),
-        file_inbox: hash_of_aes_encryption_key_hex(symmetrical_sk),
-        file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
-    };
+    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+    eprintln!("upload_file resp to folder: {:?}", resp);
+}
 
-    let msg = generate_message_with_payload(
-        serde_json::to_string(&payload).unwrap(),
-        MessageSchemaType::ConvertFilesAndSaveToFolder,
-        encryption_sk.clone(),
-        signature_sk.clone(),
-        encryption_pk,
-        identity_name,
-        profile_name,
-        identity_name,
-        profile_name,
-    );
+#[allow(clippy::too_many_arguments)]
+pub async fn upload_file_to_job(
+    commands_sender: &Sender<NodeCommand>,
+    job_id: &str,
+    file_path: &Path,
+    bearer_token: &str,
+) {
+    eprintln!("file_path: {:?}", file_path);
 
+    // Print current directory
+    let current_dir = std::env::current_dir().unwrap();
+    println!("Current directory: {:?}", current_dir);
+
+    // Read file data
+    let file_data = std::fs::read(file_path)
+        .map_err(|_| ShinkaiFsError::FailedPDFParsing)
+        .unwrap();
+
+    // Extract the file name with extension
+    let filename = file_path.file_name().unwrap().to_string_lossy().to_string();
+
+    // Prepare the response channel
     let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command using V2ApiUploadFileToJob
     commands_sender
-        .send(NodeCommand::APIConvertFilesAndSaveToFolder { msg, res: res_sender })
+        .send(NodeCommand::V2ApiUploadFileToJob {
+            bearer: bearer_token.to_string(),
+            job_id: job_id.to_string(),
+            filename, // Use the extracted filename
+            file: file_data,
+            file_datetime: Some(Utc.with_ymd_and_hms(2024, 2, 1, 0, 0, 0).unwrap()),
+            res: res_sender,
+        })
         .await
         .unwrap();
-    let resp = res_receiver.recv().await;
-    eprintln!("upload_file resp to folder: {:?}", resp);
-    let resp = resp.unwrap().expect("Failed to receive response");
-    eprintln!("upload_file resp processed: {:?}", resp);
+
+    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+    eprintln!("upload_file_to_job resp: {:?}", resp);
+}
+
+pub async fn get_folder_name_for_job(
+    commands_sender: &Sender<NodeCommand>,
+    job_id: &str,
+    bearer_token: &str,
+) -> Result<String, APIError> {
+    // Prepare the response channel
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command to get the folder name for the job
+    commands_sender
+        .send(NodeCommand::V2ApiVecFSGetFolderNameForJob {
+            bearer: bearer_token.to_string(),
+            job_id: job_id.to_string(),
+            res: res_sender,
+        })
+        .await
+        .unwrap();
+
+    // Receive and convert the Value to String
+    res_receiver
+        .recv()
+        .await
+        .unwrap()
+        .map(|value| value.as_str().unwrap_or_default().to_string())
+}
+
+pub async fn get_files_for_job(
+    commands_sender: &Sender<NodeCommand>,
+    job_id: &str,
+    bearer_token: &str,
+) -> Result<Value, APIError> {
+    // Prepare the response channel
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command to retrieve files for the job
+    commands_sender
+        .send(NodeCommand::V2ApiVecFSRetrieveFilesForJob {
+            bearer: bearer_token.to_string(),
+            job_id: job_id.to_string(),
+            res: res_sender,
+        })
+        .await
+        .unwrap();
+
+    // Receive and return the files as a JSON value
+    res_receiver.recv().await.unwrap()
 }

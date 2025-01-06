@@ -13,6 +13,7 @@ use crate::tools::tool_execution::execution_header_generator::{check_tool_config
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
@@ -35,13 +36,11 @@ use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use tokio::sync::Mutex;
 
 use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::identity_manager::IdentityManagerTrait;
 use super::IdentityManager;
 
 #[derive(Clone)]
@@ -145,6 +144,9 @@ impl ToolRouter {
             return Ok(());
         }
 
+        // Start timing before the HTTP request
+        let start_time = Instant::now();
+
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
             .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
 
@@ -211,6 +213,10 @@ impl ToolRouter {
         });
 
         futures::future::join_all(futures).await;
+
+        // Calculate and print the duration
+        let duration = start_time.elapsed();
+        println!("Total time taken to import tools: {:?}", duration);
 
         Ok(())
     }
@@ -554,7 +560,6 @@ impl ToolRouter {
                 let function_config = shinkai_tool.get_config_from_env();
                 let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
 
-                let vector_fs = context.vector_fs();
                 let db = context.db();
                 let llm_provider = context.agent().get_llm_provider_id().to_string();
                 let bearer = db.read_api_v2_key().unwrap_or_default().unwrap_or_default();
@@ -579,7 +584,6 @@ impl ToolRouter {
                     function_config_vec,
                     bearer,
                     db.clone(),
-                    vector_fs,
                     llm_provider,
                     node_name,
                     self.identity_manager.clone(),
