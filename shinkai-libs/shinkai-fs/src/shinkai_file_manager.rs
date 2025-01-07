@@ -72,7 +72,6 @@ impl ShinkaiFileManager {
 
         // Compute the relative path
         let rel_path = path.relative_path();
-        eprintln!("rel_path: {:?}", rel_path);
 
         // Check if the file is already processed
         if let Some(_parsed_file) = sqlite_manager.get_parsed_file_by_rel_path(&rel_path)? {
