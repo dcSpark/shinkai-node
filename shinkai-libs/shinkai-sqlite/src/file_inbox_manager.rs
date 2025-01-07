@@ -48,7 +48,7 @@ impl SqliteManager {
 
         // Create the folder name with the job_id suffix
         let folder_name = format!("{} - ({}) {}", formatted_date, job_id_suffix, smart_inbox_name);
-
+        
         // Use the sanitize_folder_name function to ensure compatibility
         let valid_folder_name = Self::sanitize_folder_name(&folder_name);
 
@@ -63,8 +63,9 @@ impl SqliteManager {
         // Trim any trailing whitespace from the final folder name
         let trimmed_final_folder_name = final_folder_name.trim_end().to_string();
 
-        let folder_name = ShinkaiPath::new(&trimmed_final_folder_name);
+        // Include the Chat Files folder in the path
+        let full_path = format!("Chat Files/{}", trimmed_final_folder_name);
 
-        Ok(folder_name)
+        Ok(ShinkaiPath::from_string(full_path))
     }
 }
