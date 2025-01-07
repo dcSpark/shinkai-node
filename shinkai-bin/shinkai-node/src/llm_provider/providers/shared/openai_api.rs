@@ -105,7 +105,12 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         tools.clone().into_iter().map(|mut tool| {
             if let Some(functions) = tool.functions.as_mut() {
                 for function in functions {
-                    function.name = function.name.to_lowercase().replace(" ", "_");
+                    // Replace any characters that aren't alphanumeric, underscore, or hyphen
+                    function.name = function.name
+                        .chars()
+                        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                        .collect::<String>()
+                        .to_lowercase();
                 }
             }
             tool

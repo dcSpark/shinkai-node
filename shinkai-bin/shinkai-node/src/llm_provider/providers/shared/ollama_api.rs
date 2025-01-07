@@ -163,16 +163,32 @@ pub fn ollama_conversation_prepare_messages_with_tooling(
 
     // Convert both sets of messages to serde Value
     let messages_json = serde_json::to_value(messages_with_role)?;
-     // Convert tools to serde Value with name transformation
-     let tools_json = serde_json::to_value(
-        tools.clone().into_iter().map(|mut tool| {
-            if let Some(functions) = tool.functions.as_mut() {
-                for function in functions {
-                    function.name = function.name.to_lowercase().replace(" ", "_");
+    // Convert tools to serde Value with name transformation
+    let tools_json = serde_json::to_value(
+        tools
+            .clone()
+            .into_iter()
+            .map(|mut tool| {
+                if let Some(functions) = tool.functions.as_mut() {
+                    for function in functions {
+                        // Replace any characters that aren't alphanumeric, underscore, or hyphen
+                        function.name = function
+                            .name
+                            .chars()
+                            .map(|c| {
+                                if c.is_alphanumeric() || c == '_' || c == '-' {
+                                    c
+                                } else {
+                                    '_'
+                                }
+                            })
+                            .collect::<String>()
+                            .to_lowercase();
+                    }
                 }
-            }
-            tool
-        }).collect::<Vec<_>>()
+                tool
+            })
+            .collect::<Vec<_>>(),
     )?;
 
     // Convert messages_json and tools_json to Vec<serde_json::Value>
