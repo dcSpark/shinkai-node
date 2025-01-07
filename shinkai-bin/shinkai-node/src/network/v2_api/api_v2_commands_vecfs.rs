@@ -7,7 +7,7 @@ use reqwest::StatusCode;
 use serde_json::Value;
 
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
-use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
+use shinkai_fs::{shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager}, shinkai_fs_error::ShinkaiFsError};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
     schemas::shinkai_fs::ShinkaiFileChunkCollection,
@@ -812,18 +812,26 @@ impl Node {
         // Retrieve files for the given job_id using ShinkaiFileManager
         let files_result = ShinkaiFileManager::get_all_files_and_folders_for_job(&job_id, &db);
 
-        if let Err(e) = files_result {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to retrieve files for job_id {}: {}", job_id, e),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
+        let files = match files_result {
+            Ok(files) => files,
+            Err(ShinkaiFsError::Io(io_error)) if io_error.kind() == std::io::ErrorKind::NotFound => {
+                // Return an empty JSON array if the error is "No such file or directory"
+                let _ = res.send(Ok(serde_json::json!([]))).await.map_err(|_| ());
+                return Ok(());
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve files for job_id {}: {}", job_id, e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         // Convert the files information to JSON
-        let json_files = serde_json::to_value(files_result.unwrap()).map_err(|e| NodeError::from(e))?;
+        let json_files = serde_json::to_value(files).map_err(|e| NodeError::from(e))?;
 
         // Send the files information as a response
         let _ = res.send(Ok(json_files)).await.map_err(|_| ());
