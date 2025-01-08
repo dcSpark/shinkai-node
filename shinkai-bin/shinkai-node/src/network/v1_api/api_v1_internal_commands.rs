@@ -14,6 +14,7 @@ use log::{error, info};
 use regex::Regex;
 use shinkai_fs;
 
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentity};
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
@@ -21,6 +22,7 @@ use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::search_mode::VectorSearchMode;
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::{
@@ -487,25 +489,35 @@ impl Node {
                                 "Welcome to Shinkai! Brief onboarding here.",
                             )?;
 
-                            // TODO: add back later
-                            // {
-                            //     // Add Two Message from "Agent"
-                            //     let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+                            {
+                                // Add Welcome Message from "Agent"
+                                let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
 
-                            //     let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
-                            //         job_id.to_string(),
-                            //         WELCOME_MESSAGE.to_string(),
-                            //         "".to_string(),
-                            //         None,
-                            //         identity_secret_key_clone,
-                            //         profile.node_name.clone(),
-                            //         profile.node_name.clone(),
-                            //     )
-                            //     .unwrap();
+                                // Create an UPLOAD_YOUR_FILES_HERE file
+                                let upload_file_path = ShinkaiPath::from_string("My Files (Private)/UPLOAD_YOUR_FILES_HERE.txt".to_string());
+                                let upload_file_content = "You can upload your files here in the 'My Files (Private)' folder.\n\nThey will be processed and made searchable automatically.".as_bytes().to_vec();
+                                let _ = ShinkaiFileManager::write_file_to_fs(upload_file_path, upload_file_content);
 
-                            //     db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None, ws_manager)
-                            //         .await?;
-                            // }
+                                let welcome_message = "Welcome to Shinkai! You can ask me anything!\n\nI'm your AI assistant, and I'm here to help you with any tasks you need. Feel free to:\n- Ask questions\n- Request code help\n- Get explanations\n- And much more!\n\nWhat would you like to work on? \n\nActivate actions (tools) to perform tasks.";
+
+                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+                                    job_id.to_string(),
+                                    welcome_message.to_string(),
+                                    vec![],
+                                    None,
+                                    identity_secret_key_clone,
+                                    profile.node_name.clone(),
+                                    profile.node_name.clone(),
+                                )
+                                .unwrap();
+
+                                // Add the welcome message to the job inbox
+                                db.add_message_to_job_inbox(&job_id, &shinkai_message, None, None)
+                                    .await
+                                    .map_err(|e| NodeError {
+                                        message: format!("Failed to add welcome message: {}", e),
+                                    })?;
+                            }
                         }
                         Ok(())
                     }

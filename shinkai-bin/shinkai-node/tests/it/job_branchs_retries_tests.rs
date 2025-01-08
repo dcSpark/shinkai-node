@@ -3,6 +3,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
     LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::time::Duration;
@@ -182,6 +183,24 @@ fn job_branchs_retries_tests() {
                     &agent_subidentity.clone(),
                 )
                 .await;
+            }
+            {
+                // Update job config to turn off streaming
+                let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiUpdateJobConfig {
+                        bearer: "SUPER_SECRET".to_string(),
+                        job_id: job_id.clone(),
+                        config: JobConfig {
+                            stream: Some(false),
+                            ..JobConfig::empty()
+                        },
+                        res: res1_sender,
+                    })
+                    .await
+                    .unwrap();
+                let result = res1_receiver.recv().await.unwrap();
+                assert!(result.is_ok(), "Failed to update job config: {:?}", result);
             }
             {
                 // Message 1
