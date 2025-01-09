@@ -84,6 +84,7 @@ pub enum LLMProviderError {
     AgentNotFound(String),
     MessageTooLargeForLLM { max_tokens: usize, used_tokens: usize },
     SomeError(String),
+    APIError(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -176,6 +177,7 @@ impl fmt::Display for LLMProviderError {
                 write!(f, "Message too large for LLM: Used {} tokens, but the maximum allowed is {}.", used_tokens, max_tokens)
             },
             LLMProviderError::SomeError(s) => write!(f, "{}", s),
+            LLMProviderError::APIError(s) => write!(f, "{}", s),
         }
     }
 }
@@ -256,6 +258,7 @@ impl LLMProviderError {
             LLMProviderError::AgentNotFound(_) => "AgentNotFound",
             LLMProviderError::MessageTooLargeForLLM { .. } => "MessageTooLargeForLLM",
             LLMProviderError::SomeError(_) => "SomeError",
+            LLMProviderError::APIError(_) => "APIError",
         };
 
         format!("Error {} with message: {}", error_name, self)

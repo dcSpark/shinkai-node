@@ -380,6 +380,7 @@ impl ShinkaiMessageBuilder {
     #[allow(dead_code)]
     pub fn vecfs_retrieve_path_simplified(
         path: &str,
+        depth: Option<usize>,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
@@ -388,7 +389,10 @@ impl ShinkaiMessageBuilder {
         node_receiver: ShinkaiNameString,
         node_receiver_subidentity: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
+        let payload = APIVecFsRetrievePathSimplifiedJson {
+            path: path.to_string(),
+            depth: depth,
+        };
 
         Self::create_vecfs_message(
             payload,

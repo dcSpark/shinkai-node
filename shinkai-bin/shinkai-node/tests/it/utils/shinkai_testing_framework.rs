@@ -208,7 +208,10 @@ impl ShinkaiTestingFramework {
 
     /// Retrieves simplified path information and optionally prints it based on `should_print`.
     pub async fn retrieve_and_print_path_simplified(&self, path: &str, should_print: bool) -> serde_json::Value {
-        let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
+        let payload = APIVecFsRetrievePathSimplifiedJson {
+            path: path.to_string(),
+            depth: Some(1),
+        };
         let msg = generate_message_with_payload(
             serde_json::to_string(&payload).unwrap(),
             MessageSchemaType::VecFsRetrievePathSimplifiedJson,

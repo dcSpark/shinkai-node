@@ -481,6 +481,7 @@ pub struct APIAddAgentRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsRetrievePathSimplifiedJson {
     pub path: String,
+    pub depth: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]

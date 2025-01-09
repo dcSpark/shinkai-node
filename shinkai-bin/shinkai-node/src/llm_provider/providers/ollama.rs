@@ -290,6 +290,19 @@ async fn process_stream(
                 if !previous_json_chunk.is_empty() {
                     chunk_str = previous_json_chunk.clone() + chunk_str.as_str();
                 }
+
+                // First check if it's an error response
+                if let Ok(error_response) = serde_json::from_str::<serde_json::Value>(&chunk_str) {
+                    if let Some(error_msg) = error_response.get("error").and_then(|e| e.as_str()) {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Error,
+                            format!("Ollama API Error: {}", error_msg).as_str(),
+                        );
+                        return Err(LLMProviderError::APIError(error_msg.to_string()));
+                    }
+                }
+
                 let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
                 match data_resp {
                     Ok(data) => {
@@ -484,6 +497,19 @@ async fn handle_non_streaming_response(
             result = &mut response_future => {
                 let res = result?;
                 let response_body = res.text().await?;
+                
+                // First check if it's an error response
+                if let Ok(error_response) = serde_json::from_str::<serde_json::Value>(&response_body) {
+                    if let Some(error_msg) = error_response.get("error").and_then(|e| e.as_str()) {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Error,
+                            format!("Ollama API Error: {}", error_msg).as_str(),
+                        );
+                        return Err(LLMProviderError::APIError(error_msg.to_string()));
+                    }
+                }
+
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
 
                 if let Some(message) = response_json.get("message") {
