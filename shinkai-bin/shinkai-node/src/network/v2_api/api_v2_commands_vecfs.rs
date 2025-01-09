@@ -41,8 +41,10 @@ impl Node {
 
         let vr_path = ShinkaiPath::from_string(input_payload.path);
 
+        let depth = input_payload.depth.unwrap_or(1);
+
         // Use list_directory_contents_with_depth to get directory contents with depth 1
-        let directory_contents = ShinkaiFileManager::list_directory_contents_with_depth(vr_path, &db, 1);
+        let directory_contents = ShinkaiFileManager::list_directory_contents_with_depth(vr_path, &db, depth);
 
         if let Err(e) = directory_contents {
             let api_error = APIError {
