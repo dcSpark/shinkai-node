@@ -561,7 +561,7 @@ mod tests {
             description: "Fetches emails from an IMAP server".to_string(),
             keywords: vec!["email".to_string(), "imap".to_string()],
             js_code: "".to_string(),
-            tools: None,
+            tools: vec![],
             config: vec![
                 ToolConfig::BasicConfig(BasicConfig {
                     key_name: "imap_server".to_string(),
