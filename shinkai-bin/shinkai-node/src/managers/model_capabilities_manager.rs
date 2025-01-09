@@ -427,6 +427,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("falcon2") => 8_000,
             model_type if model_type.starts_with("llama3-chatqa") => 8_000,
             model_type if model_type.starts_with("llava-phi3") => 4_000,
+            model_type if model_type.starts_with("phi4") => 16_000,
             model_type if model_type.contains("minicpm-v") => 8_000,
             model_type if model_type.starts_with("dolphin-llama3") => 8_000,
             model_type if model_type.starts_with("command-r-plus") => 128_000,
