@@ -59,7 +59,7 @@ impl JSToolkit {
             config,
             oauth: None,
             js_code: definition.code.clone().unwrap_or_default(),
-            tools: None,
+            tools: vec![],
             description: definition.description.clone(),
             keywords: definition.keywords.clone(),
             input_args: input_args.clone(),

@@ -13,23 +13,13 @@ pub struct Agent {
     pub ui_description: String,
     pub knowledge: Vec<String>,
     pub storage_path: String,
-    #[serde(deserialize_with = "deserialize_tools")]
+    #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys",
+            deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
     pub tools: Vec<ToolRouterKey>,
     pub debug_mode: bool,
     pub config: Option<JobConfig>,
     #[serde(default)]
     pub scope: MinimalJobScope,
-}
-
-fn deserialize_tools<'de, D>(deserializer: D) -> Result<Vec<ToolRouterKey>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let tool_strings: Vec<String> = Vec::deserialize(deserializer)?;
-    tool_strings
-        .into_iter()
-        .map(|s| ToolRouterKey::from_string(&s).map_err(serde::de::Error::custom))
-        .collect()
 }
 
 #[cfg(test)]

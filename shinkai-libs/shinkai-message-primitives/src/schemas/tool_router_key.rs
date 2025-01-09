@@ -30,49 +30,29 @@ impl ToolRouterKey {
         }
     }
 
-    pub fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Option<Vec<Self>>, D::Error>
+    pub fn deserialize_tool_router_keys<'de, D>(deserializer: D) -> Result<Vec<Self>, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let string_vec: Option<Vec<String>> = Option::deserialize(deserializer)?;
-    
-        match string_vec {
-            Some(vec) => {
-                let router_keys = vec
-                    .into_iter()
-                    .map(|s| Self::from_string(&s))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(serde::de::Error::custom)?;
-                Ok(Some(router_keys))
-            }
-            None => Ok(None),
-        }
+        let string_vec: Vec<String> = Vec::deserialize(deserializer)?;
+        string_vec
+            .into_iter()
+            .map(|s| Self::from_string(&s).map_err(serde::de::Error::custom))
+            .collect()
     }
 
     pub fn serialize_tool_router_keys<S>(
-        keys: &Option<Vec<ToolRouterKey>>, 
+        tools: &Vec<ToolRouterKey>, 
         serializer: S
     ) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        match keys {
-            Some(keys) => {
-                let strings: Vec<String> = keys
-                    .iter()
-                    .map(|k| {
-                        // If version is Some, use to_string_with_version()
-                        if k.version.is_some() {
-                            k.to_string_with_version()
-                        } else {
-                            k.to_string_without_version()
-                        }
-                    })
-                    .collect();
-                strings.serialize(serializer)
-            }
-            None => serializer.serialize_none(),
-        }
+        let strings: Vec<String> = tools
+            .iter()
+            .map(|k| k.to_string_with_version())
+            .collect();
+        strings.serialize(serializer)
     }
 
     fn sanitize(input: &str) -> String {
@@ -91,11 +71,15 @@ impl ToolRouterKey {
     }
 
     pub fn to_string_with_version(&self) -> String {
+        if self.version.is_none() {
+            return self.to_string_without_version();
+        }
+
         let sanitized_source = Self::sanitize(&self.source);
         let sanitized_toolkit_name = Self::sanitize(&self.toolkit_name);
         let sanitized_name = Self::sanitize(&self.name);
         
-        let version_str = self.version.clone().unwrap_or_else(|| "none".to_string());
+        let version_str = self.version.clone().unwrap();
 
         let key = format!(
             "{}:::{}:::{}:::{}",
@@ -175,20 +159,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_router_key_to_string_with_version_none() {
-        let key = ToolRouterKey::new(
-            "local".to_string(),
-            "rust_toolkit".to_string(),
-            "concat_strings".to_string(),
-            None,
-        );
-        assert_eq!(
-            key.to_string_with_version(),
-            "local:::rust_toolkit:::concat_strings:::none"
-        );
-    }
-
-    #[test]
     fn test_tool_router_key_from_string_without_version() {
         let key_str = "local:::rust_toolkit:::concat_strings";
         let key = ToolRouterKey::from_string(key_str).unwrap();
@@ -256,5 +226,19 @@ mod tests {
         eprintln!("key_string: {:?}", key_string);
         assert!(!key_string.contains(' '), "Key string should not contain spaces");
         assert_eq!(key_string, "local:::deno_toolkit:::versioned_tool");
+    }
+
+    #[test]
+    fn test_tool_router_key_to_string_with_version_returns_without_version_when_none() {
+        let key = ToolRouterKey::new(
+            "local".to_string(),
+            "rust_toolkit".to_string(),
+            "concat_strings".to_string(),
+            None,
+        );
+        assert_eq!(
+            key.to_string_with_version(),
+            "local:::rust_toolkit:::concat_strings"
+        );
     }
 }

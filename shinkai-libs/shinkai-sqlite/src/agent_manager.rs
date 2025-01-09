@@ -1,5 +1,5 @@
 use rusqlite::params;
-use shinkai_message_primitives::schemas::{llm_providers::agent::Agent, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{llm_providers::agent::Agent, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey};
 
 use crate::{SqliteManager, SqliteManagerError};
 
@@ -30,7 +30,10 @@ impl SqliteManager {
 
         let knowledge = serde_json::to_string(&agent.knowledge).unwrap();
         let config = agent.config.map(|c| serde_json::to_string(&c).unwrap());
-        let tools = serde_json::to_string(&agent.tools).unwrap();
+        let tools: Vec<String> = agent.tools.iter()
+            .map(|t| t.to_string_with_version())
+            .collect();
+        let tools = serde_json::to_string(&tools).unwrap();
         let scope = serde_json::to_string(&agent.scope).unwrap();
         
         tx.execute(
@@ -201,7 +204,10 @@ impl SqliteManager {
 
         let knowledge = serde_json::to_string(&updated_agent.knowledge).unwrap();
         let config = updated_agent.config.map(|c| serde_json::to_string(&c).unwrap());
-        let tools = serde_json::to_string(&updated_agent.tools).unwrap();
+        let tools: Vec<String> = updated_agent.tools.iter()
+            .map(|t| t.to_string_with_version())
+            .collect();
+        let tools = serde_json::to_string(&tools).unwrap();
         let scope = serde_json::to_string(&updated_agent.scope).unwrap(); // Serialize the scope
 
         tx.execute(
@@ -409,5 +415,43 @@ mod tests {
         assert_eq!(agent.ui_description, updated_agent.ui_description);
         assert_eq!(agent.storage_path, updated_agent.storage_path);
         assert_eq!(agent.debug_mode, updated_agent.debug_mode);
+    }
+
+    #[test]
+    fn test_add_and_get_agent_with_tools() {
+        let db = setup_test_db();
+        
+        // Create a proper ToolRouterKey
+        let tool = ToolRouterKey::new(
+            "local".to_string(),
+            "rust_toolkit".to_string(),
+            "test_tool".to_string(),
+            Some("1.0".to_string())
+        );
+
+        let agent = Agent {
+            agent_id: "test_agent".to_string(),
+            name: "Test Agent".to_string(),
+            full_identity_name: ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap(),
+            llm_provider_id: "test_llm_provider".to_string(),
+            ui_description: "Test description".to_string(),
+            knowledge: Default::default(),
+            storage_path: "test_storage_path".to_string(),
+            tools: vec![tool.clone()],  // Add the ToolRouterKey
+            debug_mode: false,
+            config: None,
+            scope: Default::default(),
+        };
+        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
+
+        // Add the agent
+        db.add_agent(agent.clone(), &profile).unwrap();
+
+        // Retrieve the agent
+        let retrieved_agent = db.get_agent(&agent.agent_id).unwrap().unwrap();
+        
+        // Verify the tools were correctly stored and retrieved
+        assert_eq!(retrieved_agent.tools.len(), 1);
+        assert_eq!(retrieved_agent.tools[0], tool);
     }
 }

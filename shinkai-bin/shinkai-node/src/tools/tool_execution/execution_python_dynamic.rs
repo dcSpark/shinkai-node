@@ -36,7 +36,7 @@ pub async fn execute_python_tool(
         version: "1.0.0".to_string(),
         author: "system".to_string(),
         py_code: code,
-        tools: None,
+        tools: vec![],
         config: extra_config.clone(),
         description: "Python runtime execution".to_string(),
         keywords: vec![],
