@@ -179,7 +179,7 @@ pub async fn execute_tool_cmd(
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let support_files = generate_tool_definitions(
-                    python_tool.tools.clone().unwrap_or_default(),
+                    python_tool.tools.clone(),
                     CodeLanguage::Python,
                     db,
                     false,
@@ -224,7 +224,7 @@ pub async fn execute_tool_cmd(
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let support_files = generate_tool_definitions(
-                    deno_tool.tools.clone().unwrap_or_default(),
+                    deno_tool.tools.clone(),
                     CodeLanguage::Typescript,
                     db,
                     false,

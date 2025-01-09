@@ -498,7 +498,7 @@ impl ToolRouter {
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let app_id = context.full_job().job_id().to_string();
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
-                let tools = python_tool.tools.clone().unwrap_or_default();
+                let tools = python_tool.tools.clone();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
@@ -612,7 +612,7 @@ impl ToolRouter {
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
                 let app_id = context.full_job().job_id().to_string();
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
-                let tools = deno_tool.tools.clone().unwrap_or_default();
+                let tools = deno_tool.tools.clone();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
@@ -965,7 +965,7 @@ impl ToolRouter {
             .node_storage_path
             .clone()
             .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-        let tools = js_tool.clone().tools.unwrap_or_default();
+        let tools = js_tool.clone().tools.clone();
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
         let tool_id = shinkai_tool.tool_router_key().clone().to_string_without_version();
         let support_files =

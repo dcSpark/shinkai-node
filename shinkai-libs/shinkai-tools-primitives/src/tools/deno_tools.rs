@@ -32,7 +32,7 @@ pub struct DenoTool {
     #[serde(default)]
     #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
     #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys")]
-    pub tools: Option<Vec<ToolRouterKey>>,
+    pub tools: Vec<ToolRouterKey>,
     pub config: Vec<ToolConfig>,
     pub description: String,
     pub keywords: Vec<String>,
