@@ -186,7 +186,7 @@ impl JobPromptGenerator {
             // }
             if !file_in_scope.is_empty() {
                 prompt.add_content(
-                    format!("<cursrent_files>\n{}\n</current_files>\n", file_in_scope.join("\n")),
+                    format!("<currrent_files>\n{}\n</current_files>\n", file_in_scope.join("\n")),
                     SubPromptType::ExtraContext,
                     97,
                 );
