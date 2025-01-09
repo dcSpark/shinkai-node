@@ -290,8 +290,11 @@ impl SheetUIInferenceChain {
             Some(full_job.step_history.clone()),
             tools.clone(),
             None,
+            full_job.scope().clone(),
             full_job.job_id.clone(),
+            vec![],
             node_env.clone(),
+            db.clone(),
         );
 
         let mut iteration_count = 0;
@@ -363,7 +366,8 @@ impl SheetUIInferenceChain {
                             args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
                         }
 
-                        let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
+                        let handle =
+                            task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
 
                         let response = match handle.await {
                             Ok(Ok(response)) => response,
@@ -436,8 +440,11 @@ impl SheetUIInferenceChain {
                     Some(full_job.step_history.clone()),
                     tools.clone(),
                     last_function_response,
+                    full_job.scope().clone(),
                     full_job.job_id.clone(),
+                    vec![],
                     node_env.clone(),
+                    db.clone(),
                 );
             } else {
                 // No more function calls required, return the final response

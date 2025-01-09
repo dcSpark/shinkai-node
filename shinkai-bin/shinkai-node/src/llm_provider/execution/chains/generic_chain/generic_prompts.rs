@@ -1,19 +1,18 @@
 use serde_json::json;
-use std::collections::HashMap;
+use shinkai_sqlite::SqliteManager;
+use std::{collections::HashMap, fs};
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
 
-use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
-use crate::network::Node;
 use crate::tools::tool_implementation::native_tools::sql_processor::get_current_tables;
 use crate::utils::environment::NodeEnvironment;
-use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::{schemas::prompts::Prompt, shinkai_utils::job_scope::MinimalJobScope};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use tokio::runtime::Runtime;
 
 impl JobPromptGenerator {
@@ -30,8 +29,11 @@ impl JobPromptGenerator {
         job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
         function_call: Option<ToolCallFunctionResponse>,
+        job_scope: MinimalJobScope,
         job_id: String,
-        node_env: NodeEnvironment,
+        additional_files: Vec<String>,
+        _node_env: NodeEnvironment,
+        _db: Arc<SqliteManager>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
@@ -69,14 +71,16 @@ impl JobPromptGenerator {
                                 // Wait for the result
                                 let current_tables = rx.recv().unwrap();
                                 if let Ok(current_tables) = current_tables {
-                                    prompt.add_content(
-                                        format!(
-                                            "<current_tables>\n{}\n</current_tables>\n",
-                                            current_tables.join("; \n")
-                                        ),
-                                        SubPromptType::ExtraContext,
-                                        97,
-                                    );
+                                    if !current_tables.is_empty() {
+                                        prompt.add_content(
+                                            format!(
+                                                "<current_tables>\n{}\n</current_tables>\n",
+                                                current_tables.join("; \n")
+                                            ),
+                                            SubPromptType::ExtraContext,
+                                            97,
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -89,17 +93,125 @@ impl JobPromptGenerator {
                     priority = priority.saturating_sub(1);
                 }
             }
-            let folder = get_app_folder_path(node_env, job_id.clone());
-            let current_files = Node::v2_api_list_app_files_internal(folder.clone(), true);
-            if let Ok(current_files) = current_files {
-                if !current_files.is_empty() {
-                    prompt.add_content(
-                        format!("<current_files>\n{}\n</current_files>\n", current_files.join("\n")),
-                        SubPromptType::ExtraContext,
-                        97,
-                    );
-                }
+
+            // job_scope.
+            //     {
+            //         // Process fs_files_paths
+            // for path in &fs_files_paths {
+            //     if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(path).unwrap() {
+            //         let file_id = parsed_file.id.unwrap();
+            //         parsed_file_ids.push(file_id);
+            //         paths_map.insert(file_id, path.clone());
+
+            //         if let Some(file_tokens) = parsed_file.total_tokens {
+            //             total_tokens += file_tokens;
+            //         } else {
+            //             all_files_have_token_count = false;
+            //         }
+            //     }
+            // }
+
+            // // Process job_filenames
+            // for filename in &job_filenames {
+            //     let file_path =
+            //         match ShinkaiFileManager::construct_job_file_path(&job_id, filename, &sqlite_manager) {
+            //             Ok(path) => path,
+            //             Err(_) => continue,
+            //         };
+
+            //     if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(&file_path).unwrap() {
+            //         let file_id = parsed_file.id.unwrap();
+            //         parsed_file_ids.push(file_id);
+            //         paths_map.insert(file_id, file_path);
+
+            //         if let Some(file_tokens) = parsed_file.total_tokens {
+            //             total_tokens += file_tokens;
+            //         } else {
+            //             all_files_have_token_count = false;
+            //         }
+            //     }
+            // }
+
+            // Retrieve each file in the job scope
+            // for path in &job_scope.vector_fs_items {
+            //     if let Some(parsed_file) = db.get_parsed_file_by_shinkai_path(path).unwrap() {
+            //         let file_id = parsed_file.id.unwrap();
+            //         parsed_file_ids.push(file_id);
+            //         paths_map.insert(file_id, path.clone());
+
+            //         // Count tokens while we're here
+            //         if let Some(file_tokens) = parsed_file.total_tokens {
+            //             total_tokens += file_tokens;
+            //         } else {
+            //             all_files_have_token_count = false;
+            //         }
+            //     }
+            // }
+
+            // // Process fs_folder_paths
+            // for folder in &fs_folder_paths {
+            //     Self::process_folder_contents(
+            //         folder,
+            //         &sqlite_manager,
+            //         &mut parsed_file_ids,
+            //         &mut paths_map,
+            //         &mut total_tokens,
+            //         &mut all_files_have_token_count,
+            //     )
+            //     .await?;
+            // }
+
+            // // Retrieve files inside vector_fs_folders
+            // for folder in &scope.vector_fs_folders {
+            //     Self::process_folder_contents(
+            //         folder,
+            //         &sqlite_manager,
+            //         &mut parsed_file_ids,
+            //         &mut paths_map,
+            //         &mut total_tokens,
+            //         &mut all_files_have_token_count,
+            //     )
+            //     .await?;
+            // }
+
+            // }
+            // job_id -> full-job -> job.scope -> shinkai-pathws -> file-info
+            let mut file_in_scope = additional_files.clone();
+            // let folder_path = db.get_job_folder_name(&job_id);
+            // if let Ok(folder_path) = folder_path {
+            job_scope.vector_fs_items.iter().for_each(|path| {
+                let file_path = format!("{:?}", fs::canonicalize(path.path.clone()).unwrap_or_default());
+                file_in_scope.push(file_path.replace("\"", ""));
+            });
+            // }
+            if !file_in_scope.is_empty() {
+                prompt.add_content(
+                    format!("<cursrent_files>\n{}\n</current_files>\n", file_in_scope.join("\n")),
+                    SubPromptType::ExtraContext,
+                    97,
+                );
             }
+
+            // let files_result = ShinkaiFileManager::get_all_files_and_folders_for_job(&job_id, &db);
+            // if let Ok(folder_path) = folder_path {
+            //     if let Ok(files_result) = files_result {
+            //         let files_result_str = files_result
+            //             .iter()
+            //             .map(|file| {
+            //                 format!(
+            //                     "{:?}/{}",
+            //                     fs::canonicalize(folder_path.path.clone()).unwrap_or_default(),
+            //                     file.name
+            //                 )
+            //             })
+            //             .collect::<Vec<String>>();
+            //         prompt.add_content(
+            //             format!("<current_files>\n{}\n</current_files>\n", files_result_str.join("\n")),
+            //             SubPromptType::ExtraContext,
+            //             97,
+            //         );
+            //     }
+            // }
         }
 
         // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
@@ -108,7 +220,7 @@ impl JobPromptGenerator {
             if has_ret_nodes && !user_message.is_empty() {
                 prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
             }
-            
+
             prompt.add_ret_node_content(ret_nodes, SubPromptType::ExtraContext, 96);
 
             if has_ret_nodes && !user_message.is_empty() {

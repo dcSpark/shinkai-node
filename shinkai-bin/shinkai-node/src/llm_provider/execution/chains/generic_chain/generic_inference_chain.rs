@@ -29,10 +29,10 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
-use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
+use std::{fmt, fs};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
@@ -175,8 +175,8 @@ impl GenericInferenceChain {
             || !job_filenames.is_empty()
         {
             let ret = JobManager::search_for_chunks_in_resources(
-                merged_fs_files_paths,
-                merged_fs_folder_paths,
+                merged_fs_files_paths.clone(),
+                merged_fs_folder_paths.clone(),
                 job_filenames.clone(),
                 full_job.job_id.clone(),
                 full_job.scope(),
@@ -344,6 +344,28 @@ impl GenericInferenceChain {
                 }
             });
 
+        let mut additional_files = vec![];
+        additional_files.extend(
+            merged_fs_files_paths
+                .clone()
+                .iter()
+                .map(|path| format!("{:?}", path.path.clone())),
+        );
+        additional_files.extend(
+            merged_fs_folder_paths
+                .clone()
+                .iter()
+                .map(|path| format!("{:?}", path.path.clone())),
+        );
+        if !job_filenames.is_empty() {
+            let folder_path = db.get_job_folder_name(&full_job.job_id.clone());
+            if let Ok(folder_path) = folder_path {
+                additional_files.extend(job_filenames.iter().map(|path| {
+                    let folder_path = fs::canonicalize(folder_path.path.clone()).unwrap_or_default();
+                    format!("{}/{}", folder_path.to_string_lossy().replace("\"", ""), path.clone())
+                }));
+            }
+        }
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             custom_system_prompt.clone(),
             custom_prompt.clone(),
@@ -354,8 +376,11 @@ impl GenericInferenceChain {
             Some(full_job.step_history.clone()),
             tools.clone(),
             None,
+            full_job.scope().clone(),
             full_job.job_id.clone(),
+            additional_files,
             node_env.clone(),
+            db.clone(),
         );
 
         let mut iteration_count = 0;
@@ -474,6 +499,28 @@ impl GenericInferenceChain {
                     last_function_response = Some(function_response);
                 }
 
+                let mut additional_files = vec![];
+                additional_files.extend(
+                    merged_fs_files_paths
+                        .clone()
+                        .iter()
+                        .map(|path| format!("{:?}", path.path.clone())),
+                );
+                additional_files.extend(
+                    merged_fs_folder_paths
+                        .clone()
+                        .iter()
+                        .map(|path| format!("{:?}", path.path.clone())),
+                );
+                if !job_filenames.is_empty() {
+                    let folder_path = db.get_job_folder_name(&full_job.job_id.clone());
+                    if let Ok(folder_path) = folder_path {
+                        additional_files.extend(job_filenames.iter().map(|path| {
+                            let folder_path = fs::canonicalize(folder_path.path.clone()).unwrap_or_default();
+                            format!("{}/{}", folder_path.to_string_lossy().replace("\"", ""), path.clone())
+                        }));
+                    }
+                }
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
                     custom_system_prompt.clone(),
@@ -485,8 +532,11 @@ impl GenericInferenceChain {
                     Some(full_job.step_history.clone()),
                     tools.clone(),
                     last_function_response,
+                    full_job.scope().clone(),
                     full_job.job_id.clone(),
+                    additional_files,
                     node_env.clone(),
+                    db.clone(),
                 );
             } else {
                 // No more function calls required, return the final response
