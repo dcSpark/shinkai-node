@@ -41,6 +41,7 @@ impl ToolConfig {
                 key_name: config.key_name.clone(),
                 description: config.description.clone(),
                 required: config.required,
+                type_name: config.type_name.clone(),
                 key_value: None,
             }),
         }
@@ -52,12 +53,17 @@ impl ToolConfig {
 
         if let Some(obj) = value.as_object() {
             for (key, val) in obj {
-                let key_value = val.as_str().map(String::from);
+                let (key_value, type_name) = if let Some(val_obj) = val.as_object() {
+                    (None, val_obj.get("type").and_then(|v| v.as_str()).map(String::from))
+                } else {
+                    (val.as_str().map(String::from), None)
+                };
 
                 let basic_config = BasicConfig {
                     key_name: key.clone(),
                     description: format!("Description for {}", key),
                     required: false, // Set default or determine from context
+                    type_name,
                     key_value,
                 };
                 configs.push(ToolConfig::BasicConfig(basic_config));
@@ -75,11 +81,13 @@ impl ToolConfig {
                 let description = obj.get("description").and_then(|v| v.as_str()).unwrap_or_default();
                 let required = obj.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
                 let key_value = obj.get("key_value").and_then(|v| v.as_str()).map(String::from);
+                let type_name = obj.get("type").and_then(|v| v.as_str()).map(String::from);
 
                 let basic_config = BasicConfig {
                     key_name: key_name.to_string(),
                     description: description.to_string(),
                     required,
+                    type_name,
                     key_value,
                 };
                 return Some(ToolConfig::BasicConfig(basic_config));
@@ -219,6 +227,8 @@ pub struct BasicConfig {
     pub key_name: String,
     pub description: String,
     pub required: bool,
+    #[serde(rename = "type")]
+    pub type_name: Option<String>,
     pub key_value: Option<String>,
 }
 
@@ -232,6 +242,7 @@ mod tests {
             "key_name": "apiKey",
             "description": "API Key for weather service",
             "required": true,
+            "type": "string",
             "key_value": "63d35ff6068c3103ccd1227546935111"
         }"#;
 
@@ -243,6 +254,7 @@ mod tests {
                     assert_eq!(config.key_name, "apiKey");
                     assert_eq!(config.description, "API Key for weather service");
                     assert!(config.required);
+                    assert_eq!(config.type_name, Some("string".to_string()));
                     assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
                 }
                 _ => panic!("Parsed ToolConfig is not a BasicConfig"),
@@ -267,6 +279,7 @@ mod tests {
                     assert_eq!(config.key_name, "apiKey");
                     assert_eq!(config.description, "");
                     assert!(!config.required);
+                    assert_eq!(config.type_name, None);
                     assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
                 }
                 _ => panic!("Parsed ToolConfig is not a BasicConfig"),
