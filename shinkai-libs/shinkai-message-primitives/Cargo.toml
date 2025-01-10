@@ -24,6 +24,7 @@ utoipa = "4.2.3"
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["full"] }
 async-trait = "0.1.74"
+os_path = "0.8.0"
 
 tracing = { version = "0.1.40", optional = true }
 

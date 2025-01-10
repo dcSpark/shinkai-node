@@ -5,6 +5,7 @@ use std::env;
 use std::fmt;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
+use os_path::OsPath;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShinkaiPath {
@@ -15,20 +16,24 @@ impl ShinkaiPath {
     /// Private helper method to create a ShinkaiPath from a &str.
     pub fn new(path: &str) -> Self {
         let base_path = Self::base_path();
-        let path_buf = PathBuf::from(path);
+        let path_buf = OsPath::from(path).to_pathbuf();
 
         let final_path = if path_buf.is_absolute() {
             if path_buf.starts_with(&base_path) {
                 path_buf
             } else {
-                base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
+                let rel_path = if let Ok(stripped) = path_buf.strip_prefix("/") {
+                    stripped
+                } else {
+                    &path_buf
+                };
+                OsPath::from(base_path).join(rel_path).to_pathbuf()
             }
         } else {
-            // Check if base_path is part of path_buf
             if path_buf.starts_with(&base_path) {
                 path_buf
             } else {
-                base_path.join(path_buf)
+                OsPath::from(base_path).join(path_buf).to_pathbuf()
             }
         };
 
@@ -79,14 +84,12 @@ impl ShinkaiPath {
 
     /// Returns the relative path of this ShinkaiPath with respect to the base path.
     /// If the path is not under the base directory, returns the full path as-is.
-    pub fn relative_path(&self) -> &str {
+    pub fn relative_path(&self) -> String {
         let base = Self::base_path();
         if let Ok(stripped) = self.path.strip_prefix(&base) {
-            stripped.to_str().unwrap_or("")
+            OsPath::from(stripped).to_string()
         } else {
-            // If the path does not lie under the base path,
-            // you can decide what to do. Here we return the full path string.
-            self.as_str()
+            OsPath::from(&self.path).to_string()
         }
     }
 
@@ -191,8 +194,8 @@ impl Serialize for ShinkaiPath {
     where
         S: Serializer,
     {
-        // Serialize the relative path as a string
-        serializer.serialize_str(self.relative_path())
+        let path = OsPath::from(self.relative_path());
+        serializer.serialize_str(&path.to_string())
     }
 }
 
@@ -202,6 +205,7 @@ mod tests {
     use crate::shinkai_utils::test_utils::testing_create_tempdir_and_set_env_var;
 
     use super::*;
+    use os_path::OsPath;
     use serial_test::serial;
     use std::{env, fs};
 
@@ -219,15 +223,17 @@ mod tests {
     #[serial]
     fn test_from_string_with_base_path() {
         let _dir = testing_create_tempdir_and_set_env_var();
-        let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
+        let test_path = OsPath::from("word_files").join("christmas.docx");
+        let path = ShinkaiPath::from_string(test_path.to_string());
         assert_eq!(
             path.as_path(),
             Path::new(&format!(
-                "{}/filesystem/word_files/christmas.docx",
-                env::var("NODE_STORAGE_PATH").unwrap()
+                "{}/filesystem/{}",
+                env::var("NODE_STORAGE_PATH").unwrap(),
+                test_path
             ))
         );
-        assert_eq!(path.relative_path(), "word_files/christmas.docx");
+        assert_eq!(path.relative_path(), test_path.to_string());
     }
 
     #[test]
@@ -235,30 +241,35 @@ mod tests {
     fn test_from_string_without_base_path() {
         let _dir = testing_create_tempdir_and_set_env_var();
         env::remove_var("NODE_STORAGE_PATH");
-        let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
+        let test_path = OsPath::from("word_files").join("christmas.docx");
+        let path = ShinkaiPath::from_string(test_path.to_string());
         assert_eq!(
             path.as_path(),
-            Path::new("storage/filesystem/word_files/christmas.docx")
+            Path::new(&format!("storage/filesystem/{}", test_path))
         );
-        assert_eq!(path.relative_path(), "word_files/christmas.docx");
+        assert_eq!(path.relative_path(), test_path.to_string());
     }
 
     #[test]
     #[serial]
     fn test_relative_path_outside_base() {
         let _dir = testing_create_tempdir_and_set_env_var();
-        let absolute_outside = ShinkaiPath::from_string("/some/other/path".to_string());
-        assert_eq!(absolute_outside.relative_path(), "some/other/path");
+        let test_path = OsPath::from("some").join("other").join("path");
+        let absolute_path = OsPath::from("/").join(&test_path);
+        let absolute_outside = ShinkaiPath::from_string(absolute_path.to_string());
+        assert_eq!(absolute_outside.relative_path(), test_path.to_string());
     }
 
     #[test]
     #[serial]
     fn test_extension() {
         let _dir = testing_create_tempdir_and_set_env_var();
-        let path_with_extension = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
+        let test_path = OsPath::from("word_files").join("christmas.docx");
+        let path_with_extension = ShinkaiPath::from_string(test_path.to_string());
         assert_eq!(path_with_extension.extension(), Some("docx"));
 
-        let path_without_extension = ShinkaiPath::from_string("word_files/christmas".to_string());
+        let test_path_no_ext = OsPath::from("word_files").join("christmas");
+        let path_without_extension = ShinkaiPath::from_string(test_path_no_ext.to_string());
         assert_eq!(path_without_extension.extension(), None);
     }
 
@@ -268,11 +279,12 @@ mod tests {
         let _dir = testing_create_tempdir_and_set_env_var();
         let base_path = ShinkaiPath::base_path();
         eprintln!("base_path: {:?}", base_path);
-        let test_path = base_path.join("some/relative/path");
-        eprintln!("test_path: {:?}", test_path);
-        let shinkai_path = ShinkaiPath::new(test_path.to_str().unwrap());
+        let test_path = OsPath::from("some").join("relative").join("path");
+        let full_test_path = base_path.join(&test_path);
+        eprintln!("test_path: {:?}", full_test_path);
+        let shinkai_path = ShinkaiPath::new(full_test_path.to_str().unwrap());
         eprintln!("shinkai_path: {:?}", shinkai_path.full_path());
-        assert_eq!(shinkai_path.path, test_path);
+        assert_eq!(shinkai_path.path, full_test_path);
     }
 
     #[test]
@@ -280,9 +292,9 @@ mod tests {
     fn test_new_without_base_path() {
         let _dir = testing_create_tempdir_and_set_env_var();
         let base_path = ShinkaiPath::base_path();
-        let relative_path = "some/relative/path";
-        let expected_path = base_path.join(relative_path);
-        let shinkai_path = ShinkaiPath::new(relative_path);
+        let test_path = OsPath::from("some").join("relative").join("path");
+        let expected_path = base_path.join(&test_path);
+        let shinkai_path = ShinkaiPath::new(&test_path.to_string());
         eprintln!("shinkai_path: {:?}", shinkai_path.full_path());
         eprintln!("expected_path: {:?}", expected_path);
 
@@ -293,10 +305,10 @@ mod tests {
     #[serial]
     fn test_new_with_root_path() {
         let _dir = testing_create_tempdir_and_set_env_var();
-        let root_path = "/";
-        let shinkai_path = ShinkaiPath::new(root_path);
+        let root_path = OsPath::from("/");
+        let shinkai_path = ShinkaiPath::new(&root_path.to_string());
 
-        let expected_path = ShinkaiPath::base_path().join(root_path.trim_start_matches('/'));
+        let expected_path = ShinkaiPath::base_path().join(root_path.to_string().trim_start_matches('/'));
         assert_eq!(shinkai_path.path, expected_path);
     }
 
@@ -304,8 +316,8 @@ mod tests {
     #[serial]
     fn test_is_file() {
         let _dir = testing_create_tempdir_and_set_env_var();
-        let file_path = "test_file.txt";
-        let shinkai_path = ShinkaiPath::from_string(file_path.to_string());
+        let test_path = OsPath::from("test_file.txt");
+        let shinkai_path = ShinkaiPath::from_string(test_path.to_string());
 
         fs::create_dir_all(shinkai_path.as_path().parent().unwrap()).unwrap();
         fs::write(shinkai_path.as_path(), "test".as_bytes()).unwrap();
@@ -319,20 +331,20 @@ mod tests {
         let _dir = testing_create_tempdir_and_set_env_var();
 
         // Create a file to test the filename method
-        let path_with_extension = "word_files/christmas.docx";
+        let path_with_extension = OsPath::from("word_files").join("christmas.docx");
         let shinkai_path_with_extension = ShinkaiPath::from_string(path_with_extension.to_string());
         fs::create_dir_all(shinkai_path_with_extension.as_path().parent().unwrap()).unwrap();
         fs::write(shinkai_path_with_extension.as_path(), "test".as_bytes()).unwrap();
         assert_eq!(shinkai_path_with_extension.filename(), Some("christmas.docx"));
 
         // Create a file without an extension
-        let path_without_extension = "word_files/christmas";
+        let path_without_extension = OsPath::from("word_files").join("christmas");
         let shinkai_path_without_extension = ShinkaiPath::from_string(path_without_extension.to_string());
         fs::write(shinkai_path_without_extension.as_path(), "test".as_bytes()).unwrap();
         assert_eq!(shinkai_path_without_extension.filename(), Some("christmas"));
 
         // Test a directory path
-        let path_with_no_filename = "word_files/";
+        let path_with_no_filename = OsPath::from("word_files").join("");
         let shinkai_path_with_no_filename = ShinkaiPath::from_string(path_with_no_filename.to_string());
         assert_eq!(shinkai_path_with_no_filename.filename(), None);
     }
@@ -342,13 +354,15 @@ mod tests {
     fn test_serialize_relative_path() {
         let _dir = testing_create_tempdir_and_set_env_var();
 
-        // Create a ShinkaiPath instance
-        let path = ShinkaiPath::from_string("word_files/christmas.docx".to_string());
+        // Create a ShinkaiPath instance using OsPath for proper path handling
+        let test_path = OsPath::from("word_files").join("christmas.docx");
+        let path = ShinkaiPath::from_string(test_path.to_string());
 
         // Serialize the ShinkaiPath
         let serialized_path = serde_json::to_string(&path).unwrap();
 
-        // Check if the serialized output matches the expected relative path
-        assert_eq!(serialized_path, "\"word_files/christmas.docx\"");
+        // Create the expected path string using OsPath to ensure proper separators
+        let expected_path = serde_json::to_string(&test_path.to_string()).unwrap();
+        assert_eq!(serialized_path, expected_path);
     }
 }
