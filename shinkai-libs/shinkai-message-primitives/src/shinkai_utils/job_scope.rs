@@ -75,8 +75,8 @@ mod tests {
         let deserialized: MinimalJobScope = serde_json::from_value(json_data).expect("Failed to deserialize");
 
         assert_eq!(deserialized.vector_fs_items.len(), 2);
-        assert_eq!(deserialized.vector_fs_items[0].relative_path(), "path/to/file1");
-        assert_eq!(deserialized.vector_fs_items[1].relative_path(), "path/to/file2");
+        assert_eq!(deserialized.vector_fs_items[0].relative_path(), os_path::OsPath::from("path/to/file1").to_string());
+        assert_eq!(deserialized.vector_fs_items[1].relative_path(), os_path::OsPath::from("path/to/file2").to_string());
         assert_eq!(deserialized.vector_fs_folders.len(), 1);
         assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
         assert_eq!(deserialized.vector_search_mode, VectorSearchMode::FillUpTo25k);
@@ -93,9 +93,9 @@ mod tests {
         let deserialized: MinimalJobScope = serde_json::from_value(json_data).expect("Failed to deserialize");
 
         assert_eq!(deserialized.vector_fs_items.len(), 1);
-        assert_eq!(deserialized.vector_fs_items[0].relative_path(), "path/to/file1");
+        assert_eq!(deserialized.vector_fs_items[0].relative_path(), os_path::OsPath::from("path/to/file1").to_string());
         assert_eq!(deserialized.vector_fs_folders.len(), 1);
-        assert_eq!(deserialized.vector_fs_folders[0].relative_path(), "My Files (Private)");
+        assert_eq!(deserialized.vector_fs_folders[0].relative_path(), os_path::OsPath::from("My Files (Private)").to_string());
         assert_eq!(deserialized.vector_search_mode, VectorSearchMode::FillUpTo25k); // Check default
     }
 }

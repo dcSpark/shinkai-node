@@ -6,6 +6,13 @@ use shinkai_message_primitives::{
 };
 
 impl SqliteManager {
+    // TODO: This is a temporary workaround for Windows paths. We should handle this more robustly.
+    pub fn normalize_path(path: &str) -> String {
+        let mut path = path.replace("\\\\", "/");
+        path = path.replace("\\", "/");
+        path
+    }
+
     pub fn initialize_filesystem_tables(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         // parsed_files table
         conn.execute(
@@ -70,21 +77,24 @@ impl SqliteManager {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
+        let pf_relative_path = Self::normalize_path(&pf.relative_path);
+
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM parsed_files WHERE relative_path = ?)",
-            [&pf.relative_path],
+            [&pf_relative_path],
             |row| row.get(0),
         )?;
         if exists {
             return Err(SqliteManagerError::DataAlreadyExists);
         }
 
+        let relative_path = Self::normalize_path(&pf.relative_path);
         tx.execute(
             "INSERT INTO parsed_files (relative_path, original_extension, description, source, embedding_model_used, 
                                        keywords, distribution_info, created_time, tags, total_tokens, total_characters)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
-                pf.relative_path,
+                relative_path,
                 pf.original_extension,
                 pf.description,
                 pf.source,
@@ -104,6 +114,9 @@ impl SqliteManager {
 
     pub fn get_parsed_file_by_rel_path(&self, rel_path: &str) -> Result<Option<ParsedFile>, SqliteManagerError> {
         let conn = self.get_connection()?;
+
+        let rel_path = Self::normalize_path(rel_path);
+
         let mut stmt = conn.prepare(
             "
             SELECT id, relative_path, original_extension, description, source, embedding_model_used, keywords,
@@ -150,13 +163,14 @@ impl SqliteManager {
             return Err(SqliteManagerError::DataNotFound);
         }
 
+        let relative_path = Self::normalize_path(&pf.relative_path);
         tx.execute(
             "UPDATE parsed_files
              SET relative_path = ?1, original_extension = ?2, description = ?3, source = ?4, embedding_model_used = ?5,
                  keywords = ?6, distribution_info = ?7, created_time = ?8, tags = ?9, total_tokens = ?10, total_characters = ?11
              WHERE id = ?12",
             params![
-                pf.relative_path,
+                relative_path,
                 pf.original_extension,
                 pf.description,
                 pf.source,
@@ -448,6 +462,9 @@ impl SqliteManager {
     // -------------------------
 
     pub fn update_folder_paths(&self, old_prefix: &str, new_prefix: &str) -> Result<(), SqliteManagerError> {
+        let old_prefix = Self::normalize_path(old_prefix);
+        let new_prefix = Self::normalize_path(new_prefix);
+
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
@@ -469,6 +486,7 @@ impl SqliteManager {
         &self,
         directory_path: &str,
     ) -> Result<Vec<ParsedFile>, SqliteManagerError> {
+        let directory_path = Self::normalize_path(directory_path);
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT id, relative_path, original_extension, description, source, embedding_model_used, keywords,
@@ -547,6 +565,7 @@ impl SqliteManager {
 
     /// Retrieve all parsed files whose relative paths start with the given prefix.
     pub fn get_parsed_files_by_prefix(&self, prefix: &str) -> Result<Vec<ParsedFile>, SqliteManagerError> {
+        let prefix = Self::normalize_path(prefix);
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT id, relative_path, original_extension, description, source, embedding_model_used, keywords,

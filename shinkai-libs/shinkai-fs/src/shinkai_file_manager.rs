@@ -317,9 +317,10 @@ mod tests {
     }
 
     fn create_test_parsed_file(id: i64, relative_path: &str) -> ParsedFile {
+        let pf_relative_path = SqliteManager::normalize_path(relative_path);
         ParsedFile {
             id: Some(id),
-            relative_path: relative_path.to_string(),
+            relative_path: pf_relative_path.to_string(),
             original_extension: None,
             description: None,
             source: None,
