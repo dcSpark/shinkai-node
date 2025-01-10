@@ -70,6 +70,50 @@ Once all dependencies are installed, build the project with:
 cargo build
 ```
 
+### 2. Alternative: Using Scoop (Recommended)
+
+Scoop provides a simpler way to install and manage development tools on Windows.
+
+1. Install Scoop by running the following in PowerShell:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+irm get.scoop.sh | iex
+```
+
+2. Add required buckets and install dependencies:
+
+```powershell
+scoop bucket add main
+scoop bucket add extras
+scoop install rust llvm openssl
+```
+
+3. Install Visual Studio Build Tools:
+   - Download the Build Tools installer from [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   - Run the installer and select "Desktop development with C++"
+   - Wait for the installation to complete (this may take a while)
+
+4. Set required environment variables:
+
+```powershell
+$env:OPENSSL_DIR = "$(scoop prefix openssl)"
+$env:OPENSSL_ROOT_DIR = "$(scoop prefix openssl)"
+[Environment]::SetEnvironmentVariable('OPENSSL_DIR', $env:OPENSSL_DIR, 'User')
+[Environment]::SetEnvironmentVariable('OPENSSL_ROOT_DIR', $env:OPENSSL_ROOT_DIR, 'User')
+```
+
+5. Restart your terminal, then run:
+```powershell
+rustup default stable-msvc
+```
+
+Verify installations:
+```powershell
+clang --version
+cargo --version
+```
+
 ## Alternative Installation
 
 For a smoother developer experience, setup WSL (Windows Subsystem for Linux) and install a Linux distribution.

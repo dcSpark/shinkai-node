@@ -4,7 +4,7 @@ use serde_json;
 use std::env;
 use std::fmt;
 use std::hash::Hash;
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, Component};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ShinkaiPath {
@@ -17,18 +17,53 @@ impl ShinkaiPath {
         let base_path = Self::base_path();
         let path_buf = PathBuf::from(path);
 
-        let final_path = if path_buf.is_absolute() {
-            if path_buf.starts_with(&base_path) {
-                path_buf
+        // Special case for root path "/" on all platforms
+        if path == "/" {
+            return ShinkaiPath { path: base_path };
+        }
+
+        #[cfg(windows)]
+        let final_path = {
+            if path_buf.is_absolute() {
+                if let Some(Component::Prefix(_)) = path_buf.components().next() {
+                    // If path starts with a drive letter, join it with base_path
+                    if path_buf.starts_with(&base_path) {
+                        path_buf
+                    } else {
+                        // Strip drive letter and join with base_path
+                        let components: Vec<_> = path_buf.components()
+                            .filter(|c| !matches!(c, Component::Prefix(_)))
+                            .collect();
+                        let relative_path = components.iter().collect::<PathBuf>();
+                        base_path.join(relative_path)
+                    }
+                } else {
+                    // Regular absolute path without drive letter
+                    base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
+                }
             } else {
-                base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
+                if path_buf.starts_with(&base_path) {
+                    path_buf
+                } else {
+                    base_path.join(path_buf)
+                }
             }
-        } else {
-            // Check if base_path is part of path_buf
-            if path_buf.starts_with(&base_path) {
-                path_buf
+        };
+
+        #[cfg(not(windows))]
+        let final_path = {
+            if path_buf.is_absolute() {
+                if path_buf.starts_with(&base_path) {
+                    path_buf
+                } else {
+                    base_path.join(path_buf.strip_prefix("/").unwrap_or(&path_buf))
+                }
             } else {
-                base_path.join(path_buf)
+                if path_buf.starts_with(&base_path) {
+                    path_buf
+                } else {
+                    base_path.join(path_buf)
+                }
             }
         };
 
@@ -79,14 +114,38 @@ impl ShinkaiPath {
 
     /// Returns the relative path of this ShinkaiPath with respect to the base path.
     /// If the path is not under the base directory, returns the full path as-is.
-    pub fn relative_path(&self) -> &str {
+    pub fn relative_path(&self) -> String {
         let base = Self::base_path();
-        if let Ok(stripped) = self.path.strip_prefix(&base) {
-            stripped.to_str().unwrap_or("")
-        } else {
-            // If the path does not lie under the base path,
-            // you can decide what to do. Here we return the full path string.
-            self.as_str()
+        
+        #[cfg(windows)]
+        {
+            // On Windows, normalize path separators for comparison
+            let path_str = self.path.to_string_lossy().replace('\\', "/");
+            let base_str = base.to_string_lossy().replace('\\', "/");
+            
+            if path_str.starts_with(&base_str) {
+                path_str[base_str.len()..].trim_start_matches('/').to_string()
+            } else {
+                // Remove drive letter if present and leading slash
+                path_str.split(':')
+                    .last()
+                    .unwrap_or(&path_str)
+                    .trim_start_matches('/')
+                    .to_string()
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            if let Ok(stripped) = self.path.strip_prefix(&base) {
+                stripped.to_str().unwrap_or("").to_string()
+            } else {
+                self.path.strip_prefix("/")
+                    .unwrap_or(&self.path)
+                    .to_str()
+                    .unwrap_or("")
+                    .to_string()
+            }
         }
     }
 
@@ -192,7 +251,7 @@ impl Serialize for ShinkaiPath {
         S: Serializer,
     {
         // Serialize the relative path as a string
-        serializer.serialize_str(self.relative_path())
+        serializer.serialize_str(&self.relative_path())
     }
 }
 
@@ -295,9 +354,10 @@ mod tests {
         let _dir = testing_create_tempdir_and_set_env_var();
         let root_path = "/";
         let shinkai_path = ShinkaiPath::new(root_path);
-
-        let expected_path = ShinkaiPath::base_path().join(root_path.trim_start_matches('/'));
-        assert_eq!(shinkai_path.path, expected_path);
+        let expected_path = ShinkaiPath::base_path();
+        
+        assert_eq!(shinkai_path.path, expected_path, 
+            "Expected path: {:?}, Got: {:?}", expected_path, shinkai_path.path);
     }
 
     #[test]
