@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
@@ -496,7 +496,13 @@ impl ToolRouter {
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let app_id = context.full_job().job_id().to_string();
+                
+                // Get app_id from Cron UI if present, otherwise use job_id
+                let app_id = match context.full_job().associated_ui().as_ref() {
+                    Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
+                    _ => context.full_job().job_id().to_string()
+                };
+
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = python_tool.tools.clone();
                 let support_files =
@@ -555,7 +561,12 @@ impl ToolRouter {
                 });
             }
             ShinkaiTool::Rust(_rust_tool, _is_enabled) => {
-                let app_id = context.full_job().job_id().to_string();
+                // Get app_id from Cron UI if present, otherwise use job_id
+                let app_id = match context.full_job().associated_ui().as_ref() {
+                    Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
+                    _ => context.full_job().job_id().to_string()
+                };
+
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let function_config = shinkai_tool.get_config_from_env();
                 let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
@@ -610,7 +621,13 @@ impl ToolRouter {
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let app_id = context.full_job().job_id().to_string();
+                
+                // Get app_id from Cron UI if present, otherwise use job_id
+                let app_id = match context.full_job().associated_ui().as_ref() {
+                    Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
+                    _ => context.full_job().job_id().to_string()
+                };
+
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = deno_tool.tools.clone();
                 let support_files =
