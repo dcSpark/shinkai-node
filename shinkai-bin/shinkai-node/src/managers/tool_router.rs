@@ -166,13 +166,7 @@ impl ToolRouter {
 
         let tool_urls = tools
             .iter()
-            .map(|tool| {
-                (
-                    tool["name"].as_str(),
-                    tool["file"].as_str(),
-                    tool["router_key"].as_str(),
-                )
-            })
+            .map(|tool| (tool["name"].as_str(), tool["file"].as_str(), tool["routerKey"].as_str()))
             .collect::<Vec<_>>()
             .into_iter()
             .filter(|(name, url, router_key)| url.is_some() && name.is_some() && router_key.is_some())
@@ -496,11 +490,11 @@ impl ToolRouter {
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                
+
                 // Get app_id from Cron UI if present, otherwise use job_id
                 let app_id = match context.full_job().associated_ui().as_ref() {
                     Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
-                    _ => context.full_job().job_id().to_string()
+                    _ => context.full_job().job_id().to_string(),
                 };
 
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
@@ -513,10 +507,10 @@ impl ToolRouter {
                 let envs = generate_execution_environment(
                     context.db(),
                     context.agent().clone().get_id().to_string(),
-                    format!("jid-{}", tool_id),
-                    format!("jid-{}", app_id),
+                    tool_id.clone(),
+                    app_id.clone(),
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
-                    format!("jid-{}", app_id),
+                    app_id.clone(),
                     &python_tool.oauth,
                 )
                 .await
@@ -545,8 +539,8 @@ impl ToolRouter {
                         function_args,
                         function_config_vec,
                         node_storage_path,
-                        app_id,
-                        tool_id,
+                        app_id.clone(),
+                        tool_id.clone(),
                         node_name,
                         false,
                         None,
@@ -564,7 +558,7 @@ impl ToolRouter {
                 // Get app_id from Cron UI if present, otherwise use job_id
                 let app_id = match context.full_job().associated_ui().as_ref() {
                     Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
-                    _ => context.full_job().job_id().to_string()
+                    _ => context.full_job().job_id().to_string(),
                 };
 
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
@@ -575,7 +569,6 @@ impl ToolRouter {
                 let llm_provider = context.agent().get_llm_provider_id().to_string();
                 let bearer = db.read_api_v2_key().unwrap_or_default().unwrap_or_default();
 
-
                 let job_callback_manager = context.job_callback_manager();
                 let mut job_manager: Option<Arc<Mutex<JobManager>>> = None;
                 if let Some(job_callback_manager) = &job_callback_manager {
@@ -584,7 +577,9 @@ impl ToolRouter {
                 }
 
                 if job_manager.is_none() {
-                    return Err(LLMProviderError::FunctionExecutionError("Job manager is not available".to_string()));
+                    return Err(LLMProviderError::FunctionExecutionError(
+                        "Job manager is not available".to_string(),
+                    ));
                 }
 
                 let result = execute_custom_tool(
@@ -621,11 +616,11 @@ impl ToolRouter {
                     .node_storage_path
                     .clone()
                     .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                
+
                 // Get app_id from Cron UI if present, otherwise use job_id
                 let app_id = match context.full_job().associated_ui().as_ref() {
                     Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
-                    _ => context.full_job().job_id().to_string()
+                    _ => context.full_job().job_id().to_string(),
                 };
 
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
@@ -638,10 +633,10 @@ impl ToolRouter {
                 let envs = generate_execution_environment(
                     context.db(),
                     context.agent().clone().get_id().to_string(),
-                    format!("jid-{}", app_id),
-                    format!("jid-{}", tool_id),
+                    app_id.clone(),
+                    tool_id.clone(),
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
-                    format!("jid-{}", app_id),
+                    app_id.clone(),
                     &deno_tool.oauth,
                 )
                 .await
