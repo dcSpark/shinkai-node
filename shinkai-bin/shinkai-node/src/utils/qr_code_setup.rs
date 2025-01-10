@@ -108,9 +108,13 @@ pub fn save_qr_data_to_local_image(qr_data: QRSetupData, name: String) {
 }
 
 pub fn print_qr_data_to_console(qr_data: QRSetupData, node_profile: &str) {
+    let version = env!("CARGO_PKG_VERSION");
+    let api_key = std::env::var("API_V2_KEY").unwrap_or_else(|_| "Not set".to_string());
     // Print qr_data to console in a beautiful way
     println!("Please scan the QR code below with your phone to register this device:");
     println!("---------------------------------------------------------------");
+    println!("Node version: {}", version);
+    println!("API v2 key (Bearer): {}", api_key);
     println!("Node registration code: {}", qr_data.registration_code);
     println!("Node profile: {}", node_profile);
     println!("Node identity type: {}", qr_data.identity_type);
