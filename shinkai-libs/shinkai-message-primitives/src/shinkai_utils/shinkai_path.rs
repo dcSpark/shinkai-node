@@ -15,7 +15,7 @@ impl ShinkaiPath {
     /// Private helper method to create a ShinkaiPath from a &str.
     pub fn new(path: &str) -> Self {
         let base_path = Self::base_path();
-        let path_buf = PathBuf::from(path);
+        let path_buf = os_path::OsPath::from(path).to_pathbuf(); // PathBuf::from(path);
 
         let final_path = if path_buf.is_absolute() {
             if path_buf.starts_with(&base_path) {
@@ -227,7 +227,7 @@ mod tests {
                 env::var("NODE_STORAGE_PATH").unwrap()
             ))
         );
-        assert_eq!(path.relative_path(), "word_files/christmas.docx");
+        assert_eq!(path.relative_path(), os_path::OsPath::from("word_files/christmas.docx").to_string());
     }
 
     #[test]
@@ -240,7 +240,7 @@ mod tests {
             path.as_path(),
             Path::new("storage/filesystem/word_files/christmas.docx")
         );
-        assert_eq!(path.relative_path(), "word_files/christmas.docx");
+        assert_eq!(path.relative_path(), os_path::OsPath::from("word_files/christmas.docx").to_string());
     }
 
     #[test]
@@ -248,7 +248,7 @@ mod tests {
     fn test_relative_path_outside_base() {
         let _dir = testing_create_tempdir_and_set_env_var();
         let absolute_outside = ShinkaiPath::from_string("/some/other/path".to_string());
-        assert_eq!(absolute_outside.relative_path(), "some/other/path");
+        assert_eq!(absolute_outside.relative_path(), os_path::OsPath::from("some/other/path").to_string());
     }
 
     #[test]
@@ -349,6 +349,8 @@ mod tests {
         let serialized_path = serde_json::to_string(&path).unwrap();
 
         // Check if the serialized output matches the expected relative path
-        assert_eq!(serialized_path, "\"word_files/christmas.docx\"");
+        let serialized_path_str = serde_json::to_string(&os_path::OsPath::from("word_files/christmas.docx").to_string()).unwrap();
+
+        assert_eq!(serialized_path, serialized_path_str);
     }
 }
