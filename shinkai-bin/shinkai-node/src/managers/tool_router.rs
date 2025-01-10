@@ -148,7 +148,7 @@ impl ToolRouter {
         let start_time = Instant::now();
 
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-            .map_err(|_| ToolError::MissingConfigError("SHINKAI_TOOLS_DIRECTORY_URL not set".to_string()))?;
+            .unwrap_or_else(|_| "https://download.shinkai.com/tools/directory.json".to_string());
 
         let response = reqwest::get(url).await.map_err(|e| ToolError::RequestError(e))?;
 
