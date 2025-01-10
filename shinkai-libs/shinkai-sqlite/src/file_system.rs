@@ -509,7 +509,7 @@ impl SqliteManager {
         path: &ShinkaiPath,
     ) -> Result<Option<ParsedFile>, SqliteManagerError> {
         let rel_path = path.relative_path();
-        self.get_parsed_file_by_rel_path(rel_path)
+        self.get_parsed_file_by_rel_path(&rel_path)
     }
 
     /// Retrieve all parsed files for debugging purposes.

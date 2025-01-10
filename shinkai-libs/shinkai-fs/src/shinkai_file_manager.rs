@@ -292,6 +292,7 @@ mod tests {
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::shinkai_fs::ParsedFile;
     use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+    use os_path::OsPath;
     use std::fs::{self, File};
     use std::io::Write;
     use std::path::{Path, PathBuf};
@@ -675,26 +676,35 @@ mod tests {
     fn test_list_directory_contents_with_depth() {
         let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
 
-        // Create a temporary directory structure
+        // Create a temporary directory structure using OsPath
         let base_dir = ShinkaiPath::from_base_path();
-        let level1_dir = base_dir.as_path().join("level1");
-        let level2_dir = level1_dir.join("level2");
-        let level3_dir = level2_dir.join("level3");
+        let level1_path = OsPath::from("level1");
+        let level2_path = level1_path.join("level2");
+        let level3_path = level2_path.join("level3");
 
-        fs::create_dir_all(&level3_dir.as_path()).unwrap();
+        // Create the directory structure
+        let level1_dir = ShinkaiPath::from_string(level1_path.to_string());
+        let level2_dir = ShinkaiPath::from_string(level2_path.to_string());
+        let level3_dir = ShinkaiPath::from_string(level3_path.to_string());
 
-        // Create files at different levels
-        let file1_path = level1_dir.join("file1.txt");
-        let file2_path = level2_dir.join("file2.txt");
-        let file3_path = level3_dir.join("file3.txt");
+        fs::create_dir_all(&level3_dir.path).unwrap();
 
-        File::create(&file1_path.as_path()).unwrap();
-        File::create(&file2_path.as_path()).unwrap();
-        File::create(&file3_path.as_path()).unwrap();
+        // Create files at different levels using OsPath
+        let file1_path = OsPath::from(&level1_path).join("file1.txt");
+        let file2_path = OsPath::from(&level2_path).join("file2.txt");
+        let file3_path = OsPath::from(&level3_path).join("file3.txt");
+
+        let file1_shinkai = ShinkaiPath::from_string(file1_path.to_string());
+        let file2_shinkai = ShinkaiPath::from_string(file2_path.to_string());
+        let file3_shinkai = ShinkaiPath::from_string(file3_path.to_string());
+
+        File::create(&file1_shinkai.path).unwrap();
+        File::create(&file2_shinkai.path).unwrap();
+        File::create(&file3_shinkai.path).unwrap();
 
         // Add parsed files with embeddings to the database
-        let pf1 = create_test_parsed_file(1, &ShinkaiPath::from_string("level1/file1.txt".to_string()).relative_path());
-        let pf2 = create_test_parsed_file(2, &ShinkaiPath::from_string("level1/level2/file2.txt".to_string()).relative_path());
+        let pf1 = create_test_parsed_file(1, &file1_path.to_string());
+        let pf2 = create_test_parsed_file(2, &file2_path.to_string());
         db.add_parsed_file(&pf1).unwrap();
         db.add_parsed_file(&pf2).unwrap();
 
@@ -706,37 +716,52 @@ mod tests {
         assert_eq!(contents.len(), 1); // Only one top-level directory
 
         let level1_info = &contents[0];
-        assert_eq!(level1_info.path, "level1");
+        assert_eq!(level1_info.path, level1_path.to_string());
         assert!(level1_info.is_directory);
         assert!(level1_info.children.is_some());
 
         let level2_contents = level1_info.children.as_ref().unwrap();
         assert_eq!(level2_contents.len(), 2); // One directory and one file
 
-        let file1_info = level2_contents.iter().find(|info| info.path == "level1/file1.txt").unwrap();
+        let file1_info = level2_contents
+            .iter()
+            .find(|info| info.path == file1_path.to_string())
+            .expect("file1.txt not found");
         assert!(!file1_info.is_directory);
-        assert!(file1_info.has_embeddings, "File 'level1/file1.txt' should have embeddings.");
+        assert!(file1_info.has_embeddings, "File '{}' should have embeddings.", file1_path);
 
-        let level2_info = level2_contents.iter().find(|info| info.path == "level1/level2").unwrap();
+        let level2_info = level2_contents
+            .iter()
+            .find(|info| info.path == level2_path.to_string())
+            .expect("level2 directory not found");
         assert!(level2_info.is_directory);
         assert!(level2_info.children.is_some());
 
         let level3_contents = level2_info.children.as_ref().unwrap();
         assert_eq!(level3_contents.len(), 2); // One directory and one file
 
-        let file2_info = level3_contents.iter().find(|info| info.path == "level1/level2/file2.txt").unwrap();
+        let file2_info = level3_contents
+            .iter()
+            .find(|info| info.path == file2_path.to_string())
+            .expect("file2.txt not found");
         assert!(!file2_info.is_directory);
-        assert!(file2_info.has_embeddings, "File 'level1/level2/file2.txt' should have embeddings.");
+        assert!(file2_info.has_embeddings, "File '{}' should have embeddings.", file2_path);
 
-        let level3_info = level3_contents.iter().find(|info| info.path == "level1/level2/level3").unwrap();
+        let level3_info = level3_contents
+            .iter()
+            .find(|info| info.path == level3_path.to_string())
+            .expect("level3 directory not found");
         assert!(level3_info.is_directory);
         assert!(level3_info.children.is_some());
 
         let level3_files = level3_info.children.as_ref().unwrap();
         assert_eq!(level3_files.len(), 1); // Only one file
 
-        let file3_info = level3_files.iter().find(|info| info.path == "level1/level2/level3/file3.txt").unwrap();
+        let file3_info = level3_files
+            .iter()
+            .find(|info| info.path == file3_path.to_string())
+            .expect("file3.txt not found");
         assert!(!file3_info.is_directory);
-        assert!(!file3_info.has_embeddings, "File 'level1/level2/level3/file3.txt' should not have embeddings.");
+        assert!(!file3_info.has_embeddings, "File '{}' should not have embeddings.", file3_path);
     }
 }
