@@ -713,29 +713,34 @@ mod tests {
         let level2_contents = level1_info.children.as_ref().unwrap();
         assert_eq!(level2_contents.len(), 2); // One directory and one file
 
-        let file1_info = level2_contents.iter().find(|info| info.path == "level1/file1.txt").unwrap();
+        let file1_path = os_path::OsPath::from("level1/file1.txt").to_string();
+        let file1_info = level2_contents.iter().find(|info| info.path == file1_path).unwrap();
         assert!(!file1_info.is_directory);
         assert!(file1_info.has_embeddings, "File 'level1/file1.txt' should have embeddings.");
 
-        let level2_info = level2_contents.iter().find(|info| info.path == "level1/level2").unwrap();
+        let level2_path = os_path::OsPath::from("level1/level2").to_string();
+        let level2_info = level2_contents.iter().find(|info| info.path == level2_path).unwrap();
         assert!(level2_info.is_directory);
         assert!(level2_info.children.is_some());
 
         let level3_contents = level2_info.children.as_ref().unwrap();
         assert_eq!(level3_contents.len(), 2); // One directory and one file
 
-        let file2_info = level3_contents.iter().find(|info| info.path == "level1/level2/file2.txt").unwrap();
+        let file2_path = os_path::OsPath::from("level1/level2/file2.txt").to_string();
+        let file2_info = level3_contents.iter().find(|info| info.path == file2_path).unwrap();
         assert!(!file2_info.is_directory);
         assert!(file2_info.has_embeddings, "File 'level1/level2/file2.txt' should have embeddings.");
 
-        let level3_info = level3_contents.iter().find(|info| info.path == "level1/level2/level3").unwrap();
+        let level3_path = os_path::OsPath::from("level1/level2/level3").to_string();
+        let level3_info = level3_contents.iter().find(|info| info.path == level3_path).unwrap();
         assert!(level3_info.is_directory);
         assert!(level3_info.children.is_some());
 
         let level3_files = level3_info.children.as_ref().unwrap();
         assert_eq!(level3_files.len(), 1); // Only one file
 
-        let file3_info = level3_files.iter().find(|info| info.path == "level1/level2/level3/file3.txt").unwrap();
+        let file3_path = os_path::OsPath::from("level1/level2/level3/file3.txt").to_string();
+        let file3_info = level3_files.iter().find(|info| info.path == file3_path).unwrap();
         assert!(!file3_info.is_directory);
         assert!(!file3_info.has_embeddings, "File 'level1/level2/level3/file3.txt' should not have embeddings.");
     }
