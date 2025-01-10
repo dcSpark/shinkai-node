@@ -70,11 +70,55 @@ Once all dependencies are installed, build the project with:
 cargo build
 ```
 
-## Alternative Installation
+### 2. Alternative: Using Scoop (Recommended)
 
-For a smoother developer experience, setup WSL (Windows Subsystem for Linux) and install a Linux distribution.
+Scoop provides a simpler way to install and manage development tools on Windows.
 
-### 1. Install WSL
+1. Install Scoop by running the following in PowerShell:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+irm get.scoop.sh | iex
+```
+
+2. Add required buckets and install dependencies:
+
+```powershell
+scoop bucket add main
+scoop bucket add extras
+scoop install rust llvm openssl
+```
+
+3. Install Visual Studio Build Tools:
+   - Download the Build Tools installer from [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   - Run the installer and select "Desktop development with C++"
+   - Wait for the installation to complete (this may take a while)
+
+4. Set required environment variables:
+
+```powershell
+$env:OPENSSL_DIR = "$(scoop prefix openssl)"
+$env:OPENSSL_ROOT_DIR = "$(scoop prefix openssl)"
+[Environment]::SetEnvironmentVariable('OPENSSL_DIR', $env:OPENSSL_DIR, 'User')
+[Environment]::SetEnvironmentVariable('OPENSSL_ROOT_DIR', $env:OPENSSL_ROOT_DIR, 'User')
+```
+
+5. Restart your terminal, then run:
+```powershell
+rustup default stable-msvc
+```
+
+Verify installations:
+```powershell
+clang --version
+cargo --version
+```
+
+### 3. Alternative: Using WSL
+
+For a smoother developer experience, you can also setup WSL (Windows Subsystem for Linux) and install a Linux distribution.
+
+#### 1. Install WSL
 
 Run the following command to install Ubuntu as the default distribution:
 
@@ -88,7 +132,7 @@ Or run the following command to change the distribution installed:
 wsl --install -d <Distribution Name>
 ```
 
-### 2. Install Shinkai Node
+#### 2. Install Shinkai Node
 
 Enter the following command to step inside the installed Linux distribution:
 
