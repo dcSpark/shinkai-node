@@ -7,13 +7,13 @@ FROM ubuntu:24.10 AS downloader
         echo "Error: shinkai-node file is less than 25MB" && \
         exit 1; \
     fi
- RUN unzip shinkai-node.zip    
- RUN chmod +x /shinkai-node
+ RUN unzip -o shinkai-node.zip -d ./node
+ RUN chmod +x /node/shinkai-node
 
- FROM ubuntu:24.10
+ FROM ubuntu:24.10 AS runner
  RUN apt-get update && apt-get install -y openssl ca-certificates
  WORKDIR /app
- COPY --from=downloader /shinkai-node ./shinkai-node
+ COPY --from=downloader /node ./
 
  EXPOSE 9550
  ENTRYPOINT ["/bin/sh", "-c", "/app/shinkai-node"]
