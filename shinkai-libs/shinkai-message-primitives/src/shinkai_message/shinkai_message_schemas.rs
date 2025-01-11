@@ -296,6 +296,7 @@ pub struct SymmetricKeyExchange {
 pub enum AssociatedUI {
     Sheet(String),
     Playground,
+    Cron(String),
     // Add more variants as needed
 }
 

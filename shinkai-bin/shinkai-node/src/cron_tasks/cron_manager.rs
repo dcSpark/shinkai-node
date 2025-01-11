@@ -15,7 +15,7 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
         ws_types::WSUpdateHandler,
     },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+    shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage},
     shinkai_utils::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         signatures::clone_signature_secret_key,
@@ -331,6 +331,8 @@ impl CronManager {
                 if job_creation_info_clone.is_hidden.is_none() {
                     job_creation_info_clone.is_hidden = Some(true);
                 }
+                // Set the associated UI to Cron with the task ID
+                job_creation_info_clone.associated_ui = Some(AssociatedUI::Cron(cron_job.task_id.to_string()));
 
                 let job_id = job_manager
                     .lock()

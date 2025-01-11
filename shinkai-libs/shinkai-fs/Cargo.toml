@@ -29,6 +29,8 @@ csv = "1.1.6"
 utoipa = "4.2.3"
 regex = { workspace = true }
 
+os_path = "0.8.0"
+
 [dependencies.serde]
 workspace = true
 features = ["derive"]

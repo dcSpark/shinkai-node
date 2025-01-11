@@ -98,6 +98,7 @@ impl LLMService for OpenAI {
                     "model": self.model_type,
                     "messages": messages_json,
                     "max_tokens": result.remaining_output_tokens,
+                    "stream": is_stream,
                 });
 
                 // Conditionally add functions to the payload if tools_json is not empty
