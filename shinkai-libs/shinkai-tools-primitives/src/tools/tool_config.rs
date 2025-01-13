@@ -56,13 +56,27 @@ impl ToolConfig {
                 let (key_value, type_name) = if let Some(val_obj) = val.as_object() {
                     (None, val_obj.get("type").and_then(|v| v.as_str()).map(String::from))
                 } else {
-                    (val.as_str().map(String::from), None)
+                    // Convert any value type to string representation
+                    let key_value = match val {
+                        Value::String(s) => Some(s.clone()),
+                        Value::Number(n) => Some(n.to_string()),
+                        Value::Bool(b) => Some(b.to_string()),
+                        _ => None,
+                    };
+                    // Infer type_name based on value type
+                    let type_name = match val {
+                        Value::String(_) => Some("string".to_string()),
+                        Value::Number(_) => Some("number".to_string()),
+                        Value::Bool(_) => Some("boolean".to_string()),
+                        _ => None,
+                    };
+                    (key_value, type_name)
                 };
 
                 let basic_config = BasicConfig {
                     key_name: key.clone(),
                     description: format!("Description for {}", key),
-                    required: false, // Set default or determine from context
+                    required: false,
                     type_name,
                     key_value,
                 };
@@ -235,6 +249,7 @@ pub struct BasicConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_from_value_parsing() {
@@ -348,5 +363,64 @@ mod tests {
         assert_eq!(oauth.pkce, Some(false));
         assert_eq!(oauth.refresh_token, None);
         assert_eq!(oauth.access_token, None);
+    }
+
+    #[test]
+    fn test_basic_config_from_value_different_types() {
+        let test_config = json!({
+            "string_key": "test_value",
+            "number_key": 42,
+            "bool_key": true,
+            "object_key": {
+                "type": "custom_type"
+            }
+        });
+
+        let configs = ToolConfig::basic_config_from_value(&test_config);
+        
+        assert_eq!(configs.len(), 4);
+
+        // Helper function to find config by key
+        let find_config = |key: &str| {
+            configs.iter().find(|c| {
+                if let ToolConfig::BasicConfig(bc) = c {
+                    bc.key_name == key
+                } else {
+                    false
+                }
+            })
+        };
+
+        // Test string value
+        if let Some(ToolConfig::BasicConfig(string_config)) = find_config("string_key") {
+            assert_eq!(string_config.key_value, Some("test_value".to_string()));
+            assert_eq!(string_config.type_name, Some("string".to_string()));
+        } else {
+            panic!("string_key config not found");
+        }
+
+        // Test number value
+        if let Some(ToolConfig::BasicConfig(number_config)) = find_config("number_key") {
+            assert_eq!(number_config.key_value, Some("42".to_string()));
+            assert_eq!(number_config.type_name, Some("number".to_string()));
+        } else {
+            panic!("number_key config not found");
+        }
+
+        // Test boolean value
+        if let Some(ToolConfig::BasicConfig(bool_config)) = find_config("bool_key") {
+            assert_eq!(bool_config.key_value, Some("true".to_string()));
+            assert_eq!(bool_config.type_name, Some("boolean".to_string()));
+        } else {
+            panic!("bool_key config not found");
+        }
+
+        // Test object value
+        if let Some(ToolConfig::BasicConfig(object_config)) = find_config("object_key") {
+            assert_eq!(object_config.key_value, None);
+            assert_eq!(object_config.type_name, Some("custom_type".to_string()));
+        } else {
+            panic!("object_key config not found");
+        }
     }
 }
