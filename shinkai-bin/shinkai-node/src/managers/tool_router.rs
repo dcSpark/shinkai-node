@@ -9,7 +9,7 @@ use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
-use crate::tools::tool_execution::execution_header_generator::{check_tool_config, generate_execution_environment};
+use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -513,14 +513,14 @@ impl ToolRouter {
                     app_id.clone(),
                     &python_tool.oauth,
                 )
-                .await
-                .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+                .await?;
 
-                check_tool_config(
+                check_tool(
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     python_tool.config.clone(),
-                )
-                .await?;
+                    function_args.clone(),
+                    python_tool.input_args.clone(),
+                )?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -639,14 +639,14 @@ impl ToolRouter {
                     app_id.clone(),
                     &deno_tool.oauth,
                 )
-                .await
-                .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+                .await?;
 
-                check_tool_config(
+                check_tool(
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     deno_tool.config.clone(),
-                )
-                .await?;
+                    function_args.clone(),
+                    deno_tool.input_args.clone(),
+                )?;
 
                 let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
                 let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
@@ -656,23 +656,21 @@ impl ToolRouter {
                 }
                 let mounts = Some(mounts.unwrap_or_default());
 
-                let result = deno_tool
-                    .run(
-                        envs,
-                        node_env.api_listen_address.ip().to_string(),
-                        node_env.api_listen_address.port(),
-                        support_files,
-                        function_args,
-                        function_config_vec,
-                        node_storage_path,
-                        app_id,
-                        tool_id.clone(),
-                        node_name,
-                        false,
-                        Some(tool_id),
-                        mounts,
-                    )
-                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                let result = deno_tool.run(
+                    envs,
+                    node_env.api_listen_address.ip().to_string(),
+                    node_env.api_listen_address.port(),
+                    support_files,
+                    function_args,
+                    function_config_vec,
+                    node_storage_path,
+                    app_id,
+                    tool_id.clone(),
+                    node_name,
+                    false,
+                    Some(tool_id),
+                    mounts,
+                )?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
@@ -1004,11 +1002,12 @@ impl ToolRouter {
         .await
         .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
-        check_tool_config(
+        check_tool(
             shinkai_tool.tool_router_key().clone().to_string_without_version(),
             function_config_vec.clone(),
-        )
-        .await?;
+            function_args.clone(),
+            shinkai_tool.input_args(),
+        )?;
 
         let result = js_tool
             .run(

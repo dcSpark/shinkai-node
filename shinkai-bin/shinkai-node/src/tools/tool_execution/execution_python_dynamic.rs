@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use super::execution_header_generator::{check_tool_config, generate_execution_environment};
+use super::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -63,7 +63,12 @@ pub async fn execute_python_tool(
     )
     .await?;
 
-    check_tool_config("code-execution".to_string(), tool.config.clone()).await?;
+    check_tool(
+        "code-execution".to_string(),
+        tool.config.clone(),
+        parameters.clone(),
+        tool.input_args.clone(),
+    )?;
 
     let node_env = fetch_node_environment();
     let node_storage_path = node_env
