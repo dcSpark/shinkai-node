@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::gemini_api::gemini_prepare_messages;
+use super::shared::openai_api::openai_prepare_messages;
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -24,73 +24,52 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use std::error::Error;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
 #[derive(Debug, Deserialize)]
 struct GeminiStreamingResponse {
-    candidates: Vec<StreamingCandidate>,
-    // #[serde(rename = "usageMetadata")]
-    // usage_metadata: Option<UsageMetadata>,
+    choices: Vec<StreamingChoice>,
+    created: u64,
+    model: String,
+    object: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct StreamingCandidate {
-    content: StreamingContent,
-    #[serde(rename = "finishReason")]
+struct StreamingChoice {
+    delta: StreamingDelta,
+    index: u32,
     finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct StreamingContent {
-    parts: Vec<StreamingPart>,
-    // role: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct StreamingPart {
-    text: String,
+struct StreamingDelta {
+    content: Option<String>,
+    role: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GeminiResponse {
-    candidates: Vec<Candidate>,
-    #[serde(rename = "usageMetadata")]
-    usage_metadata: UsageMetadata,
+    choices: Vec<Choice>,
+    usage: Usage,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Candidate {
-    content: Content,
-    #[serde(rename = "finishReason")]
+struct Choice {
+    message: Message,
     finish_reason: String,
     index: u32,
-    #[serde(rename = "safetyRatings")]
-    safety_ratings: Vec<SafetyRating>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Content {
-    parts: Vec<Part>,
+struct Message {
     role: String,
+    content: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Part {
-    text: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SafetyRating {
-    category: String,
-    probability: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct UsageMetadata {
-    #[serde(rename = "promptTokenCount")]
-    prompt_token_count: u32,
-    #[serde(rename = "candidatesTokenCount")]
-    candidates_token_count: u32,
-    #[serde(rename = "totalTokenCount")]
-    total_token_count: u32,
+struct Usage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    total_tokens: u32,
 }
 
 #[async_trait]
@@ -116,10 +95,10 @@ impl LLMService for Gemini {
                 };
 
                 let session_id = Uuid::new_v4().to_string();
-                let url = format!("{}{}:streamGenerateContent?key={}", base_url, self.model_type, key);
+                let url = format!("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
 
-                let result = gemini_prepare_messages(&model, prompt)?;
-                let contents = match result.messages {
+                let result = openai_prepare_messages(&model, prompt)?;
+                let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
                         return Err(LLMProviderError::UnexpectedPromptResultVariant(
@@ -129,39 +108,13 @@ impl LLMService for Gemini {
                 };
 
                 let mut payload = json!({
-                    "generationConfig": {
-                        "temperature": 0.9,
-                        "topK": 1,
-                        "topP": 1,
-                        "maxOutputTokens": 8192
-                    },
-                    "safety_settings": [
-                        {
-                            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                            "threshold": "BLOCK_NONE"
-                        },
-                        {
-                            "category": "HARM_CATEGORY_HARASSMENT",
-                            "threshold": "BLOCK_NONE"
-                        },
-                        {
-                            "category": "HARM_CATEGORY_HATE_SPEECH",
-                            "threshold": "BLOCK_NONE"
-                        },
-                        {
-                            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                            "threshold": "BLOCK_NONE"
-                        }
-                    ]
+                    "model": self.model_type,
+                    "messages": messages_json,
+                    "max_tokens": result.remaining_output_tokens,
+                    "stream": true,
+                    "temperature": 0.9,
+                    "top_p": 1,
                 });
-
-                if let Some(payload_obj) = payload.as_object_mut() {
-                    if let Some(contents_obj) = contents.as_object() {
-                        for (key, value) in contents_obj {
-                            payload_obj.insert(key.clone(), value.clone());
-                        }
-                    }
-                }
 
                 // Print payload as a pretty JSON string only if IS_TESTING is true
                 if std::env::var("LOG_ALL").unwrap_or_default() == "true"
@@ -176,6 +129,7 @@ impl LLMService for Gemini {
                 let res = client
                     .post(&url)
                     .header("Content-Type", "application/json")
+                    .header("Authorization", format!("Bearer {}", key))
                     .json(&payload)
                     .send()
                     .await?;
@@ -239,71 +193,36 @@ async fn process_chunk(
     finish_reason: &mut Option<String>,
 ) -> Result<(), LLMProviderError> {
     let chunk_str = String::from_utf8_lossy(chunk);
-
-    buffer.push_str(&chunk_str);
-
-    // Remove leading comma or square bracket if they exist
-    if buffer.starts_with(',') || buffer.starts_with('[') {
-        buffer.remove(0);
+    
+    // Check for [DONE] message
+    if chunk_str.contains("[DONE]") {
+        *is_done = true;
+        return Ok(());
     }
 
-    // Remove trailing square bracket if it exists
-    if buffer.ends_with(']') {
-        buffer.pop();
-        *is_done = true; // Set is_done to true if buffer ends with ']'
-    }
+    // Remove "data: " prefix if present
+    let json_str = if chunk_str.starts_with("data: ") {
+        chunk_str.trim_start_matches("data: ").to_string()
+    } else {
+        chunk_str.to_string()
+    };
 
-    // Add a trailing ']' to make it a valid JSON array
-    let json_str = format!("[{}]", buffer);
-
-    match serde_json::from_str::<Vec<JsonValue>>(&json_str) {
-        Ok(array) => {
-            for value in array {
-                process_gemini_response(
-                    value,
-                    response_text,
-                    session_id,
-                    ws_manager_trait,
-                    inbox_name,
-                    is_done,
-                    finish_reason,
-                )
-                .await?;
-            }
-            buffer.clear();
+    // Try to parse the JSON
+    match serde_json::from_str::<JsonValue>(&json_str) {
+        Ok(value) => {
+            process_gemini_response(
+                value,
+                response_text,
+                session_id,
+                ws_manager_trait,
+                inbox_name,
+                is_done,
+                finish_reason,
+            )
+            .await?;
         }
         Err(e) => {
-            eprintln!("Failed to parse JSON array: {:?}", e);
-        }
-    }
-
-    // Check if is_done is true and send a final message if necessary
-    if *is_done {
-        if let Some(ref manager) = ws_manager_trait {
-            if let Some(ref inbox_name) = inbox_name {
-                let m = manager.lock().await;
-                let inbox_name_string = inbox_name.to_string();
-
-                let metadata = WSMetadata {
-                    id: Some(session_id.to_string()),
-                    is_done: *is_done,
-                    done_reason: None,
-                    total_duration: None,
-                    eval_count: None,
-                };
-
-                let ws_message_type = WSMessageType::Metadata(metadata);
-
-                let _ = m
-                    .queue_message(
-                        WSTopic::Inbox,
-                        inbox_name_string.clone(),
-                        response_text.to_string(),
-                        ws_message_type,
-                        true,
-                    )
-                    .await;
-            }
+            eprintln!("Failed to parse JSON: {:?}", e);
         }
     }
 
@@ -320,11 +239,10 @@ async fn process_gemini_response(
     finish_reason: &mut Option<String>,
 ) -> Result<(), LLMProviderError> {
     if let Ok(response) = serde_json::from_value::<GeminiStreamingResponse>(value) {
-        for candidate in &response.candidates {
-            for part in &candidate.content.parts {
-                let content = &part.text;
+        for choice in &response.choices {
+            if let Some(content) = &choice.delta.content {
                 response_text.push_str(content);
-                finish_reason.clone_from(&candidate.finish_reason);
+                finish_reason.clone_from(&choice.finish_reason);
 
                 if let Some(ref manager) = ws_manager_trait {
                     if let Some(ref inbox_name) = inbox_name {
@@ -367,25 +285,15 @@ mod tests {
     #[tokio::test]
     async fn test_process_first_chunk() {
         let chunk = b"[{
-            \"candidates\": [
+            \"choices\": [
                 {
-                    \"content\": {
-                        \"parts\": [
-                            {
-                                \"text\": \"The\"
-                            }
-                        ],
-                        \"role\": \"model\"
+                    \"delta\": {
+                        \"content\": \"The\"
                     },
-                    \"finishReason\": \"STOP\",
+                    \"finish_reason\": \"stop\",
                     \"index\": 0
                 }
-            ],
-            \"usageMetadata\": {
-                \"promptTokenCount\": 41,
-                \"candidatesTokenCount\": 1,
-                \"totalTokenCount\": 42
-            }
+            ]
         }";
 
         let mut buffer = String::new();
@@ -411,50 +319,22 @@ mod tests {
 
         assert_eq!(response_text, "The");
         assert!(!is_done);
-        assert_eq!(finish_reason, Some("STOP".to_string()));
+        assert_eq!(finish_reason, Some("stop".to_string()));
     }
 
     #[tokio::test]
     async fn test_process_second_chunk() {
         let chunk = b",
         {
-            \"candidates\": [
+            \"choices\": [
                 {
-                    \"content\": {
-                        \"parts\": [
-                            {
-                                \"text\": \" Roman Empire was a vast and powerful civilization that dominated much of Europe, North Africa\"
-                            }
-                        ],
-                        \"role\": \"model\"
+                    \"delta\": {
+                        \"content\": \" Roman Empire was a vast and powerful civilization that dominated much of Europe, North Africa\"
                     },
-                    \"finishReason\": \"STOP\",
-                    \"index\": 0,
-                    \"safetyRatings\": [
-                        {
-                            \"category\": \"HARM_CATEGORY_SEXUALLY_EXPLICIT\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        },
-                        {
-                            \"category\": \"HARM_CATEGORY_HATE_SPEECH\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        },
-                        {
-                            \"category\": \"HARM_CATEGORY_HARASSMENT\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        },
-                        {
-                            \"category\": \"HARM_CATEGORY_DANGEROUS_CONTENT\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        }
-                    ]
+                    \"finish_reason\": \"stop\",
+                    \"index\": 0
                 }
-            ],
-            \"usageMetadata\": {
-                \"promptTokenCount\": 41,
-                \"candidatesTokenCount\": 17,
-                \"totalTokenCount\": 58
-            }
+            ]
         }";
 
         let mut buffer = String::new();
@@ -483,50 +363,22 @@ mod tests {
             " Roman Empire was a vast and powerful civilization that dominated much of Europe, North Africa"
         );
         assert!(!is_done);
-        assert_eq!(finish_reason, Some("STOP".to_string()));
+        assert_eq!(finish_reason, Some("stop".to_string()));
     }
 
     #[tokio::test]
     async fn test_process_last_chunk() {
         let chunk = b",
         {
-            \"candidates\": [
+            \"choices\": [
                 {
-                    \"content\": {
-                        \"parts\": [
-                            {
-                                \"text\": \" in greater detail. \\n\"
-                            }
-                        ],
-                        \"role\": \"model\"
+                    \"delta\": {
+                        \"content\": \" in greater detail. \\n\"
                     },
-                    \"finishReason\": \"STOP\",
-                    \"index\": 0,
-                    \"safetyRatings\": [
-                        {
-                            \"category\": \"HARM_CATEGORY_SEXUALLY_EXPLICIT\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        },
-                        {
-                            \"category\": \"HARM_CATEGORY_HATE_SPEECH\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        },
-                        {
-                            \"category\": \"HARM_CATEGORY_HARASSMENT\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        },
-                        {
-                            \"category\": \"HARM_CATEGORY_DANGEROUS_CONTENT\",
-                            \"probability\": \"NEGLIGIBLE\"
-                        }
-                    ]
+                    \"finish_reason\": \"stop\",
+                    \"index\": 0
                 }
-            ],
-            \"usageMetadata\": {
-                \"promptTokenCount\": 15,
-                \"candidatesTokenCount\": 644,
-                \"totalTokenCount\": 659
-            }
+            ]
         }]";
 
         let mut buffer = String::new();
@@ -552,6 +404,6 @@ mod tests {
 
         assert_eq!(response_text, " in greater detail. \n");
         assert!(is_done);
-        assert_eq!(finish_reason, Some("STOP".to_string()));
+        assert_eq!(finish_reason, Some("stop".to_string()));
     }
 }
