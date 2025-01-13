@@ -17,12 +17,39 @@ pub struct OpenAIResponse {
     created: u64,
     pub choices: Vec<Choice>,
     usage: Usage,
+    system_fingerprint: Option<String>,
+    #[serde(rename = "x_groq", default)]
+    groq: Option<GroqInfo>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Choice {
     pub index: i32,
     pub message: OpenAIApiMessage,
+    #[serde(rename = "finish_reason")]
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GroqInfo {
+    id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub call_type: String,
+    pub function: FunctionCall,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAIApiMessage {
+    pub role: String,
+    pub content: Option<MessageContent>,
+    pub function_call: Option<FunctionCall>,
+    #[serde(default)]
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -43,13 +70,6 @@ pub enum MessageContent {
     FunctionCall(FunctionCallResponse),
     Text(String),
     ImageUrl { url: String },
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAIApiMessage {
-    pub role: String,
-    pub content: Option<MessageContent>,
-    pub function_call: Option<FunctionCall>,
 }
 
 impl Serialize for OpenAIApiMessage {
@@ -74,6 +94,14 @@ pub struct Usage {
     prompt_tokens: i32,
     completion_tokens: i32,
     total_tokens: i32,
+    #[serde(default)]
+    queue_time: Option<f64>,
+    #[serde(default)]
+    prompt_time: Option<f64>,
+    #[serde(default)]
+    completion_time: Option<f64>,
+    #[serde(default)]
+    total_time: Option<f64>,
 }
 
 pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
@@ -366,5 +394,89 @@ mod tests {
         } else {
             panic!("Expected text content");
         }
+    }
+
+    #[test]
+    fn test_groq_response_with_tool_calls() {
+        let response_text = r#"{
+            "id": "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc",
+            "object": "chat.completion",
+            "created": 1736736692,
+            "model": "llama-3.2-11b-vision-preview",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "call_sa3n",
+                                "type": "function",
+                                "function": {
+                                    "name": "duckduckgo_search",
+                                    "arguments": "{\"message\": \"best movie 2024\"}"
+                                }
+                            }
+                        ]
+                    },
+                    "logprobs": null,
+                    "finish_reason": "tool_calls"
+                }
+            ],
+            "usage": {
+                "queue_time": 0.018144843999999993,
+                "prompt_tokens": 1185,
+                "prompt_time": 0.077966956,
+                "completion_tokens": 21,
+                "completion_time": 0.028,
+                "total_tokens": 1206,
+                "total_time": 0.105966956
+            },
+            "system_fingerprint": "fp_9cb648b966",
+            "x_groq": {
+                "id": "req_01jhes5nvkedsb8hcw0x912fa6"
+            }
+        }"#;
+
+        let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
+
+        // Verify basic response fields
+        assert_eq!(response.id, "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc");
+        assert_eq!(response.object, "chat.completion");
+        assert_eq!(response.created, 1736736692);
+        assert_eq!(response.system_fingerprint, Some("fp_9cb648b966".to_string()));
+
+        // Verify choices
+        assert_eq!(response.choices.len(), 1);
+        let choice = &response.choices[0];
+        assert_eq!(choice.index, 0);
+        assert_eq!(choice.finish_reason, Some("tool_calls".to_string()));
+
+        // Verify tool calls
+        let message = &choice.message;
+        assert_eq!(message.role, "assistant");
+        assert!(message.content.is_none());
+        
+        let tool_calls = message.tool_calls.as_ref().expect("Should have tool_calls");
+        assert_eq!(tool_calls.len(), 1);
+        
+        let tool_call = &tool_calls[0];
+        assert_eq!(tool_call.id, "call_sa3n");
+        assert_eq!(tool_call.call_type, "function");
+        assert_eq!(tool_call.function.name, "duckduckgo_search");
+        assert_eq!(tool_call.function.arguments, "{\"message\": \"best movie 2024\"}");
+
+        // Verify usage
+        assert_eq!(response.usage.prompt_tokens, 1185);
+        assert_eq!(response.usage.completion_tokens, 21);
+        assert_eq!(response.usage.total_tokens, 1206);
+        assert!(response.usage.queue_time.is_some());
+        assert!(response.usage.prompt_time.is_some());
+        assert!(response.usage.completion_time.is_some());
+        assert!(response.usage.total_time.is_some());
+
+        // Verify Groq info
+        let groq = response.groq.expect("Should have Groq info");
+        assert_eq!(groq.id, "req_01jhes5nvkedsb8hcw0x912fa6");
     }
 }
