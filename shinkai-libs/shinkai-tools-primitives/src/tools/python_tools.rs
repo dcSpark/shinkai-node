@@ -80,6 +80,10 @@ impl PythonTool {
         files_tool_router_key: Option<String>,
         mounts: Option<Vec<String>>,
     ) -> Result<RunResult, ToolError> {
+        // Construct the list of asset files that should be made available to the Python tool.
+        // These files are typically static resources or dependencies that the tool needs to function,
+        // such as model files, configuration files, or other data files. The paths are resolved
+        // relative to the tool's storage directory in the node's filesystem.
         let assets_files = match files_tool_router_key {
             Some(tool_router_key) => {
                 let tool_key = ToolRouterKey::from_string(&tool_router_key)?;

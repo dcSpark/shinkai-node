@@ -103,7 +103,7 @@ impl JobPromptGenerator {
 
             if !additional_files.is_empty() {
                 prompt.add_content(
-                    format!("<current_files>\n{}\n</current_files>\n", additional_files.join("\n")),
+                    format!("<current_files>\n{}\n</current_files>\n", all_files.join("\n")),
                     SubPromptType::ExtraContext,
                     97,
                 );
