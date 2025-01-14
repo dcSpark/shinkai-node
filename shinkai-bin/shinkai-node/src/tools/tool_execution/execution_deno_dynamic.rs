@@ -9,7 +9,7 @@ use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 
-use super::execution_header_generator::{check_tool_config, generate_execution_environment};
+use super::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
@@ -63,7 +63,12 @@ pub async fn execute_deno_tool(
     )
     .await?;
 
-    check_tool_config("code-execution".to_string(), tool.config.clone()).await?;
+    check_tool(
+        "code-execution".to_string(),
+        tool.config.clone(),
+        parameters.clone(),
+        tool.input_args.clone(),
+    )?;
 
     let node_env = fetch_node_environment();
     let node_storage_path = node_env

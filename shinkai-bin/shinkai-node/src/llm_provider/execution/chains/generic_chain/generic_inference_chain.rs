@@ -366,7 +366,7 @@ impl GenericInferenceChain {
             tools.clone(),
             None,
             full_job.job_id.clone(),
-            additional_files,
+            additional_files.clone(),
             node_env.clone(),
             db.clone(),
         );
@@ -410,6 +410,7 @@ impl GenericInferenceChain {
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
                 let mut last_function_response = None;
+                let mut should_retry = false;
 
                 for function_call in response.function_calls {
                     let parsed_message = ParsedUserMessage::new(user_message.clone());
@@ -462,9 +463,55 @@ impl GenericInferenceChain {
                     {
                         Ok(response) => response,
                         Err(e) => {
-                            eprintln!("Error calling function: {:?}", e);
-                            // Handle different error types here if needed
-                            return Err(e);
+                            match &e {
+                                LLMProviderError::ToolRouterError(ref error_msg)
+                                    if error_msg.contains("Invalid function arguments") =>
+                                {
+                                    // For invalid arguments, we'll retry with the LLM by including the error message
+                                    // in the next prompt to help it fix the parameters
+                                    let mut function_call_with_error = function_call.clone();
+                                    function_call_with_error.response = Some(error_msg.clone());
+                                    tool_calls_history.push(function_call_with_error);
+
+                                    // Update prompt with error information for retry
+                                    filled_prompt = JobPromptGenerator::generic_inference_prompt(
+                                        db.clone(),
+                                        custom_system_prompt.clone(),
+                                        custom_prompt.clone(),
+                                        user_message.clone(),
+                                        image_files.clone(),
+                                        ret_nodes.clone(),
+                                        None,
+                                        Some(full_job.step_history.clone()),
+                                        tools.clone(),
+                                        Some(ToolCallFunctionResponse {
+                                            function_call: function_call.clone(),
+                                            response: error_msg.clone(),
+                                        }),
+                                        full_job.job_id.clone(),
+                                        additional_files.clone(),
+                                        node_env.clone(),
+                                        db.clone(),
+                                    );
+
+                                    // Set flag to retry and break out of the function calls loop
+                                    iteration_count += 1;
+                                    should_retry = true;
+                                    break;
+                                }
+                                LLMProviderError::ToolRouterError(ref error_msg)
+                                    if error_msg.contains("MissingConfigError") =>
+                                {
+                                    // For missing config, we'll pass through the error directly
+                                    // This will show up in the UI prompting the user to update their config
+                                    eprintln!("Missing config error: {:?}", error_msg);
+                                    return Err(e);
+                                }
+                                _ => {
+                                    eprintln!("Error calling function: {:?}", e);
+                                    return Err(e);
+                                }
+                            }
                         }
                     };
 
@@ -494,6 +541,11 @@ impl GenericInferenceChain {
                     merged_fs_files_paths.clone(),
                     merged_fs_folder_paths.clone(),
                 )?;
+
+                // If we need to retry, continue the outer loop
+                if should_retry {
+                    continue;
+                }
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
