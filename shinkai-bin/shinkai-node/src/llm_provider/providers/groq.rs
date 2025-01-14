@@ -56,12 +56,50 @@ impl LLMService for Groq {
                     }
                 };
 
+                // Extract tools_json from the result and keep original for matching
+                let tools_json = result.functions.clone().unwrap_or_else(Vec::new);
+                let original_tools = tools_json.clone(); // Keep original for matching
+
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     // "max_tokens": result.remaining_tokens,
                     "stream": is_stream,
                 });
+
+                // Add tools to payload if they exist, but remove tool_router_key
+                if !tools_json.is_empty() {
+                    let tools: Vec<JsonValue> = tools_json.iter().map(|tool| {
+                        let mut function = tool.clone();
+                        if let Some(obj) = function.as_object_mut() {
+                            obj.remove("tool_router_key");
+                        }
+                        json!({
+                            "type": "function",
+                            "function": function
+                        })
+                    }).collect();
+                    payload["tools"] = serde_json::Value::Array(tools);
+                    payload["tool_choice"] = json!("auto");
+                }
+
+                // Clean up message content if needed
+                if let Some(messages) = payload.get_mut("messages") {
+                    if let Some(messages_array) = messages.as_array_mut() {
+                        for message in messages_array {
+                            if let Some(content) = message.get_mut("content") {
+                                if let Some(content_array) = content.as_array() {
+                                    // If content is an array with a single text element, simplify it
+                                    if content_array.len() == 1 {
+                                        if let Some(text_obj) = content_array[0].get("text") {
+                                            *content = text_obj.clone();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Add options to payload
                 add_options_to_payload(&mut payload, config.as_ref());
@@ -82,10 +120,10 @@ impl LLMService for Groq {
                         payload,
                         key.clone(),
                         inbox_name,
-                        ws_manager_trait,
+                        ws_manager_trait.clone(),
                         llm_stopper,
                         session_id,
-                        result.functions,
+                        Some(original_tools), // Pass original tools with router keys
                     )
                     .await
                 } else {
@@ -96,7 +134,8 @@ impl LLMService for Groq {
                         key.clone(),
                         inbox_name,
                         llm_stopper,
-                        result.functions,
+                        ws_manager_trait.clone(),
+                        Some(original_tools), // Pass original tools with router keys
                     )
                     .await
                 }
@@ -209,38 +248,46 @@ async fn handle_streaming_response(
                                                 if let Some(content) = delta.get("content") {
                                                     response_text.push_str(content.as_str().unwrap_or(""));
                                                 }
-                                                if let Some(fc) = delta.get("function_call") {
-                                                    if let Some(name) = fc.get("name") {
-                                                        let fc_arguments = fc
-                                                            .get("arguments")
-                                                            .and_then(|args| args.as_str())
-                                                            .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                                            .and_then(|args_value: serde_json::Value| {
-                                                                args_value.as_object().cloned()
-                                                            })
-                                                            .unwrap_or_else(|| serde_json::Map::new());
+                                                if let Some(fc) = delta.get("tool_calls") {
+                                                    if let Some(tool_calls_array) = fc.as_array() {
+                                                        for tool_call in tool_calls_array {
+                                                            if let Some(function) = tool_call.get("function") {
+                                                                if let Some(name) = function.get("name") {
+                                                                    let fc_arguments = function
+                                                                        .get("arguments")
+                                                                        .and_then(|args| args.as_str())
+                                                                        .and_then(|args_str| serde_json::from_str(args_str).ok())
+                                                                        .and_then(|args_value: serde_json::Value| {
+                                                                            args_value.as_object().cloned()
+                                                                        })
+                                                                        .unwrap_or_else(|| serde_json::Map::new());
 
-                                                        // Search for the tool_router_key in the tools array
-                                                        let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                                            tools_array.iter().find_map(|tool| {
-                                                                if tool.get("name")?.as_str()?
-                                                                    == name.as_str().unwrap_or("")
-                                                                {
-                                                                    tool.get("tool_router_key").and_then(|key| {
-                                                                        key.as_str().map(|s| s.to_string())
-                                                                    })
-                                                                } else {
-                                                                    None
+                                                                    // Search for the tool_router_key in the tools array
+                                                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                                                        tools_array.iter().find_map(|tool| {
+                                                                            if let Some(function) = tool.get("function") {
+                                                                                if function.get("name")?.as_str()? == name.as_str().unwrap_or("") {
+                                                                                    function.get("tool_router_key").and_then(|key| {
+                                                                                        key.as_str().map(|s| s.to_string())
+                                                                                    })
+                                                                                } else {
+                                                                                    None
+                                                                                }
+                                                                            } else {
+                                                                                None
+                                                                            }
+                                                                        })
+                                                                    });
+
+                                                                    function_calls.push(FunctionCall {
+                                                                        name: name.as_str().unwrap_or("").to_string(),
+                                                                        arguments: fc_arguments.clone(),
+                                                                        tool_router_key,
+                                                                        response: None,
+                                                                    });
                                                                 }
-                                                            })
-                                                        });
-
-                                                        function_calls.push(FunctionCall {
-                                                            name: name.as_str().unwrap_or("").to_string(),
-                                                            arguments: fc_arguments.clone(),
-                                                            tool_router_key,
-                                                            response: None,
-                                                        });
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -349,7 +396,8 @@ async fn handle_non_streaming_response(
     api_key: String,
     inbox_name: Option<InboxName>,
     llm_stopper: Arc<LLMStopper>,
-    tools: Option<Vec<JsonValue>>, // Add tools parameter
+    ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    tools: Option<Vec<JsonValue>>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
@@ -418,38 +466,50 @@ async fn handle_non_streaming_response(
                             .collect::<Vec<String>>()
                             .join(" ");
 
-                        let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
-                            choice.message.function_call.clone().map(|fc| {
-                                let arguments = serde_json::from_str::<serde_json::Value>(&fc.arguments)
-                                    .ok()
-                                    .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                    .unwrap_or_else(|| serde_json::Map::new());
+                        let function_calls: Vec<FunctionCall> = data.choices.iter().flat_map(|choice| {
+                            let mut calls = Vec::new();
+                            
+                            // Handle tool_calls
+                            if let Some(tool_calls) = &choice.message.tool_calls {
+                                for tool_call in tool_calls {
+                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
+                                        .ok()
+                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                        .unwrap_or_else(|| serde_json::Map::new());
 
-                                // Search for the tool_router_key in the tools array
-                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                    tools_array.iter().find_map(|tool| {
-                                        if tool.get("name")?.as_str()? == fc.name {
-                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                });
+                                    // Find matching tool and extract router key
+                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                        tools_array.iter().find_map(|tool| {
+                                            if let Some(name) = tool.get("name").and_then(|n| n.as_str()) {
+                                                if name == tool_call.function.name {
+                                                    tool.get("tool_router_key")
+                                                        .and_then(|key| key.as_str())
+                                                        .map(|s| s.to_string())
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    });
 
-                                FunctionCall {
-                                    name: fc.name,
-                                    arguments,
-                                    tool_router_key, // Set the tool_router_key
-                                    response: None,
+                                    calls.push(FunctionCall {
+                                        name: tool_call.function.name.clone(),
+                                        arguments,
+                                        tool_router_key,
+                                        response: None,
+                                    });
                                 }
-                            })
-                        });
-                        eprintln!("Function Call: {:?}", function_call);
-                        eprintln!("Response String: {:?}", response_string);
+                            }
+
+                            calls
+                        }).collect();
+
                         return Ok(LLMInferenceResponse::new(
                             response_string,
                             json!({}),
-                            function_call.map_or_else(Vec::new, |fc| vec![fc]),
+                            function_calls,
                             None,
                         ));
                     }

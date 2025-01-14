@@ -140,6 +140,7 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(tool_implementation_code_update_handler);
 
+    // Resolves shinkai://file URLs to actual file bytes, providing secure access to files in the node's storage
     let resolve_shinkai_file_protocol_route = warp::path("resolve_shinkai_file_protocol")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -1027,8 +1028,6 @@ pub async fn code_execution_handler(
     payload: CodeExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
-
-    eprintln!("payload: {:?}", payload);
 
     // Convert parameters to a Map if it isn't already
     let parameters = match payload.parameters {

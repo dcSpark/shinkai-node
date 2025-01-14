@@ -107,7 +107,7 @@ pub fn groq_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Re
 
     Ok(PromptResult {
         messages: PromptResultEnum::Value(messages_json),
-        functions: None,
+        functions: result.functions,
         remaining_output_tokens: result.remaining_output_tokens,
         tokens_used: result.tokens_used,
     })
