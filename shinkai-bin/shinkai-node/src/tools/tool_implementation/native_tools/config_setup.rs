@@ -33,15 +33,15 @@ impl ConfigSetupTool {
             tool: ShinkaiToolHeader {
                 name: "Shinkai Tool Config Updater".to_string(),
                 toolkit_name: "shinkai_custom".to_string(),
-                description: r#"Tool for updating the configuration of a ShinkaiTool. 
-This tool allows you to update the config field of a tool by providing the tool key and configuration values.
+                description: r#"Tool for updating the configuration of a tool. 
+This tool allows you to update config fields of a tool by providing the tool_router_key and config key-value pairs.
 
 Example usage:
 {
-    "tool_key": "local:::deno_toolkit:::my_tool",
+    "tool_router_key": "local:::deno_toolkit:::my_tool",
     "config": {
-            "api_key": "your-api-key-here",
-            "api_secret": "your-api-secret-here"
+            "api_key": "some-api-key",
+            "api_secret": "some-api-secret"
     }
 }"#.to_string(),
                 tool_router_key: "local:::rust_toolkit:::shinkai_tool_config_updater".to_string(),
@@ -52,7 +52,7 @@ Example usage:
                 enabled: true,
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("tool_key".to_string(), "string".to_string(), "The tool_router_key of the tool to update".to_string(), true);
+                    params.add_property("tool_router_key".to_string(), "string".to_string(), "The tool_router_key of the tool to update".to_string(), true);
                     params.add_property("config".to_string(), "object".to_string(), "Configuration key-value pairs to update".to_string(), true);
                     params
                 },
@@ -69,13 +69,13 @@ Example usage:
 }
 
 async fn config_update(
-    tool_key: String,
+    tool_router_key: String,
     config: &Map<String, Value>,
     db_clone: Arc<SqliteManager>,
 ) -> Result<Value, ToolError> {
     // Get the existing tool
     let mut tool = db_clone
-        .get_tool_by_key(&tool_key)
+        .get_tool_by_key(&tool_router_key)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool by key: {}", e)))?;
 
     let mut update_count = 0;
@@ -127,12 +127,12 @@ async fn config_update(
 
     Ok(json!({
         "success": true,
-        "message": format!("Successfully updated config for tool {}", tool_key)
+        "message": format!("Successfully updated config for tool {}", tool_router_key)
     }))
 }
 
-async fn select_tool_key_from_intent(
-    tool_key: String,
+async fn select_tool_router_key_from_intent(
+    tool_router_key: String,
     bearer: String,
     tool_id: String,
     app_id: String,
@@ -160,7 +160,7 @@ async fn select_tool_key_from_intent(
         let tool_config = tool.get_config();
         if tool_config.len() > 0 {
             list_of_tools.push_str(&format!(
-                "#{} tool-key: {} ; tool-description: {} ; tool-config-keys: {} ;\n ",
+                "#{} tool_router_key: {} ; tool_description: {} ; tool_config_keys: {} ;\n ",
                 tool_config.len() + 1,
                 tool.tool_router_key().to_string_without_version(),
                 tool.description(),
@@ -186,11 +186,11 @@ async fn select_tool_key_from_intent(
 </tools>
 
 <instruction>
-* 'tool-key' have the following format: 'aaa:::bbb:::ccc', exactly 3 sections separated by three triple colons ':::' exactly as above.
+* 'tool_router_key' have the following format: 'aaa:::bbb:::ccc', exactly 3 sections separated by three triple colons ':::' exactly as above.
 * The intent tag has a command name that tries to target one of the tools listed above.
-* Select the 'tool-key' of the most relevant tool to update given the user intent tag.
-* IMPORTANT: Select and write a complete 'tool-key' name, and no other text.
-* IMPORTANT: The 'tool-key' must be exactly as listed above, with no additional text, changes, or formatting.
+* Select the 'tool_router_key' of the most relevant tool to update given the user intent tag.
+* IMPORTANT: Select and write a complete 'tool_router_key' name, and no other text.
+* IMPORTANT: The 'tool_router_key' must be exactly as listed above, with no additional text, changes, or formatting.
 </instruction>
 
 <intent>
@@ -198,7 +198,7 @@ async fn select_tool_key_from_intent(
 </intent>
 ",
             list_of_tools,
-            tool_key,
+            tool_router_key,
             config
                 .into_iter()
                 .map(|(k, v)| format!("{}: {}", k, v))
@@ -222,14 +222,14 @@ async fn select_tool_key_from_intent(
     )
     .await?;
 
-    let tool_key = result.get("message").and_then(|v| v.as_str()).unwrap_or("");
-    println!("found tool_key: {}", tool_key);
+    let tool_router_key = result.get("message").and_then(|v| v.as_str()).unwrap_or("");
+    println!("found tool_router_key: {}", tool_router_key);
 
     // Extract tool key with format aaa:::bbb:::ccc using regex
     let re = regex::Regex::new(r"[-\w]*:::[-\w]*:::[-\w]*").unwrap();
-    let tool_key = re.find(tool_key).map(|m| m.as_str()).unwrap_or(tool_key);
+    let tool_router_key = re.find(tool_router_key).map(|m| m.as_str()).unwrap_or(tool_router_key);
     let tool = db
-        .get_tool_by_key(&tool_key)
+        .get_tool_by_key(&tool_router_key)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool by key: {}", e)))?;
 
     let real_config = tool.get_config();
@@ -240,9 +240,9 @@ async fn select_tool_key_from_intent(
     });
     let message = format!(
         "The tool function command was NOT applied. To apply it, call tool 'Shinkai Tool Config Updater' again with the following parameters:
-'tool-key': {}
+'tool_router_key': {}
 'config': {}",
-        tool_key, real_config_keys
+        tool_router_key, real_config_keys
     );
     println!("Retry prompt message: {}", message);
     Ok(message)
@@ -264,10 +264,10 @@ impl ToolExecutor for ConfigSetupTool {
         parameters: &Map<String, Value>,
         llm_provider: String,
     ) -> Result<Value, ToolError> {
-        let tool_key = parameters
-            .get("tool_key")
+        let tool_router_key = parameters
+            .get("tool_router_key")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::ExecutionError("tool_key parameter is required".to_string()))?;
+            .ok_or_else(|| ToolError::ExecutionError("tool_router_key parameter is required".to_string()))?;
 
         let config: &Map<String, Value> = parameters.get("config").and_then(|v| v.as_object()).ok_or_else(|| {
             ToolError::ExecutionError("config parameter is required and must be an object".to_string())
@@ -275,14 +275,14 @@ impl ToolExecutor for ConfigSetupTool {
 
         // Try to update the tool config,
         // If it fails, we will try to find the tool key using the LLM
-        let result = config_update(tool_key.to_string(), config, db.clone()).await;
+        let result = config_update(tool_router_key.to_string(), config, db.clone()).await;
         if result.is_ok() {
             return result;
         }
 
         // If it fails, we will try to find the tool key using the LLM
-        let message = select_tool_key_from_intent(
-            tool_key.to_string(),
+        let message = select_tool_router_key_from_intent(
+            tool_router_key.to_string(),
             bearer,
             tool_id,
             app_id,
@@ -298,12 +298,11 @@ impl ToolExecutor for ConfigSetupTool {
         )
         .await?;
 
-        // Respond OK with message:
-        Ok(json!({
-            "message": message
-        }))
-        // Or respond with error with message:
-        // Err(ToolError::ExecutionError(message))
+        // NOTE: "Invalid function arguments" makes the LLM Retry
+        Err(ToolError::ExecutionError(format!(
+            "[Invalid function arguments] {}",
+            message
+        )))
     }
 }
 
@@ -389,7 +388,7 @@ mod tests {
 
         // Create a test Deno tool with initial config
         let initial_tool = create_deno_tool();
-        let tool_key = initial_tool
+        let tool_router_key = initial_tool
             .tool_router_key()
             .to_string_without_version()
             .to_lowercase();
@@ -399,15 +398,15 @@ mod tests {
 
         // Create parameters for config update
         let mut parameters = Map::new();
-        parameters.insert("tool_key".to_string(), json!(tool_key));
+        parameters.insert("tool_router_key".to_string(), json!(tool_router_key));
         parameters.insert("config".to_string(), json!({"api_key": "new_key"}));
 
         let config = parameters.get("config").unwrap().as_object().unwrap();
-        let result = config_update(tool_key.clone(), config, db.clone()).await;
+        let result = config_update(tool_router_key.clone(), config, db.clone()).await;
         assert!(result.is_ok());
 
         // Verify the config was updated
-        let updated_tool = db.get_tool_by_key(&tool_key).unwrap();
+        let updated_tool = db.get_tool_by_key(&tool_router_key).unwrap();
         match updated_tool {
             ShinkaiTool::Deno(deno_tool, _) => {
                 assert_eq!(deno_tool.config.len(), 2);
@@ -435,7 +434,7 @@ mod tests {
 
         // Create a test Deno tool with initial config
         let initial_tool = create_deno_tool();
-        let tool_key = initial_tool
+        let tool_router_key = initial_tool
             .tool_router_key()
             .to_string_without_version()
             .to_lowercase();
@@ -445,11 +444,11 @@ mod tests {
 
         // Create parameters for config update with non-existent field
         let mut parameters = Map::new();
-        parameters.insert("tool_key".to_string(), json!(tool_key));
+        parameters.insert("tool_router_key".to_string(), json!(tool_router_key));
         parameters.insert("config".to_string(), json!({"non_existent_field": "some_value"}));
 
         let config = parameters.get("config").unwrap().as_object().unwrap();
-        let result = config_update(tool_key.clone(), config, db.clone()).await;
+        let result = config_update(tool_router_key.clone(), config, db.clone()).await;
         assert!(result.is_err());
         if let Err(error) = result {
             assert!(error.to_string().contains("No config fields were updated"));
