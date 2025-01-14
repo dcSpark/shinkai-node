@@ -4,10 +4,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 use crate::tools::error::ToolError;
+use crate::tools::shared_execution::get_files_after_with_protocol;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
+use shinkai_tools_runner::tools::execution_error::ExecutionError;
 use shinkai_tools_runner::tools::python_runner::PythonRunner;
 use shinkai_tools_runner::tools::python_runner_options::PythonRunnerOptions;
 use shinkai_tools_runner::tools::run_result::RunResult;
@@ -165,7 +167,7 @@ impl PythonTool {
         let py_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
         py_tool_thread
             .spawn(move || {
-                fn print_result(result: &Result<RunResult, ToolError>) {
+                fn print_result(result: &Result<RunResult, ExecutionError>) {
                     match result {
                         Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
                         Err(e) => println!("[Running DenoTool] Error: {:?}", e),
@@ -267,21 +269,30 @@ impl PythonTool {
                     // Run the tool with DENO
                     let result = tool
                         .run(Some(envs), serde_json::Value::Object(parameters.clone()), None)
-                        .await
-                        .map_err(|e| ToolError::ExecutionError(e.to_string()));
+                        .await;
                     print_result(&result);
 
-                    if result.is_err() {
-                        return result;
+                    match result {
+                        Ok(result) => {
+                            return update_result_with_modified_files(
+                                result, start_time, &home_path, &logs_path, &node_name, &app_id,
+                            )
+                        }
+                        Err(e) => {
+                            let files =
+                                get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
+                                    .into_iter()
+                                    .map(|file| file.to_string())
+                                    .collect::<Vec<String>>()
+                                    .join(" ");
+
+                            return Err(ToolError::ExecutionError(format!(
+                                "Error: {}. Files: {}",
+                                e.message().to_string(),
+                                files
+                            )));
+                        }
                     }
-                    update_result_with_modified_files(
-                        result.unwrap(),
-                        start_time,
-                        &home_path,
-                        &logs_path,
-                        &node_name,
-                        &app_id,
-                    )
                 })
             })
             .unwrap()

@@ -96,6 +96,22 @@ fn get_files_after(start_time: u64, files: Vec<DirEntry>) -> Vec<(String, u64)> 
         .collect()
 }
 
+pub fn get_files_after_with_protocol(
+    start_time: u64,
+    home_path: &PathBuf,
+    logs_path: &PathBuf,
+    node_name: &ShinkaiName,
+    app_id: &str,
+) -> Vec<serde_json::Value> {
+    get_files_after(
+        start_time,
+        get_files_in_directories(vec![home_path, logs_path]).unwrap_or_default(),
+    )
+    .into_iter()
+    .map(|(name, _)| serde_json::Value::String(convert_to_shinkai_file_protocol(&node_name, &name, &app_id)))
+    .collect()
+}
+
 pub fn update_result_with_modified_files(
     result: RunResult,
     start_time: u64,
@@ -105,20 +121,10 @@ pub fn update_result_with_modified_files(
     app_id: &str,
 ) -> Result<RunResult, ToolError> {
     if let serde_json::Value::Object(ref mut data) = result.clone().data {
-        let modified_files = get_files_after(
-            start_time,
-            get_files_in_directories(vec![home_path, logs_path]).unwrap_or_default(),
-        );
+        let modified_files = get_files_after_with_protocol(start_time, home_path, logs_path, node_name, app_id);
         data.insert(
             "__created_files__".to_string(),
-            serde_json::Value::Array(
-                modified_files
-                    .into_iter()
-                    .map(|(name, _)| {
-                        serde_json::Value::String(convert_to_shinkai_file_protocol(&node_name, &name, &app_id))
-                    })
-                    .collect(),
-            ),
+            serde_json::Value::Array(modified_files),
         );
         Ok(RunResult {
             data: serde_json::Value::Object(data.clone()),
