@@ -525,8 +525,8 @@ impl ToolRouter {
                 let job_scope = context.full_job().scope();
                 let mut mounts = vec![];
                 job_scope.vector_fs_items.iter().for_each(|path| {
-                    let file_path = format!("{:?}", fs::canonicalize(path.path.clone()).unwrap_or_default());
-                    mounts.push(file_path.replace("\"", ""));
+                    let file_path = fs::canonicalize(path.path.clone()).unwrap_or_default();
+                    mounts.push(file_path.display().to_string());
                 });
 
                 // let job_id = context.full_job().job_id().to_string();
@@ -664,8 +664,8 @@ impl ToolRouter {
                 let job_scope = context.full_job().scope();
                 let mut mounts = vec![];
                 job_scope.vector_fs_items.iter().for_each(|path| {
-                    let file_path = format!("{:?}", fs::canonicalize(path.path.clone()).unwrap_or_default());
-                    mounts.push(file_path.replace("\"", ""));
+                    let file_path = fs::canonicalize(path.path.clone()).unwrap_or_default();
+                    mounts.push(file_path.display().to_string());
                 });
 
                 // let mut merged_fs_files_paths = fs_files_paths.clone();

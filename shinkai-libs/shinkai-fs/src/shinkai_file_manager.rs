@@ -152,9 +152,9 @@ impl ShinkaiFileManager {
         files
             .iter()
             .map(|path| {
-                let folder_path = fs::canonicalize(folder.clone()).unwrap_or_default();
-                format!("{}/{}", folder_path.to_string_lossy().replace("\"", ""), path.clone())
-                // TODO THIS IS BAD
+                let file_path = folder.clone().join(path);
+                let full_path = fs::canonicalize(file_path).unwrap_or_default();
+                full_path.display().to_string()
             })
             .collect()
     }
@@ -165,12 +165,10 @@ impl ShinkaiFileManager {
     ) -> Result<Vec<String>, ShinkaiFsError> {
         let mut all_files = Vec::new();
         all_files.extend(files.iter().map(|file| {
-            format!(
-                "{:?}",
-                fs::canonicalize(file.path.clone())
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            )
+            fs::canonicalize(file.path.clone())
+                .unwrap_or_default()
+                .display()
+                .to_string()
         }));
 
         // Recursively get all files from folders using a helper function
@@ -212,10 +210,16 @@ impl ShinkaiFileManager {
         all_files.extend(scope_files);
         all_files.extend(job_files);
 
-        Ok(all_files
+        let base_path = ShinkaiPath::base_path();
+        let files = all_files
             .into_iter()
-            .map(|file| format!("{}", fs::canonicalize(file.path).unwrap_or_default().to_string_lossy()))
-            .collect())
+            .map(|file| {
+                let p = base_path.clone().join(file.path);
+                fs::canonicalize(p).unwrap_or_default().display().to_string()
+            })
+            .collect();
+
+        Ok(files)
     }
 
     fn get_all_files_and_folders_for_job_scope(

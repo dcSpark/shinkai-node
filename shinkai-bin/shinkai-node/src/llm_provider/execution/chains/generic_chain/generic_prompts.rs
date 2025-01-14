@@ -94,14 +94,16 @@ impl JobPromptGenerator {
                     priority = priority.saturating_sub(1);
                 }
             }
-
-            let file_in_scope = (ShinkaiFileManager::get_absolute_path_for_job_scope(&db, &job_id));
-            let mut all_files = additional_files.clone();
-            if let Ok(file_in_scope) = file_in_scope {
-                all_files.extend(file_in_scope);
+            let mut all_files = vec![];
+            // Add job scope files
+            let job_scope = ShinkaiFileManager::get_absolute_path_for_job_scope(&db, &job_id);
+            if let Ok(job_scope) = job_scope {
+                all_files.extend(job_scope);
             }
+            // Add fs files and Agent files
+            all_files.extend(additional_files);
 
-            if !additional_files.is_empty() {
+            if !all_files.is_empty() {
                 prompt.add_content(
                     format!("<current_files>\n{}\n</current_files>\n", all_files.join("\n")),
                     SubPromptType::ExtraContext,
