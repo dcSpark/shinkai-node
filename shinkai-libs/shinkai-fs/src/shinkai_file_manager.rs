@@ -202,9 +202,12 @@ impl ShinkaiFileManager {
         sqlite_manager: &SqliteManager,
         job_id: &str,
     ) -> Result<Vec<String>, SqliteManagerError> {
-        let scope_files = Self::get_all_files_and_folders_for_job_scope(sqlite_manager, job_id)?;
-        let job_files = Self::get_all_files_and_folders_for_job(job_id, sqlite_manager)
-            .map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
+        let scope_files = Self::get_all_files_and_folders_for_job_scope(sqlite_manager, job_id);
+        let job_files = Self::get_all_files_and_folders_for_job(job_id, sqlite_manager);
+
+        // Skipping erros as folders might not exist, and this is OK.
+        let scope_files = scope_files.unwrap_or_default();
+        let job_files = job_files.unwrap_or_default();
 
         let mut all_files = Vec::new();
         all_files.extend(scope_files);
