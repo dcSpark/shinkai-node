@@ -282,7 +282,7 @@ impl PythonTool {
                             let files =
                                 get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
                                     .into_iter()
-                                    .map(|file| file.to_string())
+                                    .map(|file| file.as_str().unwrap_or_default().to_string())
                                     .collect::<Vec<String>>()
                                     .join(" ");
 

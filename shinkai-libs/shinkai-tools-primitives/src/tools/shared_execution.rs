@@ -24,12 +24,13 @@ pub fn convert_to_shinkai_file_protocol(node_name: &ShinkaiName, path: &str, app
         current_path == Path::new("tools_storage")
     }) {
         // Get all components after "tools_storage"
-        if let Some(relative_path) = path_buf
+        let relative_path = path_buf
             .components()
             .skip(position.0)
             .skip(2)
             .collect::<PathBuf>()
-            .to_str()
+            .display()
+            .to_string();
         {
             // Construct the shinkai URL with forward slashes regardless of platform
             return format!(
