@@ -17,6 +17,7 @@ use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
@@ -345,20 +346,13 @@ impl GenericInferenceChain {
                 }
             });
 
-        let mut additional_files: Vec<String> = vec![];
-        let f = ShinkaiFileManager::get_absolute_path_for_additional_files(
+        let additional_files = Self::get_additional_files(
+            &db,
+            &full_job,
+            job_filenames.clone(),
             merged_fs_files_paths.clone(),
             merged_fs_folder_paths.clone(),
         )?;
-        additional_files.extend(f);
-        let folder_path: Result<ShinkaiPath, shinkai_sqlite::errors::SqliteManagerError> =
-            db.get_job_folder_name(&full_job.job_id.clone());
-        if let Ok(folder_path) = folder_path {
-            additional_files.extend(ShinkaiFileManager::get_absolute_paths_with_folder(
-                job_filenames.clone(),
-                folder_path.path.clone(),
-            ));
-        }
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
@@ -493,20 +487,13 @@ impl GenericInferenceChain {
                     last_function_response = Some(function_response);
                 }
 
-                let mut additional_files: Vec<String> = vec![];
-                let f = ShinkaiFileManager::get_absolute_path_for_additional_files(
+                let additional_files = Self::get_additional_files(
+                    &db,
+                    &full_job,
+                    job_filenames.clone(),
                     merged_fs_files_paths.clone(),
                     merged_fs_folder_paths.clone(),
                 )?;
-                additional_files.extend(f);
-                let folder_path: Result<ShinkaiPath, shinkai_sqlite::errors::SqliteManagerError> =
-                    db.get_job_folder_name(&full_job.job_id.clone());
-                if let Ok(folder_path) = folder_path {
-                    additional_files.extend(ShinkaiFileManager::get_absolute_paths_with_folder(
-                        job_filenames.clone(),
-                        folder_path.path.clone(),
-                    ));
-                }
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
@@ -601,5 +588,33 @@ impl GenericInferenceChain {
                     .await;
             }
         }
+    }
+
+    fn get_additional_files(
+        db: &SqliteManager,
+        full_job: &Job,
+        job_filenames: Vec<String>,
+        merged_fs_files_paths: Vec<ShinkaiPath>,
+        merged_fs_folder_paths: Vec<ShinkaiPath>,
+    ) -> Result<Vec<String>, ShinkaiFsError> {
+        let mut additional_files: Vec<String> = vec![];
+        // Get agent/context files
+        let f = ShinkaiFileManager::get_absolute_path_for_additional_files(
+            merged_fs_files_paths.clone(),
+            merged_fs_folder_paths.clone(),
+        )?;
+        additional_files.extend(f);
+
+        // Get Job files
+        let folder_path: Result<ShinkaiPath, shinkai_sqlite::errors::SqliteManagerError> =
+            db.get_job_folder_name(&full_job.job_id.clone());
+
+        if let Ok(folder_path) = folder_path {
+            additional_files.extend(ShinkaiFileManager::get_absolute_paths_with_folder(
+                job_filenames.clone(),
+                folder_path.path.clone(),
+            ));
+        }
+        Ok(additional_files)
     }
 }
