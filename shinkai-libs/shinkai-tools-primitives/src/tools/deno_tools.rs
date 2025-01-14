@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 use super::parameters::Parameters;
-use super::tool_config::{OAuth, ToolConfig};
+use super::tool_config::{BasicConfig, OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::error::ToolError;
@@ -431,6 +431,7 @@ impl ToolResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_deserialize_jstool_result_with_hashmap_properties() {
@@ -471,6 +472,217 @@ mod tests {
             assert_eq!(address.get("nullable").and_then(|v| v.as_bool()), Some(true));
         } else {
             panic!("address property missing");
+        }
+    }
+
+    #[test]
+    fn test_deserialize_deno_tool() {
+        let json_data = r#"{
+            "author": "Shinkai",
+            "config": [
+                {
+                    "BasicConfig": {
+                        "description": "",
+                        "key_name": "name",
+                        "key_value": null,
+                        "required": true
+                    }
+                },
+                {
+                    "BasicConfig": {
+                        "description": "",
+                        "key_name": "privateKey",
+                        "key_value": null,
+                        "required": true
+                    }
+                },
+                {
+                    "BasicConfig": {
+                        "description": "",
+                        "key_name": "useServerSigner",
+                        "key_value": null,
+                        "required": false
+                    }
+                }
+            ],
+            "description": "Tool for creating a Coinbase wallet",
+            "input_args": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+            },
+            "name": "Coinbase Wallet Creator",
+            "output_arg": {
+                "json": ""
+            },
+            "toolkit_name": "deno-toolkit",
+            "version": "1.0.0",
+            "js_code": "",
+            "keywords": [],
+            "activated": false,
+            "result": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }"#;
+
+        let deserialized: DenoTool = serde_json::from_str(json_data).expect("Failed to deserialize DenoTool");
+
+        assert_eq!(deserialized.author, "Shinkai");
+        assert_eq!(deserialized.name, "Coinbase Wallet Creator");
+        assert_eq!(deserialized.toolkit_name, "deno-toolkit");
+        assert_eq!(deserialized.version, "1.0.0");
+        assert_eq!(deserialized.description, "Tool for creating a Coinbase wallet");
+        
+        // Verify config entries
+        assert_eq!(deserialized.config.len(), 3);
+        if let ToolConfig::BasicConfig(config) = &deserialized.config[0] {
+            assert_eq!(config.key_name, "name");
+            assert!(config.required);
+        }
+        if let ToolConfig::BasicConfig(config) = &deserialized.config[1] {
+            assert_eq!(config.key_name, "privateKey");
+            assert!(config.required);
+        }
+        if let ToolConfig::BasicConfig(config) = &deserialized.config[2] {
+            assert_eq!(config.key_name, "useServerSigner");
+            assert!(!config.required);
+        }
+    }
+
+    #[test]
+    fn test_email_fetcher_tool_config() {
+        let tool = DenoTool {
+            toolkit_name: "deno-toolkit".to_string(),
+            name: "Email Fetcher".to_string(),
+            author: "Shinkai".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Fetches emails from an IMAP server".to_string(),
+            keywords: vec!["email".to_string(), "imap".to_string()],
+            js_code: "".to_string(),
+            tools: vec![],
+            config: vec![
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "imap_server".to_string(),
+                    description: "The IMAP server address".to_string(),
+                    required: true,
+                    type_name: Some("string".to_string()),
+                    key_value: None,
+                }),
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "username".to_string(),
+                    description: "The username for the IMAP account".to_string(),
+                    required: true,
+                    type_name: Some("string".to_string()),
+                    key_value: None,
+                }),
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "password".to_string(),
+                    description: "The password for the IMAP account".to_string(),
+                    required: true,
+                    type_name: Some("string".to_string()),
+                    key_value: None,
+                }),
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "port".to_string(),
+                    description: "The port number for the IMAP server (defaults to 993 for IMAPS)".to_string(),
+                    required: false,
+                    type_name: Some("integer".to_string()),
+                    key_value: None,
+                }),
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "ssl".to_string(),
+                    description: "Whether to use SSL for the IMAP connection (defaults to true)".to_string(),
+                    required: false,
+                    type_name: Some("boolean".to_string()),
+                    key_value: None,
+                }),
+            ],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: false,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), json!({}), vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+        };
+
+        // Test check_required_config_fields with no values set
+        assert!(!tool.check_required_config_fields(), "Should fail when required fields have no values");
+
+        // Create a tool with values set for required fields
+        let mut tool_with_values = tool.clone();
+        tool_with_values.config = vec![
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "imap_server".to_string(),
+                description: "The IMAP server address".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: Some("imap.example.com".to_string()),
+            }),
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "username".to_string(),
+                description: "The username for the IMAP account".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: Some("user@example.com".to_string()),
+            }),
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "password".to_string(),
+                description: "The password for the IMAP account".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: Some("password123".to_string()),
+            }),
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "port".to_string(),
+                description: "The port number for the IMAP server (defaults to 993 for IMAPS)".to_string(),
+                required: false,
+                type_name: Some("integer".to_string()),
+                key_value: None,
+            }),
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "ssl".to_string(),
+                description: "Whether to use SSL for the IMAP connection (defaults to true)".to_string(),
+                required: false,
+                type_name: Some("boolean".to_string()),
+                key_value: None,
+            }),
+        ];
+
+        assert!(tool_with_values.check_required_config_fields(), "Should pass when required fields have values");
+
+        // Test serialization/deserialization
+        let serialized = serde_json::to_string(&tool).expect("Failed to serialize DenoTool");
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
+
+        assert_eq!(deserialized.config.len(), 5, "Should have 5 configuration items");
+
+        // Check specific configs
+        let imap_server_config = deserialized.config.iter().find(|c| match c {
+            ToolConfig::BasicConfig(bc) => bc.key_name == "imap_server",
+            _ => false,
+        }).unwrap();
+        if let ToolConfig::BasicConfig(config) = imap_server_config {
+            assert_eq!(config.description, "The IMAP server address");
+            assert_eq!(config.type_name, Some("string".to_string()));
+            assert!(config.required);
+            assert_eq!(config.key_value, None);
+        }
+
+        let port_config = deserialized.config.iter().find(|c| match c {
+            ToolConfig::BasicConfig(bc) => bc.key_name == "port",
+            _ => false,
+        }).unwrap();
+        if let ToolConfig::BasicConfig(config) = port_config {
+            assert_eq!(config.description, "The port number for the IMAP server (defaults to 993 for IMAPS)");
+            assert_eq!(config.type_name, Some("integer".to_string()));
+            assert!(!config.required);
+            assert_eq!(config.key_value, None);
         }
     }
 }

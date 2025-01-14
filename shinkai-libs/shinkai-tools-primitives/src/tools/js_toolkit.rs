@@ -129,6 +129,7 @@ impl JSToolkit {
                             required: definition.configurations["required"]
                                 .as_array()
                                 .map_or(false, |req| req.iter().any(|r| r == key)),
+                            type_name: value["type"].as_str().map(String::from),
                             key_value: None,
                         })
                     })

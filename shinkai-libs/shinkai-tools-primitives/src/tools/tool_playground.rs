@@ -85,12 +85,14 @@ where
                 let configs = properties
                     .iter()
                     .map(|(key, val)| {
-                        let description = val.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let description = val.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let type_name = val.get("type").and_then(|v| v.as_str()).map(String::from);
                         let required = required_keys.contains(key);
                         let basic_config = BasicConfig {
                             key_name: key.clone(),
                             description,
                             required,
+                            type_name,
                             key_value: None, // or extract a default value if needed
                         };
                         ToolConfig::BasicConfig(basic_config)

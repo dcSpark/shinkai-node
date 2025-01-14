@@ -296,6 +296,7 @@ pub struct SymmetricKeyExchange {
 pub enum AssociatedUI {
     Sheet(String),
     Playground,
+    Cron(String),
     // Add more variants as needed
 }
 
@@ -481,6 +482,7 @@ pub struct APIAddAgentRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIVecFsRetrievePathSimplifiedJson {
     pub path: String,
+    pub depth: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]

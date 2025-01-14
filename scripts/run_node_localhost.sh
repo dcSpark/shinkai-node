@@ -13,6 +13,7 @@ export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 export EMBEDDINGS_SERVER_URL="http://localhost:11434" # assumes that you installed the embeddings server locally using ollama (shinkai-apps helps you handling all of this)
 # export EMBEDDINGS_SERVER_URL="https://public.shinkai.com/x-em" # if you prefer to use the public embeddings server
+export SHINKAI_TOOLS_DIRECTORY_URL="https://download.shinkai.com/tools/directory.json"
 
 # Add these lines to enable all log options
 export LOG_ALL=1

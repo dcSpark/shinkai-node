@@ -427,6 +427,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("falcon2") => 8_000,
             model_type if model_type.starts_with("llama3-chatqa") => 8_000,
             model_type if model_type.starts_with("llava-phi3") => 4_000,
+            model_type if model_type.starts_with("phi4") => 16_000,
             model_type if model_type.contains("minicpm-v") => 8_000,
             model_type if model_type.starts_with("dolphin-llama3") => 8_000,
             model_type if model_type.starts_with("command-r-plus") => 128_000,
@@ -456,6 +457,23 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
             model_type if model_type.starts_with("claude") => 200_000,
+            model_type if model_type.starts_with("llama-3.3-70b-versatile") => 128_000,
+            model_type if model_type.starts_with("llama-3.1-8b-instant") => 128_000,
+            model_type if model_type.starts_with("llama-guard-3-8b") => 8_192,
+            model_type if model_type.starts_with("llama3-70b-8192") => 8_192,
+            model_type if model_type.starts_with("llama3-8b-8192") => 8_192,
+            model_type if model_type.starts_with("mixtral-8x7b-32768") => 32_768,
+            model_type if model_type.starts_with("gemma2-9b-it") => 8_192,
+            model_type if model_type.starts_with("llama-3.3-70b-specdec") => 8_192,
+            model_type if model_type.starts_with("llama-3.2-1b-preview") => 128_000,
+            model_type if model_type.starts_with("llama-3.2-3b-preview") => 128_000,
+            model_type if model_type.starts_with("llama-3.2-11b-vision-preview") => 128_000,
+            model_type if model_type.starts_with("llama-3.2-90b-vision-preview") => 128_000,
+            model_type if model_type.starts_with("llama-3.2") => 128_000,
+            model_type if model_type.starts_with("llama3.3") => 128_000,
+            model_type if model_type.starts_with("llama3.4") => 128_000,
+            model_type if model_type.starts_with("llama-3.1") => 128_000,
+            model_type if model_type.starts_with("llama3.1") => 128_000,
             _ => 4096, // Default token count if no specific model type matches
         }
     }
@@ -636,7 +654,19 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("qwq")
             }
             LLMProviderInterface::Groq(model) => {
-                model.model_type.starts_with("llama-3.2")
+                model.model_type.starts_with("llama-3.3-70b-versatile")
+                    || model.model_type.starts_with("llama-3.1-8b-instant") 
+                    || model.model_type.starts_with("llama-guard-3-8b")
+                    || model.model_type.starts_with("llama3-70b-8192")
+                    || model.model_type.starts_with("llama3-8b-8192")
+                    || model.model_type.starts_with("mixtral-8x7b-32768")
+                    || model.model_type.starts_with("gemma2-9b-it")
+                    || model.model_type.starts_with("llama-3.3-70b-specdec")
+                    || model.model_type.starts_with("llama-3.2-1b-preview")
+                    || model.model_type.starts_with("llama-3.2-3b-preview")
+                    || model.model_type.starts_with("llama-3.2-11b-vision-preview")
+                    || model.model_type.starts_with("llama-3.2-90b-vision-preview")
+                    || model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")

@@ -29,6 +29,8 @@ tracing = { version = "0.1.40", optional = true }
 
 tracing-subscriber = { version = "0.3", optional = true }
 
+os_path = { version = "0.8.0" }
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

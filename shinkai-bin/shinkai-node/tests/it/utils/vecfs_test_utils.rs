@@ -134,7 +134,10 @@ pub async fn retrieve_file_info(
     path: &str,
     is_simple: bool,
 ) -> Value {
-    let payload = APIVecFsRetrievePathSimplifiedJson { path: path.to_string() };
+    let payload = APIVecFsRetrievePathSimplifiedJson {
+        path: path.to_string(),
+        depth: Some(1),
+    };
 
     let msg = generate_message_with_payload(
         serde_json::to_string(&payload).unwrap(),
