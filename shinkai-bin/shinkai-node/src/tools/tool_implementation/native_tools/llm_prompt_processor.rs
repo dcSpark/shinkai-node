@@ -27,11 +27,11 @@ use tokio::time::{sleep, Duration};
 
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
-pub struct LmPromptProcessorTool {
+pub struct LlmPromptProcessorTool {
     pub tool: ShinkaiToolHeader,
 }
 
-impl LmPromptProcessorTool {
+impl LlmPromptProcessorTool {
     pub fn new() -> Self {
         Self {
             tool: ShinkaiToolHeader {
@@ -65,7 +65,7 @@ This can be used to process complex requests, text analysis, text matching, text
 }
 
 #[async_trait]
-impl ToolExecutor for LmPromptProcessorTool {
+impl ToolExecutor for LlmPromptProcessorTool {
     async fn execute(
         bearer: String,
         _tool_id: String,

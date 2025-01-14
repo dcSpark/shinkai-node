@@ -344,6 +344,15 @@ impl ShinkaiTool {
         }
     }
 
+    pub fn get_config(&self) -> Vec<ToolConfig> {
+        match self {
+            ShinkaiTool::Rust(_, _) => vec![],
+            ShinkaiTool::Network(_, _) => vec![],
+            ShinkaiTool::Deno(js_tool, _) => js_tool.config.clone(),
+            ShinkaiTool::Python(python_tool, _) => python_tool.config.clone(),
+        }
+    }
+
     /// Check if the tool can be enabled
     pub fn can_be_enabled(&self) -> bool {
         match self {
