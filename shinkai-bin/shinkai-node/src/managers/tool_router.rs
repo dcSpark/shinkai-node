@@ -3,6 +3,7 @@ use std::time::Instant;
 use std::{env, fs};
 
 use crate::llm_provider::error::LLMProviderError;
+use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::GenericInferenceChain;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::Node;
@@ -17,6 +18,7 @@ use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
@@ -480,6 +482,35 @@ impl ToolRouter {
         let _function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
+        // Get additional files
+        // Merge agent scope fs_files_paths if llm_provider is an agent
+        let mut merged_fs_files_paths = context.fs_files_paths().clone();
+        let mut merged_fs_folder_paths = Vec::new();
+        if let ProviderOrAgent::Agent(agent) = context.llm_provider() {
+            merged_fs_files_paths.extend(agent.scope.vector_fs_items.clone());
+            merged_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
+        }
+        let additional_files = GenericInferenceChain::get_additional_files(
+            &context.db(),
+            &context.full_job(),
+            context.job_filenames().clone(),
+            merged_fs_files_paths.clone(),
+            merged_fs_folder_paths.clone(),
+        )?;
+
+        let mut all_files = vec![];
+        // Add job scope files
+        let job_scope =
+            ShinkaiFileManager::get_absolute_path_for_job_scope(&context.db(), &context.full_job().job_id());
+        if let Ok(job_scope) = job_scope {
+            all_files.extend(job_scope);
+        }
+
+        println!("call_function additional_files: {:?}", additional_files);
+        println!("call_function job_scope files: {:?}", all_files);
+
+        all_files.extend(additional_files);
+
         match shinkai_tool {
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
@@ -522,27 +553,6 @@ impl ToolRouter {
                 )
                 .await?;
 
-                let job_scope = context.full_job().scope();
-                let mut mounts = vec![];
-                job_scope.vector_fs_items.iter().for_each(|path| {
-                    let file_path = fs::canonicalize(path.path.clone()).unwrap_or_default();
-                    mounts.push(file_path.display().to_string());
-                });
-
-                // let job_id = context.full_job().job_id().to_string();
-                // let db = context.db();
-                // let files_result = ShinkaiFileManager::get_all_files_and_folders_for_job(&job_id, &db);
-                // let mounts = match files_result {
-                //     Ok(files_result) => {
-                //         let files_result_str = files_result
-                //             .iter()
-                //             .map(|file| format!("{:?}/{}", file.path, file.name))
-                //             .collect::<Vec<String>>();
-                //         Some(files_result_str)
-                //     }
-                //     Err(_) => None,
-                // };
-
                 let result = python_tool
                     .run(
                         envs,
@@ -557,7 +567,7 @@ impl ToolRouter {
                         node_name,
                         false,
                         None,
-                        Some(mounts),
+                        Some(all_files),
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)
@@ -661,76 +671,6 @@ impl ToolRouter {
                 )
                 .await?;
 
-                let job_scope = context.full_job().scope();
-                let mut mounts = vec![];
-                job_scope.vector_fs_items.iter().for_each(|path| {
-                    let file_path = fs::canonicalize(path.path.clone()).unwrap_or_default();
-                    mounts.push(file_path.display().to_string());
-                });
-
-                // let mut merged_fs_files_paths = fs_files_paths.clone();
-                // let mut merged_fs_folder_paths = Vec::new();
-                // if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                //     merged_fs_files_paths.extend(agent.scope.vector_fs_items.clone());
-                //     merged_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
-                // }
-
-                // let mut additional_files = vec![];
-                // additional_files.extend(
-                //     merged_fs_files_paths
-                //         .clone()
-                //         .iter()
-                //         .map(|path| format!("{:?}", path.path.clone())),
-                // );
-                // additional_files.extend(
-                //     merged_fs_folder_paths
-                //         .clone()
-                //         .iter()
-                //         .map(|path| format!("{:?}", path.path.clone())),
-                // );
-                // if !job_filenames.is_empty() {
-                //     let folder_path = db.get_job_folder_name(&full_job.job_id.clone());
-                //     if let Ok(folder_path) = folder_path {
-                //         additional_files.extend(job_filenames.iter().map(|path| {
-                //             let folder_path = fs::canonicalize(folder_path.path.clone()).unwrap_or_default();
-                //             format!("{}/{}", folder_path.to_string_lossy().replace("\"", ""), path.clone())
-                //         }));
-                //     }
-                // }
-
-                // let folder_path = context.db().get_job_folder_name(&context.full_job().job_id());
-                // let files_result =
-                //     ShinkaiFileManager::get_all_files_and_folders_for_job(&context.full_job().job_id(), &context.db());
-                // let mounts = match files_result {
-                //     Ok(files_result) => {
-                //         if let Ok(folder_path) = folder_path {
-                //             let files_result_str = files_result
-                //                 .iter()
-                //                 .map(|file| {
-                //                     format!(
-                //                         "{:?}/{}",
-                //                         fs::canonicalize(folder_path.path.clone()).unwrap_or_default(),
-                //                         file.name
-                //                     )
-                //                     .replace("\"", "")
-                //                 })
-                //                 .collect::<Vec<String>>();
-                //             Some(files_result_str)
-                //         } else {
-                //             None
-                //         }
-                //     }
-                //     Err(_) => None,
-                // };
-
-                // let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
-                // let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
-                // if let Err(e) = mounts {
-                //     eprintln!("Failed to list app files: {:?}", e);
-                //     return Err(LLMProviderError::FunctionExecutionError(format!("{:?}", e)));
-                // }
-                // let mounts = Some(mounts.unwrap_or_default());
-
                 let result = deno_tool
                     .run(
                         envs,
@@ -745,7 +685,7 @@ impl ToolRouter {
                         node_name,
                         false,
                         Some(tool_id),
-                        Some(mounts),
+                        Some(all_files),
                     )
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 let result_str = serde_json::to_string(&result)

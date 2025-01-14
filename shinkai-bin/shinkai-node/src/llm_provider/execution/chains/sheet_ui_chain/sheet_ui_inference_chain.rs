@@ -197,7 +197,7 @@ impl SheetUIInferenceChain {
             paths: None,
         };
         // tODO: remove this
-        let mut summary_node_text = None;
+        let summary_node_text = None;
         if !scope_is_empty {
             let ret = JobManager::search_for_chunks_in_resources(
                 fs_files_paths.clone(),

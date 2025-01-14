@@ -31,10 +31,10 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
+use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
-use std::{fmt, fs};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
@@ -590,7 +590,7 @@ impl GenericInferenceChain {
         }
     }
 
-    fn get_additional_files(
+    pub fn get_additional_files(
         db: &SqliteManager,
         full_job: &Job,
         job_filenames: Vec<String>,
