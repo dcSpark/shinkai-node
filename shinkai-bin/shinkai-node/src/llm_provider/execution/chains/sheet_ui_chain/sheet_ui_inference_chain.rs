@@ -281,6 +281,7 @@ impl SheetUIInferenceChain {
         eprintln!("Extended user message: {}", extended_user_message);
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
+            db.clone(),
             None, // No custom prompt
             None, // TODO: connect later on
             extended_user_message.clone(),
@@ -290,7 +291,6 @@ impl SheetUIInferenceChain {
             Some(full_job.step_history.clone()),
             tools.clone(),
             None,
-            full_job.scope().clone(),
             full_job.job_id.clone(),
             vec![],
             node_env.clone(),
@@ -431,6 +431,7 @@ impl SheetUIInferenceChain {
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
+                    db.clone(),
                     None, // TODO: connect later on
                     None, // TODO: connect later on
                     user_message.clone(),
@@ -440,7 +441,6 @@ impl SheetUIInferenceChain {
                     Some(full_job.step_history.clone()),
                     tools.clone(),
                     last_function_response,
-                    full_job.scope().clone(),
                     full_job.job_id.clone(),
                     vec![],
                     node_env.clone(),

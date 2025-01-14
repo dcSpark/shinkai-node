@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -9,6 +11,7 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_message_primitives::schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::utils::count_tokens_from_message_llama3;
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use utoipa::ToSchema;
 
@@ -27,8 +30,8 @@ pub struct FileInfo {
     pub modified_time: Option<SystemTime>,
     pub has_embeddings: bool,
     pub children: Option<Vec<FileInfo>>,
-    pub size: Option<u64>,  // None if directory
-    pub name: String,       // e.g. "my_doc.docx"
+    pub size: Option<u64>, // None if directory
+    pub name: String,      // e.g. "my_doc.docx"
 }
 
 #[derive(PartialEq, Serialize, Deserialize, Clone, ToSchema)]
@@ -100,7 +103,8 @@ impl ShinkaiFileManager {
         let total_characters = text_groups.iter().map(|group| group.text.chars().count() as i64).sum();
 
         // Calculate total tokens using llama3 token counting
-        let total_tokens = text_groups.iter()
+        let total_tokens = text_groups
+            .iter()
             .map(|group| count_tokens_from_message_llama3(&group.text) as i64)
             .sum();
 
@@ -115,11 +119,11 @@ impl ShinkaiFileManager {
             keywords: None,          // TODO: connect this
             distribution_info: None, // TODO: connect this
             created_time: Some(Self::current_timestamp()),
-            tags: None,             // TODO: connect this
+            tags: None, // TODO: connect this
             total_tokens: Some(total_tokens),
             total_characters: Some(total_characters),
         };
-        
+
         sqlite_manager.add_parsed_file(&parsed_file)?;
 
         // Retrieve the parsed file ID
@@ -144,6 +148,113 @@ impl ShinkaiFileManager {
         Ok(())
     }
 
+    pub fn get_absolute_paths_with_folder(files: Vec<String>, folder: PathBuf) -> Vec<String> {
+        files
+            .iter()
+            .map(|path| {
+                let folder_path = fs::canonicalize(folder.clone()).unwrap_or_default();
+                format!("{}/{}", folder_path.to_string_lossy().replace("\"", ""), path.clone())
+                // TODO THIS IS BAD
+            })
+            .collect()
+    }
+
+    pub fn get_absolute_path_for_additional_files(
+        files: Vec<ShinkaiPath>,
+        folders: Vec<ShinkaiPath>,
+    ) -> Result<Vec<String>, ShinkaiFsError> {
+        let mut all_files = Vec::new();
+        all_files.extend(files.iter().map(|file| {
+            format!(
+                "{:?}",
+                fs::canonicalize(file.path.clone())
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            )
+        }));
+
+        // Recursively get all files from folders using a helper function
+        fn get_files_recursive(path: &PathBuf) -> Vec<String> {
+            let mut files = Vec::new();
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    if let Ok(path) = entry.path().canonicalize() {
+                        if path.is_file() {
+                            files.push(format!("{:?}", path.to_string_lossy()));
+                        } else if path.is_dir() {
+                            // Recursively get files from subdirectories
+                            files.extend(get_files_recursive(&path));
+                        }
+                    }
+                }
+            }
+            files
+        }
+
+        // Process each folder recursively
+        for folder in folders.iter() {
+            all_files.extend(get_files_recursive(&folder.path));
+        }
+
+        all_files.extend(folders.iter().map(|folder| format!("{:?}", folder.path.clone())));
+        Ok(all_files)
+    }
+
+    pub fn get_absolute_path_for_job_scope(
+        sqlite_manager: &SqliteManager,
+        job_id: &str,
+    ) -> Result<Vec<String>, SqliteManagerError> {
+        let scope_files = Self::get_all_files_and_folders_for_job_scope(sqlite_manager, job_id)?;
+        let job_files = Self::get_all_files_and_folders_for_job(job_id, sqlite_manager)
+            .map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
+
+        let mut all_files = Vec::new();
+        all_files.extend(scope_files);
+        all_files.extend(job_files);
+
+        Ok(all_files
+            .into_iter()
+            .map(|file| format!("{}", fs::canonicalize(file.path).unwrap_or_default().to_string_lossy()))
+            .collect())
+    }
+
+    fn get_all_files_and_folders_for_job_scope(
+        sqlite_manager: &SqliteManager,
+        job_id: &str,
+    ) -> Result<Vec<FileInfo>, SqliteManagerError> {
+        let job = sqlite_manager.get_job(&job_id)?;
+        let job_scope = job.scope;
+        let files = job_scope.vector_fs_items;
+        let files = files
+            .into_iter()
+            .map(|shinkai_path| {
+                let file_info = FileInfo {
+                    path: shinkai_path.relative_path().to_string(),
+                    is_directory: false,
+                    created_time: None,
+                    modified_time: None,
+                    has_embeddings: false,
+                    children: None,
+                    size: None,
+                    name: shinkai_path.filename().unwrap_or_default().to_string(),
+                };
+                return file_info;
+            })
+            .collect::<Vec<FileInfo>>();
+
+        let folder_files = job_scope
+            .vector_fs_folders
+            .iter()
+            .flat_map(|folder| Self::list_directory_contents(folder.clone(), sqlite_manager).unwrap_or_default())
+            .collect::<Vec<FileInfo>>();
+
+        let mut all_files = Vec::new();
+        all_files.extend(files);
+        all_files.extend(folder_files);
+
+        Ok(all_files)
+    }
+
     pub fn get_all_files_and_folders_for_job(
         job_id: &str,
         sqlite_manager: &SqliteManager,
@@ -160,7 +271,7 @@ impl ShinkaiFileManager {
         path: ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/0, /*max_depth=*/0)
+        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/ 0, /*max_depth=*/ 0)
     }
 
     /// Recursively list files/folders up to `max_depth`.
@@ -169,7 +280,7 @@ impl ShinkaiFileManager {
         sqlite_manager: &SqliteManager,
         max_depth: usize,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/0, max_depth)
+        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/ 0, max_depth)
     }
 
     /// Private helper that does the actual directory reading.
@@ -198,11 +309,7 @@ impl ShinkaiFileManager {
                 modified_time: metadata.modified().ok(),
                 has_embeddings: false,
                 children: None,
-                size: if metadata.is_file() {
-                    Some(metadata.len())
-                } else {
-                    None
-                },
+                size: if metadata.is_file() { Some(metadata.len()) } else { None },
                 name: file_name.clone(),
             };
 
@@ -233,13 +340,13 @@ impl ShinkaiFileManager {
     ) -> Result<ShinkaiPath, ShinkaiFsError> {
         // Get the job folder path
         let folder_path = sqlite_manager.get_and_create_job_folder(job_id)?;
-        
+
         // Get the relative path from the job folder to avoid double base path
         let relative_path = folder_path.relative_path();
-        
+
         // Construct the relative path for the file
         let file_relative_path = format!("{}/{}", relative_path, file_name);
-        
+
         // Create a new ShinkaiPath from the relative path
         Ok(ShinkaiPath::from_string(file_relative_path))
     }
@@ -667,7 +774,10 @@ mod tests {
         let shinkai_path = result.unwrap();
         let expected_folder_path = db.get_and_create_job_folder(job_id).unwrap();
         let expected_path = expected_folder_path.as_path().join(file_name);
-        assert_eq!(shinkai_path.as_path().to_string_lossy(), expected_path.to_string_lossy());
+        assert_eq!(
+            shinkai_path.as_path().to_string_lossy(),
+            expected_path.to_string_lossy()
+        );
     }
 
     #[test]
@@ -693,8 +803,14 @@ mod tests {
         File::create(&file3_path.as_path()).unwrap();
 
         // Add parsed files with embeddings to the database
-        let pf1 = create_test_parsed_file(1, &ShinkaiPath::from_string("level1/file1.txt".to_string()).relative_path());
-        let pf2 = create_test_parsed_file(2, &ShinkaiPath::from_string("level1/level2/file2.txt".to_string()).relative_path());
+        let pf1 = create_test_parsed_file(
+            1,
+            &ShinkaiPath::from_string("level1/file1.txt".to_string()).relative_path(),
+        );
+        let pf2 = create_test_parsed_file(
+            2,
+            &ShinkaiPath::from_string("level1/level2/file2.txt".to_string()).relative_path(),
+        );
         db.add_parsed_file(&pf1).unwrap();
         db.add_parsed_file(&pf2).unwrap();
 
@@ -713,30 +829,54 @@ mod tests {
         let level2_contents = level1_info.children.as_ref().unwrap();
         assert_eq!(level2_contents.len(), 2); // One directory and one file
 
-        let file1_info = level2_contents.iter().find(|info| info.path == "level1/file1.txt").unwrap();
+        let file1_info = level2_contents
+            .iter()
+            .find(|info| info.path == "level1/file1.txt")
+            .unwrap();
         assert!(!file1_info.is_directory);
-        assert!(file1_info.has_embeddings, "File 'level1/file1.txt' should have embeddings.");
+        assert!(
+            file1_info.has_embeddings,
+            "File 'level1/file1.txt' should have embeddings."
+        );
 
-        let level2_info = level2_contents.iter().find(|info| info.path == "level1/level2").unwrap();
+        let level2_info = level2_contents
+            .iter()
+            .find(|info| info.path == "level1/level2")
+            .unwrap();
         assert!(level2_info.is_directory);
         assert!(level2_info.children.is_some());
 
         let level3_contents = level2_info.children.as_ref().unwrap();
         assert_eq!(level3_contents.len(), 2); // One directory and one file
 
-        let file2_info = level3_contents.iter().find(|info| info.path == "level1/level2/file2.txt").unwrap();
+        let file2_info = level3_contents
+            .iter()
+            .find(|info| info.path == "level1/level2/file2.txt")
+            .unwrap();
         assert!(!file2_info.is_directory);
-        assert!(file2_info.has_embeddings, "File 'level1/level2/file2.txt' should have embeddings.");
+        assert!(
+            file2_info.has_embeddings,
+            "File 'level1/level2/file2.txt' should have embeddings."
+        );
 
-        let level3_info = level3_contents.iter().find(|info| info.path == "level1/level2/level3").unwrap();
+        let level3_info = level3_contents
+            .iter()
+            .find(|info| info.path == "level1/level2/level3")
+            .unwrap();
         assert!(level3_info.is_directory);
         assert!(level3_info.children.is_some());
 
         let level3_files = level3_info.children.as_ref().unwrap();
         assert_eq!(level3_files.len(), 1); // Only one file
 
-        let file3_info = level3_files.iter().find(|info| info.path == "level1/level2/level3/file3.txt").unwrap();
+        let file3_info = level3_files
+            .iter()
+            .find(|info| info.path == "level1/level2/level3/file3.txt")
+            .unwrap();
         assert!(!file3_info.is_directory);
-        assert!(!file3_info.has_embeddings, "File 'level1/level2/level3/file3.txt' should not have embeddings.");
+        assert!(
+            !file3_info.has_embeddings,
+            "File 'level1/level2/level3/file3.txt' should not have embeddings."
+        );
     }
 }
