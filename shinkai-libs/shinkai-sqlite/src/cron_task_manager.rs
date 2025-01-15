@@ -32,13 +32,13 @@ impl SqliteManager {
 
     pub fn remove_cron_task(&self, task_id: i64) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
-        
+
         // First, delete all related execution records
         conn.execute("DELETE FROM cron_task_executions WHERE task_id = ?1", params![task_id])?;
-        
+
         // Then, delete the cron task
         conn.execute("DELETE FROM cron_tasks WHERE task_id = ?1", params![task_id])?;
-        
+
         Ok(())
     }
 
@@ -46,14 +46,13 @@ impl SqliteManager {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT task_id, name, description, cron, created_at, last_modified, action, paused 
-             FROM cron_tasks WHERE task_id = ?1"
+             FROM cron_tasks WHERE task_id = ?1",
         )?;
         let mut rows = stmt.query(params![task_id])?;
 
         if let Some(row) = rows.next()? {
             let action_json: String = row.get(6)?;
-            let action: CronTaskAction = serde_json::from_str(&action_json)
-                .map_err(SqliteManagerError::JsonError)?;
+            let action: CronTaskAction = serde_json::from_str(&action_json).map_err(SqliteManagerError::JsonError)?;
 
             Ok(Some(CronTask {
                 task_id: row.get(0)?,
@@ -100,12 +99,12 @@ impl SqliteManager {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT task_id, name, description, cron, created_at, last_modified, action, paused 
-             FROM cron_tasks"
+             FROM cron_tasks",
         )?;
         let cron_task_iter = stmt.query_map([], |row| {
             let action_json: String = row.get(6)?;
-            let action: CronTaskAction = serde_json::from_str(&action_json)
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            let action: CronTaskAction =
+                serde_json::from_str(&action_json).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
             Ok(CronTask {
                 task_id: row.get(0)?,
@@ -142,12 +141,20 @@ impl SqliteManager {
     }
 
     // Get all execution records
-    pub fn get_all_cron_task_executions(&self) -> Result<Vec<(i64, String, bool, Option<String>, Option<String>)>, SqliteManagerError> {
+    pub fn get_all_cron_task_executions(
+        &self,
+    ) -> Result<Vec<(i64, String, bool, Option<String>, Option<String>)>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
             conn.prepare("SELECT task_id, execution_time, success, error_message, job_id FROM cron_task_executions")?;
         let execution_iter = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get::<_, i32>(2)? != 0, row.get(3)?, row.get(4)?))
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get::<_, i32>(2)? != 0,
+                row.get(3)?,
+                row.get(4)?,
+            ))
         })?;
 
         execution_iter
@@ -165,7 +172,7 @@ impl SqliteManager {
             "SELECT execution_time, success, error_message, job_id 
              FROM cron_task_executions 
              WHERE task_id = ?1 
-             ORDER BY execution_time DESC"
+             ORDER BY execution_time DESC",
         )?;
         let execution_iter = stmt.query_map(params![task_id], |row| {
             Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get(2)?, row.get(3)?))
@@ -213,8 +220,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::shinkai_path::ShinkaiPath};
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::{
+        shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::shinkai_path::ShinkaiPath,
+    };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -377,7 +386,14 @@ mod tests {
         let updated_paused = true;
 
         manager
-            .update_cron_task(task_id, updated_name, updated_description, updated_cron, &updated_action, updated_paused)
+            .update_cron_task(
+                task_id,
+                updated_name,
+                updated_description,
+                updated_cron,
+                &updated_action,
+                updated_paused,
+            )
             .unwrap();
         let updated_task = manager.get_cron_task(task_id).unwrap().unwrap();
 

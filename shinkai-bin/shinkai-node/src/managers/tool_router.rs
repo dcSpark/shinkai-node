@@ -554,7 +554,7 @@ impl ToolRouter {
                     function_call,
                 });
             }
-            ShinkaiTool::Rust(_rust_tool, _is_enabled) => {
+            ShinkaiTool::Rust(rust_tool, _is_enabled) => {
                 // Get app_id from Cron UI if present, otherwise use job_id
                 let app_id = match context.full_job().associated_ui().as_ref() {
                     Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
@@ -581,6 +581,13 @@ impl ToolRouter {
                         "Job manager is not available".to_string(),
                     ));
                 }
+
+                check_tool(
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    vec![],
+                    function_args.clone(),
+                    rust_tool.input_args.clone(),
+                )?;
 
                 let result = execute_custom_tool(
                     &shinkai_tool.tool_router_key().to_string_without_version().clone(),
@@ -1072,10 +1079,8 @@ impl ToolRouter {
 
                 // Check if the top vector search result has a score under 0.2
                 if let Some((tool, score)) = vector_tools.first() {
-                    if *score < 0.2 {
-                        if seen_ids.insert(tool.tool_router_key.clone()) {
-                            combined_tools.push(tool.clone());
-                        }
+                    if seen_ids.insert(tool.tool_router_key.clone()) {
+                        combined_tools.push(tool.clone());
                     }
                 }
 

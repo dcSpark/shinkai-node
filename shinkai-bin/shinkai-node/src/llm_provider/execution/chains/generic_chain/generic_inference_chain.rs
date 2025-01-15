@@ -440,7 +440,6 @@ impl GenericInferenceChain {
                     let shinkai_tool = shinkai_tool.unwrap();
 
                     // Note: here we can add logic to handle the case that we have network tools
-
                     // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
                     let function_response = match tool_router
                         .as_ref()
@@ -451,13 +450,15 @@ impl GenericInferenceChain {
                         Ok(response) => response,
                         Err(e) => {
                             match &e {
-                                LLMProviderError::ToolRouterError(ref error_msg) if error_msg.contains("Invalid function arguments") => {
+                                LLMProviderError::ToolRouterError(ref error_msg)
+                                    if error_msg.contains("Invalid function arguments") =>
+                                {
                                     // For invalid arguments, we'll retry with the LLM by including the error message
                                     // in the next prompt to help it fix the parameters
                                     let mut function_call_with_error = function_call.clone();
                                     function_call_with_error.response = Some(error_msg.clone());
                                     tool_calls_history.push(function_call_with_error);
-                                    
+
                                     // Update prompt with error information for retry
                                     filled_prompt = JobPromptGenerator::generic_inference_prompt(
                                         custom_system_prompt.clone(),
@@ -475,18 +476,20 @@ impl GenericInferenceChain {
                                         full_job.job_id.clone(),
                                         node_env.clone(),
                                     );
-                                    
+
                                     // Set flag to retry and break out of the function calls loop
                                     iteration_count += 1;
                                     should_retry = true;
                                     break;
-                                },
-                                LLMProviderError::ToolRouterError(ref error_msg) if error_msg.contains("MissingConfigError") => {
+                                }
+                                LLMProviderError::ToolRouterError(ref error_msg)
+                                    if error_msg.contains("MissingConfigError") =>
+                                {
                                     // For missing config, we'll pass through the error directly
                                     // This will show up in the UI prompting the user to update their config
                                     eprintln!("Missing config error: {:?}", error_msg);
                                     return Err(e);
-                                },
+                                }
                                 _ => {
                                     eprintln!("Error calling function: {:?}", e);
                                     return Err(e);

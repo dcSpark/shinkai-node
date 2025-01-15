@@ -63,8 +63,25 @@ pub async fn execute_custom_tool(
             )
             .await
         }
+        s if s == "local:::rust_toolkit:::shinkai_tool_config_updater" => {
+            tool_implementation::native_tools::config_setup::ConfigSetupTool::execute(
+                bearer,
+                tool_id,
+                app_id,
+                db,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+                &parameters,
+                llm_provider,
+            )
+            .await
+        }
         s if s == "local:::rust_toolkit:::shinkai_llm_prompt_processor" => {
-            tool_implementation::native_tools::llm_prompt_processor::LmPromptProcessorTool::execute(
+            tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::execute(
                 bearer,
                 tool_id,
                 app_id,
