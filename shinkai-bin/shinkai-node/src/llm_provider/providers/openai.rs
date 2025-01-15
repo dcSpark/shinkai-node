@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -158,6 +158,12 @@ impl LLMService for OpenAI {
     }
 }
 
+#[derive(Debug, Clone)]
+struct PartialFunctionCall {
+    name: Option<String>,
+    arguments: String,
+}
+
 async fn handle_streaming_response(
     client: &Client,
     url: String,
@@ -182,6 +188,10 @@ async fn handle_streaming_response(
     let mut buffer = String::new();
     let mut function_calls: Vec<FunctionCall> = Vec::new();
     let mut error_message: Option<String> = None;
+    let mut partial_fc = PartialFunctionCall {
+        name: None,
+        arguments: String::new(),
+    };
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
@@ -193,6 +203,32 @@ async fn handle_streaming_response(
                     "LLM job stopped by user request",
                 );
                 llm_stopper.reset(&inbox_name.to_string());
+
+                // Send WS message indicating the job is done
+                if let Some(ref manager) = ws_manager_trait {
+                    let m = manager.lock().await;
+                    let inbox_name_string = inbox_name.to_string();
+
+                    let metadata = WSMetadata {
+                        id: Some(session_id.clone()),
+                        is_done: true,
+                        done_reason: Some("Stopped by user request".to_string()),
+                        total_duration: None,
+                        eval_count: None,
+                    };
+
+                    let ws_message_type = WSMessageType::Metadata(metadata);
+
+                    let _ = m
+                        .queue_message(
+                            WSTopic::Inbox,
+                            inbox_name_string,
+                            response_text.clone(),
+                            ws_message_type,
+                            true,
+                        )
+                        .await;
+                }
 
                 return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
             }
@@ -211,6 +247,33 @@ async fn handle_streaming_response(
 
                     // Handle [DONE] message
                     if message.trim() == "[DONE]" {
+                        // Send final WS message
+                        if let Some(ref manager) = ws_manager_trait {
+                            if let Some(ref inbox_name) = inbox_name {
+                                let m = manager.lock().await;
+                                let inbox_name_string = inbox_name.to_string();
+
+                                let metadata = WSMetadata {
+                                    id: Some(session_id.clone()),
+                                    is_done: true,
+                                    done_reason: None,
+                                    total_duration: None,
+                                    eval_count: None,
+                                };
+
+                                let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                let _ = m
+                                    .queue_message(
+                                        WSTopic::Inbox,
+                                        inbox_name_string,
+                                        response_text.clone(),
+                                        ws_message_type,
+                                        true,
+                                    )
+                                    .await;
+                            }
+                        }
                         continue;
                     }
 
@@ -227,82 +290,89 @@ async fn handle_streaming_response(
 
                             if let Some(choices) = data.get("choices") {
                                 for choice in choices.as_array().unwrap_or(&vec![]) {
+                                    // If there's a finish_reason, check if it's function_call
+                                    let finish_reason = choice
+                                        .get("finish_reason")
+                                        .and_then(|fr| fr.as_str())
+                                        .unwrap_or_default();
+
                                     if let Some(delta) = choice.get("delta") {
                                         // Handle content updates
                                         if let Some(content) = delta.get("content") {
                                             if let Some(content_str) = content.as_str() {
                                                 response_text.push_str(content_str);
+
+                                                // Send WS message for content update
+                                                if let Some(ref manager) = ws_manager_trait {
+                                                    if let Some(ref inbox_name) = inbox_name {
+                                                        let m = manager.lock().await;
+                                                        let inbox_name_string = inbox_name.to_string();
+
+                                                        let metadata = WSMetadata {
+                                                            id: Some(session_id.clone()),
+                                                            is_done: false,
+                                                            done_reason: None,
+                                                            total_duration: None,
+                                                            eval_count: None,
+                                                        };
+
+                                                        let ws_message_type = WSMessageType::Metadata(metadata);
+
+                                                        let _ = m
+                                                            .queue_message(
+                                                                WSTopic::Inbox,
+                                                                inbox_name_string,
+                                                                content_str.to_string(),
+                                                                ws_message_type,
+                                                                true,
+                                                            )
+                                                            .await;
+                                                    }
+                                                }
                                             }
                                         }
 
                                         // Handle function calls
                                         if let Some(fc) = delta.get("function_call") {
+                                            // If there's a new name, we might need to finalize
                                             if let Some(name) = fc.get("name") {
-                                                let fc_arguments = fc
-                                                    .get("arguments")
-                                                    .and_then(|args| args.as_str())
-                                                    .and_then(|args_str| serde_json::from_str(args_str).ok())
-                                                    .and_then(|args_value: serde_json::Value| {
-                                                        args_value.as_object().cloned()
-                                                    })
-                                                    .unwrap_or_else(|| serde_json::Map::new());
-
-                                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                                    tools_array.iter().find_map(|tool| {
-                                                        if tool.get("name")?.as_str()? == name.as_str().unwrap_or("") {
-                                                            tool.get("tool_router_key")
-                                                                .and_then(|key| key.as_str().map(|s| s.to_string()))
-                                                        } else {
-                                                            None
-                                                        }
-                                                    })
-                                                });
-
-                                                function_calls.push(FunctionCall {
-                                                    name: name.as_str().unwrap_or("").to_string(),
-                                                    arguments: fc_arguments.clone(),
-                                                    tool_router_key,
-                                                    response: None,
-                                                });
-
-                                                // Handle WebSocket updates for function calls
-                                                if let Some(ref manager) = ws_manager_trait {
-                                                    if let Some(ref inbox_name) = inbox_name {
-                                                        if let Some(last_function_call) = function_calls.last() {
-                                                            let m = manager.lock().await;
-                                                            let inbox_name_string = inbox_name.to_string();
-
-                                                            let function_call_json = serde_json::to_value(last_function_call)
-                                                                .unwrap_or_else(|_| serde_json::json!({}));
-
-                                                            let tool_metadata = ToolMetadata {
-                                                                tool_name: last_function_call.name.clone(),
-                                                                tool_router_key: last_function_call.tool_router_key.clone(),
-                                                                args: function_call_json.as_object().cloned().unwrap_or_default(),
-                                                                result: None,
-                                                                status: ToolStatus {
-                                                                    type_: ToolStatusType::Running,
-                                                                    reason: None,
-                                                                },
-                                                            };
-
-                                                            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                                            let _ = m
-                                                                .queue_message(
-                                                                    WSTopic::Inbox,
-                                                                    inbox_name_string,
-                                                                    serde_json::to_string(last_function_call)
-                                                                        .unwrap_or_else(|_| "{}".to_string()),
-                                                                    ws_message_type,
-                                                                    true,
-                                                                )
-                                                                .await;
-                                                        }
+                                                let new_name = name.as_str().unwrap_or("").to_string();
+                                                // If partial_fc already has a name, but it's different
+                                                // from the new one, finalize the old partial function call
+                                                if let Some(ref old_name) = partial_fc.name {
+                                                    if !old_name.is_empty() && old_name != &new_name {
+                                                        finalize_function_call(
+                                                            &mut partial_fc,
+                                                            &mut function_calls,
+                                                            &tools,
+                                                            &ws_manager_trait,
+                                                            &inbox_name
+                                                        ).await;
                                                     }
+                                                }
+                                                // Start or continue partial function call with the new name
+                                                partial_fc.name = Some(new_name);
+                                            }
+
+                                            // If there's partial arguments, accumulate them
+                                            if let Some(args) = fc.get("arguments") {
+                                                if let Some(args_str) = args.as_str() {
+                                                    partial_fc.arguments.push_str(args_str);
                                                 }
                                             }
                                         }
+                                    }
+
+                                    // If the chunk says "finish_reason": "function_call",
+                                    // we finalize the partial function call.
+                                    if finish_reason == "function_call" {
+                                        finalize_function_call(
+                                            &mut partial_fc,
+                                            &mut function_calls,
+                                            &tools,
+                                            &ws_manager_trait,
+                                            &inbox_name
+                                        ).await;
                                     }
                                 }
                             }
@@ -329,6 +399,12 @@ async fn handle_streaming_response(
         }
     }
 
+    // If there's an unfinalized function call at the end (e.g., if the server never sent "finish_reason"),
+    // you can decide if you want to finalize it or discard it:
+    if partial_fc.name.is_some() && !partial_fc.arguments.is_empty() {
+        finalize_function_call(&mut partial_fc, &mut function_calls, &tools, &ws_manager_trait, &inbox_name).await;
+    }
+
     if let Some(ref error_message) = error_message {
         if response_text.is_empty() {
             return Err(LLMProviderError::LLMServiceUnexpectedError(error_message.to_string()));
@@ -336,6 +412,90 @@ async fn handle_streaming_response(
     }
 
     Ok(LLMInferenceResponse::new(response_text, json!({}), function_calls, None))
+}
+
+/// Finalize a partial function call: parse arguments, push to `function_calls`, and
+/// optionally send a WebSocket message.
+async fn finalize_function_call(
+    partial_fc: &mut PartialFunctionCall,
+    function_calls: &mut Vec<FunctionCall>,
+    tools: &Option<Vec<JsonValue>>,
+    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    inbox_name: &Option<InboxName>,
+) {
+    if let Some(ref name) = partial_fc.name {
+        if !name.is_empty() {
+            // Attempt to parse the accumulated arguments
+            let fc_arguments = serde_json::from_str(&partial_fc.arguments)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+
+            // Look up the optional tool_router_key
+            let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                tools_array.iter().find_map(|tool| {
+                    if tool.get("name")?.as_str()? == name {
+                        tool.get("tool_router_key")
+                            .and_then(|key| key.as_str().map(|s| s.to_string()))
+                    } else {
+                        None
+                    }
+                })
+            });
+
+            // Build and add to the function_calls vector
+            let new_function_call = FunctionCall {
+                name: name.clone(),
+                arguments: fc_arguments
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_else(serde_json::Map::new),
+                tool_router_key,
+                response: None,
+            };
+            function_calls.push(new_function_call.clone());
+
+            // Optionally also send a WebSocket update
+            if let Some(ref manager) = ws_manager_trait {
+                if let Some(ref inbox_name) = inbox_name {
+                    let m = manager.lock().await;
+                    let inbox_name_string = inbox_name.to_string();
+                    let function_call_json = serde_json::to_value(&new_function_call)
+                        .unwrap_or_else(|_| serde_json::json!({}));
+
+                    let tool_metadata = ToolMetadata {
+                        tool_name: new_function_call.name.clone(),
+                        tool_router_key: new_function_call.tool_router_key.clone(),
+                        args: function_call_json
+                            .as_object()
+                            .cloned()
+                            .unwrap_or_else(|| serde_json::Map::new()),
+                        result: None,
+                        status: ToolStatus {
+                            type_: ToolStatusType::Running,
+                            reason: None,
+                        },
+                    };
+
+                    let ws_message_type =
+                        WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                    let _ = m
+                        .queue_message(
+                            WSTopic::Inbox,
+                            inbox_name_string,
+                            serde_json::to_string(&new_function_call)
+                                .unwrap_or_else(|_| "{}".to_string()),
+                            ws_message_type,
+                            true,
+                        )
+                        .await;
+                }
+            }
+        }
+    }
+
+    // Clear partial so we can accumulate a new function call in subsequent chunks
+    partial_fc.name = None;
+    partial_fc.arguments.clear();
 }
 
 /// Helper function to extract the next complete message from a buffer
