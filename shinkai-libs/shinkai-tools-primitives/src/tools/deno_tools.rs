@@ -5,11 +5,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
 
 use super::parameters::Parameters;
-use super::tool_config::{BasicConfig, OAuth, ToolConfig};
+use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
 use crate::tools::error::ToolError;
-use crate::tools::shared_execution::update_result_with_modified_files;
+use crate::tools::shared_execution::{get_files_after_with_protocol, update_result_with_modified_files};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -18,6 +18,7 @@ use shinkai_tools_runner::tools::code_files::CodeFiles;
 use shinkai_tools_runner::tools::deno_runner::DenoRunner;
 use shinkai_tools_runner::tools::deno_runner_options::DenoRunnerOptions;
 use shinkai_tools_runner::tools::execution_context::ExecutionContext;
+use shinkai_tools_runner::tools::execution_error::ExecutionError;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
 use tokio::runtime::Runtime;
@@ -166,7 +167,7 @@ impl DenoTool {
         let js_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
         js_tool_thread
             .spawn(move || {
-                fn print_result(result: &Result<RunResult, ToolError>) {
+                fn print_result(result: &Result<RunResult, ExecutionError>) {
                     match result {
                         Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
                         Err(e) => println!("[Running DenoTool] Error: {:?}", e),
@@ -264,21 +265,30 @@ impl DenoTool {
                     // Run the tool with DENO
                     let result = tool
                         .run(Some(envs), serde_json::Value::Object(parameters.clone()), None)
-                        .await
-                        .map_err(|e| ToolError::ExecutionError(e.to_string()));
-                    print_result(&result);
+                        .await;
 
-                    if result.is_err() {
-                        return result;
+                    print_result(&result);
+                    match result {
+                        Ok(result) => {
+                            return update_result_with_modified_files(
+                                result, start_time, &home_path, &logs_path, &node_name, &app_id,
+                            )
+                        }
+                        Err(e) => {
+                            let files =
+                                get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
+                                    .into_iter()
+                                    .map(|file| file.as_str().unwrap_or_default().to_string())
+                                    .collect::<Vec<String>>()
+                                    .join(" ");
+
+                            return Err(ToolError::ExecutionError(format!(
+                                "Error: {}. Files: {}",
+                                e.message().to_string(),
+                                files
+                            )));
+                        }
                     }
-                    update_result_with_modified_files(
-                        result.unwrap(),
-                        start_time,
-                        &home_path,
-                        &logs_path,
-                        &node_name,
-                        &app_id,
-                    )
                 })
             })
             .unwrap()
@@ -430,6 +440,8 @@ impl ToolResult {
 
 #[cfg(test)]
 mod tests {
+    use crate::tools::tool_config::BasicConfig;
+
     use super::*;
     use serde_json::json;
 
@@ -534,21 +546,20 @@ mod tests {
         assert_eq!(deserialized.toolkit_name, "deno-toolkit");
         assert_eq!(deserialized.version, "1.0.0");
         assert_eq!(deserialized.description, "Tool for creating a Coinbase wallet");
-        
+
         // Verify config entries
         assert_eq!(deserialized.config.len(), 3);
-        if let ToolConfig::BasicConfig(config) = &deserialized.config[0] {
-            assert_eq!(config.key_name, "name");
-            assert!(config.required);
-        }
-        if let ToolConfig::BasicConfig(config) = &deserialized.config[1] {
-            assert_eq!(config.key_name, "privateKey");
-            assert!(config.required);
-        }
-        if let ToolConfig::BasicConfig(config) = &deserialized.config[2] {
-            assert_eq!(config.key_name, "useServerSigner");
-            assert!(!config.required);
-        }
+        let ToolConfig::BasicConfig(config) = &deserialized.config[0];
+        assert_eq!(config.key_name, "name");
+        assert!(config.required);
+
+        let ToolConfig::BasicConfig(config) = &deserialized.config[1];
+        assert_eq!(config.key_name, "privateKey");
+        assert!(config.required);
+
+        let ToolConfig::BasicConfig(config) = &deserialized.config[2];
+        assert_eq!(config.key_name, "useServerSigner");
+        assert!(!config.required);
     }
 
     #[test]
@@ -612,7 +623,10 @@ mod tests {
         };
 
         // Test check_required_config_fields with no values set
-        assert!(!tool.check_required_config_fields(), "Should fail when required fields have no values");
+        assert!(
+            !tool.check_required_config_fields(),
+            "Should fail when required fields have no values"
+        );
 
         // Create a tool with values set for required fields
         let mut tool_with_values = tool.clone();
@@ -654,7 +668,10 @@ mod tests {
             }),
         ];
 
-        assert!(tool_with_values.check_required_config_fields(), "Should pass when required fields have values");
+        assert!(
+            tool_with_values.check_required_config_fields(),
+            "Should pass when required fields have values"
+        );
 
         // Test serialization/deserialization
         let serialized = serde_json::to_string(&tool).expect("Failed to serialize DenoTool");
@@ -663,26 +680,35 @@ mod tests {
         assert_eq!(deserialized.config.len(), 5, "Should have 5 configuration items");
 
         // Check specific configs
-        let imap_server_config = deserialized.config.iter().find(|c| match c {
-            ToolConfig::BasicConfig(bc) => bc.key_name == "imap_server",
-            _ => false,
-        }).unwrap();
-        if let ToolConfig::BasicConfig(config) = imap_server_config {
-            assert_eq!(config.description, "The IMAP server address");
-            assert_eq!(config.type_name, Some("string".to_string()));
-            assert!(config.required);
-            assert_eq!(config.key_value, None);
-        }
+        let imap_server_config = deserialized
+            .config
+            .iter()
+            .find(|c| match c {
+                ToolConfig::BasicConfig(bc) => bc.key_name == "imap_server",
+                _ => false,
+            })
+            .unwrap();
+        let ToolConfig::BasicConfig(config) = imap_server_config;
+        assert_eq!(config.description, "The IMAP server address");
+        assert_eq!(config.type_name, Some("string".to_string()));
+        assert!(config.required);
+        assert_eq!(config.key_value, None);
 
-        let port_config = deserialized.config.iter().find(|c| match c {
-            ToolConfig::BasicConfig(bc) => bc.key_name == "port",
-            _ => false,
-        }).unwrap();
-        if let ToolConfig::BasicConfig(config) = port_config {
-            assert_eq!(config.description, "The port number for the IMAP server (defaults to 993 for IMAPS)");
-            assert_eq!(config.type_name, Some("integer".to_string()));
-            assert!(!config.required);
-            assert_eq!(config.key_value, None);
-        }
+        let port_config = deserialized
+            .config
+            .iter()
+            .find(|c| match c {
+                ToolConfig::BasicConfig(bc) => bc.key_name == "port",
+                _ => false,
+            })
+            .unwrap();
+        let ToolConfig::BasicConfig(config) = port_config;
+        assert_eq!(
+            config.description,
+            "The port number for the IMAP server (defaults to 993 for IMAPS)"
+        );
+        assert_eq!(config.type_name, Some("integer".to_string()));
+        assert!(!config.required);
+        assert_eq!(config.key_value, None);
     }
 }
