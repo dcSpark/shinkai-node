@@ -16,6 +16,8 @@ use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentO
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
@@ -175,8 +177,8 @@ impl GenericInferenceChain {
             || !job_filenames.is_empty()
         {
             let ret = JobManager::search_for_chunks_in_resources(
-                merged_fs_files_paths,
-                merged_fs_folder_paths,
+                merged_fs_files_paths.clone(),
+                merged_fs_folder_paths.clone(),
                 job_filenames.clone(),
                 full_job.job_id.clone(),
                 full_job.scope(),
@@ -344,7 +346,16 @@ impl GenericInferenceChain {
                 }
             });
 
+        let additional_files = Self::get_additional_files(
+            &db,
+            &full_job,
+            job_filenames.clone(),
+            merged_fs_files_paths.clone(),
+            merged_fs_folder_paths.clone(),
+        )?;
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
+            db.clone(),
             custom_system_prompt.clone(),
             custom_prompt.clone(),
             user_message.clone(),
@@ -355,7 +366,9 @@ impl GenericInferenceChain {
             tools.clone(),
             None,
             full_job.job_id.clone(),
+            additional_files.clone(),
             node_env.clone(),
+            db.clone(),
         );
 
         let mut iteration_count = 0;
@@ -461,6 +474,7 @@ impl GenericInferenceChain {
 
                                     // Update prompt with error information for retry
                                     filled_prompt = JobPromptGenerator::generic_inference_prompt(
+                                        db.clone(),
                                         custom_system_prompt.clone(),
                                         custom_prompt.clone(),
                                         user_message.clone(),
@@ -474,7 +488,9 @@ impl GenericInferenceChain {
                                             response: error_msg.clone(),
                                         }),
                                         full_job.job_id.clone(),
+                                        additional_files.clone(),
                                         node_env.clone(),
+                                        db.clone(),
                                     );
 
                                     // Set flag to retry and break out of the function calls loop
@@ -517,6 +533,14 @@ impl GenericInferenceChain {
                     last_function_response = Some(function_response);
                 }
 
+                let additional_files = Self::get_additional_files(
+                    &db,
+                    &full_job,
+                    job_filenames.clone(),
+                    merged_fs_files_paths.clone(),
+                    merged_fs_folder_paths.clone(),
+                )?;
+
                 // If we need to retry, continue the outer loop
                 if should_retry {
                     continue;
@@ -524,6 +548,7 @@ impl GenericInferenceChain {
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
+                    db.clone(),
                     custom_system_prompt.clone(),
                     custom_prompt.clone(),
                     user_message.clone(),
@@ -534,7 +559,9 @@ impl GenericInferenceChain {
                     tools.clone(),
                     last_function_response,
                     full_job.job_id.clone(),
+                    additional_files,
                     node_env.clone(),
+                    db.clone(),
                 );
             } else {
                 // No more function calls required, return the final response
@@ -612,5 +639,33 @@ impl GenericInferenceChain {
                     .await;
             }
         }
+    }
+
+    pub fn get_additional_files(
+        db: &SqliteManager,
+        full_job: &Job,
+        job_filenames: Vec<String>,
+        merged_fs_files_paths: Vec<ShinkaiPath>,
+        merged_fs_folder_paths: Vec<ShinkaiPath>,
+    ) -> Result<Vec<String>, ShinkaiFsError> {
+        let mut additional_files: Vec<String> = vec![];
+        // Get agent/context files
+        let f = ShinkaiFileManager::get_absolute_path_for_additional_files(
+            merged_fs_files_paths.clone(),
+            merged_fs_folder_paths.clone(),
+        )?;
+        additional_files.extend(f);
+
+        // Get Job files
+        let folder_path: Result<ShinkaiPath, shinkai_sqlite::errors::SqliteManagerError> =
+            db.get_job_folder_name(&full_job.job_id.clone());
+
+        if let Ok(folder_path) = folder_path {
+            additional_files.extend(ShinkaiFileManager::get_absolute_paths_with_folder(
+                job_filenames.clone(),
+                folder_path.path.clone(),
+            ));
+        }
+        Ok(additional_files)
     }
 }
