@@ -197,7 +197,7 @@ impl SheetUIInferenceChain {
             paths: None,
         };
         // tODO: remove this
-        let mut summary_node_text = None;
+        let summary_node_text = None;
         if !scope_is_empty {
             let ret = JobManager::search_for_chunks_in_resources(
                 fs_files_paths.clone(),
@@ -281,6 +281,7 @@ impl SheetUIInferenceChain {
         eprintln!("Extended user message: {}", extended_user_message);
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
+            db.clone(),
             None, // No custom prompt
             None, // TODO: connect later on
             extended_user_message.clone(),
@@ -291,7 +292,9 @@ impl SheetUIInferenceChain {
             tools.clone(),
             None,
             full_job.job_id.clone(),
+            vec![],
             node_env.clone(),
+            db.clone(),
         );
 
         let mut iteration_count = 0;
@@ -363,7 +366,8 @@ impl SheetUIInferenceChain {
                             args.insert(key.clone(), Box::new(val) as Box<dyn Any + Send>);
                         }
 
-                        let handle = task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
+                        let handle =
+                            task::spawn(async move { function(sheet_manager_clone, sheet_id_clone, args).await });
 
                         let response = match handle.await {
                             Ok(Ok(response)) => response,
@@ -427,6 +431,7 @@ impl SheetUIInferenceChain {
 
                 // 7) Call LLM again with the response (for formatting)
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
+                    db.clone(),
                     None, // TODO: connect later on
                     None, // TODO: connect later on
                     user_message.clone(),
@@ -437,7 +442,9 @@ impl SheetUIInferenceChain {
                     tools.clone(),
                     last_function_response,
                     full_job.job_id.clone(),
+                    vec![],
                     node_env.clone(),
+                    db.clone(),
                 );
             } else {
                 // No more function calls required, return the final response

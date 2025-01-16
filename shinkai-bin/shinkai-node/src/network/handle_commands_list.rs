@@ -1582,14 +1582,28 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_vec_fs_retrieve_files_for_job(db_clone, identity_manager_clone, job_id, bearer, res).await;
+                    let _ = Node::v2_api_vec_fs_retrieve_files_for_job(
+                        db_clone,
+                        identity_manager_clone,
+                        job_id,
+                        bearer,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiVecFSGetFolderNameForJob { bearer, job_id, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_vec_fs_get_folder_name_for_job(db_clone, identity_manager_clone, job_id, bearer, res).await;
+                    let _ = Node::v2_api_vec_fs_get_folder_name_for_job(
+                        db_clone,
+                        identity_manager_clone,
+                        job_id,
+                        bearer,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiUpdateSmartInboxName {
@@ -2745,82 +2759,6 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::v2_api_delete_tool_asset(db_clone, bearer, tool_id, app_id, file_name, node_env, res)
                         .await;
-                });
-            }
-
-            NodeCommand::V2ApiUploadAppFile {
-                bearer,
-                tool_id,
-                app_id,
-                file_name,
-                file_data,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_env = fetch_node_environment();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_upload_app_file(
-                        db_clone, bearer, tool_id, app_id, file_name, file_data, node_env, res,
-                    )
-                    .await;
-                });
-            }
-            NodeCommand::V2ApiGetAppFile {
-                bearer,
-                tool_id,
-                app_id,
-                file_name,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_env = fetch_node_environment();
-                tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_get_app_file(db_clone, bearer, tool_id, app_id, file_name, node_env, res).await;
-                });
-            }
-            NodeCommand::V2ApiUpdateAppFile {
-                bearer,
-                tool_id,
-                app_id,
-                file_name,
-                new_name,
-                file_data,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_env = fetch_node_environment();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_update_app_file(
-                        db_clone, bearer, tool_id, app_id, file_name, new_name, file_data, node_env, res,
-                    )
-                    .await;
-                });
-            }
-            NodeCommand::V2ApiListAppFiles {
-                bearer,
-                tool_id,
-                app_id,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_env = fetch_node_environment();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_list_app_files(db_clone, bearer, tool_id, app_id, node_env, res).await;
-                });
-            }
-            NodeCommand::V2ApiDeleteAppFile {
-                bearer,
-                tool_id,
-                app_id,
-                file_name,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let node_env = fetch_node_environment();
-                tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_delete_app_file(db_clone, bearer, tool_id, app_id, file_name, node_env, res).await;
                 });
             }
             NodeCommand::V2ApiEnableAllTools { bearer, res } => {

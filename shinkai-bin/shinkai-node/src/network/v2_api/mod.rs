@@ -1,5 +1,4 @@
 pub mod api_v2_commands;
-pub mod api_v2_commands_app_files;
 pub mod api_v2_commands_cron;
 pub mod api_v2_commands_ext_agent_offers;
 pub mod api_v2_commands_jobs;

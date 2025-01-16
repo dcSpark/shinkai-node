@@ -1,11 +1,11 @@
-use std::env;
 use std::sync::Arc;
 use std::time::Instant;
+use std::{env, fs};
 
 use crate::llm_provider::error::LLMProviderError;
+use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::GenericInferenceChain;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
 use crate::llm_provider::job_manager::JobManager;
-use crate::network::v2_api::api_v2_commands_app_files::get_app_folder_path;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::execution_custom::execute_custom_tool;
@@ -14,9 +14,11 @@ use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
+use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
@@ -480,6 +482,35 @@ impl ToolRouter {
         let _function_name = function_call.name.clone();
         let function_args = function_call.arguments.clone();
 
+        // Get additional files
+        // Merge agent scope fs_files_paths if llm_provider is an agent
+        let mut merged_fs_files_paths = context.fs_files_paths().clone();
+        let mut merged_fs_folder_paths = Vec::new();
+        if let ProviderOrAgent::Agent(agent) = context.llm_provider() {
+            merged_fs_files_paths.extend(agent.scope.vector_fs_items.clone());
+            merged_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
+        }
+        let additional_files = GenericInferenceChain::get_additional_files(
+            &context.db(),
+            &context.full_job(),
+            context.job_filenames().clone(),
+            merged_fs_files_paths.clone(),
+            merged_fs_folder_paths.clone(),
+        )?;
+
+        let mut all_files = vec![];
+        // Add job scope files
+        let job_scope =
+            ShinkaiFileManager::get_absolute_path_for_job_scope(&context.db(), &context.full_job().job_id());
+        if let Ok(job_scope) = job_scope {
+            all_files.extend(job_scope);
+        }
+
+        println!("call_function additional_files: {:?}", additional_files);
+        println!("call_function job_scope files: {:?}", all_files);
+
+        all_files.extend(additional_files);
+
         match shinkai_tool {
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
@@ -522,31 +553,21 @@ impl ToolRouter {
                     python_tool.input_args.clone(),
                 )?;
 
-                let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
-                let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
-                if let Err(e) = mounts {
-                    eprintln!("Failed to list app files: {:?}", e);
-                    return Err(LLMProviderError::FunctionExecutionError(format!("{:?}", e)));
-                }
-                let mounts = Some(mounts.unwrap_or_default());
-
-                let result = python_tool
-                    .run(
-                        envs,
-                        node_env.api_listen_address.ip().to_string(),
-                        node_env.api_listen_address.port(),
-                        support_files,
-                        function_args,
-                        function_config_vec,
-                        node_storage_path,
-                        app_id.clone(),
-                        tool_id.clone(),
-                        node_name,
-                        false,
-                        None,
-                        mounts,
-                    )
-                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                let result = python_tool.run(
+                    envs,
+                    node_env.api_listen_address.ip().to_string(),
+                    node_env.api_listen_address.port(),
+                    support_files,
+                    function_args,
+                    function_config_vec,
+                    node_storage_path,
+                    app_id.clone(),
+                    tool_id.clone(),
+                    node_name,
+                    false,
+                    None,
+                    Some(all_files),
+                )?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
@@ -655,14 +676,6 @@ impl ToolRouter {
                     deno_tool.input_args.clone(),
                 )?;
 
-                let folder = get_app_folder_path(node_env.clone(), context.full_job().job_id().to_string());
-                let mounts = Node::v2_api_list_app_files_internal(folder.clone(), true);
-                if let Err(e) = mounts {
-                    eprintln!("Failed to list app files: {:?}", e);
-                    return Err(LLMProviderError::FunctionExecutionError(format!("{:?}", e)));
-                }
-                let mounts = Some(mounts.unwrap_or_default());
-
                 let result = deno_tool.run(
                     envs,
                     node_env.api_listen_address.ip().to_string(),
@@ -676,8 +689,9 @@ impl ToolRouter {
                     node_name,
                     false,
                     Some(tool_id),
-                    mounts,
+                    Some(all_files),
                 )?;
+
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
@@ -1016,24 +1030,22 @@ impl ToolRouter {
             shinkai_tool.input_args(),
         )?;
 
-        let result = js_tool
-            .run(
-                env,
-                node_env.api_listen_address.ip().to_string(),
-                node_env.api_listen_address.port(),
-                support_files,
-                function_args,
-                function_config_vec,
-                node_storage_path,
-                app_id,
-                tool_id.clone(),
-                // TODO Is this correct?
-                requester_node_name,
-                true,
-                Some(tool_id),
-                None,
-            )
-            .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+        let result = js_tool.run(
+            env,
+            node_env.api_listen_address.ip().to_string(),
+            node_env.api_listen_address.port(),
+            support_files,
+            function_args,
+            function_config_vec,
+            node_storage_path,
+            app_id,
+            tool_id.clone(),
+            // TODO Is this correct?
+            requester_node_name,
+            true,
+            Some(tool_id),
+            None,
+        )?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 

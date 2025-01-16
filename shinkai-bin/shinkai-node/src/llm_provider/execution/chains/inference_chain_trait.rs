@@ -13,6 +13,7 @@ use serde_json::Value as JsonValue;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::FunctionCallMetadata;
@@ -79,7 +80,9 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn job_callback_manager(&self) -> Option<Arc<Mutex<JobCallbackManager>>>;
     // fn sqlite_logger(&self) -> Option<Arc<SqliteLogger>>;
     fn llm_stopper(&self) -> Arc<LLMStopper>;
-
+    fn fs_files_paths(&self) -> &Vec<ShinkaiPath>;
+    fn llm_provider(&self) -> &ProviderOrAgent;
+    fn job_filenames(&self) -> &Vec<String>;
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait>;
 }
 
@@ -109,7 +112,7 @@ impl InferenceChainContextTrait for InferenceChainContext {
     fn db(&self) -> Arc<SqliteManager> {
         Arc::clone(&self.db)
     }
-    
+
     fn full_job(&self) -> &Job {
         &self.full_job
     }
@@ -189,6 +192,18 @@ impl InferenceChainContextTrait for InferenceChainContext {
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         Box::new(self.clone())
     }
+
+    fn fs_files_paths(&self) -> &Vec<ShinkaiPath> {
+        &self.fs_files_paths
+    }
+
+    fn llm_provider(&self) -> &ProviderOrAgent {
+        &self.llm_provider
+    }
+
+    fn job_filenames(&self) -> &Vec<String> {
+        &self.job_filenames
+    }
 }
 
 /// Struct that represents the generalized context available to all chains as input. Note not all chains require
@@ -200,7 +215,7 @@ pub struct InferenceChainContext {
     pub user_message: ParsedUserMessage,
     pub user_tool_selected: Option<String>,
     pub fs_files_paths: Vec<ShinkaiPath>,
-    pub job_filenames: Vec<String>, 
+    pub job_filenames: Vec<String>,
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
     pub llm_provider: ProviderOrAgent,
@@ -229,7 +244,7 @@ impl InferenceChainContext {
         user_message: ParsedUserMessage,
         user_tool_selected: Option<String>,
         fs_files_paths: Vec<ShinkaiPath>,
-        job_filenames: Vec<String>,   
+        job_filenames: Vec<String>,
         message_hash_id: Option<String>,
         image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
@@ -496,6 +511,18 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         (**self).clone_box()
     }
+
+    fn fs_files_paths(&self) -> &Vec<ShinkaiPath> {
+        (**self).fs_files_paths()
+    }
+
+    fn llm_provider(&self) -> &ProviderOrAgent {
+        (**self).llm_provider()
+    }
+
+    fn job_filenames(&self) -> &Vec<String> {
+        (**self).job_filenames()
+    }
 }
 
 /// A Mock implementation of the InferenceChainContextTrait for testing purposes.
@@ -511,6 +538,9 @@ pub struct MockInferenceChainContext {
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     pub llm_stopper: Arc<LLMStopper>,
+    pub fs_files_paths: Vec<ShinkaiPath>,
+    pub job_filenames: Vec<String>,
+    pub llm_provider: ProviderOrAgent,
 }
 
 impl MockInferenceChainContext {
@@ -527,6 +557,9 @@ impl MockInferenceChainContext {
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         llm_stopper: Arc<LLMStopper>,
+        fs_files_paths: Vec<ShinkaiPath>,
+        job_filenames: Vec<String>,
+        llm_provider: ProviderOrAgent,
     ) -> Self {
         Self {
             user_message,
@@ -540,6 +573,9 @@ impl MockInferenceChainContext {
             my_agent_payments_manager,
             ext_agent_payments_manager,
             llm_stopper,
+            fs_files_paths,
+            job_filenames,
+            llm_provider,
         }
     }
 }
@@ -563,6 +599,9 @@ impl Default for MockInferenceChainContext {
             my_agent_payments_manager: None,
             ext_agent_payments_manager: None,
             llm_stopper: Arc::new(LLMStopper::new()),
+            fs_files_paths: vec![],
+            job_filenames: vec![],
+            llm_provider: ProviderOrAgent::LLMProvider(SerializedLLMProvider::mock_provider()),
         }
     }
 }
@@ -667,6 +706,18 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
     fn clone_box(&self) -> Box<dyn InferenceChainContextTrait> {
         Box::new(self.clone())
     }
+
+    fn fs_files_paths(&self) -> &Vec<ShinkaiPath> {
+        &self.fs_files_paths
+    }
+
+    fn llm_provider(&self) -> &ProviderOrAgent {
+        &self.llm_provider
+    }
+
+    fn job_filenames(&self) -> &Vec<String> {
+        &self.job_filenames
+    }
 }
 
 impl Clone for MockInferenceChainContext {
@@ -683,6 +734,9 @@ impl Clone for MockInferenceChainContext {
             my_agent_payments_manager: self.my_agent_payments_manager.clone(),
             ext_agent_payments_manager: self.ext_agent_payments_manager.clone(),
             llm_stopper: self.llm_stopper.clone(),
+            fs_files_paths: self.fs_files_paths.clone(),
+            job_filenames: self.job_filenames.clone(),
+            llm_provider: self.llm_provider.clone(),
         }
     }
 }

@@ -1733,6 +1733,30 @@ impl Node {
         }
     }
 
+    /// Resolves a Shinkai file protocol URL into actual file bytes.
+    /// 
+    /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
+    /// This function validates the protocol format, constructs the actual file path in the node's storage,
+    /// and returns the file contents as bytes.
+    ///
+    /// # Arguments
+    /// * `bearer` - Bearer token for authentication
+    /// * `db` - SQLite database manager for token validation
+    /// * `shinkai_file_protocol` - The Shinkai file protocol URL to resolve
+    /// * `node_storage_path` - Base path where tool files are stored
+    /// * `res` - Channel sender to return the result
+    ///
+    /// # Returns
+    /// * `Ok(())` - Operation completed (result sent through res channel)
+    /// * `Err(NodeError)` - If there was an error in the operation
+    ///
+    /// # Protocol Format Example
+    /// ```text
+    /// shinkai://file/node123/app-456/path/to/file.txt
+    /// ```
+    ///
+    /// The function will look for this file in:
+    /// `{node_storage_path}/tools_storage/app-456/path/to/file.txt`
     pub async fn v2_api_resolve_shinkai_file_protocol(
         bearer: String,
         db: Arc<SqliteManager>,
@@ -1872,7 +1896,7 @@ impl Node {
     pub async fn v2_api_list_tool_assets(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         node_env: NodeEnvironment,
         res: Sender<Result<Vec<String>, APIError>>,
@@ -1902,7 +1926,7 @@ impl Node {
     pub async fn v2_api_delete_tool_asset(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         file_name: String,
         node_env: NodeEnvironment,
