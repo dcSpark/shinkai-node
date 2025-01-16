@@ -1175,4 +1175,9 @@ pub enum NodeCommand {
         cron_task_id: i64,
         res: Sender<Result<Vec<u8>, APIError>>,
     },
+    V2ApiSearchFilesByName {
+        bearer: String,
+        name: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }

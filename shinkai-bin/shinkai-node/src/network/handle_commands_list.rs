@@ -1562,6 +1562,13 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiSearchFilesByName { bearer, name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_search_files_by_name(db_clone, identity_manager_clone, name, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
                 let db_clone = Arc::clone(&self.db);
 

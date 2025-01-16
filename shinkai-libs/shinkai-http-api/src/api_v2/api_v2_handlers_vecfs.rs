@@ -128,6 +128,13 @@ pub fn vecfs_routes(
         .and(warp::multipart::form().max_length(1024 * 1024 * 1024)) // Set max length to 1024 MB
         .and_then(upload_file_to_job_handler);
 
+    let search_files_by_name_route = warp::path("search_files_by_name")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(search_files_by_name_handler);
+
     move_item_route
         .or(copy_item_route)
         .or(move_folder_route)
@@ -143,6 +150,7 @@ pub fn vecfs_routes(
         .or(retrieve_files_for_job_route)
         .or(get_folder_name_for_job_route)
         .or(upload_file_to_job_route)
+        .or(search_files_by_name_route)
 }
 
 #[utoipa::path(
@@ -979,6 +987,60 @@ pub async fn upload_file_to_job_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/search_files_by_name",
+    responses(
+        (status = 200, description = "Successfully searched files by name", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn search_files_by_name_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    if let Some(name) = query_params.get("name") {
+        if name.trim().is_empty() {
+            return Err(warp::reject::custom(APIError::new(
+                StatusCode::BAD_REQUEST,
+                "Bad Request",
+                "Search term cannot be empty",
+            )));
+        }
+
+        let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::V2ApiSearchFilesByName {
+                bearer,
+                name: name.clone(),
+                res: res_sender,
+            })
+            .await
+            .map_err(|_| warp::reject::reject())?;
+        let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+        match result {
+            Ok(response) => {
+                let response = create_success_response(response);
+                Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+            }
+            Err(error) => Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap(),
+            )),
+        }
+    } else {
+        Err(warp::reject::custom(APIError::new(
+            StatusCode::BAD_REQUEST,
+            "Bad Request",
+            "Missing name parameter",
+        )))
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -997,6 +1059,7 @@ pub async fn upload_file_to_job_handler(
         retrieve_files_for_job_handler,
         get_folder_name_for_job_handler,
         upload_file_to_job_handler,
+        search_files_by_name_handler,
     ),
     components(
         schemas(APIError, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,

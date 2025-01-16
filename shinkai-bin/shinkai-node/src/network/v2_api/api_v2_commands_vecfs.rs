@@ -874,4 +874,35 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn v2_api_search_files_by_name(
+        db: Arc<SqliteManager>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        name: String,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Search for files using the provided name
+        match db.search_parsed_files_by_name_or_path(&name) {
+            Ok(files) => {
+                let json_files = serde_json::to_value(files).map_err(|e| NodeError::from(e))?;
+                let _ = res.send(Ok(json_files)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to search files: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
 }
