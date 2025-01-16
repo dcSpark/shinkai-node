@@ -97,7 +97,7 @@ pub fn vecfs_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::multipart::form())
+        .and(warp::multipart::form().max_length(1024 * 1024 * 1024)) // Set max length to 1024 MB
         .and_then(upload_file_to_folder_handler);
 
     let retrieve_source_file_route = warp::path("download_file")
@@ -125,7 +125,7 @@ pub fn vecfs_routes(
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and(warp::multipart::form())
+        .and(warp::multipart::form().max_length(1024 * 1024 * 1024)) // Set max length to 1024 MB
         .and_then(upload_file_to_job_handler);
 
     move_item_route
