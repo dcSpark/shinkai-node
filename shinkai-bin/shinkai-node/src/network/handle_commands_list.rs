@@ -2823,7 +2823,18 @@ impl Node {
                         Node::v2_api_delete_app_file(db_clone, bearer, tool_id, app_id, file_name, node_env, res).await;
                 });
             }
-
+            NodeCommand::V2ApiEnableAllTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_enable_all_tools(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiDisableAllTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_disable_all_tools(db_clone, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }

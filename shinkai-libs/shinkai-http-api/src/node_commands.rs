@@ -1180,4 +1180,12 @@ pub enum NodeCommand {
         name: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiEnableAllTools {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiDisableAllTools {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
