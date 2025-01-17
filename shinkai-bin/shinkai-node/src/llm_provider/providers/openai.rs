@@ -243,7 +243,7 @@ pub async fn parse_openai_stream_chunk(
                     ws_manager_trait,
                     Some(inbox_name.clone()),
                     session_id,
-                    response_text.clone(),
+                    "".to_string(),
                     true,
                     None,
                 )
@@ -458,7 +458,7 @@ pub async fn handle_streaming_response(
                 }
 
                 // Handle WebSocket updates for function calls
-                if let Some(ref manager) = ws_manager_trait {
+                if let Some(ref _manager) = ws_manager_trait {
                     if let Some(last_function_call) = function_calls.last() {
                         send_tool_ws_update(&ws_manager_trait, Some(inbox_name.clone()), last_function_call).await?;
                     }
@@ -812,18 +812,13 @@ async fn send_tool_ws_update(
 
             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
-            let content = serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string());
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Debug,
-                format!("Websocket content: {}", content).as_str(),
-            );
+            eprintln!("Websocket content (function_call): {}", serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string()));
 
             let _ = m
                 .queue_message(
                     WSTopic::Inbox,
                     inbox_name_string,
-                    content,
+                    serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string()),
                     ws_message_type,
                     true,
                 )
