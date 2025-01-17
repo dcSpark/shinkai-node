@@ -19,11 +19,13 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
     },
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
     },
 };
 use shinkai_message_primitives::{
@@ -44,7 +46,7 @@ use shinkai_tools_primitives::tools::{
     tool_playground::ToolPlayground,
 };
 
-use std::{fs::File, io::Write, io::Read, path::Path, sync::Arc, time::Instant};
+use std::{fs::File, io::Read, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -1462,7 +1464,7 @@ impl Node {
             metadata: None,
             tool_key: None,
             fs_files_paths: vec![],
-                job_filenames: vec![],
+            job_filenames: vec![],
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(
@@ -1734,7 +1736,7 @@ impl Node {
     }
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
-    /// 
+    ///
     /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
     /// This function validates the protocol format, constructs the actual file path in the node's storage,
     /// and returns the file contents as bytes.
@@ -2024,16 +2026,13 @@ impl Node {
 
                     match db.get_tool_by_key_and_version(&tool.tool_router_key, Some(version)) {
                         Ok(mut shinkai_tool) => {
-                            let activated = match &mut shinkai_tool {
-                                ShinkaiTool::Deno(deno_tool, _) => {
-                                    deno_tool.activated = true;
-                                    db.update_tool(shinkai_tool).await.is_ok()
+                            if shinkai_tool.can_be_enabled() {
+                                shinkai_tool.enable();
+                                if shinkai_tool.is_enabled() {
+                                    let _ = db.update_tool(shinkai_tool.clone()).await.is_ok();
                                 }
-                                _ => {
-                                    shinkai_tool.enable();
-                                    db.update_tool(shinkai_tool).await.is_ok()
-                                }
-                            };
+                            }
+                            let activated = shinkai_tool.is_enabled();
                             tool_statuses.push((tool.tool_router_key, activated));
                         }
                         Err(_) => {
@@ -2042,9 +2041,10 @@ impl Node {
                     }
                 }
 
-                let response = json!(tool_statuses.into_iter().map(|(key, activated)| {
-                    (key, json!({"activated": activated}))
-                }).collect::<Map<String, Value>>());
+                let response = json!(tool_statuses
+                    .into_iter()
+                    .map(|(key, activated)| { (key, json!({"activated": activated})) })
+                    .collect::<Map<String, Value>>());
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }
@@ -2086,16 +2086,12 @@ impl Node {
 
                     match db.get_tool_by_key_and_version(&tool.tool_router_key, Some(version)) {
                         Ok(mut shinkai_tool) => {
-                            let activated = match &mut shinkai_tool {
-                                ShinkaiTool::Deno(deno_tool, _) => {
-                                    deno_tool.activated = false;
-                                    db.update_tool(shinkai_tool).await.is_ok()
-                                }
-                                _ => {
-                                    shinkai_tool.disable();
-                                    db.update_tool(shinkai_tool).await.is_ok()
-                                }
-                            };
+                            shinkai_tool.disable();
+                            if !shinkai_tool.is_enabled() {
+                                let _ = db.update_tool(shinkai_tool.clone()).await.is_ok();
+                            }
+
+                            let activated = shinkai_tool.is_enabled();
                             tool_statuses.push((tool.tool_router_key, activated));
                         }
                         Err(_) => {
@@ -2104,9 +2100,10 @@ impl Node {
                     }
                 }
 
-                let response = json!(tool_statuses.into_iter().map(|(key, activated)| {
-                    (key, json!({"activated": activated}))
-                }).collect::<Map<String, Value>>());
+                let response = json!(tool_statuses
+                    .into_iter()
+                    .map(|(key, activated)| { (key, json!({"activated": activated})) })
+                    .collect::<Map<String, Value>>());
                 let _ = res.send(Ok(response)).await;
                 Ok(())
             }
