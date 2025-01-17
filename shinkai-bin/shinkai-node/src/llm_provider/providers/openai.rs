@@ -231,7 +231,6 @@ pub async fn parse_openai_stream_chunk(
     let mut error_message: Option<String> = None;
 
     loop {
-        eprintln!("Buffer before parsing: {}", buffer);
         // Look for a newline in `buffer`; if none is found, break.
         let Some(newline_pos) = buffer.find('\n') else {
             // No complete line yet, so we can't parse anything. We'll wait for more data.

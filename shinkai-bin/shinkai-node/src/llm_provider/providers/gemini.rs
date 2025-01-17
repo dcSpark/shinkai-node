@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
+use super::openai::{add_options_to_payload, handle_non_streaming_response, handle_streaming_response};
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMService;
-use super::openai::{handle_streaming_response, handle_non_streaming_response, add_options_to_payload};
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
@@ -35,12 +35,6 @@ impl LLMService for Gemini {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                // let base_url = if base_url.ends_with('/') {
-                //     base_url.to_string()
-                // } else {
-                //     format!("{}/", base_url)
-                // };
-
                 let session_id = Uuid::new_v4().to_string();
                 let url = format!("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions");
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
@@ -65,6 +59,13 @@ impl LLMService for Gemini {
                     "stream": is_stream,
                 });
 
+                if !tools_json.is_empty() {
+                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
+                }
+
+                // Add options to payload
+                add_options_to_payload(&mut payload, config.as_ref());
+
                 // Print payload as a pretty JSON string only if IS_TESTING is true
                 if std::env::var("LOG_ALL").unwrap_or_default() == "true"
                     || std::env::var("LOG_ALL").unwrap_or_default() == "1"
@@ -74,14 +75,6 @@ impl LLMService for Gemini {
                         Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                     };
                 }
-
-
-                if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
-                }
-
-                // Add options to payload
-                add_options_to_payload(&mut payload, config.as_ref());
 
                 if is_stream {
                     handle_streaming_response(
