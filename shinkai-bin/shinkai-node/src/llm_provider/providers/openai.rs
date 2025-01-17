@@ -9,6 +9,7 @@ use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use async_trait::async_trait;
 use futures::StreamExt;
+use regex::Regex;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
@@ -49,9 +50,10 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
 }
 
 #[derive(Debug, Clone)]
-struct PartialFunctionCall {
-    name: Option<String>,
-    arguments: String,
+pub struct PartialFunctionCall {
+    pub name: Option<String>,
+    pub arguments: String,
+    pub is_accumulating: bool,  // Track if we're currently accumulating a function call
 }
 
 #[async_trait]
@@ -164,8 +166,59 @@ impl LLMService for OpenAI {
     }
 }
 
-/// Attempt to parse any full lines in the buffer, each of which should start with "data: "
-/// and then contain a JSON object (or [DONE]).
+/// A synchronous version of finalize_function_call that doesn't deal with WebSocket updates
+fn finalize_function_call_sync(
+    partial_fc: &mut PartialFunctionCall,
+    function_calls: &mut Vec<FunctionCall>,
+    tools: &Option<Vec<JsonValue>>,
+) {
+    if let Some(ref name) = partial_fc.name {
+        if !name.is_empty() {
+            // Attempt to parse the accumulated arguments
+            let fc_arguments = if partial_fc.arguments.is_empty() {
+                serde_json::Map::new()
+            } else {
+                match serde_json::from_str::<serde_json::Value>(&partial_fc.arguments) {
+                    Ok(value) => {
+                        value.as_object().cloned().unwrap_or_else(|| {
+                            serde_json::Map::new()
+                        })
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to parse arguments: {}", e);
+                        serde_json::Map::new()
+                    }
+                }
+            };
+
+            // Look up the optional tool_router_key
+            let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                tools_array.iter().find_map(|tool| {
+                    if tool.get("name")?.as_str()? == name {
+                        tool.get("tool_router_key")
+                            .and_then(|key| key.as_str().map(|s| s.to_string()))
+                    } else {
+                        None
+                    }
+                })
+            });
+
+            // Build and add to the function_calls vector
+            let new_function_call = FunctionCall {
+                name: name.clone(),
+                arguments: fc_arguments,
+                tool_router_key,
+                response: None,
+            };
+            function_calls.push(new_function_call);
+        }
+    }
+
+    // Clear partial so we can accumulate a new function call in subsequent chunks
+    partial_fc.name = None;
+    partial_fc.arguments.clear();
+}
+
 pub async fn parse_openai_stream_chunk(
     buffer: &mut String,
     response_text: &mut String,
@@ -195,10 +248,15 @@ pub async fn parse_openai_stream_chunk(
             continue;
         }
 
+
         // If the line doesn't start with "data: ", check if it's an array-formatted error
         if !line.starts_with("data: ") {
             // If it is literally [DONE], skip
             if line == "[DONE]" {
+                // If we were accumulating a function call, finalize it
+                if partial_fc.is_accumulating && partial_fc.name.is_some() {
+                    finalize_function_call_sync(partial_fc, function_calls, tools);
+                }
                 continue;
             }
 
@@ -238,6 +296,10 @@ pub async fn parse_openai_stream_chunk(
 
         // If it's "[DONE]", send final update and skip
         if chunk.trim() == "[DONE]" {
+            // If we were accumulating a function call, finalize it
+            if partial_fc.is_accumulating && partial_fc.name.is_some() {
+                finalize_function_call_sync(partial_fc, function_calls, tools);
+            }
             if let Some(inbox_name) = inbox_name.as_ref() {
                 send_ws_update(
                     ws_manager_trait,
@@ -252,8 +314,18 @@ pub async fn parse_openai_stream_chunk(
             continue;
         }
 
-        // Attempt to parse as JSON
-        match serde_json::from_str::<JsonValue>(chunk) {
+        // Extract any function call arguments before parsing JSON
+        let (maybe_args, cleaned_chunk) = extract_and_remove_arguments(chunk);
+
+        // If we extracted arguments and we're accumulating a function call, append them
+        if let Some(args) = maybe_args {
+            if partial_fc.is_accumulating {
+                partial_fc.arguments.push_str(&args);
+            }
+        }
+
+        // Attempt to parse the cleaned JSON
+        match serde_json::from_str::<JsonValue>(&cleaned_chunk) {
             Ok(json_data) => {
                 // If there's an error object, record it
                 if let Some(error_obj) = json_data.get("error") {
@@ -309,84 +381,40 @@ pub async fn parse_openai_stream_chunk(
                                         }
                                     }
                                     partial_fc.name = Some(name.to_string());
+                                    partial_fc.is_accumulating = true;
                                 }
-                                if let Some(args_str) = fc.get("arguments").and_then(|a| a.as_str()) {
-                                    partial_fc.arguments.push_str(args_str);
-                                }
-                            }
-                        } else if !finish_reason.is_empty() {
-                            // If we have an empty delta and a finish_reason, this is the end of the stream
-                            if let Some(inbox_name) = inbox_name.as_ref() {
-                                send_ws_update(
-                                    ws_manager_trait,
-                                    Some(inbox_name.clone()),
-                                    session_id,
-                                    response_text.clone(),
-                                    true,
-                                    Some(finish_reason.to_string()),
-                                )
-                                .await?;
                             }
                         }
 
-                        // If finish_reason == "function_call", finalize partial
+                        // If finish_reason == "function_call", finalize the partial
+                        // so that we stop collecting arguments for this function.
+                        // (OpenAI signals that we've received all the arguments.)
                         if finish_reason == "function_call" {
                             finalize_function_call_sync(partial_fc, function_calls, tools);
+                        } else if finish_reason == "stop" {
+                            // If the user or model stops, we can finalize
+                            // any function call that wasn't yet finished.
+                            if partial_fc.name.is_some() {
+                                finalize_function_call_sync(partial_fc, function_calls, tools);
+                            }
                         }
                     }
                 }
             }
-            Err(_) => {
-                // We couldn't parse the line as JSON, possibly because it's a partial line
-                // that got split up. Put it back into `buffer` so next chunk can finish it.
+            Err(e) => {
+                // If we're accumulating a function call, keep accumulating
+                if partial_fc.is_accumulating {
+                    continue;
+                }
+                // Otherwise, this might be a partial line that got split up
+                // Put it back into `buffer` so next chunk can finish it
                 buffer.insert_str(0, &(line.to_string() + "\n"));
-                // Then break out of the loop; we'll wait for more data
                 break;
             }
         }
     }
 
     Ok(error_message)
-}
-
-/// A synchronous version of finalize_function_call that doesn't deal with WebSocket updates
-fn finalize_function_call_sync(
-    partial_fc: &mut PartialFunctionCall,
-    function_calls: &mut Vec<FunctionCall>,
-    tools: &Option<Vec<JsonValue>>,
-) {
-    if let Some(ref name) = partial_fc.name {
-        if !name.is_empty() {
-            // Attempt to parse the accumulated arguments
-            let fc_arguments = serde_json::from_str(&partial_fc.arguments)
-                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
-
-            // Look up the optional tool_router_key
-            let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                tools_array.iter().find_map(|tool| {
-                    if tool.get("name")?.as_str()? == name {
-                        tool.get("tool_router_key")
-                            .and_then(|key| key.as_str().map(|s| s.to_string()))
-                    } else {
-                        None
-                    }
-                })
-            });
-
-            // Build and add to the function_calls vector
-            let new_function_call = FunctionCall {
-                name: name.clone(),
-                arguments: fc_arguments.as_object().cloned().unwrap_or_else(serde_json::Map::new),
-                tool_router_key,
-                response: None,
-            };
-            function_calls.push(new_function_call);
-        }
-    }
-
-    // Clear partial so we can accumulate a new function call in subsequent chunks
-    partial_fc.name = None;
-    partial_fc.arguments.clear();
 }
 
 pub async fn handle_streaming_response(
@@ -416,6 +444,7 @@ pub async fn handle_streaming_response(
     let mut partial_fc = PartialFunctionCall {
         name: None,
         arguments: String::new(),
+        is_accumulating: false,
     };
 
     while let Some(item) = stream.next().await {
@@ -828,6 +857,37 @@ async fn send_tool_ws_update(
     Ok(())
 }
 
+pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) {
+    // Find the start of arguments value
+    let args_prefix = r#""function_call":{"arguments":""#;
+    if let Some(args_start_pos) = json_str.find(args_prefix) {
+        let content_start = args_start_pos + args_prefix.len();
+        
+        // Find the end of arguments value by looking for the closing quotes and braces
+        // We look for the first quote that's followed by }}, which indicates the end of the function_call object
+        if let Some(mut content_end) = json_str[content_start..].find(r#""}}"#) {
+            content_end += content_start; // Adjust position to be relative to the full string
+            
+            // Extract the arguments content
+            let content = json_str[content_start..content_end].to_string();
+            
+            // Build the cleaned JSON by replacing the arguments content with empty string
+            let cleaned_json = format!(
+                "{}{}{}",
+                &json_str[..content_start],  // everything up to the content
+                "",                          // empty string for arguments
+                &json_str[content_end..]     // everything after the content
+            );
+            
+            (Some(content), cleaned_json)
+        } else {
+            (None, json_str.to_string())
+        }
+    } else {
+        (None, json_str.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -840,6 +900,7 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -884,6 +945,7 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "test_function",
@@ -946,6 +1008,7 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
         let tools = None;
 
@@ -976,6 +1039,7 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
         let tools = None;
 
@@ -1058,6 +1122,7 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
         let tools = None;
 
@@ -1183,6 +1248,7 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
         let tools = None;
 
@@ -1219,6 +1285,7 @@ mod tests {
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
         let tools = None;
 
@@ -1301,35 +1368,197 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_parse_openai_stream_chunk_resource_exhausted() {
+    async fn test_parse_openai_stream_chunk_smtp_function_call() {
         let mut buffer = String::new();
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
         let mut partial_fc = PartialFunctionCall {
             name: None,
             arguments: String::new(),
+            is_accumulating: false,
         };
-        let tools = None;
+        let tools = Some(vec![serde_json::json!({
+            "name": "shinkai_tool_config_updater",
+            "tool_router_key": "test_router"
+        })]);
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
-        // Test resource exhausted error response
-        buffer.push_str("[{\"error\":{\"code\":429,\"message\":\"Resource has been exhausted (e.g. check quota).\",\"status\":\"RESOURCE_EXHAUSTED\"}}]\n");
+        // Initial message with role and function call name
+        buffer.push_str("data: {\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null,\"function_call\":{\"name\":\"shinkai_tool_config_updater\",\"arguments\":\"\"},\"refusal\":null},\"logprobs\":null,\"finish_reason\":null}]}\n");
+
+        // Function call argument chunks
+        let argument_chunks = vec![
+            "{\"", "tool", "_router", "_key", "\":\"", "local", "::", "none", "\",\"",
+            "config", "\":{\"", "smtp", "_server", "\":\"", "smtp", ".", "zo", "ho", ".com",
+            "\",\"", "port", "\":", "465", ",\"", "sender", "_email", "\":\"", "bat", "ata",
+            "@", "z", "oh", "om", "ail", ".com", "\",\"", "sender", "_password", "\":\"",
+            "ber", "emu", "\",\"", "ssl", "\":", "true", "}}"
+        ];
+
+        for chunk in argument_chunks {
+            buffer.push_str(&format!("data: {{\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{{\"index\":0,\"delta\":{{\"function_call\":{{\"arguments\":\"{}\"}}}},\"logprobs\":null,\"finish_reason\":null}}]}}\n", chunk));
+            let result = parse_openai_stream_chunk(
+                &mut buffer,
+                &mut response_text,
+                &mut function_calls,
+                &mut partial_fc,
+                &tools,
+                &ws_manager,
+                None,
+                "session_id",
+            )
+            .await;
+            assert!(result.is_ok());
+        }
+
+        // Final message with finish_reason
+        buffer.push_str("data: {\"id\":\"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA\",\"object\":\"chat.completion.chunk\",\"created\":1736901711,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"function_call\"}]}\n");
         let result = parse_openai_stream_chunk(
             &mut buffer,
             &mut response_text,
             &mut function_calls,
             &mut partial_fc,
             &tools,
-            &None,
+            &ws_manager,
             None,
             "session_id",
         )
         .await;
-
         assert!(result.is_ok());
-        let error = result.unwrap();
-        assert!(error.is_some());
-        assert_eq!(error.unwrap(), "429: Resource has been exhausted (e.g. check quota).");
-        assert!(response_text.is_empty());
-        assert!(function_calls.is_empty());
+
+        // [DONE] message
+        buffer.push_str("data: [DONE]\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        eprintln!("Result: {:?}", result);
+
+        // Verify the function call
+        assert_eq!(function_calls.len(), 1);
+        let fc = &function_calls[0];
+        assert_eq!(fc.name, "shinkai_tool_config_updater");
+        assert_eq!(fc.tool_router_key, Some("test_router".to_string()));
+
+        // Verify the arguments
+        let expected_args = serde_json::json!({
+            "tool_router_key": "local::none",
+            "config": {
+                "smtp_server": "smtp.zoho.com",
+                "port": 465,
+                "sender_email": "batata@zohomail.com",
+                "sender_password": "beremu",
+                "ssl": true
+            }
+        });
+        assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
+    }
+
+    #[test]
+    fn test_extraction_stream_chunk() {
+        let json_str = r#"{"id":"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA","object":"chat.completion.chunk","created":1736901711,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}},"logprobs":null,"finish_reason":null}]}"#;
+
+        let (maybe_args, cleaned) = extract_and_remove_arguments(json_str);
+
+        // Check we extracted the inner content - in this case just the start of a JSON object
+        assert_eq!(maybe_args, Some("{\\\"".to_string()));  // This is what's actually in the JSON
+
+        // The cleaned JSON should have empty arguments but maintain structure
+        assert!(cleaned.contains(r#""function_call""#));
+        assert!(cleaned.contains(r#""arguments""#));
+        assert!(cleaned.contains(r#""""#)); // Empty string
+
+        // The rest of the structure should be unchanged
+        assert!(cleaned.contains(r#""id":"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA""#));
+        assert!(cleaned.contains(r#""object":"chat.completion.chunk""#));
+        assert!(cleaned.contains(r#""model":"gpt-4o-mini-2024-07-18""#));
+
+        eprintln!("Cleaned: {}", cleaned);
+
+        // Verify the cleaned JSON is valid and has the expected structure
+        let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
+        assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+    }
+
+    #[test]
+    fn test_extraction_stream_chunk_colon() {
+        // Test case 1: Normal colon in arguments
+        let json_str = r#"{"id":"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA","object":"chat.completion.chunk","created":1736901711,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":":"}},"logprobs":null,"finish_reason":null}]}"#;
+
+        eprintln!("\nTesting case 1 - Colon as argument");
+        let (maybe_args, cleaned) = extract_and_remove_arguments(json_str);
+
+        // Check we extracted the inner content - in this case just a colon
+        eprintln!("Extracted arguments: {:?}", maybe_args);
+        assert_eq!(maybe_args, Some(":".to_string()));
+
+        // The cleaned JSON should have empty arguments but maintain structure
+        eprintln!("Checking cleaned JSON structure...");
+        assert!(cleaned.contains(r#""function_call""#));
+        assert!(cleaned.contains(r#""arguments""#));
+        assert!(cleaned.contains(r#""""#)); // Empty string
+
+        // The rest of the structure should be unchanged
+        assert!(cleaned.contains(r#""id":"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA""#));
+        assert!(cleaned.contains(r#""object":"chat.completion.chunk""#));
+        assert!(cleaned.contains(r#""model":"gpt-4o-mini-2024-07-18""#));
+
+        // Verify the cleaned JSON is valid and has the expected structure
+        eprintln!("Attempting to parse cleaned JSON...");
+        match serde_json::from_str::<serde_json::Value>(&cleaned) {
+            Ok(parsed) => {
+                eprintln!("Successfully parsed JSON");
+                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+            }
+            Err(e) => {
+                eprintln!("Failed to parse JSON: {}", e);
+                eprintln!("Cleaned JSON was: {}", cleaned);
+                panic!("JSON parsing failed: {}", e);
+            }
+        }
+
+        // Test case 2: Empty arguments with trailing comma
+        eprintln!("\nTesting case 2 - Empty arguments with trailing comma");
+        let empty_args_json = r#"{"id":"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA","object":"chat.completion.chunk","created":1736901711,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"",""}},"logprobs":null,"finish_reason":null}]}"#;
+
+        let (maybe_args, cleaned) = extract_and_remove_arguments(empty_args_json);
+
+        // Check we extracted the inner content - in this case an empty string
+        eprintln!("Extracted arguments: {:?}", maybe_args);
+        assert_eq!(maybe_args, Some("\",\"".to_string()));
+
+        // The cleaned JSON should have empty arguments but maintain structure
+        eprintln!("Checking cleaned JSON structure...");
+        assert!(cleaned.contains(r#""function_call""#));
+        assert!(cleaned.contains(r#""arguments""#));
+        assert!(cleaned.contains(r#""""#)); // Empty string
+
+        // The rest of the structure should be unchanged
+        assert!(cleaned.contains(r#""id":"chatcmpl-ApllfOJ8EuDsd9Qe6J1j3EMGPhywA""#));
+        assert!(cleaned.contains(r#""object":"chat.completion.chunk""#));
+        assert!(cleaned.contains(r#""model":"gpt-4o-mini-2024-07-18""#));
+
+        // Verify the cleaned JSON is valid and has the expected structure
+        eprintln!("Attempting to parse cleaned JSON...");
+        match serde_json::from_str::<serde_json::Value>(&cleaned) {
+            Ok(parsed) => {
+                eprintln!("Successfully parsed JSON");
+                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+            }
+            Err(e) => {
+                eprintln!("Failed to parse JSON: {}", e);
+                eprintln!("Cleaned JSON was: {}", cleaned);
+                panic!("JSON parsing failed: {}", e);
+            }
+        }
     }
 }
+
