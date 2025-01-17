@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -46,6 +46,12 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
             }
         }
     }
+}
+
+#[derive(Debug, Clone)]
+struct PartialFunctionCall {
+    name: Option<String>,
+    arguments: String,
 }
 
 #[async_trait]
@@ -158,13 +164,232 @@ impl LLMService for OpenAI {
     }
 }
 
-#[derive(Debug, Clone)]
-struct PartialFunctionCall {
-    name: Option<String>,
-    arguments: String,
+/// Attempt to parse any full lines in the buffer, each of which should start with "data: "
+/// and then contain a JSON object (or [DONE]).
+pub async fn parse_openai_stream_chunk(
+    buffer: &mut String,
+    response_text: &mut String,
+    function_calls: &mut Vec<FunctionCall>,
+    partial_fc: &mut PartialFunctionCall,
+    tools: &Option<Vec<JsonValue>>,
+    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    inbox_name: Option<InboxName>,
+    session_id: &str,
+) -> Result<Option<String>, LLMProviderError> {
+    let mut error_message: Option<String> = None;
+
+    loop {
+        // Look for a newline in `buffer`; if none is found, break.
+        let Some(newline_pos) = buffer.find('\n') else {
+            // No complete line yet, so we can't parse anything. We'll wait for more data.
+            break;
+        };
+
+        // Extract this line (including the '\n') from the buffer:
+        let line_with_newline = buffer.drain(..=newline_pos).collect::<String>();
+        // Trim trailing whitespace from it:
+        let line = line_with_newline.trim();
+
+        // Skip empty lines
+        if line.is_empty() {
+            continue;
+        }
+
+        // If the line doesn't start with "data: ", check if it's an array-formatted error
+        if !line.starts_with("data: ") {
+            // If it is literally [DONE], skip
+            if line == "[DONE]" {
+                continue;
+            }
+
+            // Check if it's an array-formatted error response
+            if line.starts_with("[") {
+                match serde_json::from_str::<Vec<JsonValue>>(line) {
+                    Ok(array) => {
+                        if let Some(first_item) = array.first() {
+                            if let Some(error) = first_item.get("error") {
+                                let code = error
+                                    .get("code")
+                                    .and_then(|c| {
+                                        c.as_u64()
+                                            .map(|n| n.to_string())
+                                            .or_else(|| c.as_str().map(|s| s.to_string()))
+                                    })
+                                    .unwrap_or_else(|| "Unknown code".to_string());
+                                let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                                error_message = Some(format!("{}: {}", code, msg));
+                                continue;
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Not a valid array JSON, ignore or log
+                        continue;
+                    }
+                }
+            }
+
+            // Otherwise, ignore or log, but do not parse.
+            continue;
+        }
+
+        // Slice out whatever came after "data: "
+        let chunk = &line["data: ".len()..];
+
+        // If it's "[DONE]", send final update and skip
+        if chunk.trim() == "[DONE]" {
+            if let Some(inbox_name) = inbox_name.as_ref() {
+                send_ws_update(
+                    ws_manager_trait,
+                    Some(inbox_name.clone()),
+                    session_id,
+                    response_text.clone(),
+                    true,
+                    None,
+                )
+                .await?;
+            }
+            continue;
+        }
+
+        // Attempt to parse as JSON
+        match serde_json::from_str::<JsonValue>(chunk) {
+            Ok(json_data) => {
+                // If there's an error object, record it
+                if let Some(error_obj) = json_data.get("error") {
+                    let code = error_obj
+                        .get("code")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("Unknown code")
+                        .to_string();
+                    let msg = error_obj
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Unknown error");
+                    error_message = Some(format!("{}: {}", code, msg));
+                    continue;
+                }
+
+                // Otherwise, look for "choices"
+                if let Some(choices) = json_data.get("choices") {
+                    // Each item in "choices" may have "delta": { "content": "..."} or "function_call": ...
+                    for choice in choices.as_array().unwrap_or(&vec![]) {
+                        let finish_reason = choice
+                            .get("finish_reason")
+                            .and_then(|fr| fr.as_str())
+                            .unwrap_or_default();
+
+                        if let Some(delta) = choice.get("delta") {
+                            // If there's text content, append it and send WS update
+                            if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
+                                response_text.push_str(content);
+
+                                // Send WS update for the new content
+                                if let Some(inbox_name) = inbox_name.as_ref() {
+                                    send_ws_update(
+                                        ws_manager_trait,
+                                        Some(inbox_name.clone()),
+                                        session_id,
+                                        content.to_string(),
+                                        // if finish_reason is empty, we are not at the end of the stream
+                                        !finish_reason.is_empty(),
+                                        Some(finish_reason.to_string()),
+                                    )
+                                    .await?;
+                                }
+                            }
+
+                            // If there's function_call
+                            if let Some(fc) = delta.get("function_call") {
+                                if let Some(name) = fc.get("name").and_then(|n| n.as_str()) {
+                                    // If partial_fc already had a different name, finalize that first
+                                    if let Some(old_name) = &partial_fc.name {
+                                        if !old_name.is_empty() && old_name != name {
+                                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                                        }
+                                    }
+                                    partial_fc.name = Some(name.to_string());
+                                }
+                                if let Some(args_str) = fc.get("arguments").and_then(|a| a.as_str()) {
+                                    partial_fc.arguments.push_str(args_str);
+                                }
+                            }
+                        } else if !finish_reason.is_empty() {
+                            // If we have an empty delta and a finish_reason, this is the end of the stream
+                            if let Some(inbox_name) = inbox_name.as_ref() {
+                                send_ws_update(
+                                    ws_manager_trait,
+                                    Some(inbox_name.clone()),
+                                    session_id,
+                                    response_text.clone(),
+                                    true,
+                                    Some(finish_reason.to_string()),
+                                )
+                                .await?;
+                            }
+                        }
+
+                        // If finish_reason == "function_call", finalize partial
+                        if finish_reason == "function_call" {
+                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                // We couldn't parse the line as JSON, possibly because it's a partial line
+                // that got split up. Put it back into `buffer` so next chunk can finish it.
+                buffer.insert_str(0, &(line.to_string() + "\n"));
+                // Then break out of the loop; we'll wait for more data
+                break;
+            }
+        }
+    }
+
+    Ok(error_message)
 }
 
-async fn handle_streaming_response(
+/// A synchronous version of finalize_function_call that doesn't deal with WebSocket updates
+fn finalize_function_call_sync(
+    partial_fc: &mut PartialFunctionCall,
+    function_calls: &mut Vec<FunctionCall>,
+    tools: &Option<Vec<JsonValue>>,
+) {
+    if let Some(ref name) = partial_fc.name {
+        if !name.is_empty() {
+            // Attempt to parse the accumulated arguments
+            let fc_arguments = serde_json::from_str(&partial_fc.arguments)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+
+            // Look up the optional tool_router_key
+            let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                tools_array.iter().find_map(|tool| {
+                    if tool.get("name")?.as_str()? == name {
+                        tool.get("tool_router_key")
+                            .and_then(|key| key.as_str().map(|s| s.to_string()))
+                    } else {
+                        None
+                    }
+                })
+            });
+
+            // Build and add to the function_calls vector
+            let new_function_call = FunctionCall {
+                name: name.clone(),
+                arguments: fc_arguments.as_object().cloned().unwrap_or_else(serde_json::Map::new),
+                tool_router_key,
+                response: None,
+            };
+            function_calls.push(new_function_call);
+        }
+    }
+
+    // Clear partial so we can accumulate a new function call in subsequent chunks
+    partial_fc.name = None;
+    partial_fc.arguments.clear();
+}
+
+pub async fn handle_streaming_response(
     client: &Client,
     url: String,
     payload: JsonValue,
@@ -205,29 +430,38 @@ async fn handle_streaming_response(
                 llm_stopper.reset(&inbox_name.to_string());
 
                 // Send WS message indicating the job is done
+
+                send_ws_update(
+                    &ws_manager_trait,
+                    Some(inbox_name.clone()),
+                    &session_id,
+                    response_text.clone(),
+                    true,
+                    Some("Stopped by user request".to_string()),
+                )
+                .await?;
+
+                // Process complete messages in the buffer
+                if let Ok(Some(err)) = parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut response_text,
+                    &mut function_calls,
+                    &mut partial_fc,
+                    &tools,
+                    &ws_manager_trait,
+                    Some(inbox_name.clone()),
+                    &session_id,
+                )
+                .await
+                {
+                    error_message = Some(err);
+                }
+
+                // Handle WebSocket updates for function calls
                 if let Some(ref manager) = ws_manager_trait {
-                    let m = manager.lock().await;
-                    let inbox_name_string = inbox_name.to_string();
-
-                    let metadata = WSMetadata {
-                        id: Some(session_id.clone()),
-                        is_done: true,
-                        done_reason: Some("Stopped by user request".to_string()),
-                        total_duration: None,
-                        eval_count: None,
-                    };
-
-                    let ws_message_type = WSMessageType::Metadata(metadata);
-
-                    let _ = m
-                        .queue_message(
-                            WSTopic::Inbox,
-                            inbox_name_string,
-                            response_text.clone(),
-                            ws_message_type,
-                            true,
-                        )
-                        .await;
+                    if let Some(last_function_call) = function_calls.last() {
+                        send_tool_ws_update(&ws_manager_trait, Some(inbox_name.clone()), last_function_call).await?;
+                    }
                 }
 
                 return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
@@ -237,153 +471,31 @@ async fn handle_streaming_response(
         match item {
             Ok(chunk) => {
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
+                eprintln!("Raw server response chunk: {}", chunk_str);
                 buffer.push_str(&chunk_str);
 
                 // Process complete messages in the buffer
-                while let Some(message) = extract_next_complete_message(&mut buffer) {
-                    if message.trim().is_empty() {
-                        continue;
-                    }
+                if let Ok(Some(err)) = parse_openai_stream_chunk(
+                    &mut buffer,
+                    &mut response_text,
+                    &mut function_calls,
+                    &mut partial_fc,
+                    &tools,
+                    &ws_manager_trait,
+                    inbox_name.clone(),
+                    &session_id,
+                )
+                .await
+                {
+                    error_message = Some(err);
+                }
 
-                    // Handle [DONE] message
-                    if message.trim() == "[DONE]" {
-                        // Send final WS message
-                        if let Some(ref manager) = ws_manager_trait {
-                            if let Some(ref inbox_name) = inbox_name {
-                                let m = manager.lock().await;
-                                let inbox_name_string = inbox_name.to_string();
-
-                                let metadata = WSMetadata {
-                                    id: Some(session_id.clone()),
-                                    is_done: true,
-                                    done_reason: None,
-                                    total_duration: None,
-                                    eval_count: None,
-                                };
-
-                                let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                let _ = m
-                                    .queue_message(
-                                        WSTopic::Inbox,
-                                        inbox_name_string,
-                                        response_text.clone(),
-                                        ws_message_type,
-                                        true,
-                                    )
-                                    .await;
-                            }
-                        }
-                        continue;
-                    }
-
-                    match serde_json::from_str::<JsonValue>(&message) {
-                        Ok(data) => {
-                            // Check for error in the data
-                            if let Some(error) = data.get("error") {
-                                let code = error.get("code").and_then(|c| c.as_str());
-                                let message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                                let formatted_error = format!("{}: {}", code.unwrap_or("Unknown code"), message);
-                                error_message = Some(formatted_error);
-                                continue;
-                            }
-
-                            if let Some(choices) = data.get("choices") {
-                                for choice in choices.as_array().unwrap_or(&vec![]) {
-                                    // If there's a finish_reason, check if it's function_call
-                                    let finish_reason = choice
-                                        .get("finish_reason")
-                                        .and_then(|fr| fr.as_str())
-                                        .unwrap_or_default();
-
-                                    if let Some(delta) = choice.get("delta") {
-                                        // Handle content updates
-                                        if let Some(content) = delta.get("content") {
-                                            if let Some(content_str) = content.as_str() {
-                                                response_text.push_str(content_str);
-
-                                                // Send WS message for content update
-                                                if let Some(ref manager) = ws_manager_trait {
-                                                    if let Some(ref inbox_name) = inbox_name {
-                                                        let m = manager.lock().await;
-                                                        let inbox_name_string = inbox_name.to_string();
-
-                                                        let metadata = WSMetadata {
-                                                            id: Some(session_id.clone()),
-                                                            is_done: false,
-                                                            done_reason: None,
-                                                            total_duration: None,
-                                                            eval_count: None,
-                                                        };
-
-                                                        let ws_message_type = WSMessageType::Metadata(metadata);
-
-                                                        let _ = m
-                                                            .queue_message(
-                                                                WSTopic::Inbox,
-                                                                inbox_name_string,
-                                                                content_str.to_string(),
-                                                                ws_message_type,
-                                                                true,
-                                                            )
-                                                            .await;
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        // Handle function calls
-                                        if let Some(fc) = delta.get("function_call") {
-                                            // If there's a new name, we might need to finalize
-                                            if let Some(name) = fc.get("name") {
-                                                let new_name = name.as_str().unwrap_or("").to_string();
-                                                // If partial_fc already has a name, but it's different
-                                                // from the new one, finalize the old partial function call
-                                                if let Some(ref old_name) = partial_fc.name {
-                                                    if !old_name.is_empty() && old_name != &new_name {
-                                                        finalize_function_call(
-                                                            &mut partial_fc,
-                                                            &mut function_calls,
-                                                            &tools,
-                                                            &ws_manager_trait,
-                                                            &inbox_name
-                                                        ).await;
-                                                    }
-                                                }
-                                                // Start or continue partial function call with the new name
-                                                partial_fc.name = Some(new_name);
-                                            }
-
-                                            // If there's partial arguments, accumulate them
-                                            if let Some(args) = fc.get("arguments") {
-                                                if let Some(args_str) = args.as_str() {
-                                                    partial_fc.arguments.push_str(args_str);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // If the chunk says "finish_reason": "function_call",
-                                    // we finalize the partial function call.
-                                    if finish_reason == "function_call" {
-                                        finalize_function_call(
-                                            &mut partial_fc,
-                                            &mut function_calls,
-                                            &tools,
-                                            &ws_manager_trait,
-                                            &inbox_name
-                                        ).await;
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Debug,
-                                format!("Failed to parse message chunk (this may be normal for partial chunks): {:?}", e).as_str(),
-                            );
-                            // Don't set error_message here as this might just be a partial chunk
+                // Handle WebSocket updates for function calls
+                if let Some(ref manager) = ws_manager_trait {
+                    if let Some(ref inbox_name) = inbox_name {
+                        if let Some(last_function_call) = function_calls.last() {
+                            send_tool_ws_update(&ws_manager_trait, Some(inbox_name.clone()), last_function_call)
+                                .await?;
                         }
                     }
                 }
@@ -399,10 +511,9 @@ async fn handle_streaming_response(
         }
     }
 
-    // If there's an unfinalized function call at the end (e.g., if the server never sent "finish_reason"),
-    // you can decide if you want to finalize it or discard it:
+    // If there's an unfinalized function call at the end, finalize it
     if partial_fc.name.is_some() && !partial_fc.arguments.is_empty() {
-        finalize_function_call(&mut partial_fc, &mut function_calls, &tools, &ws_manager_trait, &inbox_name).await;
+        finalize_function_call_sync(&mut partial_fc, &mut function_calls, &tools);
     }
 
     if let Some(ref error_message) = error_message {
@@ -411,114 +522,15 @@ async fn handle_streaming_response(
         }
     }
 
-    Ok(LLMInferenceResponse::new(response_text, json!({}), function_calls, None))
+    Ok(LLMInferenceResponse::new(
+        response_text,
+        json!({}),
+        function_calls,
+        None,
+    ))
 }
 
-/// Finalize a partial function call: parse arguments, push to `function_calls`, and
-/// optionally send a WebSocket message.
-async fn finalize_function_call(
-    partial_fc: &mut PartialFunctionCall,
-    function_calls: &mut Vec<FunctionCall>,
-    tools: &Option<Vec<JsonValue>>,
-    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    inbox_name: &Option<InboxName>,
-) {
-    if let Some(ref name) = partial_fc.name {
-        if !name.is_empty() {
-            // Attempt to parse the accumulated arguments
-            let fc_arguments = serde_json::from_str(&partial_fc.arguments)
-                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
-
-            // Look up the optional tool_router_key
-            let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                tools_array.iter().find_map(|tool| {
-                    if tool.get("name")?.as_str()? == name {
-                        tool.get("tool_router_key")
-                            .and_then(|key| key.as_str().map(|s| s.to_string()))
-                    } else {
-                        None
-                    }
-                })
-            });
-
-            // Build and add to the function_calls vector
-            let new_function_call = FunctionCall {
-                name: name.clone(),
-                arguments: fc_arguments
-                    .as_object()
-                    .cloned()
-                    .unwrap_or_else(serde_json::Map::new),
-                tool_router_key,
-                response: None,
-            };
-            function_calls.push(new_function_call.clone());
-
-            // Optionally also send a WebSocket update
-            if let Some(ref manager) = ws_manager_trait {
-                if let Some(ref inbox_name) = inbox_name {
-                    let m = manager.lock().await;
-                    let inbox_name_string = inbox_name.to_string();
-                    let function_call_json = serde_json::to_value(&new_function_call)
-                        .unwrap_or_else(|_| serde_json::json!({}));
-
-                    let tool_metadata = ToolMetadata {
-                        tool_name: new_function_call.name.clone(),
-                        tool_router_key: new_function_call.tool_router_key.clone(),
-                        args: function_call_json
-                            .as_object()
-                            .cloned()
-                            .unwrap_or_else(|| serde_json::Map::new()),
-                        result: None,
-                        status: ToolStatus {
-                            type_: ToolStatusType::Running,
-                            reason: None,
-                        },
-                    };
-
-                    let ws_message_type =
-                        WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                    let _ = m
-                        .queue_message(
-                            WSTopic::Inbox,
-                            inbox_name_string,
-                            serde_json::to_string(&new_function_call)
-                                .unwrap_or_else(|_| "{}".to_string()),
-                            ws_message_type,
-                            true,
-                        )
-                        .await;
-                }
-            }
-        }
-    }
-
-    // Clear partial so we can accumulate a new function call in subsequent chunks
-    partial_fc.name = None;
-    partial_fc.arguments.clear();
-}
-
-/// Helper function to extract the next complete message from a buffer
-fn extract_next_complete_message(buffer: &mut String) -> Option<String> {
-    // Look for "data: " prefix and newline
-    if let Some(start) = buffer.find("data: ") {
-        if let Some(end) = buffer[start..].find('\n') {
-            let message = buffer[start + 6..start + end].to_string();
-            buffer.drain(..=start + end);
-            Some(message)
-        } else {
-            None // Incomplete message
-        }
-    } else {
-        // No "data: " prefix found, clear any leading incomplete data
-        if let Some(newline) = buffer.find('\n') {
-            buffer.drain(..=newline);
-        }
-        None
-    }
-}
-
-async fn handle_non_streaming_response(
+pub async fn handle_non_streaming_response(
     client: &Client,
     url: String,
     payload: JsonValue,
@@ -556,6 +568,7 @@ async fn handle_non_streaming_response(
             response = &mut response_fut => {
                 let res = response?;
                 let response_text = res.text().await?;
+                eprintln!("Raw server response: {}", response_text);
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
                 match data_resp {
@@ -687,7 +700,7 @@ async fn handle_non_streaming_response(
     }
 }
 
-fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
+pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobConfig>) {
     // Helper function to read and parse environment variables
     fn read_env_var<T: std::str::FromStr>(key: &str) -> Option<T> {
         std::env::var(key).ok().and_then(|val| val.parse::<T>().ok())
@@ -733,5 +746,595 @@ fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&JobCo
                 };
             }
         }
+    }
+}
+
+// Add helper function for sending WS updates
+async fn send_ws_update(
+    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    inbox_name: Option<InboxName>,
+    session_id: &str,
+    content: String,
+    is_done: bool,
+    done_reason: Option<String>,
+) -> Result<(), LLMProviderError> {
+    if let Some(ref manager) = ws_manager_trait {
+        if let Some(inbox_name) = inbox_name {
+            let m = manager.lock().await;
+            let inbox_name_string = inbox_name.to_string();
+
+            let metadata = WSMetadata {
+                id: Some(session_id.to_string()),
+                is_done,
+                done_reason,
+                total_duration: None,
+                eval_count: None,
+            };
+
+            let ws_message_type = WSMessageType::Metadata(metadata);
+
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Websocket content: {}", content).as_str(),
+            );
+
+            let _ = m
+                .queue_message(WSTopic::Inbox, inbox_name_string, content, ws_message_type, true)
+                .await;
+        }
+    }
+    Ok(())
+}
+
+async fn send_tool_ws_update(
+    ws_manager_trait: &Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    inbox_name: Option<InboxName>,
+    function_call: &FunctionCall,
+) -> Result<(), LLMProviderError> {
+    if let Some(ref manager) = ws_manager_trait {
+        if let Some(inbox_name) = inbox_name {
+            let m = manager.lock().await;
+            let inbox_name_string = inbox_name.to_string();
+
+            let function_call_json = serde_json::to_value(function_call).unwrap_or_else(|_| serde_json::json!({}));
+
+            let tool_metadata = ToolMetadata {
+                tool_name: function_call.name.clone(),
+                tool_router_key: function_call.tool_router_key.clone(),
+                args: function_call_json.as_object().cloned().unwrap_or_default(),
+                result: None,
+                status: ToolStatus {
+                    type_: ToolStatusType::Running,
+                    reason: None,
+                },
+            };
+
+            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+            let content = serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string());
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Websocket content: {}", content).as_str(),
+            );
+
+            let _ = m
+                .queue_message(
+                    WSTopic::Inbox,
+                    inbox_name_string,
+                    content,
+                    ws_message_type,
+                    true,
+                )
+                .await;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_basic_content() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = None;
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        // Test basic content streaming
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\"Hello \"}}]}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(response_text, "Hello ");
+
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\"world!\"}}]}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(response_text, "Hello world!");
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_function_call() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = Some(vec![serde_json::json!({
+            "name": "test_function",
+            "tool_router_key": "test_router"
+        })]);
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"function_call\":{\"name\":\"test_function\"}}}]}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(partial_fc.name, Some("test_function".to_string()));
+
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"function_call\":{\"arguments\":\"{\\\"arg\\\":\"}}}]}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"function_call\":{\"arguments\":\"\\\"value\\\"}\"}}}, {\"finish_reason\":\"function_call\"}]}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(function_calls.len(), 1);
+        assert_eq!(function_calls[0].name, "test_function");
+        assert_eq!(function_calls[0].tool_router_key, Some("test_router".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_error_handling() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = None;
+
+        // Test error response
+        buffer.push_str(
+            "data: {\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"You exceeded your current quota\"}}\n",
+        );
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_complete_response() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = None;
+
+        // Initial message with role
+        buffer.push_str("data: {\"id\":\"chatcmpl-AqTyN7bHxp10cCuIMNoPv9DuT4v0L\",\"object\":\"chat.completion.chunk\",\"created\":1737071635,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"refusal\":null},\"logprobs\":null,\"finish_reason\":null}]}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // Content chunks
+        let content_chunks = vec![
+            "Yes", ",", " I'm", " here", "!", " How", " can", " I", " assist", " you", " today", "?",
+        ];
+
+        for chunk in content_chunks {
+            buffer.push_str(&format!("data: {{\"id\":\"chatcmpl-AqTyN7bHxp10cCuIMNoPv9DuT4v0L\",\"object\":\"chat.completion.chunk\",\"created\":1737071635,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{{\"index\":0,\"delta\":{{\"content\":\"{}\"}},\"logprobs\":null,\"finish_reason\":null}}]}}\n", chunk));
+            let result = parse_openai_stream_chunk(
+                &mut buffer,
+                &mut response_text,
+                &mut function_calls,
+                &mut partial_fc,
+                &tools,
+                &None,
+                None,
+                "session_id",
+            )
+            .await;
+            assert!(result.is_ok());
+        }
+
+        // Empty delta with finish_reason
+        buffer.push_str("data: {\"id\":\"chatcmpl-AqTyN7bHxp10cCuIMNoPv9DuT4v0L\",\"object\":\"chat.completion.chunk\",\"created\":1737071635,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_72ed7ab54c\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}]}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // [DONE] message
+        buffer.push_str("data: [DONE]\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // Verify final response text
+        assert_eq!(response_text, "Yes, I'm here! How can I assist you today?");
+        assert!(function_calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_parse_gemini_openai_compatibility_stream() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = None;
+
+        // First chunk with initial content
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\"Yes\",\"role\":\"assistant\"},\"index\":0}],\"created\":1736746675,\"model\":\"gemini-1.5-flash\",\"object\":\"chat.completion.chunk\"}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(response_text, "Yes");
+
+        // Second chunk with middle content
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\", I'm here and ready to assist you.  How can I help\",\"role\":\"assistant\"},\"index\":0}],\"created\":1736746675,\"model\":\"gemini-1.5-flash\",\"object\":\"chat.completion.chunk\"}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(response_text, "Yes, I'm here and ready to assist you.  How can I help");
+
+        // Final chunk with finish_reason
+        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\"?\\n\",\"role\":\"assistant\"},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1736746675,\"model\":\"gemini-1.5-flash\",\"object\":\"chat.completion.chunk\"}\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // [DONE] message
+        buffer.push_str("data: [DONE]\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // Verify final response text
+        assert_eq!(
+            response_text,
+            "Yes, I'm here and ready to assist you.  How can I help?\n"
+        );
+        assert!(function_calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_parse_gemini_openai_compatibility_non_stream() {
+        // Create test response JSON
+        let response_json = r#"{
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "content": "Yes, I'm here and ready to assist you.  How can I help?\n",
+                        "role": "assistant"
+                    }
+                }
+            ],
+            "created": 1737072854,
+            "model": "gemini-1.5-flash",
+            "object": "chat.completion",
+            "usage": {
+                "completion_tokens": 19,
+                "prompt_tokens": 45,
+                "total_tokens": 64
+            }
+        }"#;
+
+        // Parse response
+        let data: OpenAIResponse = serde_json::from_str(response_json).unwrap();
+
+        // Verify the parsed data
+        assert_eq!(data.choices.len(), 1);
+        let choice = &data.choices[0];
+        assert_eq!(choice.finish_reason.clone().unwrap(), "stop");
+        assert_eq!(choice.index, 0);
+
+        match &choice.message.content {
+            Some(MessageContent::Text(text)) => {
+                assert_eq!(text, "Yes, I'm here and ready to assist you.  How can I help?\n");
+            }
+            _ => panic!("Expected text content"),
+        }
+
+        assert_eq!(choice.message.role, "assistant");
+        assert!(choice.message.function_call.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_array_error() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = None;
+
+        // Test array-formatted error response
+        buffer.push_str("[{\"error\":{\"code\":400,\"message\":\"Unable to submit request because it has an empty text parameter. Add a value to the parameter and try again. Learn more: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini\",\"status\":\"INVALID_ARGUMENT\"}}]\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let error = result.unwrap();
+        assert!(error.is_some());
+        assert_eq!(
+            error.unwrap(),
+            "400: Unable to submit request because it has an empty text parameter. Add a value to the parameter and try again. Learn more: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini"
+        );
+        assert!(response_text.is_empty());
+        assert!(function_calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_riddle_response() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = None;
+
+        // First chunk with split system_fingerprint
+        buffer.push_str("data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"syste");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // Second chunk completing the initial message
+        buffer.push_str("m_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"refusal\":null},\"logprobs\":null,\"finish_reason\":null}]}\n\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+        assert!(result.is_ok());
+        assert!(response_text.is_empty());
+
+        // Add each chunk exactly as it appeared in the log
+        let chunks = vec![
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Why\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" did\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" the\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" scare\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"crow\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" win\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" an\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" award\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"?\\n\\n\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Because\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" he\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" was\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" outstanding\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" in\"},\"logprobs\":null,\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" his\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" field\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"!\"},\"logprobs\":null,\"finish_reason\":null}]}\n",
+            "data: {\"id\":\"chatcmpl-AqUiMlZBEj4bSQKmwhXPjGR0HStpQ\",\"object\":\"chat.completion.chunk\",\"created\":1737074486,\"model\":\"gpt-4o-mini-2024-07-18\",\"service_tier\":\"default\",\"system_fingerprint\":\"fp_bd83329f63\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}]}\n",
+            "data: [DONE]\n"
+        ];
+
+        for chunk in chunks {
+            buffer.push_str(chunk);
+            let result = parse_openai_stream_chunk(
+                &mut buffer,
+                &mut response_text,
+                &mut function_calls,
+                &mut partial_fc,
+                &tools,
+                &None,
+                None,
+                "session_id",
+            )
+            .await;
+            assert!(result.is_ok());
+        }
+
+        // Verify final response text
+        assert_eq!(
+            response_text,
+            "Why did the scarecrow win an award?\n\nBecause he was outstanding in his field!"
+        );
+        assert!(function_calls.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_resource_exhausted() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+        };
+        let tools = None;
+
+        // Test resource exhausted error response
+        buffer.push_str("[{\"error\":{\"code\":429,\"message\":\"Resource has been exhausted (e.g. check quota).\",\"status\":\"RESOURCE_EXHAUSTED\"}}]\n");
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &None,
+            None,
+            "session_id",
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let error = result.unwrap();
+        assert!(error.is_some());
+        assert_eq!(error.unwrap(), "429: Resource has been exhausted (e.g. check quota).");
+        assert!(response_text.is_empty());
+        assert!(function_calls.is_empty());
     }
 }

@@ -12,7 +12,8 @@ use super::shared_model_logic;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
-    id: String,
+    #[serde(default)]
+    id: Option<String>,
     object: String,
     created: u64,
     pub choices: Vec<Choice>,
@@ -458,7 +459,7 @@ mod tests {
         let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
 
         // Check the deserialized values
-        assert_eq!(response.id, "chatcmpl-9cQYyc4ENYwJ5ChU4WHtRv7uPRHbN");
+        assert_eq!(response.id.clone().unwrap(), "chatcmpl-9cQYyc4ENYwJ5ChU4WHtRv7uPRHbN");
         assert_eq!(response.object, "chat.completion");
         assert_eq!(response.created, 1718945600);
         assert_eq!(response.choices.len(), 1);
@@ -524,7 +525,7 @@ mod tests {
         let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
 
         // Verify basic response fields
-        assert_eq!(response.id, "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc");
+        assert_eq!(response.id.clone().unwrap(), "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc");
         assert_eq!(response.object, "chat.completion");
         assert_eq!(response.created, 1736736692);
         assert_eq!(response.system_fingerprint, Some("fp_9cb648b966".to_string()));
