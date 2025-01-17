@@ -887,8 +887,11 @@ impl Node {
             return Ok(());
         }
 
-        // Search for files using the provided name
-        match db.search_parsed_files_by_name_or_path(&name) {
+        // Get the base path for searching
+        let base_path = ShinkaiPath::from_base_path();
+
+        // Search for files using ShinkaiFileManager::search_files_by_content
+        match ShinkaiFileManager::search_files_by_content(base_path, &name, &db) {
             Ok(files) => {
                 let json_files = serde_json::to_value(files).map_err(|e| NodeError::from(e))?;
                 let _ = res.send(Ok(json_files)).await;

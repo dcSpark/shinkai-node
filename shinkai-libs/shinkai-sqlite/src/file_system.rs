@@ -599,51 +599,6 @@ impl SqliteManager {
         }
         Ok(result)
     }
-
-    /// Search for parsed files whose relative path contains the given `search_term`.
-    /// This will return all rows whose `relative_path` contains the substring, ignoring case.
-    pub fn search_parsed_files_by_name_or_path(
-        &self,
-        search_term: &str,
-    ) -> Result<Vec<ParsedFile>, SqliteManagerError> {
-        let conn = self.get_connection()?;
-        let mut stmt = conn.prepare(
-            "
-            SELECT
-                id, relative_path, original_extension, description, source, embedding_model_used,
-                keywords, distribution_info, created_time, tags, total_tokens, total_characters
-            FROM parsed_files
-            WHERE LOWER(relative_path) LIKE LOWER(?1)
-            "
-        )?;
-
-        // Build our LIKE pattern for substring matching:
-        let like_pattern = format!("%{}%", Self::normalize_path(search_term));
-        
-        let rows = stmt.query_map([like_pattern], |row| {
-            Ok(ParsedFile {
-                id: row.get(0)?,
-                relative_path: row.get(1)?,
-                original_extension: row.get(2)?,
-                description: row.get(3)?,
-                source: row.get(4)?,
-                embedding_model_used: row.get(5)?,
-                keywords: row.get(6)?,
-                distribution_info: row.get(7)?,
-                created_time: row.get(8)?,
-                tags: row.get(9)?,
-                total_tokens: row.get(10)?,
-                total_characters: row.get(11)?,
-            })
-        })?;
-
-        let mut result = Vec::new();
-        for row in rows {
-            result.push(row?);
-        }
-
-        Ok(result)
-    }
 }
 
 #[cfg(test)]
@@ -969,46 +924,5 @@ mod tests {
         assert!(files_with_prefix.iter().any(|pf| pf.relative_path == "docs/reports/2024/january.txt"));
         assert!(files_with_prefix.iter().any(|pf| pf.relative_path == "docs/reports/2024/february.txt"));
         assert!(!files_with_prefix.iter().any(|pf| pf.relative_path == "docs/other/2024/march.txt"));
-    }
-
-    #[test]
-    fn test_search_parsed_files_by_name_or_path() {
-        let db = setup_test_db();
-
-        // Create and add test files
-        let files = vec![
-            ("docs/reports/2024/january.txt", 1),
-            ("docs/reports/2024/february.txt", 2),
-            ("docs/other/2024/march.txt", 3),
-            ("projects/report-2024.md", 4),
-            ("misc/notes.txt", 5),
-        ];
-
-        for (path, id) in files {
-            let pf = create_test_parsed_file(id, path);
-            db.add_parsed_file(&pf).unwrap();
-        }
-
-        // Test exact filename match
-        let results = db.search_parsed_files_by_name_or_path("january").unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].relative_path, "docs/reports/2024/january.txt");
-
-        // Test partial path match
-        let results = db.search_parsed_files_by_name_or_path("reports").unwrap();
-        assert_eq!(results.len(), 2);
-
-        // Test case insensitive match
-        let results = db.search_parsed_files_by_name_or_path("MARCH").unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].relative_path, "docs/other/2024/march.txt");
-
-        // Test extension match
-        let results = db.search_parsed_files_by_name_or_path(".txt").unwrap();
-        assert_eq!(results.len(), 4);
-
-        // Test no matches
-        let results = db.search_parsed_files_by_name_or_path("nonexistent").unwrap();
-        assert_eq!(results.len(), 0);
     }
 }
