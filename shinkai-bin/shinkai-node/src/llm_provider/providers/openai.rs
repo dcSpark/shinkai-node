@@ -53,7 +53,7 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
 pub struct PartialFunctionCall {
     pub name: Option<String>,
     pub arguments: String,
-    pub is_accumulating: bool,  // Track if we're currently accumulating a function call
+    pub is_accumulating: bool, // Track if we're currently accumulating a function call
 }
 
 #[async_trait]
@@ -179,11 +179,7 @@ fn finalize_function_call_sync(
                 serde_json::Map::new()
             } else {
                 match serde_json::from_str::<serde_json::Value>(&partial_fc.arguments) {
-                    Ok(value) => {
-                        value.as_object().cloned().unwrap_or_else(|| {
-                            serde_json::Map::new()
-                        })
-                    }
+                    Ok(value) => value.as_object().cloned().unwrap_or_else(|| serde_json::Map::new()),
                     Err(e) => {
                         eprintln!("Failed to parse arguments: {}", e);
                         serde_json::Map::new()
@@ -230,17 +226,15 @@ pub async fn parse_openai_stream_chunk(
     session_id: &str,
 ) -> Result<Option<String>, LLMProviderError> {
     let mut error_message: Option<String> = None;
+    // This buffer will hold a potential JSON array if we detect "["
+    let mut array_accumulator = String::new();
+    let mut is_accumulating_array = false;
 
     loop {
-        // Look for a newline in `buffer`; if none is found, break.
         let Some(newline_pos) = buffer.find('\n') else {
-            // No complete line yet, so we can't parse anything. We'll wait for more data.
             break;
         };
-
-        // Extract this line (including the '\n') from the buffer:
         let line_with_newline = buffer.drain(..=newline_pos).collect::<String>();
-        // Trim trailing whitespace from it:
         let line = line_with_newline.trim();
 
         // Skip empty lines
@@ -248,169 +242,199 @@ pub async fn parse_openai_stream_chunk(
             continue;
         }
 
-
-        // If the line doesn't start with "data: ", check if it's an array-formatted error
-        if !line.starts_with("data: ") {
-            // If it is literally [DONE], skip
-            if line == "[DONE]" {
-                // If we were accumulating a function call, finalize it
-                if partial_fc.is_accumulating && partial_fc.name.is_some() {
-                    finalize_function_call_sync(partial_fc, function_calls, tools);
-                }
-                continue;
-            }
-
-            // Check if it's an array-formatted error response
-            if line.starts_with("[") {
-                match serde_json::from_str::<Vec<JsonValue>>(line) {
-                    Ok(array) => {
-                        if let Some(first_item) = array.first() {
-                            if let Some(error) = first_item.get("error") {
-                                let code = error
-                                    .get("code")
-                                    .and_then(|c| {
-                                        c.as_u64()
-                                            .map(|n| n.to_string())
-                                            .or_else(|| c.as_str().map(|s| s.to_string()))
-                                    })
-                                    .unwrap_or_else(|| "Unknown code".to_string());
-                                let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                                error_message = Some(format!("{}: {}", code, msg));
-                                continue;
-                            }
+        // If we're currently accumulating lines to parse as an array
+        if is_accumulating_array {
+            array_accumulator.push_str(line);
+            array_accumulator.push('\n'); // Preserve newlines for proper JSON formatting
+            // Attempt to parse
+            match serde_json::from_str::<Vec<JsonValue>>(&array_accumulator) {
+                Ok(array) => {
+                    // We have successfully parsed the array
+                    is_accumulating_array = false;
+                    array_accumulator.clear();
+                    // Now handle the array — check if it's an error:
+                    if let Some(first_item) = array.first() {
+                        if let Some(error) = first_item.get("error") {
+                            let code = error
+                                .get("code")
+                                .and_then(|c| {
+                                    c.as_u64()
+                                        .map(|n| n.to_string())
+                                        .or_else(|| c.as_str().map(|s| s.to_string()))
+                                })
+                                .unwrap_or_else(|| "Unknown code".to_string());
+                            let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                            error_message = Some(format!("{}: {}", code, msg));
                         }
                     }
-                    Err(_) => {
-                        // Not a valid array JSON, ignore or log
-                        continue;
-                    }
+                }
+                Err(_) => {
+                    // Not yet parseable, continue accumulating
+                    continue;
                 }
             }
-
-            // Otherwise, ignore or log, but do not parse.
             continue;
         }
 
-        // Slice out whatever came after "data: "
-        let chunk = &line["data: ".len()..];
-
-        // If it's "[DONE]", send final update and skip
-        if chunk.trim() == "[DONE]" {
+        // If it is literally [DONE], skip
+        if line == "[DONE]" {
             // If we were accumulating a function call, finalize it
             if partial_fc.is_accumulating && partial_fc.name.is_some() {
                 finalize_function_call_sync(partial_fc, function_calls, tools);
             }
-            if let Some(inbox_name) = inbox_name.as_ref() {
-                send_ws_update(
-                    ws_manager_trait,
-                    Some(inbox_name.clone()),
-                    session_id,
-                    "".to_string(),
-                    true,
-                    None,
-                )
-                .await?;
-            }
             continue;
         }
 
-        // Extract any function call arguments before parsing JSON
-        let (maybe_args, cleaned_chunk) = extract_and_remove_arguments(chunk);
+        // If the line starts with "data: ", handle it as normal streaming chunk
+        if line.starts_with("data: ") {
+            let chunk = &line["data: ".len()..];
 
-        // If we extracted arguments and we're accumulating a function call, append them
-        if let Some(args) = maybe_args {
-            if partial_fc.is_accumulating {
-                partial_fc.arguments.push_str(&args);
-            }
-        }
-
-        // Attempt to parse the cleaned JSON
-        match serde_json::from_str::<JsonValue>(&cleaned_chunk) {
-            Ok(json_data) => {
-                // If there's an error object, record it
-                if let Some(error_obj) = json_data.get("error") {
-                    let code = error_obj
-                        .get("code")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("Unknown code")
-                        .to_string();
-                    let msg = error_obj
-                        .get("message")
-                        .and_then(|m| m.as_str())
-                        .unwrap_or("Unknown error");
-                    error_message = Some(format!("{}: {}", code, msg));
-                    continue;
+            // If it's "[DONE]", send final update and skip
+            if chunk.trim() == "[DONE]" {
+                // If we were accumulating a function call, finalize it
+                if partial_fc.is_accumulating && partial_fc.name.is_some() {
+                    finalize_function_call_sync(partial_fc, function_calls, tools);
                 }
+                if let Some(inbox_name) = inbox_name.as_ref() {
+                    send_ws_update(
+                        ws_manager_trait,
+                        Some(inbox_name.clone()),
+                        session_id,
+                        "".to_string(),
+                        true,
+                        None,
+                    )
+                    .await?;
+                }
+                continue;
+            }
 
-                // Otherwise, look for "choices"
-                if let Some(choices) = json_data.get("choices") {
-                    // Each item in "choices" may have "delta": { "content": "..."} or "function_call": ...
-                    for choice in choices.as_array().unwrap_or(&vec![]) {
-                        let finish_reason = choice
-                            .get("finish_reason")
-                            .and_then(|fr| fr.as_str())
-                            .unwrap_or_default();
+            // Extract any function call arguments before parsing JSON
+            let (maybe_args, cleaned_chunk) = extract_and_remove_arguments(chunk);
 
-                        if let Some(delta) = choice.get("delta") {
-                            // If there's text content, append it and send WS update
-                            if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
-                                response_text.push_str(content);
+            // If we extracted arguments and we're accumulating a function call, append them
+            if let Some(args) = maybe_args {
+                if partial_fc.is_accumulating {
+                    partial_fc.arguments.push_str(&args);
+                }
+            }
 
-                                // Send WS update for the new content
-                                if let Some(inbox_name) = inbox_name.as_ref() {
-                                    send_ws_update(
-                                        ws_manager_trait,
-                                        Some(inbox_name.clone()),
-                                        session_id,
-                                        content.to_string(),
-                                        // if finish_reason is empty, we are not at the end of the stream
-                                        !finish_reason.is_empty(),
-                                        Some(finish_reason.to_string()),
-                                    )
-                                    .await?;
-                                }
-                            }
+            // Attempt to parse the cleaned JSON
+            match serde_json::from_str::<JsonValue>(&cleaned_chunk) {
+                Ok(json_data) => {
+                    // If there's an error object, record it
+                    if let Some(error_obj) = json_data.get("error") {
+                        let code = error_obj
+                            .get("code")
+                            .and_then(|c| c.as_str())
+                            .unwrap_or("Unknown code")
+                            .to_string();
+                        let msg = error_obj
+                            .get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Unknown error");
+                        error_message = Some(format!("{}: {}", code, msg));
+                        continue;
+                    }
 
-                            // If there's function_call
-                            if let Some(fc) = delta.get("function_call") {
-                                if let Some(name) = fc.get("name").and_then(|n| n.as_str()) {
-                                    // If partial_fc already had a different name, finalize that first
-                                    if let Some(old_name) = &partial_fc.name {
-                                        if !old_name.is_empty() && old_name != name {
-                                            finalize_function_call_sync(partial_fc, function_calls, tools);
-                                        }
+                    // Otherwise, look for "choices"
+                    if let Some(choices) = json_data.get("choices") {
+                        // Each item in "choices" may have "delta": { "content": "..."} or "function_call": ...
+                        for choice in choices.as_array().unwrap_or(&vec![]) {
+                            let finish_reason = choice
+                                .get("finish_reason")
+                                .and_then(|fr| fr.as_str())
+                                .unwrap_or_default();
+
+                            if let Some(delta) = choice.get("delta") {
+                                // If there's text content, append it and send WS update
+                                if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
+                                    response_text.push_str(content);
+
+                                    // Send WS update for the new content
+                                    if let Some(inbox_name) = inbox_name.as_ref() {
+                                        send_ws_update(
+                                            ws_manager_trait,
+                                            Some(inbox_name.clone()),
+                                            session_id,
+                                            content.to_string(),
+                                            // if finish_reason is empty, we are not at the end of the stream
+                                            !finish_reason.is_empty(),
+                                            Some(finish_reason.to_string()),
+                                        )
+                                        .await?;
                                     }
-                                    partial_fc.name = Some(name.to_string());
-                                    partial_fc.is_accumulating = true;
+                                }
+
+                                // If there's function_call
+                                if let Some(fc) = delta.get("function_call") {
+                                    if let Some(name) = fc.get("name").and_then(|n| n.as_str()) {
+                                        // If partial_fc already had a different name, finalize that first
+                                        if let Some(old_name) = &partial_fc.name {
+                                            if !old_name.is_empty() && old_name != name {
+                                                finalize_function_call_sync(partial_fc, function_calls, tools);
+                                            }
+                                        }
+                                        partial_fc.name = Some(name.to_string());
+                                        partial_fc.is_accumulating = true;
+                                    }
                                 }
                             }
-                        }
 
-                        // If finish_reason == "function_call", finalize the partial
-                        // so that we stop collecting arguments for this function.
-                        // (OpenAI signals that we've received all the arguments.)
-                        if finish_reason == "function_call" {
-                            finalize_function_call_sync(partial_fc, function_calls, tools);
-                        } else if finish_reason == "stop" {
-                            // If the user or model stops, we can finalize
-                            // any function call that wasn't yet finished.
-                            if partial_fc.name.is_some() {
+                            // If finish_reason == "function_call", finalize the partial
+                            if finish_reason == "function_call" {
                                 finalize_function_call_sync(partial_fc, function_calls, tools);
+                            } else if finish_reason == "stop" {
+                                // If the user or model stops, we can finalize
+                                // any function call that wasn't yet finished.
+                                if partial_fc.name.is_some() {
+                                    finalize_function_call_sync(partial_fc, function_calls, tools);
+                                }
                             }
                         }
                     }
                 }
-            }
-            Err(e) => {
-                // If we're accumulating a function call, keep accumulating
-                if partial_fc.is_accumulating {
-                    continue;
+                Err(e) => {
+                    // If we're accumulating a function call, keep accumulating
+                    if partial_fc.is_accumulating {
+                        continue;
+                    }
+                    // Otherwise, this might be a partial line that got split up
+                    // Put it back into `buffer` so next chunk can finish it
+                    buffer.insert_str(0, &(line.to_string() + "\n"));
+                    break;
                 }
-                // Otherwise, this might be a partial line that got split up
-                // Put it back into `buffer` so next chunk can finish it
-                buffer.insert_str(0, &(line.to_string() + "\n"));
-                break;
             }
+        } else {
+            // If it starts with "[", begin accumulating into array_accumulator
+            if line.starts_with("[") {
+                is_accumulating_array = true;
+                array_accumulator.clear();
+                array_accumulator.push_str(line);
+                array_accumulator.push('\n');
+
+                // Attempt immediate parse
+                if let Ok(array) = serde_json::from_str::<Vec<JsonValue>>(&array_accumulator) {
+                    is_accumulating_array = false;
+                    array_accumulator.clear();
+                    // now handle the array
+                    if let Some(first_item) = array.first() {
+                        if let Some(error) = first_item.get("error") {
+                            let code = error
+                                .get("code")
+                                .and_then(|c| {
+                                    c.as_u64()
+                                        .map(|n| n.to_string())
+                                        .or_else(|| c.as_str().map(|s| s.to_string()))
+                                })
+                                .unwrap_or_else(|| "Unknown code".to_string());
+                            let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                            error_message = Some(format!("{}: {}", code, msg));
+                        }
+                    }
+                }
+            }
+            // otherwise, ignore non-data lines that don't start with "["
         }
     }
 
@@ -841,7 +865,10 @@ async fn send_tool_ws_update(
 
             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
-            eprintln!("Websocket content (function_call): {}", serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string()));
+            eprintln!(
+                "Websocket content (function_call): {}",
+                serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string())
+            );
 
             let _ = m
                 .queue_message(
@@ -862,23 +889,23 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
     let args_prefix = r#""function_call":{"arguments":""#;
     if let Some(args_start_pos) = json_str.find(args_prefix) {
         let content_start = args_start_pos + args_prefix.len();
-        
+
         // Find the end of arguments value by looking for the closing quotes and braces
         // We look for the first quote that's followed by }}, which indicates the end of the function_call object
         if let Some(mut content_end) = json_str[content_start..].find(r#""}}"#) {
             content_end += content_start; // Adjust position to be relative to the full string
-            
+
             // Extract the arguments content
             let content = json_str[content_start..content_end].to_string();
-            
+
             // Build the cleaned JSON by replacing the arguments content with empty string
             let cleaned_json = format!(
                 "{}{}{}",
-                &json_str[..content_start],  // everything up to the content
-                "",                          // empty string for arguments
-                &json_str[content_end..]     // everything after the content
+                &json_str[..content_start], // everything up to the content
+                "",                         // empty string for arguments
+                &json_str[content_end..]    // everything after the content
             );
-            
+
             (Some(content), cleaned_json)
         } else {
             (None, json_str.to_string())
@@ -1469,7 +1496,7 @@ mod tests {
         let (maybe_args, cleaned) = extract_and_remove_arguments(json_str);
 
         // Check we extracted the inner content - in this case just the start of a JSON object
-        assert_eq!(maybe_args, Some("{\\\"".to_string()));  // This is what's actually in the JSON
+        assert_eq!(maybe_args, Some("{\\\"".to_string())); // This is what's actually in the JSON
 
         // The cleaned JSON should have empty arguments but maintain structure
         assert!(cleaned.contains(r#""function_call""#));
@@ -1485,7 +1512,12 @@ mod tests {
 
         // Verify the cleaned JSON is valid and has the expected structure
         let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
-        assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+        assert_eq!(
+            parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                .as_str()
+                .unwrap(),
+            ""
+        );
     }
 
     #[test]
@@ -1516,7 +1548,12 @@ mod tests {
         match serde_json::from_str::<serde_json::Value>(&cleaned) {
             Ok(parsed) => {
                 eprintln!("Successfully parsed JSON");
-                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+                assert_eq!(
+                    parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                        .as_str()
+                        .unwrap(),
+                    ""
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse JSON: {}", e);
@@ -1551,7 +1588,12 @@ mod tests {
         match serde_json::from_str::<serde_json::Value>(&cleaned) {
             Ok(parsed) => {
                 eprintln!("Successfully parsed JSON");
-                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+                assert_eq!(
+                    parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                        .as_str()
+                        .unwrap(),
+                    ""
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse JSON: {}", e);
@@ -1560,5 +1602,55 @@ mod tests {
             }
         }
     }
-}
 
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_multiline_array_error() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+        };
+        let tools = None;
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        // Add the complete error response at once
+        buffer.push_str(r#"[{
+  "error": {
+    "code": 400,
+    "message": "This is a multiline array-based error."
+  }
+}]
+"#);
+
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+
+        eprintln!("Result: {:?}", result);
+
+        // Now that we have the complete array, we expect a parsed error
+        assert!(result.is_ok(), "Should parse once the array is complete");
+        let maybe_error_message = result.unwrap();
+        assert!(
+            maybe_error_message.is_some(),
+            "Should detect the error message in the completed array"
+        );
+        assert_eq!(
+            maybe_error_message.unwrap(),
+            "400: This is a multiline array-based error."
+        );
+        assert!(response_text.is_empty());
+        assert!(function_calls.is_empty());
+    }
+}
