@@ -145,28 +145,24 @@ pub struct GenericHeader {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OAuth {
     pub name: String,
-    #[serde(rename = "redirectUrl")]
-    pub redirect_url: String, // default: https://secrets.shinkai.com/redirect
-    pub version: String, // 1.0 or 2.0
-    #[serde(rename = "responseType")]
-    pub response_type: Option<String>, // default = token
+    pub scope: Option<String>,
     #[serde(rename = "authorizationUrl")]
-    pub authorization_url: String, // defined by provider
-    #[serde(rename = "clientId")]
-    pub client_id: String, // defined by provider
-    #[serde(rename = "clientSecret")]
-    pub client_secret: String, // defined by provider
-    pub scopes: Vec<String>, // defined by provider
-    #[serde(rename = "grantType")]
-    pub grant_type: Option<String>, // defined by provider
-    pub required: Option<bool>, // default: true
-    pub pkce: Option<bool>, // default: false
-    #[serde(rename = "refreshToken")]
-    pub refresh_token: Option<String>, // filled by autentication flow (OAuth 2.0)
-    #[serde(rename = "accessToken")]
-    pub access_token: Option<String>, // filled by autentication flow
+    pub authorization_url: String,
     #[serde(rename = "tokenUrl")]
-    pub token_url: Option<String>, // filled by autentication flow
+    pub token_url: Option<String>,
+    #[serde(rename = "clientId")]
+    pub client_id: String,
+    #[serde(rename = "clientSecret")]
+    pub client_secret: String,
+    #[serde(rename = "redirectUrl")]
+    pub redirect_url: String,
+    pub version: String,
+    #[serde(rename = "responseType")]
+    pub response_type: String,
+    pub scopes: Vec<String>,
+    #[serde[rename = "pkceType"]]
+    pub pkce_type: Option<String>,
+    pub refresh_token: Option<String>,
 }
 
 impl OAuth {
@@ -179,28 +175,13 @@ impl OAuth {
 
             Some(OAuth {
                 name,
-                redirect_url: oauth_obj
-                    .get("redirectUrl")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("https://secrets.shinkai.com/redirect")
-                    .to_string(),
-                version: oauth_obj
-                    .get("version")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                response_type: Some(
-                    oauth_obj
-                        .get("responseType")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("token")
-                        .to_string(),
-                ),
+                scope: oauth_obj.get("scope").and_then(|v| v.as_str()).map(String::from),
                 authorization_url: oauth_obj
                     .get("authorizationUrl")
                     .and_then(|v| v.as_str())
-                    .unwrap_or_default()
+                    .unwrap_or("https://secrets.shinkai.com/redirect")
                     .to_string(),
+                token_url: oauth_obj.get("tokenUrl").and_then(|v| v.as_str()).map(String::from),
                 client_id: oauth_obj
                     .get("clientId")
                     .and_then(|v| v.as_str())
@@ -211,24 +192,37 @@ impl OAuth {
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string(),
+                redirect_url: oauth_obj
+                    .get("redirectUrl")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("https://secrets.shinkai.com/redirect")
+                    .to_string(),
+                version: oauth_obj
+                    .get("version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                response_type: oauth_obj
+                    .get("responseType")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("code")
+                    .to_string(),
                 scopes: oauth_obj
                     .get("scopes")
                     .and_then(|v| v.as_array())
                     .map_or(Vec::new(), |arr| {
                         arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
                     }),
-                grant_type: Some(
-                    oauth_obj
-                        .get("grantType")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("authorization_code")
-                        .to_string(),
-                ),
-                required: Some(oauth_obj.get("required").and_then(|v| v.as_bool()).unwrap_or(true)),
-                pkce: Some(oauth_obj.get("pkce").and_then(|v| v.as_bool()).unwrap_or(false)),
-                refresh_token: oauth_obj.get("refreshToken").and_then(|v| v.as_str()).map(String::from),
-                access_token: oauth_obj.get("accessToken").and_then(|v| v.as_str()).map(String::from),
-                token_url: oauth_obj.get("tokenUrl").and_then(|v| v.as_str()).map(String::from),
+                pkce_type: oauth_obj.get("pkceType").and_then(|v| v.as_str()).map(String::from),
+                refresh_token: oauth_obj.get("refreshToken").and_then(|v| {
+                    let value = v.as_str().unwrap_or_default().to_string();
+                    let expected = "true".to_string();
+                    if value == expected {
+                        Some("true".to_string())
+                    } else {
+                        Some("false".to_string())
+                    }
+                }),
             })
         } else {
             None
@@ -315,9 +309,8 @@ mod tests {
                 "clientId": "test_client_id",
                 "clientSecret": "test_client_secret",
                 "scopes": ["repo", "user"],
-                "grantType": "authorization_code",
-                "required": true,
-                "pkce": true
+                "pkceType": "plain",
+                "refreshToken": "true"
             }
         }"#;
 
@@ -327,16 +320,13 @@ mod tests {
         assert_eq!(oauth.name, "github");
         assert_eq!(oauth.redirect_url, "https://custom.redirect.com");
         assert_eq!(oauth.version, "2.0");
-        assert_eq!(oauth.response_type, Some("code".to_string()));
+        assert_eq!(oauth.response_type, "code".to_string());
         assert_eq!(oauth.authorization_url, "https://github.com/login/oauth/authorize");
         assert_eq!(oauth.client_id, "test_client_id");
         assert_eq!(oauth.client_secret, "test_client_secret");
         assert_eq!(oauth.scopes, vec!["repo", "user"]);
-        assert_eq!(oauth.grant_type, Some("authorization_code".to_string()));
-        assert_eq!(oauth.required, Some(true));
-        assert_eq!(oauth.pkce, Some(true));
-        assert_eq!(oauth.refresh_token, None);
-        assert_eq!(oauth.access_token, None);
+        assert_eq!(oauth.pkce_type, Some("plain".to_string()));
+        assert_eq!(oauth.refresh_token, Some("true".to_string()));
     }
 
     #[test]
@@ -353,16 +343,13 @@ mod tests {
         assert_eq!(oauth.name, "minimal");
         assert_eq!(oauth.redirect_url, "https://secrets.shinkai.com/redirect");
         assert_eq!(oauth.version, "");
-        assert_eq!(oauth.response_type, Some("token".to_string()));
+        assert_eq!(oauth.response_type, "code".to_string());
         assert_eq!(oauth.authorization_url, "https://example.com/auth");
         assert_eq!(oauth.client_id, "");
         assert_eq!(oauth.client_secret, "");
         assert!(oauth.scopes.is_empty());
-        assert_eq!(oauth.grant_type, Some("authorization_code".to_string()));
-        assert_eq!(oauth.required, Some(true));
-        assert_eq!(oauth.pkce, Some(false));
-        assert_eq!(oauth.refresh_token, None);
-        assert_eq!(oauth.access_token, None);
+        assert_eq!(oauth.pkce_type, None);
+        assert_eq!(oauth.refresh_token, Some("false".to_string()));
     }
 
     #[test]
@@ -377,17 +364,14 @@ mod tests {
         });
 
         let configs = ToolConfig::basic_config_from_value(&test_config);
-        
+
         assert_eq!(configs.len(), 4);
 
         // Helper function to find config by key
         let find_config = |key: &str| {
             configs.iter().find(|c| {
-                if let ToolConfig::BasicConfig(bc) = c {
-                    bc.key_name == key
-                } else {
-                    false
-                }
+                let ToolConfig::BasicConfig(bc) = c;
+                bc.key_name == key
             })
         };
 

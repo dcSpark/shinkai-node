@@ -569,7 +569,7 @@ impl SqliteManager {
             );",
             [],
         )?;
-    
+
         Ok(())
     }
 
@@ -752,11 +752,16 @@ impl SqliteManager {
                 tool_id TEXT NOT NULL,         -- tool id
                 tool_key TEXT NOT NULL,        -- tool key
                 access_token TEXT,
+                access_token_expires_at TIMESTAMP,
                 refresh_token TEXT,
+                refresh_token_enabled BOOLEAN DEFAULT FALSE,
+                refresh_token_expires_at TIMESTAMP,
                 token_secret TEXT,             -- For OAuth 1.0 if needed
-                token_type TEXT,
+                response_type TEXT,
                 id_token TEXT,                 -- For OIDC tokens
                 scope TEXT,
+                pkce_type TEXT,             -- Changed from enable_pkce BOOLEAN
+                pkce_code_verifier TEXT,
                 expires_at TIMESTAMP,
                 metadata_json TEXT,
                 authorization_url TEXT,
@@ -925,10 +930,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use std::path::PathBuf;
     use std::sync::{Arc, RwLock};
     use std::thread;
-    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use std::time::{Duration, Instant};
     use tempfile::NamedTempFile;
 

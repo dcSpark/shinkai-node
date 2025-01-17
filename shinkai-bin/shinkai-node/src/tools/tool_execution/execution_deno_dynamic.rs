@@ -32,6 +32,7 @@ pub async fn execute_deno_tool(
     let tool = DenoTool {
         toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
+        homepage: None,
         author: "system".to_string(),
         version: "1.0.0".to_string(),
         js_code: code,
@@ -59,7 +60,7 @@ pub async fn execute_deno_tool(
         // TODO: Update this value for runtime tool execution
         "code-execution".to_string(),
         "".to_string(),
-        &oauth.clone(),
+        &oauth,
     )
     .await?;
 
@@ -68,6 +69,7 @@ pub async fn execute_deno_tool(
         tool.config.clone(),
         parameters.clone(),
         tool.input_args.clone(),
+        &oauth,
     )?;
 
     let node_env = fetch_node_environment();
@@ -127,6 +129,7 @@ pub fn check_deno_tool(
     let tool = DenoTool {
         toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
+        homepage: None,
         author: "system".to_string(),
         version: "1.0".to_string(),
         js_code: code,

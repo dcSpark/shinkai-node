@@ -40,9 +40,55 @@ pub fn check_tool(
     tool_config: Vec<ToolConfig>,
     value: Map<String, Value>,
     parameters: Parameters,
+    oauth: &Option<Vec<OAuth>>,
 ) -> Result<(), ToolError> {
     check_tool_config(tool_router_key, tool_config)?;
     check_tool_parameters(parameters, value)?;
+    check_oauth(oauth)?;
+    Ok(())
+}
+
+fn check_oauth(oauth: &Option<Vec<OAuth>>) -> Result<(), ToolError> {
+    if let Some(oauth_configs) = oauth {
+        for oauth in oauth_configs {
+            // Check if required fields are empty or missing
+            let mut missing_fields = Vec::new();
+
+            if oauth.name.is_empty() {
+                missing_fields.push("name");
+            }
+            if oauth.authorization_url.is_empty() {
+                missing_fields.push("authorization_url");
+            }
+            if oauth.token_url.as_ref().map_or(true, |url| url.is_empty()) {
+                missing_fields.push("token_url");
+            }
+            if oauth.client_id.is_empty() {
+                missing_fields.push("client_id");
+            }
+            if oauth.client_secret.is_empty() {
+                missing_fields.push("client_secret");
+            }
+            if oauth.redirect_url.is_empty() {
+                missing_fields.push("redirect_url");
+            }
+            if oauth.version.is_empty() {
+                missing_fields.push("version");
+            }
+            if oauth.response_type.is_empty() {
+                missing_fields.push("response_type");
+            }
+
+            if !missing_fields.is_empty() {
+                let fix_redirect_url = format!("shinkai://config?tool={}", urlencoding::encode(&oauth.name));
+                return Err(ToolError::MissingConfigError(format!(
+                    "\n\nCannot run tool, OAuth config is missing required fields: {}.\n\nClick the link to update the tool config and try again.\n\n{}",
+                    missing_fields.join(", "),
+                    fix_redirect_url
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -210,8 +256,9 @@ mod tests {
         })];
         let value = Map::new();
         let parameters = Parameters::new();
+        let oauth: Option<Vec<OAuth>> = None;
 
-        let result = check_tool(tool_router_key, tool_config, value, parameters);
+        let result = check_tool(tool_router_key, tool_config, value, parameters, &oauth);
         assert!(result.is_err());
         if let Err(ToolError::MissingConfigError(msg)) = result {
             assert!(msg.contains("required_config"));
@@ -233,8 +280,9 @@ mod tests {
         })];
         let value = Map::new();
         let parameters = Parameters::new();
+        let oauth: Option<Vec<OAuth>> = None;
 
-        let result = check_tool(tool_router_key, tool_config, value, parameters);
+        let result = check_tool(tool_router_key, tool_config, value, parameters, &oauth);
         assert!(result.is_ok());
     }
 
@@ -245,8 +293,9 @@ mod tests {
         let mut value = Map::new();
         // Not providing the required string_param
         value.insert("number_param".to_string(), json!(42));
+        let oauth: Option<Vec<OAuth>> = None;
 
-        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters());
+        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters(), &oauth);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
             assert!(msg.contains("string_param"));
@@ -263,8 +312,9 @@ mod tests {
         let mut value = Map::new();
         value.insert("string_param".to_string(), json!("valid string"));
         value.insert("number_param".to_string(), json!("not a number")); // Wrong type
+        let oauth: Option<Vec<OAuth>> = None;
 
-        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters());
+        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters(), &oauth);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
             assert!(msg.contains("number_param"));
@@ -282,8 +332,9 @@ mod tests {
         value.insert("string_param".to_string(), json!("valid string"));
         value.insert("number_param".to_string(), json!(42));
         value.insert("optional_bool".to_string(), json!(true));
+        let oauth: Option<Vec<OAuth>> = None;
 
-        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters());
+        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters(), &oauth);
         assert!(result.is_ok());
     }
 
@@ -294,8 +345,9 @@ mod tests {
         let mut value = Map::new();
         value.insert("string_param".to_string(), json!("")); // Empty string
         value.insert("number_param".to_string(), json!(42));
+        let oauth: Option<Vec<OAuth>> = None;
 
-        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters());
+        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters(), &oauth);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
             assert!(msg.contains("string_param"));
@@ -312,8 +364,9 @@ mod tests {
         let mut value = Map::new();
         value.insert("string_param".to_string(), json!(null)); // Null value
         value.insert("number_param".to_string(), json!(42));
+        let oauth: Option<Vec<OAuth>> = None;
 
-        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters());
+        let result = check_tool(tool_router_key, tool_config, value, create_test_parameters(), &oauth);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
             assert!(msg.contains("string_param"));
@@ -321,5 +374,67 @@ mod tests {
         } else {
             panic!("Expected InvalidFunctionArguments");
         }
+    }
+
+    #[test]
+    fn test_check_oauth_missing_fields() {
+        let tool_router_key = "test/tool".to_string();
+        let tool_config = vec![];
+        let value = Map::new();
+        let parameters = Parameters::new();
+
+        // Create OAuth config with missing fields
+        let oauth = Some(vec![OAuth {
+            name: "test_oauth".to_string(),
+            scope: None,
+            authorization_url: "".to_string(), // Missing
+            token_url: None,                   // Missing
+            client_id: "".to_string(),         // Missing
+            client_secret: "secret".to_string(),
+            redirect_url: "https://example.com".to_string(),
+            version: "2.0".to_string(),
+            response_type: "code".to_string(),
+            scopes: vec![],
+            pkce_type: None,
+            refresh_token: None,
+        }]);
+
+        let result = check_tool(tool_router_key, tool_config, value, parameters, &oauth);
+        assert!(result.is_err());
+        if let Err(ToolError::MissingConfigError(msg)) = result {
+            assert!(msg.contains("authorization_url"));
+            assert!(msg.contains("token_url"));
+            assert!(msg.contains("client_id"));
+            assert!(msg.contains("shinkai://config?tool=test_oauth"));
+        } else {
+            panic!("Expected MissingConfigError");
+        }
+    }
+
+    #[test]
+    fn test_check_oauth_valid_config() {
+        let tool_router_key = "test/tool".to_string();
+        let tool_config = vec![];
+        let value = Map::new();
+        let parameters = Parameters::new();
+
+        // Create valid OAuth config
+        let oauth = Some(vec![OAuth {
+            name: "test_oauth".to_string(),
+            scope: None,
+            authorization_url: "https://auth.example.com".to_string(),
+            token_url: Some("https://token.example.com".to_string()),
+            client_id: "client123".to_string(),
+            client_secret: "secret123".to_string(),
+            redirect_url: "https://redirect.example.com".to_string(),
+            version: "2.0".to_string(),
+            response_type: "code".to_string(),
+            scopes: vec![],
+            pkce_type: None,
+            refresh_token: None,
+        }]);
+
+        let result = check_tool(tool_router_key, tool_config, value, parameters, &oauth);
+        assert!(result.is_ok());
     }
 }

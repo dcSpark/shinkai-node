@@ -10,6 +10,7 @@ use shinkai_message_primitives::schemas::{
     shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
 };
 
+use super::tool_config::OAuth;
 use super::tool_playground::{SqlQuery, SqlTable};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
@@ -194,6 +195,38 @@ impl ShinkaiTool {
             ShinkaiTool::Deno(d, _) => d.sql_tables.clone().unwrap_or_default(),
             ShinkaiTool::Python(p, _) => p.sql_tables.clone().unwrap_or_default(),
             _ => vec![],
+        }
+    }
+
+    pub fn get_oauth(&self) -> Option<Vec<OAuth>> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.oauth.clone(),
+            ShinkaiTool::Python(p, _) => p.oauth.clone(),
+            _ => None,
+        }
+    }
+
+    pub fn get_tools(&self) -> Vec<ToolRouterKey> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.tools.clone(),
+            ShinkaiTool::Python(p, _) => p.tools.clone(),
+            _ => vec![],
+        }
+    }
+
+    pub fn get_assets(&self) -> Option<Vec<String>> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.assets.clone(),
+            ShinkaiTool::Python(p, _) => p.assets.clone(),
+            _ => None,
+        }
+    }
+
+    pub fn get_homepage(&self) -> Option<String> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.homepage.clone(),
+            ShinkaiTool::Python(p, _) => p.homepage.clone(),
+            _ => None,
         }
     }
 
@@ -430,6 +463,7 @@ mod tests {
         // Create a mock DenoTool with all required fields
         let deno_tool = DenoTool {
             name: "Shinkai: Download Pages".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             toolkit_name: "deno-toolkit".to_string(),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
             input_args: Parameters::new(),
@@ -510,6 +544,7 @@ mod tests {
         let deno_tool = DenoTool {
             toolkit_name: "deno_toolkit".to_string(),
             name: "shinkai__download_website".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
             description: tool_definition.description.clone(),
             input_args: input_args.clone(),

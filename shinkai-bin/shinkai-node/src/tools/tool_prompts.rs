@@ -276,9 +276,7 @@ pub async fn tool_metadata_implementation_prompt(
           "https://www.googleapis.com/auth/userinfo.email",
           "https://www.googleapis.com/auth/userinfo.profile"
         ],
-        "grantType": "authorization_code",
-        "refreshToken": "",
-        "accessToken": ""
+        "response_type": "code"
       }}
     ]"#
     } else {
@@ -295,6 +293,58 @@ pub async fn tool_metadata_implementation_prompt(
         r#""#
     };
 
+    let oauth_template = if has_oauth {
+        r#",
+      oauth": [
+        {{
+          "name": "",
+          "version": "",
+          "authorizationUrl": "",
+          "redirectUrl": "",
+          "tokenUrl": "",
+          "clientId": "",
+          "clientSecret": "",
+          "scopes": [],
+        }}
+      ]
+    "#
+    } else {
+        r#""#
+    };
+
+    let empty_template = format!(
+        r#"
+  {{
+      "name": "<name>",
+      "homepage": "<url>",
+      "description": "<description>",
+      "author": "<author>",
+      "version": "1.0.0",
+      "keywords": [],
+      "configurations": {{
+        "type": "object",
+        "properties": {{}},
+        "required": []
+      }},
+      "parameters": {{
+        "type": "object",
+        "properties": {{}}
+        "required": []
+      }},
+      "result": {{
+        "type": "object",
+        "properties": {{}}
+        "required": []
+      }},
+      "sqlTables": [],
+      "sqlQueries": [],
+      "tools": []{}
+      
+  }}
+"#,
+        oauth_template
+    );
+
     Ok(format!(
         r####"
 <agent_metadata_schema>
@@ -308,6 +358,10 @@ pub async fn tool_metadata_implementation_prompt(
         "name": {{
           "type": "string",
           "description": "The name of the function"
+        }},
+        "homepage": {{
+          "type": "string",
+          "description": "URL of the homepage"
         }},
         "description": {{
           "type": "string",
@@ -433,15 +487,14 @@ pub async fn tool_metadata_implementation_prompt(
                   "type": "string"
                 }}
               }},
-              "grantType": {{
+              "response_type": {{
                 "type": "string",
-                "description": "The OAuth 2.0 grant type",
-                "default": "authorization_code"
+                "description": "OAuth response_type parameter.",
+                "default": "code"
               }}
             }},
             "required": [
               "authorizationUrl",
-              "tokenUrl",
               "clientId",
               "clientSecret"
             ],
@@ -555,6 +608,7 @@ pub async fn tool_metadata_implementation_prompt(
   Output: ```json
   {{
     "name": "Coinbase Wallet Creator",
+    "homepage": "https://shinkai.com",
     "description": "Tool for creating a Coinbase wallet",
     "author": "Shinkai",
     "version": "1.0.0",
@@ -614,6 +668,7 @@ pub async fn tool_metadata_implementation_prompt(
   Output:```json
   {{
     "name": "Download Pages",
+    "homepage": "https://shinkai.com",
     "description": "Downloads one or more URLs and sends the html content as markdown to an email address.",
     "author": "Shinkai",
     "version": "1.0.0",
@@ -685,13 +740,18 @@ pub async fn tool_metadata_implementation_prompt(
   * Use the available_tools section to get the list of tools for the metadata.
   * Generate the METADATA for the following source code in the input_command tag.
   * configuration, parameters and result must be objects, not arrays neither basic types.
+  * Create the schema starting by using the empty_template tag
 </agent_metadata_implementation>
 
 <input_command>
 {}
 </input_command>
 
+<empty_template>
+{}
+</empty_template>
+
 "####,
-        tools, final_code
+        tools, final_code, empty_template
     ))
 }

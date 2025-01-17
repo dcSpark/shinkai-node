@@ -23,9 +23,7 @@ use shinkai_message_primitives::{
         tool_router_key::ToolRouterKey,
     },
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
-    },
+    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -45,7 +43,7 @@ use shinkai_tools_primitives::tools::{
     tool_playground::ToolPlayground,
 };
 
-use std::{fs::File, io::Write, io::Read, path::Path, sync::Arc, time::Instant};
+use std::{fs::File, io::Read, io::Write, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -420,6 +418,7 @@ impl Node {
             return Ok(());
         }
 
+        // TODO Is this correct. There should be a builder.
         let toolkit_name = {
             let name = format!(
                 "{}_{}",
@@ -450,6 +449,7 @@ impl Node {
                 let tool = DenoTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
+                    homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
                     version: payload.metadata.version.clone(),
                     js_code: payload.code.clone(),
@@ -474,6 +474,7 @@ impl Node {
                 let tool = PythonTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
+                    homepage: payload.metadata.homepage.clone(),
                     version: payload.metadata.version.clone(),
                     author: payload.metadata.author.clone(),
                     py_code: payload.code.clone(),
@@ -1463,7 +1464,7 @@ impl Node {
             metadata: None,
             tool_key: None,
             fs_files_paths: vec![],
-                job_filenames: vec![],
+            job_filenames: vec![],
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(
@@ -1735,7 +1736,7 @@ impl Node {
     }
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
-    /// 
+    ///
     /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
     /// This function validates the protocol format, constructs the actual file path in the node's storage,
     /// and returns the file contents as bytes.
