@@ -33,8 +33,8 @@ impl JobPromptGenerator {
         function_call: Option<ToolCallFunctionResponse>,
         job_id: String,
         additional_files: Vec<String>,
-        _node_env: NodeEnvironment,
-        _db: Arc<SqliteManager>,
+        _node_env: NodeEnvironment, // remove this
+        _db: Arc<SqliteManager>, // remove this
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
@@ -162,6 +162,9 @@ impl JobPromptGenerator {
             prompt.add_function_call_response(serde_json::to_value(function_call).unwrap(), 100);
         }
 
+        // eprintln!("prompt after adding function call: {:?}", prompt);
         prompt
     }
 }
+
+// TODO: add tests
