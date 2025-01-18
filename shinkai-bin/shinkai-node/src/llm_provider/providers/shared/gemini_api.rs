@@ -45,17 +45,22 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .into_iter()
             .map(|mut message| {
                 let images = message.get("images").cloned();
-                let text = message.get("content").cloned();
+                let content = message.get("content").cloned();
 
+                // If this had images, turn them into inline_data
                 if let Some(serde_json::Value::Array(images_array)) = images {
-                    let mut content = vec![];
-                    if let Some(text) = text {
-                        content.push(serde_json::json!({"type": "text", "text": text}));
+                    let mut parts = vec![];
+                    if let Some(text) = content {
+                        if let Some(text_str) = text.as_str() {
+                            if !text_str.is_empty() {
+                                parts.push(serde_json::json!({"type": "text", "text": text}));
+                            }
+                        }
                     }
                     for image in images_array {
                         if let serde_json::Value::String(image_str) = image {
                             if let Some(image_type) = get_image_type(&image_str) {
-                                content.push(serde_json::json!({
+                                parts.push(serde_json::json!({
                                     "inline_data": {
                                         "mime_type": format!("image/{}", image_type),
                                         "data": image_str
@@ -64,7 +69,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                             }
                         }
                     }
-                    message["content"] = serde_json::json!(content);
+                    message["content"] = serde_json::json!(parts);
                     message.as_object_mut().unwrap().remove("images");
                 }
                 message
@@ -72,6 +77,124 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .collect(),
         _ => vec![],
     };
+
+    // Now build the final structure from messages_vec
+    let messages_vec = messages_vec
+        .into_iter()
+        .map(|msg| {
+            let role = if msg.get("role") == Some(&serde_json::Value::String("function".to_string())) {
+                serde_json::Value::String("user".to_string())
+            } else {
+                msg.get("role").cloned().unwrap_or(serde_json::Value::String("".to_string()))
+            };
+            let content = msg.get("content").cloned().unwrap_or(serde_json::Value::String("".to_string()));
+
+            // Check if this is a "function_response" field (the older logic)
+            if let Some(function_response) = msg.get("function_response") {
+                let response = function_response.get("response").and_then(|v| {
+                    if let serde_json::Value::String(s) = v {
+                        serde_json::from_str(s).ok()
+                    } else {
+                        Some(v.clone())
+                    }
+                }).unwrap_or(serde_json::json!({}));
+
+                serde_json::json!({
+                    "role": "user",
+                    "parts": [{
+                        "text": response.to_string()
+                    }]
+                })
+            }
+            // Check if this is a "function_call" field with a response
+            else if let Some(function_call_val) = msg.get("function_call") {
+                let name = function_call_val
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+
+                // Parse the arguments
+                let args = function_call_val
+                    .get("arguments")
+                    .and_then(|v| {
+                        if let serde_json::Value::String(s) = v {
+                            serde_json::from_str(s).ok()
+                        } else {
+                            Some(v.clone())
+                        }
+                    })
+                    .unwrap_or(serde_json::json!({}));
+
+                // If there is a "response" field inside function_call,
+                // treat it as a function response, not a function call
+                if let Some(response_val) = function_call_val.get("response") {
+                    let parsed_response = if let serde_json::Value::String(s) = response_val {
+                        serde_json::from_str(s).unwrap_or_else(|_| serde_json::json!({}))
+                    } else {
+                        response_val.clone()
+                    };
+
+                    serde_json::json!({
+                        "role": "user",
+                        "parts": [{
+                            "text": parsed_response.to_string()
+                        }]
+                    })
+                } else {
+                    // Normal function call
+                    serde_json::json!({
+                        "role": role,
+                        "parts": [{
+                            "functionCall": {
+                                "name": name,
+                                "args": args
+                            }
+                        }]
+                    })
+                }
+            }
+            // Regular message
+            else {
+                let content = match content {
+                    serde_json::Value::String(text) => {
+                        if text.is_empty() {
+                            vec![]
+                        } else {
+                            vec![serde_json::json!({"text": text})]
+                        }
+                    }
+                    serde_json::Value::Array(arr) => {
+                        let mut parts = vec![];
+                        for item in arr {
+                            if let serde_json::Value::Object(mut obj) = item {
+                                if let Some(serde_json::Value::String(text)) = obj.remove("text") {
+                                    if !text.is_empty() {
+                                        parts.push(serde_json::json!({"text": text}));
+                                    }
+                                }
+                                if let Some(serde_json::Value::Object(inline_data)) = obj.remove("inline_data") {
+                                    parts.push(serde_json::json!({"inline_data": inline_data}));
+                                }
+                            }
+                        }
+                        parts
+                    }
+                    _ => vec![], // If content is neither string nor array
+                };
+
+                if content.is_empty() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::json!({
+                        "role": role,
+                        "parts": content
+                    })
+                }
+            }
+        })
+        .filter(|msg| !msg.as_object().map_or(true, |obj| obj.is_empty()))
+        .collect::<Vec<_>>();
 
     // Convert tools to function declarations
     let function_declarations: Vec<serde_json::Value> = tools
@@ -91,10 +214,17 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     // Separate system instruction from other messages
     let system_instruction = messages_vec
-        .clone()
         .iter()
         .find(|msg| msg.get("role") == Some(&serde_json::Value::String("system".to_string())))
-        .cloned();
+        .and_then(|msg| {
+            msg.get("parts")
+                .and_then(|parts| parts.as_array())
+                .and_then(|parts| parts.first())
+                .and_then(|part| part.get("text"))
+                .and_then(|text| text.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_default();
 
     let contents: Vec<_> = messages_vec
         .iter()
@@ -104,41 +234,9 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
 
     let mut result_json = serde_json::json!({
         "system_instruction": {
-            "parts": { "text": system_instruction.and_then(|msg| {
-                msg.get("content").and_then(|content| {
-                    content.as_str().map(|s| s.to_string())
-                })
-            }).unwrap_or_default()}
+            "parts": { "text": system_instruction }
         },
-        "contents": contents.into_iter().map(|msg| {
-            let role = msg.get("role").cloned().unwrap_or(serde_json::Value::String("".to_string()));
-            let content = msg.get("content").cloned().unwrap_or(serde_json::Value::String("".to_string()));
-
-            // Check if content is a string and wrap it in an array
-            let content = if let serde_json::Value::String(text) = content {
-                vec![serde_json::json!({"text": text})]
-            } else if let serde_json::Value::Array(content_array) = content {
-                let mut parts = vec![];
-                for item in content_array {
-                    if let serde_json::Value::Object(mut obj) = item {
-                        if let Some(serde_json::Value::String(text)) = obj.remove("text") {
-                            parts.push(serde_json::json!({"text": text}));
-                        }
-                        if let Some(serde_json::Value::Object(inline_data)) = obj.remove("inline_data") {
-                            parts.push(serde_json::json!({"inline_data": inline_data}));
-                        }
-                    }
-                }
-                parts
-            } else {
-                vec![] // If content is neither a string nor an array, return an empty vector
-            };
-
-            serde_json::json!({
-                "role": role,
-                "parts": content
-            })
-        }).collect::<Vec<_>>()
+        "contents": contents
     });
 
     // Add tools and tool_config if there are function declarations
@@ -380,5 +478,134 @@ mod tests {
         // Generate and print the final payload
         let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
         println!("Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
+    }
+
+    #[test]
+    fn test_gemini_with_duckduckgo_search_and_response() {
+        let sub_prompts = vec![
+            SubPrompt::Content(
+                SubPromptType::System,
+                "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string(),
+                98,
+            ),
+            SubPrompt::ToolAvailable(
+                SubPromptType::AvailableTool,
+                serde_json::json!({
+                    "function": {
+                        "description": "Searches the DuckDuckGo search engine. Example result: [{\"title\": \"IMDb Top 250 Movies\", \"description\": \"Find out which <b>movies</b> are rated as the <b>best</b> <b>of</b> <b>all</b> <b>time</b> by IMDb users. See the list of 250 titles sorted by ranking, genre, year, and rating, and learn how the list is determined.\", \"url\": \"https://www.imdb.com/chart/top/\"}]",
+                        "name": "DuckDuckGo Search",
+                        "parameters": {
+                            "properties": {
+                                "message": {
+                                    "description": "The search query to send to DuckDuckGo",
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["message"],
+                            "type": "object"
+                        },
+                        "tool_router_key": "local:::duckduckgo_search:::duckduckgo_search"
+                    },
+                    "type": "function"
+                }),
+                98,
+            ),
+            SubPrompt::Omni(
+                SubPromptType::UserLastMessage,
+                "duckduckgo search for movies".to_string(),
+                vec![],
+                100,
+            ),
+            SubPrompt::FunctionCall(
+                SubPromptType::Assistant,
+                serde_json::json!({
+                    "arguments": {
+                        "message": "movies"
+                    },
+                    "name": "duckduckgo_search"
+                }),
+                100,
+            ),
+            SubPrompt::FunctionCallResponse(
+                SubPromptType::Function,
+                serde_json::json!({
+                    "function_call": {
+                        "arguments": {
+                            "message": "movies"
+                        },
+                        "name": "duckduckgo_search",
+                        "response": null,
+                        "tool_router_key": null
+                    },
+                    "response": "{\"data\":{\"__created_files__\":[\"shinkai://file/@@my_local_ai.arb-sep-shinkai/main/jobid_c93837a6-358b-4648-9617-1d6e93d0bb59/logs/log_jobid_c93837a6-358b-4648-9617-1d6e93d0bb59_localduckduckgo_searchduckduckgo_search.log\"],\"message\":\"[{\\\"title\\\":\\\"Movie Tickets &amp; Movie Times | Fandango\\\",\\\"description\\\":\\\"Honoring the Best <b>movies</b> &amp; TV. Check out the winners from this year&#x27;s 26th annual Rotten Tomatoes Awards. LEARN MORE. Collectors, assemble! image link. Collectors, assemble! Suit up and get the Captain America Collector Pack, featuring an exclusive Collector&#x27;s Coin, Limited-Edition Poster, and one <b>movie</b> ticket!\\\",\\\"url\\\":\\\"https://www.fandango.com/\\\"}]\"}}",
+                }),
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        let model = SerializedLLMProvider::mock_provider().model;
+        let result = gemini_prepare_messages(&model, prompt.clone()).expect("Failed to prepare messages");
+
+        let expected_messages = json!({
+            "system_instruction": {
+                "parts": { "text": "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses." }
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{ "text": "duckduckgo search for movies" }]
+                },
+                {
+                    "role": "model",
+                    "parts": [{
+                        "functionCall": {
+                            "name": "duckduckgo_search",
+                            "args": {
+                                "message": "movies"
+                            }
+                        }
+                    }]
+                },
+                {
+                    "role": "user",
+                    "parts": [{
+                        "text": "{\"data\":{\"__created_files__\":[\"shinkai://file/@@my_local_ai.arb-sep-shinkai/main/jobid_c93837a6-358b-4648-9617-1d6e93d0bb59/logs/log_jobid_c93837a6-358b-4648-9617-1d6e93d0bb59_localduckduckgo_searchduckduckgo_search.log\"],\"message\":\"[{\\\"title\\\":\\\"Movie Tickets &amp; Movie Times | Fandango\\\",\\\"description\\\":\\\"Honoring the Best <b>movies</b> &amp; TV. Check out the winners from this year&#x27;s 26th annual Rotten Tomatoes Awards. LEARN MORE. Collectors, assemble! image link. Collectors, assemble! Suit up and get the Captain America Collector Pack, featuring an exclusive Collector&#x27;s Coin, Limited-Edition Poster, and one <b>movie</b> ticket!\\\",\\\"url\\\":\\\"https://www.fandango.com/\\\"}]\"}}",
+                    }]
+                }
+            ],
+            "tools": [{
+                "function_declarations": [{
+                    "name": "duckduckgo_search",
+                    "description": "Searches the DuckDuckGo search engine. Example result: [{\"title\": \"IMDb Top 250 Movies\", \"description\": \"Find out which <b>movies</b> are rated as the <b>best</b> <b>of</b> <b>all</b> <b>time</b> by IMDb users. See the list of 250 titles sorted by ranking, genre, year, and rating, and learn how the list is determined.\", \"url\": \"https://www.imdb.com/chart/top/\"}]",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "message": {
+                                "type": "string",
+                                "description": "The search query to send to DuckDuckGo"
+                            }
+                        },
+                        "required": ["message"]
+                    }
+                }]
+            }],
+            "tool_config": {
+                "function_calling_config": {
+                    "mode": "AUTO"
+                }
+            }
+        });
+
+             // Generate and print the final payload
+        let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
+        println!("Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
+
+        assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
+        assert!(result.remaining_output_tokens > 0);
+
+   
     }
 }
