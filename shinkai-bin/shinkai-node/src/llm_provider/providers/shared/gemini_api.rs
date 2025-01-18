@@ -39,7 +39,7 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     // Convert both sets of messages to serde Value
     let messages_json = serde_json::to_value(messages_with_role)?;
 
-    // Convert messages_json and tools_json to Vec<serde_json::Value>
+    // Convert messages_json to Vec<serde_json::Value>
     let messages_vec = match messages_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
@@ -73,17 +73,21 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         _ => vec![],
     };
 
-    // Extract functions from tools
-    let functions_vec = tools.into_iter().filter_map(|tool| {
-        if let Some(function_call) = tool.function_call {
-            Some(serde_json::json!({
-                "name": function_call.name,
-                "arguments": function_call.arguments,
-            }))
-        } else {
-            None
-        }
-    }).collect::<Vec<_>>();
+    // Convert tools to function declarations
+    let function_declarations: Vec<serde_json::Value> = tools
+        .into_iter()
+        .filter_map(|tool| tool.functions)
+        .flatten()
+        .map(|function| {
+            serde_json::json!({
+                "name": function.name.chars()
+                    .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' })
+                    .collect::<String>(),
+                "description": function.description,
+                "parameters": function.parameters
+            })
+        })
+        .collect();
 
     // Separate system instruction from other messages
     let system_instruction = messages_vec
@@ -98,26 +102,13 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         .cloned()
         .collect();
 
-    let default_content = "".to_string();
-    let result_json = serde_json::json!({
+    let mut result_json = serde_json::json!({
         "system_instruction": {
-            "parts": { "text": system_instruction.map_or(default_content.clone(), |msg| {
-                msg.get("content")
-                    .and_then(|v| {
-                        if let serde_json::Value::Array(arr) = v {
-                            arr.iter().find_map(|item| {
-                                if let serde_json::Value::Object(obj) = item {
-                                    obj.get("text").and_then(|text| text.as_str().map(|s| s.to_string()))
-                                } else {
-                                    None
-                                }
-                            })
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(default_content.clone())
-            })}
+            "parts": { "text": system_instruction.and_then(|msg| {
+                msg.get("content").and_then(|content| {
+                    content.as_str().map(|s| s.to_string())
+                })
+            }).unwrap_or_default()}
         },
         "contents": contents.into_iter().map(|msg| {
             let role = msg.get("role").cloned().unwrap_or(serde_json::Value::String("".to_string()));
@@ -147,9 +138,22 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                 "role": role,
                 "parts": content
             })
-        }).collect::<Vec<_>>(),
-        // "functions": functions_vec
+        }).collect::<Vec<_>>()
     });
+
+    // Add tools and tool_config if there are function declarations
+    if !function_declarations.is_empty() {
+        if let Some(obj) = result_json.as_object_mut() {
+            obj.insert("tools".to_string(), serde_json::json!([{
+                "function_declarations": function_declarations
+            }]));
+            obj.insert("tool_config".to_string(), serde_json::json!({
+                "function_calling_config": {
+                    "mode": "AUTO"
+                }
+            }));
+        }
+    }
 
     Ok(PromptResult {
         messages: PromptResultEnum::Value(result_json),
@@ -165,6 +169,60 @@ mod tests {
     use serde_json::json;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptAssetType, SubPromptType};
+
+    fn generate_test_payload(prompt: Prompt, model: &LLMProviderInterface) -> Result<serde_json::Value, LLMProviderError> {
+        let result = gemini_prepare_messages(model, prompt)?;
+        let contents = match result.messages {
+            PromptResultEnum::Value(v) => v,
+            _ => {
+                return Err(LLMProviderError::UnexpectedPromptResultVariant(
+                    "Expected Value variant in PromptResultEnum".to_string(),
+                ))
+            }
+        };
+
+        let mut payload = json!({
+            "generationConfig": {
+                "temperature": 0.9,
+                "topK": 1,
+                "topP": 1,
+                "maxOutputTokens": 8192
+            },
+            "safety_settings": [
+                {
+                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    "threshold": "BLOCK_NONE"
+                },
+                {
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_NONE"
+                },
+                {
+                    "category": "HARM_CATEGORY_HATE_SPEECH",
+                    "threshold": "BLOCK_NONE"
+                },
+                {
+                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "threshold": "BLOCK_NONE"
+                }
+            ],
+            "tool_config": {
+                "function_calling_config": {
+                    "mode": "AUTO"
+                }
+            }
+        });
+
+        if let Some(payload_obj) = payload.as_object_mut() {
+            if let Some(contents_obj) = contents.as_object() {
+                for (key, value) in contents_obj {
+                    payload_obj.insert(key.clone(), value.clone());
+                }
+            }
+        }
+
+        Ok(payload)
+    }
 
     #[test]
     fn test_gemini_from_llm_messages() {
@@ -201,7 +259,7 @@ mod tests {
         let model = SerializedLLMProvider::mock_provider().model;
 
         // Call the gemini_prepare_messages function
-        let result = gemini_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+        let result = gemini_prepare_messages(&model, prompt.clone()).expect("Failed to prepare messages");
 
         // Define the expected messages and functions
         let expected_messages = json!({
@@ -234,5 +292,93 @@ mod tests {
         // Assert the results
         assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
         assert!(result.remaining_output_tokens > 0);
+
+        // Generate and print the final payload
+        let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
+        println!("Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
+    }
+
+    #[test]
+    fn test_gemini_with_duckduckgo_search() {
+        let sub_prompts = vec![
+            SubPrompt::Content(
+                SubPromptType::System,
+                "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string(),
+                98,
+            ),
+            SubPrompt::ToolAvailable(
+                SubPromptType::AvailableTool,
+                serde_json::json!({
+                    "function": {
+                        "description": "Searches the DuckDuckGo search engine. Example result: [{\"title\": \"IMDb Top 250 Movies\", \"description\": \"Find out which <b>movies</b> are rated as the <b>best</b> <b>of</b> <b>all</b> <b>time</b> by IMDb users. See the list of 250 titles sorted by ranking, genre, year, and rating, and learn how the list is determined.\", \"url\": \"https://www.imdb.com/chart/top/\"}]",
+                        "name": "DuckDuckGo Search",
+                        "parameters": {
+                            "properties": {
+                                "message": {
+                                    "description": "The search query to send to DuckDuckGo",
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["message"],
+                            "type": "object"
+                        },
+                    },
+                    "type": "function"
+                }),
+                98,
+            ),
+            SubPrompt::Omni(
+                SubPromptType::UserLastMessage,
+                "\nduckduckgo search for movies".to_string(),
+                vec![],
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        let model = SerializedLLMProvider::mock_provider().model;
+        let result = gemini_prepare_messages(&model, prompt.clone()).expect("Failed to prepare messages");
+
+        let expected_messages = json!({
+            "system_instruction": {
+                "parts": { "text": "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses." }
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{ "text": "duckduckgo search for movies" }]
+                }
+            ],
+            "tools": [{
+                "function_declarations": [{
+                    "name": "duckduckgo_search",
+                    "description": "Searches the DuckDuckGo search engine. Example result: [{\"title\": \"IMDb Top 250 Movies\", \"description\": \"Find out which <b>movies</b> are rated as the <b>best</b> <b>of</b> <b>all</b> <b>time</b> by IMDb users. See the list of 250 titles sorted by ranking, genre, year, and rating, and learn how the list is determined.\", \"url\": \"https://www.imdb.com/chart/top/\"}]",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "message": {
+                                "type": "string",
+                                "description": "The search query to send to DuckDuckGo"
+                            }
+                        },
+                        "required": ["message"]
+                    }
+                }]
+            }],
+            "tool_config": {
+                "function_calling_config": {
+                    "mode": "AUTO"
+                }
+            }
+        });
+
+        assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
+        assert!(result.remaining_output_tokens > 0);
+
+        // Generate and print the final payload
+        let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
+        println!("Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
     }
 }
