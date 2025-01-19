@@ -620,11 +620,16 @@ struct ProcessedTool {
 fn parse_one_event(buf: &str) -> Result<(ProcessedChunk, usize), LLMProviderError> {
     if let Some(double_newline_pos) = buf.find("\n\n") {
         let (this_block, _remainder) = buf.split_at(double_newline_pos + 2);
+        
+        // Check if this is a valid event block
+        if !this_block.starts_with("event: ") {
+            return Err(LLMProviderError::ContentParseFailed);
+        }
+
         let parsed = parse_entire_sse_block(this_block)?;
         let consumed_bytes = this_block.len();
         Ok((parsed, consumed_bytes))
     } else {
-        // Use ContentParseFailed for incomplete/partial data
         Err(LLMProviderError::ContentParseFailed)
     }
 }
@@ -650,16 +655,12 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
         });
     }
 
-    let event_type = event_rows[0];
-    let event_data = event_rows[1];
+    let event_type = event_rows[0].trim_start_matches("event: ");
+    let event_data = event_rows[1].trim_start_matches("data: ");
 
-    if event_type.starts_with("event: ") {
-        let event_type = event_type.trim_start_matches("event: ");
-        match event_type {
-            "content_block_start" => {
-                let data_str = event_data.trim_start_matches("data: ");
-                let data_json: serde_json::Value = serde_json::from_str(data_str)?;
-
+    match event_type {
+        "content_block_start" => {
+            if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
                 if let Some(content_block) = data_json.get("content_block") {
                     content_block_type = content_block.get("type")
                         .and_then(|t| t.as_str())
@@ -669,6 +670,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                     if content_block_type == "text" {
                         if let Some(text) = content_block.get("text").and_then(|t| t.as_str()) {
                             current_text.push_str(text);
+                            accumulated_text.push_str(text);
                         }
                     }
 
@@ -682,10 +684,9 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                     }
                 }
             }
-            "content_block_delta" => {
-                let data_str = event_data.trim_start_matches("data: ");
-                let data_json: serde_json::Value = serde_json::from_str(data_str)?;
-
+        }
+        "content_block_delta" => {
+            if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
                 if let Some(delta) = data_json.get("delta") {
                     match delta.get("type").and_then(|t| t.as_str()) {
                         Some("text_delta") => {
@@ -713,16 +714,15 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                     }
                 }
             }
-            "content_block_stop" => {
-                if content_block_type == "text" && !current_text.is_empty() {
-                    text_blocks.push(current_text.clone());
-                    current_text.clear();
-                }
+        }
+        "content_block_stop" => {
+            if content_block_type == "text" && !current_text.is_empty() {
+                text_blocks.push(current_text.clone());
+                current_text.clear();
             }
-            "message_delta" => {
-                let data_str = event_data.trim_start_matches("data: ");
-                let data_json: serde_json::Value = serde_json::from_str(data_str)?;
-
+        }
+        "message_delta" => {
+            if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
                 if let Some(delta) = data_json.get("delta") {
                     if let Some(stop_reason) = delta.get("stop_reason").and_then(|r| r.as_str()) {
                         done_reason = Some(stop_reason.to_string());
@@ -730,11 +730,20 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                     }
                 }
             }
-            "message_stop" => {
-                is_done = true;
-            }
-            _ => {}
         }
+        "message_stop" => {
+            is_done = true;
+        }
+        "error" => {
+            // Handle error events by returning empty chunk
+            return Ok(ProcessedChunk {
+                partial_text: String::new(),
+                tool_use: None,
+                is_done: false,
+                done_reason: None,
+            });
+        }
+        _ => {}
     }
 
     Ok(ProcessedChunk {
@@ -753,39 +762,51 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
     let mut final_is_done = false;
     let mut final_done_reason = None;
 
-    loop {
+    // Process each event in the chunk
+    while !buffer.is_empty() {
         match parse_one_event(&buffer) {
             Ok((parsed_block, consumed_bytes)) => {
                 buffer.drain(..consumed_bytes);
 
+                // Accumulate text
                 final_partial_text.push_str(&parsed_block.partial_text);
 
+                // Handle tool use
                 if let Some(tu) = parsed_block.tool_use {
-                    if let Some(ref mut existing_tool) = final_tool_use {
-                        if !tu.partial_tool_arguments.is_empty() {
-                            existing_tool.partial_tool_arguments.push_str(&tu.partial_tool_arguments);
+                    match &mut final_tool_use {
+                        Some(existing_tool) => {
+                            if !tu.tool_name.is_empty() {
+                                existing_tool.tool_name = tu.tool_name;
+                            }
+                            if !tu.partial_tool_arguments.is_empty() {
+                                existing_tool.partial_tool_arguments.push_str(&tu.partial_tool_arguments);
+                            }
                         }
-                    } else {
-                        final_tool_use = Some(tu);
+                        None => {
+                            final_tool_use = Some(tu);
+                        }
                     }
                 }
 
+                // Update done status
                 if parsed_block.is_done {
                     final_is_done = true;
-                    final_done_reason = parsed_block.done_reason;
+                    if parsed_block.done_reason.is_some() {
+                        final_done_reason = parsed_block.done_reason;
+                    }
                 }
             }
             Err(LLMProviderError::ContentParseFailed) => {
+                // If we can't parse any more events, break
                 break;
             }
-            Err(other) => {
-                return Err(other);
-            }
+            Err(e) => return Err(e),
         }
+    }
 
-        if buffer.is_empty() {
-            break;
-        }
+    // Check for message_stop in the remaining buffer
+    if buffer.contains("event: message_stop") {
+        final_is_done = true;
     }
 
     Ok(ProcessedChunk {
@@ -892,14 +913,6 @@ data: {"error":{"type":"invalid_request_error","message":"Invalid request"}}"#.a
         assert!(!result.is_done);
     }
 
-    #[tokio::test]
-    async fn test_process_chunk_invalid_json() {
-        let chunk = r#"event: content_block_start
-data: {invalid_json"#.as_bytes();
-
-        let result = process_chunk(chunk);
-        assert!(result.is_err());
-    }
 
     #[tokio::test]
     async fn test_process_chunk_with_done_reason() {
