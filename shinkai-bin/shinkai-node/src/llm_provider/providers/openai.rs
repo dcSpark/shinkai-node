@@ -525,7 +525,6 @@ pub async fn handle_streaming_response(
         match item {
             Ok(chunk) => {
                 let chunk_str = String::from_utf8_lossy(&chunk).to_string();
-                eprintln!("Raw server response chunk: {}", chunk_str);
                 buffer.push_str(&chunk_str);
 
                 // Process complete messages in the buffer
