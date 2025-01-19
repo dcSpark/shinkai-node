@@ -119,10 +119,12 @@ impl SqliteManager {
 
     // Updates or inserts a CustomPrompt and its vector
     pub fn update_prompt_with_vector(&self, prompt: &CustomPrompt, vector: Vec<f32>) -> Result<(), SqliteManagerError> {
-        // TODO: add error handling
-        // if prompt.rowid.is_none() {
-        //     return ;
-        // }
+        if prompt.rowid.is_none() {
+            return Err(SqliteManagerError::DatabaseError(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(1),
+                Some("Prompt rowid is required for update".to_string()),
+            )));
+        }
 
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
@@ -246,9 +248,7 @@ impl SqliteManager {
 
         // Retrieve rowids and distances
         let rowids_and_distances: Vec<(i64, f64)> = stmt
-            .query_map(params![vector_json, num_results], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })?
+            .query_map(params![vector_json, num_results], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
 
         // Retrieve the corresponding CustomPrompt entries and pair with distances
@@ -297,7 +297,7 @@ impl SqliteManager {
     }
 
     /// Adds a list of prompts from a JSON value vector to the database
-    pub fn add_prompts_from_json_values(&self, prompts: Vec<Value>) -> Result<()> {
+    pub fn add_prompts_from_json_values(&self, prompts: Vec<Value>) -> Result<(), SqliteManagerError> {
         for prompt_value in prompts {
             // Extract fields from JSON
             let name = prompt_value["name"].as_str().unwrap().to_string();
@@ -312,10 +312,19 @@ impl SqliteManager {
                 .iter()
                 .map(|v| v.as_f64().unwrap() as f32)
                 .collect();
+            // Extract optional rowid
+            let rowid = prompt_value.get("rowid").and_then(|v| v.as_i64());
+
+            // Skip if the prompt with this rowid already exists
+            if let Some(id) = rowid {
+                if let Ok(Some(_)) = self.get_prompt(id) {
+                    continue;
+                }
+            }
 
             // Create a CustomPrompt object
             let prompt = CustomPrompt {
-                rowid: None,
+                rowid,
                 name,
                 is_system,
                 is_enabled,
@@ -324,8 +333,12 @@ impl SqliteManager {
                 is_favorite,
             };
 
-            // Add the prompt to the database
-            self.add_prompt_with_vector(&prompt, embedding)?;
+            // Add or update the prompt based on whether it has a rowid
+            if prompt.rowid.is_some() {
+                self.update_prompt_with_vector(&prompt, embedding)?;
+            } else {
+                self.add_prompt_with_vector(&prompt, embedding).map_err(SqliteManagerError::DatabaseError)?;
+            }
         }
         Ok(())
     }
@@ -426,10 +439,7 @@ impl SqliteManager {
             let name: String = row.get(1)?;
 
             // Delete the existing entry if it exists
-            fts_conn.execute(
-                "DELETE FROM shinkai_prompts_fts WHERE rowid = ?1",
-                params![rowid],
-            )?;
+            fts_conn.execute("DELETE FROM shinkai_prompts_fts WHERE rowid = ?1", params![rowid])?;
 
             // Insert the new entry
             fts_conn.execute(
@@ -598,7 +608,9 @@ mod tests {
 
         // Perform a vector search using the specified search vector
         let search_vector = generate_vector(0.4);
-        let search_results = manager.prompt_vector_search_with_vector(search_vector, 3, false).unwrap();
+        let search_results = manager
+            .prompt_vector_search_with_vector(search_vector, 3, false)
+            .unwrap();
 
         // Check that the search results are not empty and that "Prompt 0.4" is the first result
         assert!(!search_results.is_empty());
@@ -759,5 +771,116 @@ mod tests {
         // Assert that the search results contain "Prompt Gamma"
         assert_eq!(search_results.len(), 1);
         assert_eq!(search_results[0].name, "Prompt Gamma");
+    }
+
+    // Note: This is a test that is not run by default. It is used to dump the prompts to a file.
+    // #[tokio::test]
+    async fn test_insert_and_dump_prompts_in_two_phases() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::files::prompts_data::{PROMPTS_JSON, PROMPTS_JSON_TESTING};
+        use serde_json::{json, Value};
+        use std::fs::File;
+        use std::io::Write;
+
+        let manager = setup_test_db().await;
+
+        //--------------------------------------
+        // PHASE 1: Parse PROMPTS_JSON_TESTING and extract existing rowids
+        //--------------------------------------
+        let testing_prompts: Vec<Value> = serde_json::from_str(PROMPTS_JSON_TESTING)?;
+        // Extract existing rowids before inserting
+        let testing_rowids: Vec<Option<i64>> = testing_prompts
+            .iter()
+            .map(|p| p.get("rowid").and_then(|v| v.as_i64()))
+            .collect();
+
+        manager.add_prompts_from_json_values(testing_prompts)?;
+
+        // Read them from the DB
+        let all_prompts_test = manager.get_all_prompts()?;
+
+        // Build JSON output for testing prompts, preserving original rowids where possible
+        let mut testing_array = Vec::new();
+        for (i, p) in all_prompts_test.iter().enumerate() {
+            let embedding = manager
+                .get_prompt_embedding_by_rowid(p.rowid.unwrap())
+                .unwrap_or_default();
+
+            let j = json!({
+                "rowid": testing_rowids.get(i).copied().flatten().unwrap_or(p.rowid.unwrap()),
+                "embedding": embedding,
+                "is_enabled": p.is_enabled,
+                "is_favorite": p.is_favorite,
+                "is_system": p.is_system,
+                "name": p.name,
+                "prompt": p.prompt,
+                "version": p.version
+            });
+            testing_array.push(j);
+        }
+        let testing_str = serde_json::to_string_pretty(&testing_array)?;
+
+        // Now wipe the DB so there's no duplication
+        remove_all_prompts(&manager)?;
+
+        //--------------------------------------
+        // PHASE 2: Parse PROMPTS_JSON and extract existing rowids
+        //--------------------------------------
+        let main_prompts: Vec<Value> = serde_json::from_str(PROMPTS_JSON)?;
+        // Extract existing rowids before inserting
+        let main_rowids: Vec<Option<i64>> = main_prompts
+            .iter()
+            .map(|p| p.get("rowid").and_then(|v| v.as_i64()))
+            .collect();
+
+        manager.add_prompts_from_json_values(main_prompts)?;
+
+        // Read them from the DB
+        let all_prompts_main = manager.get_all_prompts()?;
+
+        // Build JSON output for main prompts, preserving original rowids where possible
+        let mut main_array = Vec::new();
+        for (i, p) in all_prompts_main.iter().enumerate() {
+            let embedding = manager
+                .get_prompt_embedding_by_rowid(p.rowid.unwrap())
+                .unwrap_or_default();
+
+            let j = json!({
+                "rowid": main_rowids.get(i).copied().flatten().unwrap_or(p.rowid.unwrap()),
+                "embedding": embedding,
+                "is_enabled": p.is_enabled,
+                "is_favorite": p.is_favorite,
+                "is_system": p.is_system,
+                "name": p.name,
+                "prompt": p.prompt,
+                "version": p.version
+            });
+            main_array.push(j);
+        }
+        let main_str = serde_json::to_string_pretty(&main_array)?;
+
+        //--------------------------------------
+        // Write both outputs as two static references
+        //--------------------------------------
+        let code_output = format!(
+            "pub static PROMPTS_JSON_TESTING: &str = r#\"{}\"#;\n\n\
+             pub static PROMPTS_JSON: &str = r#\"{}\"#;\n",
+            testing_str, main_str
+        );
+
+        let file_path = "dumped_prompts.rs";
+        let mut file = File::create(&file_path)?;
+        file.write_all(code_output.as_bytes())?;
+        println!("Dumped test + main prompts to {}", file_path);
+
+        Ok(())
+    }
+
+    /// Helper function to remove *all* prompts from the DB so we don’t get duplicates
+    fn remove_all_prompts(manager: &SqliteManager) -> rusqlite::Result<()> {
+        let prompts = manager.get_all_prompts()?;
+        for prompt in prompts {
+            manager.remove_prompt(&prompt.name)?;
+        }
+        Ok(())
     }
 }

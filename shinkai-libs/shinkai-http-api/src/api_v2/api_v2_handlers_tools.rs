@@ -31,6 +31,18 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(set_shinkai_tool_handler);
 
+    let enable_all_tools_route = warp::path("enable_all_tools")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(enable_all_tools_handler);
+
+    let disable_all_tools_route = warp::path("disable_all_tools")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(disable_all_tools_handler);
+
     let get_shinkai_tool_route = warp::path("get_shinkai_tool")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -219,6 +231,8 @@ pub fn tool_routes(
         .or(list_tool_asset_route)
         .or(delete_tool_asset_route)
         .or(remove_tool_route)
+        .or(enable_all_tools_route)
+        .or(disable_all_tools_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -1599,6 +1613,80 @@ pub async fn delete_tool_asset_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/enable_all_tools",
+    responses(
+        (status = 200, description = "Successfully enabled all available tools", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn enable_all_tools_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    sender
+        .send(NodeCommand::V2ApiEnableAllTools {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/disable_all_tools",
+    responses(
+        (status = 200, description = "Successfully disabled all tools", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn disable_all_tools_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    sender
+        .send(NodeCommand::V2ApiDisableAllTools {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1625,6 +1713,8 @@ pub async fn delete_tool_asset_handler(
         tool_asset_handler,
         list_tool_asset_handler,
         delete_tool_asset_handler,
+        enable_all_tools_handler,
+        disable_all_tools_handler,
     ),
     components(
         schemas(

@@ -19,12 +19,13 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType,
-        tool_router_key::ToolRouterKey,
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
     },
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
     shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
     },
 };
 use shinkai_message_primitives::{
@@ -45,7 +46,7 @@ use shinkai_tools_primitives::tools::{
     tool_playground::ToolPlayground,
 };
 
-use std::{fs::File, io::Write, io::Read, path::Path, sync::Arc, time::Instant};
+use std::{fs::File, io::Read, io::Write, path::Path, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -1463,7 +1464,7 @@ impl Node {
             metadata: None,
             tool_key: None,
             fs_files_paths: vec![],
-                job_filenames: vec![],
+            job_filenames: vec![],
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(
@@ -1735,7 +1736,7 @@ impl Node {
     }
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
-    /// 
+    ///
     /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
     /// This function validates the protocol format, constructs the actual file path in the node's storage,
     /// and returns the file contents as bytes.
@@ -1897,7 +1898,7 @@ impl Node {
     pub async fn v2_api_list_tool_assets(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         node_env: NodeEnvironment,
         res: Sender<Result<Vec<String>, APIError>>,
@@ -1927,7 +1928,7 @@ impl Node {
     pub async fn v2_api_delete_tool_asset(
         db: Arc<SqliteManager>,
         bearer: String,
-        tool_id: String,
+        _tool_id: String,
         app_id: String,
         file_name: String,
         node_env: NodeEnvironment,
@@ -1992,6 +1993,125 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to remove tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_enable_all_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get all tools
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                let mut tool_statuses: Vec<(String, bool)> = Vec::new();
+
+                for tool in tools {
+                    let version = match IndexableVersion::from_string(&tool.version) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            tool_statuses.push((tool.tool_router_key, false));
+                            continue;
+                        }
+                    };
+
+                    match db.get_tool_by_key_and_version(&tool.tool_router_key, Some(version)) {
+                        Ok(mut shinkai_tool) => {
+                            if shinkai_tool.can_be_enabled() {
+                                shinkai_tool.enable();
+                                if shinkai_tool.is_enabled() {
+                                    let _ = db.update_tool(shinkai_tool.clone()).await.is_ok();
+                                }
+                            }
+                            let activated = shinkai_tool.is_enabled();
+                            tool_statuses.push((tool.tool_router_key, activated));
+                        }
+                        Err(_) => {
+                            tool_statuses.push((tool.tool_router_key, false));
+                        }
+                    }
+                }
+
+                let response = json!(tool_statuses
+                    .into_iter()
+                    .map(|(key, activated)| { (key, json!({"activated": activated})) })
+                    .collect::<Map<String, Value>>());
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_disable_all_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get all tools
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                let mut tool_statuses: Vec<(String, bool)> = Vec::new();
+
+                for tool in tools {
+                    let version = match IndexableVersion::from_string(&tool.version) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            tool_statuses.push((tool.tool_router_key, false));
+                            continue;
+                        }
+                    };
+
+                    match db.get_tool_by_key_and_version(&tool.tool_router_key, Some(version)) {
+                        Ok(mut shinkai_tool) => {
+                            shinkai_tool.disable();
+                            if !shinkai_tool.is_enabled() {
+                                let _ = db.update_tool(shinkai_tool.clone()).await.is_ok();
+                            }
+
+                            let activated = shinkai_tool.is_enabled();
+                            tool_statuses.push((tool.tool_router_key, activated));
+                        }
+                        Err(_) => {
+                            tool_statuses.push((tool.tool_router_key, false));
+                        }
+                    }
+                }
+
+                let response = json!(tool_statuses
+                    .into_iter()
+                    .map(|(key, activated)| { (key, json!({"activated": activated})) })
+                    .collect::<Map<String, Value>>());
+                let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list tools: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
