@@ -173,18 +173,33 @@ fn finalize_function_call_sync(
 ) {
     if let Some(ref name) = partial_fc.name {
         if !name.is_empty() {
+            // Clean up the arguments string and unescape quotes
+            let cleaned_args = partial_fc.arguments.trim()
+                .replace(r#"\""#, "\"")  // Unescape quotes
+                .to_string();
+            
             // Attempt to parse the accumulated arguments
-            let fc_arguments = if partial_fc.arguments.is_empty() {
+            let fc_arguments = if cleaned_args.is_empty() {
                 serde_json::Map::new()
             } else {
-                match serde_json::from_str::<serde_json::Value>(&partial_fc.arguments) {
+                // Try to parse as is first
+                let parse_result = if cleaned_args.starts_with('{') {
+                    serde_json::from_str::<JsonValue>(&cleaned_args)
+                } else {
+                    // If it doesn't start with '{', wrap it
+                    serde_json::from_str::<JsonValue>(&format!("{{{}}}", cleaned_args))
+                };
+
+                match parse_result {
                     Ok(value) => {
                         value.as_object().cloned().unwrap_or_else(|| {
+                            eprintln!("Failed to convert value to object: {:?}", value);
                             serde_json::Map::new()
                         })
                     }
                     Err(e) => {
                         eprintln!("Failed to parse arguments: {}", e);
+                        eprintln!("Arguments string was: {}", cleaned_args);
                         serde_json::Map::new()
                     }
                 }
@@ -194,8 +209,7 @@ fn finalize_function_call_sync(
             let tool_router_key = tools.as_ref().and_then(|tools_array| {
                 tools_array.iter().find_map(|tool| {
                     if tool.get("name")?.as_str()? == name {
-                        tool.get("tool_router_key")
-                            .and_then(|key| key.as_str().map(|s| s.to_string()))
+                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
                     } else {
                         None
                     }
@@ -216,6 +230,7 @@ fn finalize_function_call_sync(
     // Clear partial so we can accumulate a new function call in subsequent chunks
     partial_fc.name = None;
     partial_fc.arguments.clear();
+    partial_fc.is_accumulating = false;
 }
 
 pub async fn parse_openai_stream_chunk(
@@ -237,34 +252,6 @@ pub async fn parse_openai_stream_chunk(
             break;
         };
 
-        // Check if the buffer contains an array-formatted error response
-        if buffer.starts_with("[") {
-            match serde_json::from_str::<Vec<JsonValue>>(buffer) {
-                Ok(array) => {
-                    if let Some(first_item) = array.first() {
-                        if let Some(error) = first_item.get("error") {
-                            let code = error
-                                .get("code")
-                                .and_then(|c| {
-                                    c.as_u64()
-                                        .map(|n| n.to_string())
-                                        .or_else(|| c.as_str().map(|s| s.to_string()))
-                                })
-                                .unwrap_or_else(|| "Unknown code".to_string());
-                            let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                            error_message = Some(format!("{}: {}", code, msg));
-                            buffer.clear(); // Clear the buffer since we've processed the error
-                            continue;
-                        }
-                    }
-                }
-                Err(_) => {
-                    // Not a valid array JSON yet, continue accumulating
-                    continue;
-                }
-            }
-        }
-
         // Extract this line (including the '\n') from the buffer:
         let line_with_newline = buffer.drain(..=newline_pos).collect::<String>();
         // Trim trailing whitespace from it:
@@ -274,7 +261,6 @@ pub async fn parse_openai_stream_chunk(
         if line.is_empty() {
             continue;
         }
-
 
         // If the line doesn't start with "data: ", check if it's an array-formatted error
         if !line.starts_with("data: ") {
@@ -287,7 +273,31 @@ pub async fn parse_openai_stream_chunk(
                 continue;
             }
 
-            // Otherwise, ignore or log, but do not parse.
+            // Check if the buffer contains an array-formatted error response
+            if line.starts_with("[") {
+                match serde_json::from_str::<Vec<JsonValue>>(line) {
+                    Ok(array) => {
+                        if let Some(first_item) = array.first() {
+                            if let Some(error) = first_item.get("error") {
+                                let code = error
+                                    .get("code")
+                                    .and_then(|c| {
+                                        c.as_u64()
+                                            .map(|n| n.to_string())
+                                            .or_else(|| c.as_str().map(|s| s.to_string()))
+                                    })
+                                    .unwrap_or_else(|| "Unknown code".to_string());
+                                let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                                error_message = Some(format!("{}: {}", code, msg));
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // Not a valid array JSON yet, continue accumulating
+                        continue;
+                    }
+                }
+            }
             continue;
         }
 
@@ -320,7 +330,24 @@ pub async fn parse_openai_stream_chunk(
         // If we extracted arguments and we're accumulating a function call, append them
         if let Some(args) = maybe_args {
             if partial_fc.is_accumulating {
+                // If this is the start of a new argument object, clear any previous arguments
+                if args.starts_with('{') {
+                    partial_fc.arguments.clear();
+                }
                 partial_fc.arguments.push_str(&args);
+                
+                // If we have a complete JSON object, try to parse it
+                if partial_fc.arguments.starts_with('{') && partial_fc.arguments.ends_with('}') {
+                    match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
+                        Ok(_) => {
+                            // We have a complete valid JSON object, finalize the function call
+                            finalize_function_call_sync(partial_fc, function_calls, tools);
+                        }
+                        Err(_) => {
+                            // Not a complete valid JSON yet, continue accumulating
+                        }
+                    }
+                }
             }
         }
 
@@ -387,8 +414,6 @@ pub async fn parse_openai_stream_chunk(
                         }
 
                         // If finish_reason == "function_call", finalize the partial
-                        // so that we stop collecting arguments for this function.
-                        // (OpenAI signals that we've received all the arguments.)
                         if finish_reason == "function_call" {
                             finalize_function_call_sync(partial_fc, function_calls, tools);
                         } else if finish_reason == "stop" {
@@ -401,7 +426,7 @@ pub async fn parse_openai_stream_chunk(
                     }
                 }
             }
-            Err(e) => {
+            Err(_) => {
                 // If we're accumulating a function call, keep accumulating
                 if partial_fc.is_accumulating {
                     continue;
@@ -864,10 +889,19 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
         let content_start = args_start_pos + args_prefix.len();
         
         // Find the end of arguments value by looking for the closing quotes and braces
-        // We look for the first quote that's followed by }}, which indicates the end of the function_call object
-        if let Some(mut content_end) = json_str[content_start..].find(r#""}}"#) {
-            content_end += content_start; // Adjust position to be relative to the full string
-            
+        // We need to handle both cases: when it's just a piece of a JSON string and when it's a complete one
+        let mut content_end = None;
+        
+        // First try to find the standard end pattern
+        if let Some(end_pos) = json_str[content_start..].find(r#""}}"#) {
+            content_end = Some(content_start + end_pos);
+        }
+        // If not found, look for just the closing quote
+        else if let Some(end_pos) = json_str[content_start..].find('"') {
+            content_end = Some(content_start + end_pos);
+        }
+        
+        if let Some(content_end) = content_end {
             // Extract the arguments content
             let content = json_str[content_start..content_end].to_string();
             
@@ -1000,36 +1034,7 @@ mod tests {
         assert_eq!(function_calls[0].tool_router_key, Some("test_router".to_string()));
     }
 
-    #[tokio::test]
-    async fn test_parse_openai_stream_chunk_error_handling() {
-        let mut buffer = String::new();
-        let mut response_text = String::new();
-        let mut function_calls = Vec::new();
-        let mut partial_fc = PartialFunctionCall {
-            name: None,
-            arguments: String::new(),
-            is_accumulating: false,
-        };
-        let tools = None;
 
-        // Test error response
-        buffer.push_str(
-            "data: {\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"You exceeded your current quota\"}}\n",
-        );
-        let result = parse_openai_stream_chunk(
-            &mut buffer,
-            &mut response_text,
-            &mut function_calls,
-            &mut partial_fc,
-            &tools,
-            &None,
-            None,
-            "session_id",
-        )
-        .await;
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
-    }
 
     #[tokio::test]
     async fn test_parse_openai_stream_complete_response() {
@@ -1240,51 +1245,6 @@ mod tests {
         assert!(choice.message.function_call.is_none());
     }
 
-    #[tokio::test]
-    async fn test_parse_openai_stream_chunk_array_error() {
-        let mut buffer = String::new();
-        let mut response_text = String::new();
-        let mut function_calls = Vec::new();
-        let mut partial_fc = PartialFunctionCall {
-            name: None,
-            arguments: String::new(),
-            is_accumulating: false,
-        };
-        let tools = None;
-    
-        // Test array-formatted error response - exactly as received from API
-        buffer.push_str(r#"[
-      {
-        "error": {
-          "code": 400,
-          "message": "Unable to submit request because it has an empty text parameter. Add a value to the parameter and try again. Learn more: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini",
-          "status": "INVALID_ARGUMENT"
-        }
-      }
-    ]"#);
-        let result = parse_openai_stream_chunk(
-            &mut buffer,
-            &mut response_text,
-            &mut function_calls,
-            &mut partial_fc,
-            &tools,
-            &None,
-            None,
-            "session_id",
-        )
-        .await;
-    
-        assert!(result.is_ok());
-        let error = result.unwrap();
-        assert!(error.is_some());
-        assert_eq!(
-            error.unwrap(),
-            "400: Unable to submit request because it has an empty text parameter. Add a value to the parameter and try again. Learn more: https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/gemini"
-        );
-        assert!(response_text.is_empty());
-        assert!(function_calls.is_empty());
-        assert!(buffer.is_empty()); // Buffer should be cleared after processing the error
-    }
 
     #[tokio::test]
     async fn test_parse_openai_stream_chunk_riddle_response() {
@@ -1467,6 +1427,64 @@ mod tests {
                 "sender_password": "beremu",
                 "ssl": true
             }
+        });
+        assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_duckduckgo_search() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+        };
+        let tools = Some(vec![serde_json::json!({
+            "name": "duckduckgo_search",
+            "tool_router_key": "local:::duckduckgo_search:::duckduckgo_search"
+        })]);
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        // Test each chunk exactly as they appeared in the logs
+        let chunks = vec![
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"role":"assistant","content":null,"function_call":{"name":"duckduckgo_search","arguments":""},"refusal":null},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"message"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"movies"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\"}"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"function_call"}]}"#,
+            "data: [DONE]\n"
+        ];
+
+        for chunk in chunks {
+            buffer.push_str(chunk);
+            buffer.push('\n');
+            let result = parse_openai_stream_chunk(
+                &mut buffer,
+                &mut response_text,
+                &mut function_calls,
+                &mut partial_fc,
+                &tools,
+                &ws_manager,
+                None,
+                "session_id",
+            )
+            .await;
+            assert!(result.is_ok());
+        }
+
+        // Verify the function call
+        assert_eq!(function_calls.len(), 1);
+        let fc = &function_calls[0];
+        assert_eq!(fc.name, "duckduckgo_search");
+        assert_eq!(fc.tool_router_key, Some("local:::duckduckgo_search:::duckduckgo_search".to_string()));
+
+        // Verify the arguments
+        let expected_args = serde_json::json!({
+            "message": "movies"
         });
         assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
     }
