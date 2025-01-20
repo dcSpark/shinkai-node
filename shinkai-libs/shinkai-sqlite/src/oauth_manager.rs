@@ -562,7 +562,7 @@ mod tests {
         let manager = setup_test_db();
         let mut token = create_test_token();
 
-        let token_id = manager.add_oauth_token(&token).unwrap();
+        let _token_id = manager.add_oauth_token(&token).unwrap();
         token.access_token = Some("new_access_token".to_string());
 
         manager.update_oauth_token(&token).unwrap();
@@ -738,7 +738,6 @@ mod tests {
         // Convert back to OAuth and verify
         let restored_oauth = OAuth {
             name: retrieved_token.connection_name,
-            scope: retrieved_token.scope.clone(),
             pkce_type: retrieved_token.pkce_type,
             authorization_url: retrieved_token.authorization_url.unwrap(),
             token_url: retrieved_token.token_url.clone(),
@@ -753,7 +752,127 @@ mod tests {
                 .split(',')
                 .map(String::from)
                 .collect(),
-            refresh_token: Some("false".to_string()),
+            refresh_token: retrieved_token.refresh_token,
+        };
+
+        // Verify the restored OAuth matches the original
+        assert_eq!(restored_oauth.name, oauth_name);
+        assert_eq!(restored_oauth.authorization_url, oauth_auth_url);
+        assert_eq!(restored_oauth.token_url, oauth_token_url);
+        assert_eq!(restored_oauth.client_id, oauth_client_id);
+        assert_eq!(restored_oauth.client_secret, oauth_client_secret);
+        assert_eq!(restored_oauth.redirect_url, oauth_redirect_url);
+        assert_eq!(restored_oauth.version, oauth_version);
+        assert_eq!(restored_oauth.response_type, oauth_response_type);
+        assert_eq!(restored_oauth.scopes, oauth_scopes);
+        assert_eq!(restored_oauth.pkce_type, oauth_pkce_type);
+        assert_eq!(restored_oauth.refresh_token, oauth_refresh_token);
+    }
+
+    #[test]
+    fn test_oauth_json_to_token_roundtrip_min() {
+        use crate::oauth_manager::OAuthToken;
+        use serde_json::json;
+        use shinkai_tools_primitives::tools::tool_config::OAuth;
+
+        let manager = setup_test_db();
+
+        // Start with a JSON configuration
+        let oauth_json = json!({
+            "github": {
+                "authorizationUrl": "https://github.com/login/oauth/authorize",
+                "tokenUrl": "https://github.com/login/oauth/access_token",
+                "clientId": "",
+                "clientSecret": "",
+                "redirectUrl": "https://custom.redirect.com",
+                "version": "1.0",
+                "responseType": "code",
+                "scopes": [],
+                "refreshToken": false
+            }
+        });
+
+        // Convert JSON to OAuth
+        let oauth = OAuth::from_value(&oauth_json).expect("Failed to parse OAuth from JSON");
+
+        // Clone oauth values before any moves occur
+        let oauth_auth_url = oauth.authorization_url.clone();
+        let oauth_token_url = oauth.token_url.clone();
+        let oauth_client_id = oauth.client_id.clone();
+        let oauth_client_secret = oauth.client_secret.clone();
+        let oauth_redirect_url = oauth.redirect_url.clone();
+        let oauth_version = oauth.version.clone();
+        let oauth_response_type = oauth.response_type.clone();
+        let oauth_scopes = oauth.scopes.clone();
+        let oauth_pkce_type = oauth.pkce_type.clone();
+        let oauth_refresh_token = oauth.refresh_token.clone();
+        let oauth_name = oauth.name.clone();
+
+        // Create OAuthToken from OAuth
+        let refresh_token_enabled = if let Some(r) = oauth_refresh_token.clone() {
+            Some(r == "true".to_string())
+        } else {
+            Some(false)
+        };
+        let token = OAuthToken {
+            id: 0,
+            connection_name: oauth.name,
+            response_type: oauth.response_type,
+            state: "test_state".to_string(),
+            code: None,
+            app_id: "test_app".to_string(),
+            tool_id: "github".to_string(),
+            tool_key: "github_tool".to_string(),
+            access_token: None,
+            access_token_expires_at: None,
+            refresh_token: None,
+            refresh_token_enabled,
+            refresh_token_expires_at: None,
+            token_secret: None,
+            id_token: None,
+            scope: Some(oauth.scopes.join(",")),
+            pkce_type: oauth.pkce_type,
+            pkce_code_verifier: None,
+            expires_at: None,
+            metadata_json: None,
+            authorization_url: Some(oauth.authorization_url),
+            token_url: oauth.token_url,
+            client_id: Some(oauth.client_id),
+            client_secret: Some(oauth.client_secret),
+            redirect_url: Some(oauth.redirect_url),
+            version: oauth.version,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        // Save token to database
+        manager.add_oauth_token(&token).unwrap();
+
+        // Retrieve token from database
+        let retrieved_token = manager
+            .get_oauth_token(token.connection_name.clone(), token.tool_key.clone())
+            .unwrap()
+            .unwrap();
+
+        let scopes_data = retrieved_token.scope.unwrap_or_default();
+        let scopes = if scopes_data.is_empty() {
+            vec![]
+        } else {
+            scopes_data.split(',').map(String::from).collect()
+        };
+        // Convert back to OAuth and verify
+        let restored_oauth = OAuth {
+            name: retrieved_token.connection_name,
+            pkce_type: retrieved_token.pkce_type,
+            authorization_url: retrieved_token.authorization_url.unwrap(),
+            token_url: retrieved_token.token_url.clone(),
+            client_id: retrieved_token.client_id.unwrap(),
+            client_secret: retrieved_token.client_secret.unwrap(),
+            redirect_url: retrieved_token.redirect_url.unwrap(),
+            version: retrieved_token.version,
+            response_type: retrieved_token.response_type,
+            scopes: scopes,
+            refresh_token: retrieved_token.refresh_token,
         };
 
         // Verify the restored OAuth matches the original

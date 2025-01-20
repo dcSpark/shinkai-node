@@ -420,7 +420,6 @@ mod tests {
         // Create valid OAuth config
         let oauth = Some(vec![OAuth {
             name: "test_oauth".to_string(),
-            scope: None,
             authorization_url: "https://auth.example.com".to_string(),
             token_url: Some("https://token.example.com".to_string()),
             client_id: "client123".to_string(),
