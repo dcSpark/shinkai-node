@@ -61,16 +61,13 @@ impl JobPromptGenerator {
                         Some(function) => {
                             let tool_router_key = function["tool_router_key"].as_str().unwrap_or("");
                             if tool_router_key == "local:::rust_toolkit:::shinkai_sqlite_query_executor" {
-                                let (tx, rx) = mpsc::channel();
                                 let job_id_clone = job_id.clone();
-                                // Spawn the async task on a runtime
-                                std::thread::spawn(move || {
-                                    let runtime = Runtime::new().unwrap();
-                                    let result = runtime.block_on(get_current_tables(job_id_clone));
-                                    tx.send(result).unwrap();
+                                // Create a new runtime for this async operation
+                                let rt = Runtime::new().unwrap();
+                                let current_tables = rt.block_on(async {
+                                    get_current_tables(job_id_clone).await
                                 });
-                                // Wait for the result
-                                let current_tables = rx.recv().unwrap();
+                                
                                 if let Ok(current_tables) = current_tables {
                                     if !current_tables.is_empty() {
                                         prompt.add_content(
@@ -162,6 +159,7 @@ impl JobPromptGenerator {
             prompt.add_function_call_response(serde_json::to_value(function_call).unwrap(), 100);
         }
 
+        // eprintln!("prompt after adding function call: {:?}", prompt);
         prompt
     }
 }
