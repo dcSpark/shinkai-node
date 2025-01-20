@@ -27,6 +27,7 @@ use tokio::runtime::Runtime;
 pub struct DenoTool {
     pub toolkit_name: String,
     pub name: String,
+    pub homepage: Option<String>,
     pub author: String,
     pub version: String,
     pub js_code: String,
@@ -567,6 +568,7 @@ mod tests {
         let tool = DenoTool {
             toolkit_name: "deno-toolkit".to_string(),
             name: "Email Fetcher".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Shinkai".to_string(),
             version: "1.0.0".to_string(),
             description: "Fetches emails from an IMAP server".to_string(),

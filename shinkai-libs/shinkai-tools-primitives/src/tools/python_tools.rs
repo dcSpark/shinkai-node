@@ -28,6 +28,7 @@ pub struct PythonTool {
     pub toolkit_name: String,
     pub version: String,
     pub name: String,
+    pub homepage: Option<String>,
     pub author: String,
     pub py_code: String,
     #[serde(default)]

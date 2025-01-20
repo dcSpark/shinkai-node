@@ -809,6 +809,7 @@ mod tests {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
@@ -881,6 +882,7 @@ mod tests {
         let deno_tool_1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool 1".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 1".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno 1!');".to_string(),
@@ -903,6 +905,7 @@ mod tests {
         let deno_tool_2 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool 2".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 2".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno 2!');".to_string(),
@@ -925,6 +928,7 @@ mod tests {
         let deno_tool_3 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool 3".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 3".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno 3!');".to_string(),
@@ -984,6 +988,7 @@ mod tests {
         let deno_tool_1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Tool 1".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Tool 1');".to_string(),
@@ -1006,6 +1011,7 @@ mod tests {
         let deno_tool_2 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Tool 2".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Tool 2');".to_string(),
@@ -1028,6 +1034,7 @@ mod tests {
         let deno_tool_3 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Tool 3".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 3".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Tool 3');".to_string(),
@@ -1117,6 +1124,7 @@ mod tests {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Duplicate Tool".to_string(),
+            homepage: None,
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
@@ -1163,6 +1171,7 @@ mod tests {
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
                 name: "Image Processing Tool".to_string(),
+                homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Author 1".to_string(),
                 version: "1.0.0".to_string(),
                 js_code: "console.log('Tool 1');".to_string(),
@@ -1184,6 +1193,7 @@ mod tests {
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
                 name: "Text Analysis Helper".to_string(),
+                homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Author 2".to_string(),
                 version: "1.0.0".to_string(),
                 js_code: "console.log('Tool 2');".to_string(),
@@ -1205,6 +1215,7 @@ mod tests {
             DenoTool {
                 toolkit_name: "Deno Toolkit".to_string(),
                 name: "Data Visualization Tool".to_string(),
+                homepage: None,
                 author: "Author 3".to_string(),
                 version: "1.0.0".to_string(),
                 js_code: "console.log('Tool 3');".to_string(),
@@ -1269,6 +1280,7 @@ mod tests {
         let enabled_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Enabled Test Tool".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
             author: "Author 1".to_string(),
             js_code: "console.log('Enabled');".to_string(),
@@ -1291,6 +1303,7 @@ mod tests {
         let disabled_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Disabled Test Tool".to_string(),
+            homepage: None,
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Disabled');".to_string(),
@@ -1380,6 +1393,7 @@ mod tests {
         let enabled_non_network_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Enabled Non-Network Tool".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Enabled Non-Network');".to_string(),
@@ -1402,6 +1416,7 @@ mod tests {
         let disabled_non_network_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Disabled Non-Network Tool".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Disabled Non-Network');".to_string(),
@@ -1531,6 +1546,7 @@ mod tests {
         // Create three tools with different vectors
         let tool1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: "Tool One".to_string(),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
@@ -1554,6 +1570,7 @@ mod tests {
         let tool2 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Tool Two".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Tool 2');".to_string(),
@@ -1576,6 +1593,7 @@ mod tests {
         let tool3 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Tool Three".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 3".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Tool 3');".to_string(),
@@ -1658,6 +1676,7 @@ mod tests {
         let deno_tool_v1 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Versioned Tool".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Version Author".to_string(),
             version: "1.0".to_string(),
             js_code: "console.log('Version 1');".to_string(),
@@ -1680,6 +1699,7 @@ mod tests {
         let deno_tool_v2 = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Versioned Tool".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Version Author".to_string(),
             version: "2.0".to_string(),
             js_code: "console.log('Version 2');".to_string(),

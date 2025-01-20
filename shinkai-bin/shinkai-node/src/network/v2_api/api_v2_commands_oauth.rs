@@ -2,12 +2,12 @@ use crate::network::node_error::NodeError;
 use crate::network::Node;
 
 use async_channel::Sender;
+use chrono::Utc;
 use reqwest::StatusCode;
 use serde_json::Value;
 use shinkai_sqlite::SqliteManager;
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use reqwest::Client;
 use shinkai_http_api::node_api_router::APIError;
@@ -83,11 +83,7 @@ impl Node {
         Ok(())
     }
 
-    async fn v2_api_set_oauth_token_cmd(
-        db: Arc<SqliteManager>,
-        code: String,
-        state: String,
-    ) -> Result<(), APIError> {
+    async fn v2_api_set_oauth_token_cmd(db: Arc<SqliteManager>, code: String, state: String) -> Result<(), APIError> {
         let oauth_data = db.get_oauth_token_by_state(&state);
         if oauth_data.is_err() {
             return Err(APIError {
@@ -107,16 +103,29 @@ impl Node {
         let mut oauth_data = oauth_data.unwrap();
 
         let client = Client::new();
+        let mut request_body = serde_json::json!({
+            "client_id": oauth_data.client_id.as_deref().unwrap_or_default(),
+            // "client_secret": oauth_data.client_secret.as_deref().unwrap_or_default(),
+            "code": code,
+            "redirect_uri": oauth_data.redirect_url.as_deref().unwrap_or_default(),
+            "grant_type": "authorization_code"
+        });
+
+        // Add code_verifier if PKCE is enabled
+        if oauth_data.pkce_type.is_some() {
+            // TODO For now we only support plain.
+            if let Some(verifier) = &oauth_data.pkce_code_verifier {
+                request_body["code_verifier"] = serde_json::Value::String(verifier.clone());
+            }
+        }
+        let url = &oauth_data.clone().token_url.unwrap_or_default();
+
+        println!("[OAuth] Calling {} with params {:?}", url, request_body);
         let response = client
-            .post(&oauth_data.clone().token_url.unwrap_or_default())
+            .post(url)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
-            .json(&serde_json::json!({
-                "client_id": oauth_data.client_id.as_deref().unwrap_or_default(),
-                "client_secret": oauth_data.client_secret.as_deref().unwrap_or_default(),
-                "code": code,
-                "redirect_uri": oauth_data.redirect_url.as_deref().unwrap_or_default()
-            }))
+            .json(&request_body)
             .send()
             .await;
         if response.is_err() {
@@ -136,14 +145,29 @@ impl Node {
             });
         }
         let response = response.unwrap();
+        println!("[OAuth] Response {}", response.clone().to_string());
 
+        // Response example
+        // {
+        //   "access_token":"ODc1WmJXZH....",
+        //   "expires_in":7200,
+        //   "refresh_token":"RXBFWHQ2NUN....",
+        //   "scope":"tweet.write users.read tweet.read offline.access",
+        //   "token_type":"bearer"
+        // }
         // Update the token with the new code and OAuth response data
         oauth_data.code = Some(code);
         if let Some(access_token) = response["access_token"].as_str() {
             oauth_data.access_token = Some(access_token.to_string());
         }
-        if let Some(token_type) = response["token_type"].as_str() {
-            oauth_data.token_type = Some(token_type.to_string());
+        if let Some(expires_in) = response["expires_in"].as_i64() {
+            oauth_data.access_token_expires_at = Some(Utc::now() + chrono::Duration::seconds(expires_in));
+        }
+        if let Some(refresh_token) = response["refresh_token"].as_str() {
+            oauth_data.refresh_token = Some(refresh_token.to_string());
+            if let Some(expires_in) = response["expires_in"].as_i64() {
+                oauth_data.refresh_token_expires_at = Some(Utc::now() + chrono::Duration::seconds(expires_in));
+            }
         }
         if let Some(scope) = response["scope"].as_str() {
             oauth_data.scope = Some(scope.to_string());

@@ -44,15 +44,6 @@ pub fn generate_file_support_ts(declaration_only: bool) -> String {
             r#"
     type ProviderConfig = {
         name: string,
-        version: string,
-        // authorizationUrl: string,
-        // redirectUrl: string,
-        // tokenUrl: string,
-        // clientId: string,
-        // clientSecret: string,
-        // scopes: string[],
-        // grantType: string,
-        // refreshToken?: string,
         accessToken?: string,
     }            
     const oauthConfig: ProviderConfig[] | undefined = JSON.parse(Deno.env.get('SHINKAI_OAUTH') || '[]');

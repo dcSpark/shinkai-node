@@ -421,6 +421,7 @@ impl Node {
             return Ok(());
         }
 
+        // TODO Is this correct. There should be a builder.
         let toolkit_name = {
             let name = format!(
                 "{}_{}",
@@ -451,6 +452,7 @@ impl Node {
                 let tool = DenoTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
+                    homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
                     version: payload.metadata.version.clone(),
                     js_code: payload.code.clone(),
@@ -475,6 +477,7 @@ impl Node {
                 let tool = PythonTool {
                     toolkit_name,
                     name: payload.metadata.name.clone(),
+                    homepage: payload.metadata.homepage.clone(),
                     version: payload.metadata.version.clone(),
                     author: payload.metadata.author.clone(),
                     py_code: payload.code.clone(),

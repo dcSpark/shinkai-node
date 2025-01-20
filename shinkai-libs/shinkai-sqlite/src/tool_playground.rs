@@ -204,10 +204,27 @@ impl SqliteManager {
                     )))
                 })?;
 
+                let mut sql_tables = vec![];
+                let mut sql_queries = vec![];
+                let mut tools = None;
+                let mut oauth = None;
+                let mut assets = None;
+                let mut homepage: Option<String> = None;
+                if let Ok(tool_data) = self.get_tool_by_key(tool_router_key) {
+                    // found data
+                    sql_queries = tool_data.sql_queries();
+                    sql_tables = tool_data.sql_tables();
+                    tools = Some(tool_data.get_tools());
+                    oauth = tool_data.get_oauth();
+                    assets = tool_data.get_assets();
+                    homepage = tool_data.get_homepage();
+                }
+
                 Ok(ToolPlayground {
                     language: code_language,
                     metadata: ToolPlaygroundMetadata {
                         name: row.get(0)?,
+                        homepage,
                         version: version.to_version_string(),
                         description: row.get(1)?,
                         author: row.get(2)?,
@@ -215,16 +232,16 @@ impl SqliteManager {
                         configurations,
                         parameters,
                         result,
-                        sql_tables: vec![],
-                        sql_queries: vec![],
-                        tools: None,
-                        oauth: None,
+                        sql_tables,
+                        sql_queries,
+                        tools,
+                        oauth,
                     },
                     tool_router_key: row.get(7)?,
                     job_id: row.get(8)?,
                     job_id_history: job_id_history.split(',').map(String::from).collect(),
                     code: row.get(10)?,
-                    assets: None,
+                    assets,
                 })
             })
             .map_err(|e| {
@@ -277,6 +294,7 @@ impl SqliteManager {
                 language: code_language,
                 metadata: ToolPlaygroundMetadata {
                     name: row.get(0)?,
+                    homepage: None,
                     version: version.to_version_string(),
                     description: row.get(1)?,
                     author: row.get(2)?,
@@ -345,13 +363,13 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_tools_primitives::tools::{
         deno_tools::{DenoTool, ToolResult},
         parameters::Parameters,
         shinkai_tool::ShinkaiTool,
         tool_output_arg::ToolOutputArg,
     };
-    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -368,6 +386,7 @@ mod tests {
     async fn add_tool_to_db(manager: &mut SqliteManager) -> String {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
@@ -403,6 +422,7 @@ mod tests {
             language: CodeLanguage::Typescript,
             metadata: ToolPlaygroundMetadata {
                 name: "Test Tool".to_string(),
+                homepage: Some("http://127.0.0.1/index.html".to_string()),
                 version: "1.0.0".to_string(),
                 description: "A tool for testing".to_string(),
                 author: "Test Author".to_string(),
@@ -495,6 +515,7 @@ mod tests {
     async fn add_tool_to_db_with_unique_name(manager: &mut SqliteManager, name: &str) -> String {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: name.to_string(),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
@@ -569,6 +590,7 @@ mod tests {
         let deno_tool = DenoTool {
             toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
+            homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('Hello, Deno!');".to_string(),
