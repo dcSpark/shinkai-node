@@ -369,7 +369,7 @@ impl GenericInferenceChain {
             additional_files.clone(),
             node_env.clone(),
             db.clone(),
-        );
+        ).await;
 
         let mut iteration_count = 0;
         let mut tool_calls_history = Vec::new();
@@ -491,7 +491,7 @@ impl GenericInferenceChain {
                                         additional_files.clone(),
                                         node_env.clone(),
                                         db.clone(),
-                                    );
+                                    ).await;
 
                                     // Set flag to retry and break out of the function calls loop
                                     iteration_count += 1;
@@ -562,7 +562,7 @@ impl GenericInferenceChain {
                     additional_files,
                     node_env.clone(),
                     db.clone(),
-                );
+                ).await;
             } else {
                 // No more function calls required, return the final response
                 let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));

@@ -337,6 +337,7 @@ impl CoinbaseMPCWallet {
                     None,
                     None,
                 )
+                .await
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
             let result_str =
                 serde_json::to_string(&result).map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;

@@ -111,7 +111,7 @@ pub async fn execute_python_tool(
         false,
         assets_files,
         mounts,
-    ) {
+    ).await {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

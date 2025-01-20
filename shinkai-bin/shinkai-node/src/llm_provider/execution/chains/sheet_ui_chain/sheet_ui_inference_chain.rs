@@ -295,7 +295,7 @@ impl SheetUIInferenceChain {
             vec![],
             node_env.clone(),
             db.clone(),
-        );
+        ).await;
 
         let mut iteration_count = 0;
         loop {
@@ -445,7 +445,7 @@ impl SheetUIInferenceChain {
                     vec![],
                     node_env.clone(),
                     db.clone(),
-                );
+                ).await;
             } else {
                 // No more function calls required, return the final response
                 return Ok(response.response_string);

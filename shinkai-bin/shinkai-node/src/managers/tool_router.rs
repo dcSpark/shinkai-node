@@ -567,7 +567,7 @@ impl ToolRouter {
                     false,
                     None,
                     Some(all_files),
-                )?;
+                ).await?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
@@ -690,7 +690,7 @@ impl ToolRouter {
                     false,
                     Some(tool_id),
                     Some(all_files),
-                )?;
+                ).await?;
 
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -1045,7 +1045,7 @@ impl ToolRouter {
             true,
             Some(tool_id),
             None,
-        )?;
+        ).await?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 
