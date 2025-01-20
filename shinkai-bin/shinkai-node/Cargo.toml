@@ -11,7 +11,7 @@ default-run = "shinkai_node"
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 
 [features]
-default = ["console"]
+default = []
 console = ["console-subscriber"]
 # static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
