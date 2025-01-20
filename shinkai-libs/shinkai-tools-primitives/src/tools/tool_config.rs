@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(oauth.client_secret, "");
         assert!(oauth.scopes.is_empty());
         assert_eq!(oauth.pkce_type, None);
-        assert_eq!(oauth.refresh_token, Some("false".to_string()));
+        assert_eq!(oauth.refresh_token, None);
     }
 
     #[test]
