@@ -195,7 +195,7 @@ impl ToolRouter {
                     }
                 };
 
-                match Node::v2_api_import_tool_internal(db, node_env, tool_url).await {
+                match Node::v2_api_import_tool_internal(db, node_env, tool_url, None).await {
                     Ok(_) => {
                         println!("Successfully imported tool {}", tool_name);
                         return Ok::<(), ToolError>(());

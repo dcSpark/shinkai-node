@@ -12,7 +12,7 @@ use crate::{
 };
 
 use async_channel::Sender;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
 
@@ -1617,6 +1617,7 @@ impl Node {
         bearer: String,
         node_env: NodeEnvironment,
         url: String,
+        identity_public_key: Option<VerifyingKey>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1624,7 +1625,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::v2_api_import_tool_internal(db, node_env, url).await;
+        let result = Self::v2_api_import_tool_internal(db, node_env, url, identity_public_key).await;
         match result {
             Ok(response) => {
                 let _ = res.send(Ok(response)).await;
@@ -1640,8 +1641,9 @@ impl Node {
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         url: String,
+        identity_public_key: Option<VerifyingKey>,
     ) -> Result<Value, APIError> {
-        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string()).await {
+        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string(), identity_public_key).await {
             Ok(contents) => contents,
             Err(err) => {
                 return Err(err);

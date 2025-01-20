@@ -1599,7 +1599,7 @@ impl Node {
             return Ok(());
         }
 
-        let zip_contents = match download_zip_file(url, "__agent.json".to_string()).await {
+        let zip_contents = match download_zip_file(url, "__agent.json".to_string(), None).await {
             Ok(contents) => contents,
             Err(err) => {
                 let api_error = APIError {

@@ -15,6 +15,7 @@ use shinkai_message_primitives::{
     shinkai_utils::encryption::string_to_encryption_public_key,
 };
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use ed25519_dalek::VerifyingKey as VerifyingKey;
 
 pub async fn validate_message_main_logic(
     encryption_secret_key: &EncryptionStaticKey,
@@ -194,18 +195,28 @@ pub struct ZipFileContents {
     pub archive: zip::ZipArchive<std::io::Cursor<Bytes>>,
 }
 
-pub async fn download_zip_file(url: String, file_name: String) -> Result<ZipFileContents, APIError> {
+pub async fn download_zip_file(url: String, file_name: String, identity_public_key: Option<VerifyingKey>) -> Result<ZipFileContents, APIError> {
+    // Convert node encryption public key to hex string if present
+    let identity_public_key_string = identity_public_key
+        .map(|pk| hex::encode(pk.as_bytes()))
+        .unwrap_or_default();
+
     // Download the zip file
-    let response = match reqwest::get(&url).await {
-        Ok(response) => response,
-        Err(err) => {
-            return Err(APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Download Failed".to_string(),
-                message: format!("Failed to download agent from URL: {}", err),
-            });
-        }
-    };
+    let response = match reqwest::Client::new()
+        .get(&url)
+        .header("User-Agent", "Shinkai Node")
+        .header("X-Identity-Public-Key", identity_public_key_string)
+        .send()
+        .await {
+            Ok(response) => response,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Download Failed".to_string(), 
+                    message: format!("Failed to download agent from URL: {}", err),
+                });
+            }
+        };
 
     // Get the bytes from the response
     let bytes = match response.bytes().await {

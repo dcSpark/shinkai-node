@@ -2461,8 +2461,9 @@ impl Node {
             NodeCommand::V2ApiImportTool { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let identity_public_key_clone = self.identity_public_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, res).await;
+                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, Some(identity_public_key_clone), res).await;
                 });
             }
             NodeCommand::V2ApiRemoveTool { bearer, tool_key, res } => {

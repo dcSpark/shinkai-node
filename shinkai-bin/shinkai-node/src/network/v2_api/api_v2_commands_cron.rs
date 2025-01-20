@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use shinkai_sqlite::SqliteManager;
-use std::sync::Arc;
+use std::{ptr::null, sync::Arc};
 use tokio::sync::Mutex;
 use chrono::Local;
 use std::path::Path;
@@ -324,7 +324,7 @@ impl Node {
         }
 
         // Download and validate the zip file
-        let zip_contents = match download_zip_file(url, "__cron_task.json".to_string()).await {
+        let zip_contents = match download_zip_file(url, "__cron_task.json".to_string(), None).await {
             Ok(contents) => contents,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
