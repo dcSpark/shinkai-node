@@ -7,14 +7,12 @@ use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator
 use crate::managers::tool_router::ToolCallFunctionResponse;
 
 use crate::tools::tool_implementation::native_tools::sql_processor::get_current_tables;
-use crate::utils::environment::NodeEnvironment;
+use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::subprompts::SubPromptType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::{schemas::prompts::Prompt, shinkai_utils::job_scope::MinimalJobScope};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use std::sync::{mpsc, Arc};
-use tokio::runtime::Runtime;
+use std::sync::Arc;
 
 impl JobPromptGenerator {
     /// A basic generic prompt generator
@@ -33,8 +31,6 @@ impl JobPromptGenerator {
         function_call: Option<ToolCallFunctionResponse>,
         job_id: String,
         additional_files: Vec<String>,
-        _node_env: NodeEnvironment,
-        _db: Arc<SqliteManager>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
 
