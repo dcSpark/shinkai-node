@@ -63,6 +63,8 @@ impl LLMService for Claude {
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
+                eprintln!("call_api prompt: {:?}", prompt);
+
                 let (messages_result, system_messages) = claude_prepare_messages(&model, prompt)?;
                 let messages_json = match messages_result.messages {
                     PromptResultEnum::Value(v) => v,
@@ -130,11 +132,7 @@ impl LLMService for Claude {
 
                 let mut payload_log = payload.clone();
                 truncate_image_url_in_payload(&mut payload_log);
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("Call API Body: {:?}", payload_log).as_str(),
-                );
+                eprintln!("Call API Body: {:?}", payload_log);
 
                 if is_stream {
                     handle_streaming_response(
@@ -195,16 +193,13 @@ async fn handle_streaming_response(
     let mut response_text = String::new();
     let mut processed_tool: Option<ProcessedTool> = None;
     let mut function_calls = Vec::new();
+    let mut buffer = String::new();
 
     while let Some(item) = stream.next().await {
         // Check if we need to stop the LLM job
         if let Some(ref inbox_name) = inbox_name {
             if llm_stopper.should_stop(&inbox_name.to_string()) {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Info,
-                    "LLM job stopped by user request",
-                );
+                eprintln!("LLM job stopped by user request");
                 llm_stopper.reset(&inbox_name.to_string());
 
                 // Send WS message indicating the job is done
@@ -239,129 +234,168 @@ async fn handle_streaming_response(
 
         match item {
             Ok(chunk) => {
-                let processed_chunk = process_chunk(&chunk)?;
-                response_text.push_str(&processed_chunk.partial_text);
+                let new_data = String::from_utf8_lossy(&chunk);
+                buffer.push_str(&new_data);
 
-                if let Some(tool_use) = processed_chunk.tool_use {
-                    match processed_tool {
-                        Some(ref mut tool) => {
-                            if !tool_use.tool_name.is_empty() {
-                                tool.tool_name = tool_use.tool_name;
+                // Parse events in a loop until we either:
+                // - see incomplete JSON ("EOF while parsing"), or
+                // - run out of parseable data in buffer
+                loop {
+                    match process_chunk(buffer.as_bytes()) {
+                        Ok(processed_chunk) => {
+                            // Remove the processed part from the buffer
+                            buffer.clear();
+                            
+                            // Update response text
+                            response_text.push_str(&processed_chunk.partial_text);
+
+                            // Handle tool use
+                            if let Some(tool_use) = processed_chunk.tool_use {
+                                match processed_tool {
+                                    Some(ref mut tool) => {
+                                        if !tool_use.tool_name.is_empty() {
+                                            tool.tool_name = tool_use.tool_name;
+                                        }
+                                        tool.partial_tool_arguments.push_str(&tool_use.partial_tool_arguments);
+                                    }
+                                    None => {
+                                        processed_tool = Some(tool_use);
+                                    }
+                                }
                             }
-                            tool.partial_tool_arguments.push_str(&tool_use.partial_tool_arguments);
-                        }
-                        None => {
-                            processed_tool = Some(tool_use);
-                        }
-                    }
-                }
 
-                if processed_chunk.is_done && processed_tool.is_some() {
-                    let name = processed_tool.as_ref().unwrap().tool_name.clone();
-                    let arguments =
-                        serde_json::from_str::<JsonValue>(&processed_tool.as_ref().unwrap().partial_tool_arguments)
-                            .ok()
-                            .and_then(|args_value| args_value.as_object().cloned())
-                            .unwrap_or_else(|| serde_json::Map::new());
-                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                        tools_array.iter().find_map(|tool| {
-                            if tool.get("name")?.as_str()? == name {
-                                tool.get("tool_router_key")
-                                    .and_then(|key| key.as_str().map(|s| s.to_string()))
-                            } else {
-                                None
+                            // Handle function calls when tool is complete
+                            if processed_chunk.is_done && processed_tool.is_some() {
+                                let name = processed_tool.as_ref().unwrap().tool_name.clone();
+                                let arguments = serde_json::from_str::<JsonValue>(&processed_tool.as_ref().unwrap().partial_tool_arguments)
+                                    .ok()
+                                    .and_then(|args_value| args_value.as_object().cloned())
+                                    .unwrap_or_else(|| serde_json::Map::new());
+                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                    tools_array.iter().find_map(|tool| {
+                                        if tool.get("name")?.as_str()? == name {
+                                            tool.get("tool_router_key")
+                                                .and_then(|key| key.as_str().map(|s| s.to_string()))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                });
+
+                                let function_call = FunctionCall {
+                                    name,
+                                    arguments,
+                                    tool_router_key,
+                                    response: None,
+                                };
+
+                                function_calls.push(function_call.clone());
+
+                                eprintln!("Function Call: {:?}", function_call);
+
+                                if let Some(ref manager) = ws_manager_trait {
+                                    if let Some(ref inbox_name) = inbox_name {
+                                        let m = manager.lock().await;
+                                        let inbox_name_string = inbox_name.to_string();
+
+                                        // Serialize FunctionCall to JSON value
+                                        let function_call_json = serde_json::to_value(&function_call)
+                                            .unwrap_or_else(|_| serde_json::json!({}));
+
+                                        // Prepare ToolMetadata
+                                        let tool_metadata = ToolMetadata {
+                                            tool_name: function_call.name.clone(),
+                                            tool_router_key: None,
+                                            args: function_call_json.as_object().cloned().unwrap_or_default(),
+                                            result: None,
+                                            status: ToolStatus {
+                                                type_: ToolStatusType::Running,
+                                                reason: None,
+                                            },
+                                        };
+
+                                        let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                                        let _ = m
+                                            .queue_message(
+                                                WSTopic::Inbox,
+                                                inbox_name_string,
+                                                serde_json::to_string(&function_call)
+                                                    .unwrap_or_else(|_| "{}".to_string()),
+                                                ws_message_type,
+                                                true,
+                                            )
+                                            .await;
+                                    }
+                                }
                             }
-                        })
-                    });
 
-                    let function_call = FunctionCall {
-                        name,
-                        arguments,
-                        tool_router_key,
-                        response: None,
-                    };
+                            // Send WS update
+                            if let Some(ref manager) = ws_manager_trait {
+                                if let Some(ref inbox_name) = inbox_name {
+                                    let m = manager.lock().await;
+                                    let inbox_name_string = inbox_name.to_string();
+                                    let metadata = WSMetadata {
+                                        id: Some(session_id.clone()),
+                                        is_done: processed_chunk.is_done,
+                                        done_reason: if processed_chunk.is_done {
+                                            processed_chunk.done_reason.clone()
+                                        } else {
+                                            None
+                                        },
+                                        total_duration: None,
+                                        eval_count: None,
+                                    };
 
-                    function_calls.push(function_call.clone());
+                                    let ws_message_type = WSMessageType::Metadata(metadata);
 
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Info,
-                        format!("Function Call: {:?}", function_call).as_str(),
-                    );
+                                    let _ = m
+                                        .queue_message(
+                                            WSTopic::Inbox,
+                                            inbox_name_string,
+                                            processed_chunk.partial_text.clone(),
+                                            ws_message_type,
+                                            true,
+                                        )
+                                        .await;
+                                }
+                            }
 
-                    if let Some(ref manager) = ws_manager_trait {
-                        if let Some(ref inbox_name) = inbox_name {
-                            let m = manager.lock().await;
-                            let inbox_name_string = inbox_name.to_string();
-
-                            // Serialize FunctionCall to JSON value
-                            let function_call_json = serde_json::to_value(&function_call)
-                                .unwrap_or_else(|_| serde_json::json!({}));
-
-                            // Prepare ToolMetadata
-                            let tool_metadata = ToolMetadata {
-                                tool_name: function_call.name.clone(),
-                                tool_router_key: None,
-                                args: function_call_json.as_object().cloned().unwrap_or_default(),
-                                result: None,
-                                status: ToolStatus {
-                                    type_: ToolStatusType::Running,
-                                    reason: None,
-                                },
-                            };
-
-                            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                            let _ = m
-                                .queue_message(
-                                    WSTopic::Inbox,
-                                    inbox_name_string,
-                                    serde_json::to_string(&function_call)
-                                        .unwrap_or_else(|_| "{}".to_string()),
-                                    ws_message_type,
-                                    true,
-                                )
-                                .await;
+                            // If buffer is empty, break to get next chunk
+                            if buffer.is_empty() {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Info,
+                                    "Buffer is empty, breaking loop to get next chunk"
+                                );
+                                break;
+                            }
                         }
-                    }
-                }
-
-                if let Some(ref manager) = ws_manager_trait {
-                    if let Some(ref inbox_name) = inbox_name {
-                        let m = manager.lock().await;
-                        let inbox_name_string = inbox_name.to_string();
-                        let metadata = WSMetadata {
-                            id: Some(session_id.clone()),
-                            is_done: processed_chunk.is_done,
-                            done_reason: if processed_chunk.is_done {
-                                processed_chunk.done_reason.clone()
-                            } else {
-                                None
-                            },
-                            total_duration: None,
-                            eval_count: None,
-                        };
-
-                        let ws_message_type = WSMessageType::Metadata(metadata);
-
-                        let _ = m
-                            .queue_message(
-                                WSTopic::Inbox,
-                                inbox_name_string,
-                                processed_chunk.partial_text.clone(),
-                                ws_message_type,
-                                true,
-                            )
-                            .await;
+                        Err(e) => {
+                            // If it's a JSON parsing error due to incomplete data, wait for more
+                            if let LLMProviderError::SerdeError(ref serde_err) = e {
+                                if serde_err.to_string().contains("EOF while parsing") {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Node,
+                                        ShinkaiLogLevel::Info,
+                                        &format!("Incomplete JSON detected, keeping buffer: {}", buffer)
+                                    );
+                                    break;
+                                }
+                            }
+                            // Any other error should be propagated
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Error processing chunk: {}", e)
+                            );
+                            return Err(e);
+                        }
                     }
                 }
             }
             Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Error,
-                    format!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source()).as_str(),
-                );
+                eprintln!("Error while receiving chunk: {:?}, Error Source: {:?}", e, e.source());
                 return Err(LLMProviderError::NetworkError(e.to_string()));
             }
         }
@@ -400,11 +434,7 @@ async fn handle_non_streaming_response(
             _ = interval.tick() => {
                 if let Some(ref inbox_name) = inbox_name {
                     if llm_stopper.should_stop(&inbox_name.to_string()) {
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Info,
-                            "LLM job stopped by user request",
-                        );
+                        eprintln!("LLM job stopped by user request");
                         llm_stopper.reset(&inbox_name.to_string());
 
                         return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
@@ -454,11 +484,7 @@ async fn handle_non_streaming_response(
 
                                     function_calls.push(function_call.clone());
 
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Info,
-                                        format!("Function Call: {:?}", function_call).as_str(),
-                                    );
+                                    eprintln!("Function Call: {:?}", function_call);
 
                                     // Send WS message if a function call is detected
                                     if let Some(ref manager) = ws_manager_trait {
@@ -585,146 +611,508 @@ struct ProcessedChunk {
 struct ProcessedTool {
     tool_name: String,
     partial_tool_arguments: String,
+    is_accumulating: bool,  // Track if we're currently accumulating arguments
 }
 
-// Claude streams chunk of events. Each pack can contain text deltas, name of the tool used or partial JSON of tool arguments.
-fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, Box<dyn Error>> {
-    let chunk_str = String::from_utf8_lossy(chunk).to_string();
+/// Try to parse exactly one SSE event from the start of `buf`.
+/// Returns `Ok((processed_event, consumed_bytes))` if one event
+/// was successfully parsed; returns `Err(...)` if parse fails.
+fn parse_one_event(buf: &str) -> Result<(ProcessedChunk, usize), LLMProviderError> {
+    if let Some(double_newline_pos) = buf.find("\n\n") {
+        let (this_block, _remainder) = buf.split_at(double_newline_pos + 2);
+        
+        // Check if this is a valid event block
+        if !this_block.starts_with("event: ") {
+            return Err(LLMProviderError::ContentParseFailed);
+        }
 
+        let parsed = parse_entire_sse_block(this_block)?;
+        let consumed_bytes = this_block.len();
+        Ok((parsed, consumed_bytes))
+    } else {
+        Err(LLMProviderError::ContentParseFailed)
+    }
+}
+
+/// Parse a string containing exactly one SSE "event: ...\n data: ...\n\n" block.
+fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderError> {
     let mut text_blocks = Vec::new();
     let mut is_done = false;
     let mut done_reason = None;
-
     let mut content_block_type = String::new();
-    let mut content_block_data = String::new();
     let mut current_tool: Option<ProcessedTool> = None;
+    let mut current_text = String::new();
+    let mut accumulated_text = String::new();
 
-    let events = chunk_str.split("\n\n").collect::<Vec<&str>>();
-    for event in events {
-        let event_rows = event.split("\n").collect::<Vec<&str>>();
+    let event_rows: Vec<&str> = block.lines().collect();
+    
+    if event_rows.len() < 2 {
+        return Ok(ProcessedChunk {
+            partial_text: String::new(),
+            tool_use: None,
+            is_done: false,
+            done_reason: None,
+        });
+    }
 
-        if event_rows.len() < 2 {
-            continue;
-        }
+    let event_type = event_rows[0].trim_start_matches("event: ");
+    let event_data = event_rows[1].trim_start_matches("data: ");
 
-        let event_type = event_rows[0];
-        let event_data = event_rows[1];
+    match event_type {
+        "content_block_start" => {
+            if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
+                if let Some(content_block) = data_json.get("content_block") {
+                    content_block_type = content_block.get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
-        if event_type.starts_with("event: ") {
-            let event_type = event_type.trim_start_matches("event: ");
-
-            match event_type {
-                "content_block_start" => {
-                    let data_json: serde_json::Value = serde_json::from_str(event_data.trim_start_matches("data: "))?;
-
-                    if data_json
-                        .get("content_block")
-                        .and_then(|block| block.get("type"))
-                        .is_none()
-                    {
-                        continue;
+                    if content_block_type == "text" {
+                        if let Some(text) = content_block.get("text").and_then(|t| t.as_str()) {
+                            current_text.push_str(text);
+                            accumulated_text.push_str(text);
+                        }
                     }
 
-                    content_block_type = data_json["content_block"]["type"].as_str().unwrap_or("").to_string();
-                    content_block_data = String::new();
-
                     if content_block_type == "tool_use" {
-                        let tool_name = data_json["content_block"]["name"].as_str().unwrap_or("").to_string();
+                        let tool_name = content_block["name"].as_str().unwrap_or("").to_string();
                         current_tool = Some(ProcessedTool {
-                            tool_name: tool_name,
+                            tool_name,
                             partial_tool_arguments: String::new(),
+                            is_accumulating: true,
                         });
                     }
                 }
-                "content_block_delta" => {
-                    let data_json: serde_json::Value = serde_json::from_str(event_data.trim_start_matches("data: "))?;
-
-                    let delta_type = data_json
-                        .get("delta")
-                        .and_then(|delta| delta.get("type"))
-                        .unwrap_or(&serde_json::Value::Null);
-                    match delta_type {
-                        serde_json::Value::String(delta_type) => {
-                            if delta_type == "text_delta" {
-                                content_block_type = "text".to_string();
-                                let text = data_json["delta"]["text"].as_str().unwrap_or("");
-                                content_block_data.push_str(text);
-                            } else if delta_type == "input_json_delta" {
-                                content_block_type = "tool_use".to_string();
-                                let input_json = data_json["delta"]["partial_json"].as_str().unwrap_or("");
-                                content_block_data.push_str(input_json);
+            }
+        }
+        "content_block_delta" => {
+            if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
+                if let Some(delta) = data_json.get("delta") {
+                    match delta.get("type").and_then(|t| t.as_str()) {
+                        Some("text_delta") => {
+                            if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                                current_text.push_str(text);
+                                accumulated_text.push_str(text);
+                            }
+                        }
+                        Some("input_json_delta") => {
+                            if let Some(input_json) = delta.get("partial_json").and_then(|t| t.as_str()) {
+                                if current_tool.is_none() {
+                                    current_tool = Some(ProcessedTool {
+                                        tool_name: String::new(),
+                                        partial_tool_arguments: String::new(),
+                                        is_accumulating: true,
+                                    });
+                                }
+                                
+                                if let Some(ref mut tool) = current_tool {
+                                    tool.partial_tool_arguments.push_str(input_json);
+                                }
                             }
                         }
                         _ => {}
                     }
                 }
-                "content_block_stop" => {
-                    if content_block_type == "text" {
-                        text_blocks.push(content_block_data.clone());
-                    } else if content_block_type == "tool_use" {
-                        if current_tool.is_none() {
-                            current_tool = Some(ProcessedTool {
-                                tool_name: "".to_string(),
-                                partial_tool_arguments: "".to_string(),
-                            });
-                        }
-                        current_tool.as_mut().map(|tool| {
-                            tool.partial_tool_arguments = content_block_data.clone();
-                        });
-                    }
-
-                    content_block_type = String::new();
-                    content_block_data = String::new();
-                }
-                "message_delta" => {
-                    let data_json: serde_json::Value = serde_json::from_str(event_data.trim_start_matches("data: "))?;
-
-                    let stop_reason = data_json
-                        .get("delta")
-                        .and_then(|delta| delta.get("stop_reason"))
-                        .and_then(|reason| reason.as_str())
-                        .unwrap_or("");
-
-                    if !stop_reason.is_empty() {
+            }
+        }
+        "content_block_stop" => {
+            if content_block_type == "text" && !current_text.is_empty() {
+                text_blocks.push(current_text.clone());
+                current_text.clear();
+            }
+        }
+        "message_delta" => {
+            if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
+                if let Some(delta) = data_json.get("delta") {
+                    if let Some(stop_reason) = delta.get("stop_reason").and_then(|r| r.as_str()) {
                         done_reason = Some(stop_reason.to_string());
                         is_done = true;
                     }
                 }
-                "message_stop" => {
-                    is_done = true;
-                }
-                "error" => {
-                    shinkai_log(
-                        ShinkaiLogOption::JobExecution,
-                        ShinkaiLogLevel::Error,
-                        format!("Error in Claude response: {}", event_data).as_str(),
-                    );
-                }
-                _ => {}
             }
         }
-    }
-
-    if !content_block_type.is_empty() && !content_block_data.is_empty() {
-        if content_block_type == "text" {
-            text_blocks.push(content_block_data);
-        } else if content_block_type == "tool_use" {
-            if current_tool.is_none() {
-                current_tool = Some(ProcessedTool {
-                    tool_name: "".to_string(),
-                    partial_tool_arguments: "".to_string(),
-                });
-            }
-            current_tool.as_mut().map(|tool| {
-                tool.partial_tool_arguments = content_block_data;
+        "message_stop" => {
+            is_done = true;
+        }
+        "error" => {
+            // Handle error events by returning empty chunk
+            return Ok(ProcessedChunk {
+                partial_text: String::new(),
+                tool_use: None,
+                is_done: false,
+                done_reason: None,
             });
         }
+        _ => {}
     }
 
     Ok(ProcessedChunk {
-        partial_text: text_blocks.join(""),
+        partial_text: accumulated_text,
         tool_use: current_tool,
         is_done,
         done_reason,
     })
+}
+
+fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
+    let chunk_str = String::from_utf8_lossy(chunk).to_string();
+    let mut buffer = chunk_str.clone();
+    let mut final_partial_text = String::new();
+    let mut final_tool_use: Option<ProcessedTool> = None;
+    let mut final_is_done = false;
+    let mut final_done_reason = None;
+
+    // Process each event in the chunk
+    while !buffer.is_empty() {
+        match parse_one_event(&buffer) {
+            Ok((parsed_block, consumed_bytes)) => {
+                buffer.drain(..consumed_bytes);
+
+                // Accumulate text
+                final_partial_text.push_str(&parsed_block.partial_text);
+
+                // Handle tool use
+                if let Some(tu) = parsed_block.tool_use {
+                    match &mut final_tool_use {
+                        Some(existing_tool) => {
+                            if !tu.tool_name.is_empty() {
+                                existing_tool.tool_name = tu.tool_name;
+                            }
+                            if !tu.partial_tool_arguments.is_empty() {
+                                existing_tool.partial_tool_arguments.push_str(&tu.partial_tool_arguments);
+                            }
+                        }
+                        None => {
+                            final_tool_use = Some(tu);
+                        }
+                    }
+                }
+
+                // Update done status
+                if parsed_block.is_done {
+                    final_is_done = true;
+                    if parsed_block.done_reason.is_some() {
+                        final_done_reason = parsed_block.done_reason;
+                    }
+                }
+            }
+            Err(LLMProviderError::ContentParseFailed) => {
+                // If we can't parse any more events, break
+                break;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Check for message_stop in the remaining buffer
+    if buffer.contains("event: message_stop") {
+        final_is_done = true;
+    }
+
+    Ok(ProcessedChunk {
+        partial_text: final_partial_text,
+        tool_use: final_tool_use,
+        is_done: final_is_done,
+        done_reason: final_done_reason,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_process_chunk_basic_text() {
+        let chunk = r#"event: content_block_start
+data: {"content_block":{"type":"text"},"index":0}
+
+event: content_block_delta
+data: {"delta":{"type":"text_delta","text":"Hello"}}
+
+event: content_block_delta
+data: {"delta":{"type":"text_delta","text":" world!"}}
+
+event: content_block_stop
+data: {"index":0}
+
+event: message_stop
+data: {}"#.as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "Hello world!");
+        assert!(result.tool_use.is_none());
+        assert!(result.is_done);
+    }
+
+    #[tokio::test]
+    async fn test_process_chunk_tool_use() {
+        let chunk = r#"event: content_block_start
+data: {"content_block":{"type":"tool_use","name":"test_tool"}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":"{\"arg\""}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":":\"value\"}"}}
+
+event: content_block_stop
+data: {"index":0}
+
+event: message_stop
+data: {}"#.as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "");
+        assert!(result.tool_use.is_some());
+        let tool = result.tool_use.unwrap();
+        assert_eq!(tool.tool_name, "test_tool");
+        assert_eq!(tool.partial_tool_arguments, "{\"arg\":\"value\"}");
+        assert!(result.is_done);
+    }
+
+    #[tokio::test]
+    async fn test_process_chunk_mixed_content() {
+        let chunk = r#"event: content_block_start
+data: {"content_block":{"type":"text"},"index":0}
+
+event: content_block_delta
+data: {"delta":{"type":"text_delta","text":"Let me help you with that."}}
+
+event: content_block_stop
+data: {"index":0}
+
+event: content_block_start
+data: {"content_block":{"type":"tool_use","name":"search_tool"}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":"{\"query\":\"test\"}"}}
+
+event: content_block_stop
+data: {"index":1}
+
+event: message_stop
+data: {}"#.as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "Let me help you with that.");
+        assert!(result.tool_use.is_some());
+        let tool = result.tool_use.unwrap();
+        assert_eq!(tool.tool_name, "search_tool");
+        assert_eq!(tool.partial_tool_arguments, "{\"query\":\"test\"}");
+        assert!(result.is_done);
+    }
+
+    #[tokio::test]
+    async fn test_process_chunk_error_handling() {
+        let chunk = r#"event: error
+data: {"error":{"type":"invalid_request_error","message":"Invalid request"}}"#.as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "");
+        assert!(result.tool_use.is_none());
+        assert!(!result.is_done);
+    }
+
+
+    #[tokio::test]
+    async fn test_process_chunk_with_done_reason() {
+        let chunk = r#"event: content_block_start
+data: {"content_block":{"type":"text"},"index":0}
+
+event: content_block_delta
+data: {"delta":{"type":"text_delta","text":"Complete response"}}
+
+event: content_block_stop
+data: {"index":0}
+
+event: message_delta
+data: {"delta":{"stop_reason":"stop_sequence"}}
+
+event: message_stop
+data: {}"#.as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "Complete response");
+        assert!(result.tool_use.is_none());
+        assert!(result.is_done);
+        assert_eq!(result.done_reason.unwrap(), "stop_sequence");
+    }
+
+    #[tokio::test]
+    async fn test_process_chunk_streaming_tool_arguments() {
+        let chunk = r#"event: content_block_start
+data: {"content_block":{"type":"tool_use","name":"complex_tool"}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":"{\"key1\":"}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":"\"value1\","}}
+
+event: content_block_delta
+data: {"delta":{"type":"input_json_delta","partial_json":"\"key2\":42}"}}
+
+event: content_block_stop
+data: {"index":0}
+
+event: message_stop
+data: {}"#.as_bytes();
+
+        let result = process_chunk(chunk).unwrap();
+        assert_eq!(result.partial_text, "");
+        assert!(result.tool_use.is_some());
+        let tool = result.tool_use.unwrap();
+        assert_eq!(tool.tool_name, "complex_tool");
+        assert_eq!(tool.partial_tool_arguments, "{\"key1\":\"value1\",\"key2\":42}");
+        assert!(result.is_done);
+    }
+
+    #[tokio::test]
+    async fn test_process_chunk_text_and_tool_use_streaming() {
+        let chunks = vec![
+            // First chunk: Message start
+            r#"event: message_start
+data: {"type":"message_start","message":{"id":"msg_01GCh8jZFGBXeDhu4avMiYMX","type":"message","role":"assistant","model":"claude-3-haiku-20240307","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":686,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":4}}}
+
+"#,
+            // Second chunk: Tool use start
+            r#"event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01VPxk1XXTjpMN41kxnXykCx","name":"duckduckgo_search","input":{}}}
+
+event: ping
+data: {"type": "ping"}
+
+"#,
+            // Third chunk: First part of JSON
+            r#"event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"mes"}}
+
+"#,
+            // Fourth chunk: Second part of JSON
+            r#"event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"sage\":"}}
+
+"#,
+            // Fifth chunk: Third part of JSON
+            r#"event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":" \"mov"}}
+
+"#,
+            // Sixth chunk: Fourth part of JSON
+            r#"event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ies\"}"}}
+
+"#,
+            // Seventh chunk: Content block stop
+            r#"event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+"#,
+            // Eighth chunk: Message delta with stop reason
+            r#"event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":57}}
+
+"#,
+            // Ninth chunk: Message stop
+            r#"event: message_stop
+data: {"type":"message_stop"}
+
+"#,
+        ];
+
+        let mut buffer = String::new();
+        let mut accumulated_tool: Option<ProcessedTool> = None;
+        let mut is_done = false;
+        let mut done_reason = None;
+
+        // Process each chunk and verify the accumulation
+        for (i, chunk) in chunks.iter().enumerate() {
+            // 1) Append new chunk data to buffer
+            buffer.push_str(chunk);
+
+            // 2) Parse as many complete SSE blocks as possible
+            loop {
+                match process_chunk(buffer.as_bytes()) {
+                    Ok(parsed) => {
+                        // Remove the processed part from the buffer
+                        buffer.clear();
+
+                        // Update our accumulated state
+                        if let Some(tool) = parsed.tool_use {
+                            match accumulated_tool.as_mut() {
+                                Some(acc_tool) => {
+                                    // Accumulate arguments if we already have a tool
+                                    if !tool.partial_tool_arguments.is_empty() {
+                                        acc_tool.partial_tool_arguments.push_str(&tool.partial_tool_arguments);
+                                    }
+                                }
+                                None => {
+                                    // Initialize tool if we don't have one yet
+                                    accumulated_tool = Some(tool);
+                                }
+                            }
+                        }
+
+                        // Update completion status
+                        is_done = parsed.is_done;
+                        if parsed.done_reason.is_some() {
+                            done_reason = parsed.done_reason;
+                        }
+
+                        // Add assertions for specific chunks to verify the accumulation process
+                        match i {
+                            1 => {
+                                // After tool_use start, we should have a tool with empty arguments
+                                assert!(accumulated_tool.is_some());
+                                assert_eq!(accumulated_tool.as_ref().unwrap().tool_name, "duckduckgo_search");
+                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "");
+                            }
+                            2 => {
+                                // After first JSON part
+                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "{\"mes");
+                            }
+                            3 => {
+                                // After second JSON part
+                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "{\"message\":");
+                            }
+                            4 => {
+                                // After third JSON part
+                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "{\"message\": \"mov");
+                            }
+                            5 => {
+                                // After fourth JSON part - complete JSON
+                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "{\"message\": \"movies\"}");
+                            }
+                            7 => {
+                                // After message_delta
+                                assert!(is_done);
+                                assert_eq!(done_reason.as_deref(), Some("tool_use"));
+                            }
+                            _ => {}
+                        }
+
+                        // If buffer is empty, break to get next chunk
+                        if buffer.is_empty() {
+                            break;
+                        }
+                    }
+                    Err(LLMProviderError::ContentParseFailed) => {
+                        // Partial data => wait for next chunk
+                        break;
+                    }
+                    Err(other) => {
+                        panic!("Unexpected parse error: {other}");
+                    }
+                }
+            }
+        }
+
+        // Final verification
+        assert!(is_done);
+        assert_eq!(done_reason.as_deref(), Some("tool_use"));
+        assert!(accumulated_tool.is_some());
+        let final_tool = accumulated_tool.unwrap();
+        assert_eq!(final_tool.tool_name, "duckduckgo_search");
+        assert_eq!(final_tool.partial_tool_arguments, "{\"message\": \"movies\"}");
+    }
 }

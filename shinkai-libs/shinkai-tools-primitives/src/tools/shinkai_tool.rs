@@ -431,6 +431,19 @@ impl ShinkaiTool {
         let indexable_version = self.version_indexable()?;
         Ok(indexable_version.get_version_number())
     }
+
+    /// Returns a sanitized version of the tool name where all characters are lowercase
+    /// and any non-alphanumeric characters (except '-' and '_') are replaced with underscores
+    pub fn internal_sanitized_name(&self) -> String {
+        self.name()
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { 
+                c.to_ascii_lowercase() 
+            } else { 
+                '_' 
+            })
+            .collect::<String>()
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
