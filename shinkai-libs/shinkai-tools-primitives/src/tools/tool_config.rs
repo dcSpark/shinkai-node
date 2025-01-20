@@ -145,7 +145,6 @@ pub struct GenericHeader {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OAuth {
     pub name: String,
-    pub scope: Option<String>,
     #[serde(rename = "authorizationUrl")]
     pub authorization_url: String,
     #[serde(rename = "tokenUrl")]
@@ -160,8 +159,9 @@ pub struct OAuth {
     #[serde(rename = "responseType")]
     pub response_type: String,
     pub scopes: Vec<String>,
-    #[serde[rename = "pkceType"]]
+    #[serde(rename = "pkceType")]
     pub pkce_type: Option<String>,
+    #[serde(rename = "refreshToken")]
     pub refresh_token: Option<String>,
 }
 
@@ -175,7 +175,6 @@ impl OAuth {
 
             Some(OAuth {
                 name,
-                scope: oauth_obj.get("scope").and_then(|v| v.as_str()).map(String::from),
                 authorization_url: oauth_obj
                     .get("authorizationUrl")
                     .and_then(|v| v.as_str())
@@ -220,7 +219,7 @@ impl OAuth {
                     if value == expected {
                         Some("true".to_string())
                     } else {
-                        Some("false".to_string())
+                        None
                     }
                 }),
             })

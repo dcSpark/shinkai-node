@@ -386,7 +386,6 @@ mod tests {
         // Create OAuth config with missing fields
         let oauth = Some(vec![OAuth {
             name: "test_oauth".to_string(),
-            scope: None,
             authorization_url: "".to_string(), // Missing
             token_url: None,                   // Missing
             client_id: "".to_string(),         // Missing
