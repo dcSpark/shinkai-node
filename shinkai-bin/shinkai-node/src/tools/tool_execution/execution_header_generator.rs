@@ -28,6 +28,7 @@ pub async fn generate_execution_environment(
     envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), instance_id.clone());
     envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
 
+    check_oauth(oauth)?;
     let oauth = handle_oauth(oauth, &db, app_id.clone(), tool_id.clone(), tool_router_key.clone()).await?;
 
     envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
@@ -42,9 +43,9 @@ pub fn check_tool(
     parameters: Parameters,
     oauth: &Option<Vec<OAuth>>,
 ) -> Result<(), ToolError> {
+    check_oauth(oauth)?;
     check_tool_config(tool_router_key, tool_config)?;
     check_tool_parameters(parameters, value)?;
-    check_oauth(oauth)?;
     Ok(())
 }
 
@@ -434,5 +435,382 @@ mod tests {
 
         let result = check_tool(tool_router_key, tool_config, value, parameters, &oauth);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_tool_config_missing_required() {
+        let tool_router_key = "test/tool".to_string();
+        let config = vec![ToolConfig::BasicConfig(BasicConfig {
+            key_name: "api_key".to_string(),
+            description: "API key".to_string(),
+            required: true,
+            type_name: Some("string".to_string()),
+            key_value: None, // Missing required value
+        })];
+
+        let result = check_tool_config(tool_router_key, config);
+        assert!(result.is_err());
+        if let Err(ToolError::MissingConfigError(msg)) = result {
+            assert!(msg.contains("api_key"));
+            assert!(msg.contains("shinkai://config?tool=test%2Ftool"));
+        } else {
+            panic!("Expected MissingConfigError");
+        }
+    }
+
+    #[test]
+    fn test_check_tool_config_optional_missing() {
+        let tool_router_key = "test/tool".to_string();
+        let config = vec![ToolConfig::BasicConfig(BasicConfig {
+            key_name: "optional_key".to_string(),
+            description: "Optional key".to_string(),
+            required: false,
+            type_name: Some("string".to_string()),
+            key_value: None, // Missing but optional
+        })];
+
+        let result = check_tool_config(tool_router_key, config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_tool_config_multiple_configs() {
+        let tool_router_key = "test/tool".to_string();
+        let config = vec![
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "required_key".to_string(),
+                description: "Required key".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: Some("value".to_string()),
+            }),
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "optional_key".to_string(),
+                description: "Optional key".to_string(),
+                required: false,
+                type_name: Some("string".to_string()),
+                key_value: None,
+            }),
+        ];
+
+        let result = check_tool_config(tool_router_key, config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_tool_parameters_array_type() {
+        let mut params = Parameters::new();
+        params.add_property(
+            "array_param".to_string(),
+            "array".to_string(),
+            "An array parameter".to_string(),
+            true,
+        );
+
+        let mut value = Map::new();
+        value.insert("array_param".to_string(), json!(["item1", "item2"]));
+
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_tool_parameters_array_type_invalid() {
+        let mut params = Parameters::new();
+        params.add_property(
+            "array_param".to_string(),
+            "array".to_string(),
+            "An array parameter".to_string(),
+            true,
+        );
+
+        let mut value = Map::new();
+        value.insert("array_param".to_string(), json!("not an array"));
+
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("array_param"));
+            assert!(msg.contains("must be an array"));
+        } else {
+            panic!("Expected InvalidFunctionArguments");
+        }
+    }
+
+    #[test]
+    fn test_check_tool_parameters_object_type() {
+        let mut params = Parameters::new();
+        params.add_property(
+            "object_param".to_string(),
+            "object".to_string(),
+            "An object parameter".to_string(),
+            true,
+        );
+
+        let mut value = Map::new();
+        value.insert("object_param".to_string(), json!({"key": "value"}));
+
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_tool_parameters_object_type_invalid() {
+        let mut params = Parameters::new();
+        params.add_property(
+            "object_param".to_string(),
+            "object".to_string(),
+            "An object parameter".to_string(),
+            true,
+        );
+
+        let mut value = Map::new();
+        value.insert("object_param".to_string(), json!("not an object"));
+
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("object_param"));
+            assert!(msg.contains("must be an object"));
+        } else {
+            panic!("Expected InvalidFunctionArguments");
+        }
+    }
+
+    #[test]
+    fn test_check_tool_parameters_integer_type() {
+        let mut params = Parameters::new();
+        params.add_property(
+            "integer_param".to_string(),
+            "integer".to_string(),
+            "An integer parameter".to_string(),
+            true,
+        );
+
+        let mut value = Map::new();
+        value.insert("integer_param".to_string(), json!(42));
+        assert!(check_tool_parameters(params.clone(), value).is_ok());
+
+        // Test with float that should fail
+        let mut value = Map::new();
+        value.insert("integer_param".to_string(), json!(42.5));
+        assert!(check_tool_parameters(params, value).is_err());
+    }
+
+    #[test]
+    fn test_check_tool_parameters_multiple_errors() {
+        let mut params = Parameters::new();
+        params.add_property(
+            "string_param".to_string(),
+            "string".to_string(),
+            "A string parameter".to_string(),
+            true,
+        );
+        params.add_property(
+            "number_param".to_string(),
+            "number".to_string(),
+            "A number parameter".to_string(),
+            true,
+        );
+
+        let mut value = Map::new();
+        value.insert("string_param".to_string(), json!(42)); // Wrong type
+        value.insert("number_param".to_string(), json!("not a number")); // Wrong type
+
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("string_param"));
+            assert!(msg.contains("number_param"));
+            assert!(msg.contains("must be a string"));
+            assert!(msg.contains("must be a number"));
+        } else {
+            panic!("Expected InvalidFunctionArguments");
+        }
+    }
+
+    #[test]
+    fn test_check_tool_parameters_null_optional() {
+        let mut params = Parameters::new();
+        params.add_property(
+            "optional_param".to_string(),
+            "string".to_string(),
+            "An optional parameter".to_string(),
+            false,
+        );
+
+        let mut value = Map::new();
+        value.insert("optional_param".to_string(), json!(null));
+
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_oauth_all_fields_valid() {
+        let oauth = Some(vec![OAuth {
+            name: "test_oauth".to_string(),
+            authorization_url: "https://auth.example.com".to_string(),
+            token_url: Some("https://token.example.com".to_string()),
+            client_id: "client123".to_string(),
+            client_secret: "secret123".to_string(),
+            redirect_url: "https://redirect.example.com".to_string(),
+            version: "2.0".to_string(),
+            response_type: "code".to_string(),
+            scopes: vec!["read".to_string(), "write".to_string()],
+            pkce_type: Some("S256".to_string()),
+            refresh_token: Some("refresh123".to_string()),
+        }]);
+
+        let result = check_oauth(&oauth);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_oauth_empty_name() {
+        let oauth = Some(vec![OAuth {
+            name: "".to_string(), // Empty name
+            authorization_url: "https://auth.example.com".to_string(),
+            token_url: Some("https://token.example.com".to_string()),
+            client_id: "client123".to_string(),
+            client_secret: "secret123".to_string(),
+            redirect_url: "https://redirect.example.com".to_string(),
+            version: "2.0".to_string(),
+            response_type: "code".to_string(),
+            scopes: vec![],
+            pkce_type: None,
+            refresh_token: None,
+        }]);
+
+        let result = check_oauth(&oauth);
+        assert!(result.is_err());
+        if let Err(ToolError::MissingConfigError(msg)) = result {
+            assert!(msg.contains("name"));
+            assert!(msg.contains("shinkai://config?tool="));
+        } else {
+            panic!("Expected MissingConfigError");
+        }
+    }
+
+    #[test]
+    fn test_check_oauth_multiple_configs() {
+        let oauth = Some(vec![
+            OAuth {
+                name: "oauth1".to_string(),
+                authorization_url: "https://auth1.example.com".to_string(),
+                token_url: Some("https://token1.example.com".to_string()),
+                client_id: "client1".to_string(),
+                client_secret: "secret1".to_string(),
+                redirect_url: "https://redirect1.example.com".to_string(),
+                version: "2.0".to_string(),
+                response_type: "code".to_string(),
+                scopes: vec![],
+                pkce_type: None,
+                refresh_token: None,
+            },
+            OAuth {
+                name: "oauth2".to_string(),
+                authorization_url: "https://auth2.example.com".to_string(),
+                token_url: Some("https://token2.example.com".to_string()),
+                client_id: "client2".to_string(),
+                client_secret: "secret2".to_string(),
+                redirect_url: "https://redirect2.example.com".to_string(),
+                version: "2.0".to_string(),
+                response_type: "code".to_string(),
+                scopes: vec![],
+                pkce_type: None,
+                refresh_token: None,
+            },
+        ]);
+
+        let result = check_oauth(&oauth);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_oauth_missing_multiple_fields() {
+        let oauth = Some(vec![OAuth {
+            name: "test_oauth".to_string(),
+            authorization_url: "".to_string(), // Empty
+            token_url: None,                   // Missing
+            client_id: "".to_string(),         // Empty
+            client_secret: "secret123".to_string(),
+            redirect_url: "".to_string(),  // Empty
+            version: "".to_string(),       // Empty
+            response_type: "".to_string(), // Empty
+            scopes: vec![],
+            pkce_type: None,
+            refresh_token: None,
+        }]);
+
+        let result = check_oauth(&oauth);
+        assert!(result.is_err());
+        if let Err(ToolError::MissingConfigError(msg)) = result {
+            assert!(msg.contains("authorization_url"));
+            assert!(msg.contains("token_url"));
+            assert!(msg.contains("client_id"));
+            assert!(msg.contains("redirect_url"));
+            assert!(msg.contains("version"));
+            assert!(msg.contains("response_type"));
+            assert!(msg.contains("shinkai://config?tool=test_oauth"));
+        } else {
+            panic!("Expected MissingConfigError");
+        }
+    }
+
+    #[test]
+    fn test_check_oauth_none() {
+        let oauth: Option<Vec<OAuth>> = None;
+        let result = check_oauth(&oauth);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_oauth_empty_vec() {
+        let oauth = Some(vec![]);
+        let result = check_oauth(&oauth);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_oauth_one_valid_one_invalid() {
+        let oauth = Some(vec![
+            OAuth {
+                name: "valid_oauth".to_string(),
+                authorization_url: "https://auth.example.com".to_string(),
+                token_url: Some("https://token.example.com".to_string()),
+                client_id: "client123".to_string(),
+                client_secret: "secret123".to_string(),
+                redirect_url: "https://redirect.example.com".to_string(),
+                version: "2.0".to_string(),
+                response_type: "code".to_string(),
+                scopes: vec![],
+                pkce_type: None,
+                refresh_token: None,
+            },
+            OAuth {
+                name: "invalid_oauth".to_string(),
+                authorization_url: "".to_string(), // Invalid
+                token_url: None,                   // Invalid
+                client_id: "client123".to_string(),
+                client_secret: "secret123".to_string(),
+                redirect_url: "https://redirect.example.com".to_string(),
+                version: "2.0".to_string(),
+                response_type: "code".to_string(),
+                scopes: vec![],
+                pkce_type: None,
+                refresh_token: None,
+            },
+        ]);
+
+        let result = check_oauth(&oauth);
+        assert!(result.is_err());
+        if let Err(ToolError::MissingConfigError(msg)) = result {
+            assert!(msg.contains("authorization_url"));
+            assert!(msg.contains("token_url"));
+            assert!(msg.contains("shinkai://config?tool=invalid_oauth"));
+        } else {
+            panic!("Expected MissingConfigError");
+        }
     }
 }

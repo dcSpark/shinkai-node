@@ -47,6 +47,27 @@ impl SqliteManager {
         let mut conn = self.get_connection()?;
         let tx = conn.transaction()?;
 
+        if token.version.is_empty() {
+            return Err(SqliteManagerError::MissingValue("Version is empty".to_string()));
+        }
+        if token.client_id.clone().unwrap_or_default().is_empty() {
+            return Err(SqliteManagerError::MissingValue("Client ID is empty".to_string()));
+        }
+        if token.client_secret.clone().unwrap_or_default().is_empty() {
+            return Err(SqliteManagerError::MissingValue("Client Secret is empty".to_string()));
+        }
+        if token.redirect_url.clone().unwrap_or_default().is_empty() {
+            return Err(SqliteManagerError::MissingValue("Redirect URL is empty".to_string()));
+        }
+        if token.authorization_url.clone().unwrap_or_default().is_empty() {
+            return Err(SqliteManagerError::MissingValue(
+                "Authorization URL is empty".to_string(),
+            ));
+        }
+        if token.token_url.clone().unwrap_or_default().is_empty() {
+            return Err(SqliteManagerError::MissingValue("Token URL is empty".to_string()));
+        }
+
         tx.execute(
             "INSERT INTO oauth_tokens (
                 connection_name,response_type, state, code, app_id, tool_id, tool_key,
@@ -782,8 +803,8 @@ mod tests {
             "github": {
                 "authorizationUrl": "https://github.com/login/oauth/authorize",
                 "tokenUrl": "https://github.com/login/oauth/access_token",
-                "clientId": "",
-                "clientSecret": "",
+                "clientId": "a",
+                "clientSecret": "b",
                 "redirectUrl": "https://custom.redirect.com",
                 "version": "1.0",
                 "responseType": "code",
