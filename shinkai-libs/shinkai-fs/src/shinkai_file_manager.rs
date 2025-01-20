@@ -384,6 +384,59 @@ impl ShinkaiFileManager {
             .map_err(|_| ShinkaiFsError::FailedToReadFile(path.as_path().to_string_lossy().to_string()))?;
         Ok(content)
     }
+
+    /// Search files based on partial text content and return matching FileInfo entries.
+    /// This performs a case-insensitive search through file contents.
+    pub fn search_files_by_content(
+        base_path: ShinkaiPath,
+        search_text: &str,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        let mut matching_files = Vec::new();
+        let base_dir = base_path.as_path();
+
+        // Walk through the directory recursively
+        for entry in walkdir::WalkDir::new(base_dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            if entry.file_type().is_file() {
+                // Try to read the file content
+                if let Ok(content) = fs::read_to_string(entry.path()) {
+                    // Perform case-insensitive search
+                    if content.to_lowercase().contains(&search_text.to_lowercase()) {
+                        // Get file metadata
+                        if let Ok(metadata) = entry.metadata() {
+                            // Convert the path to a relative path from the base directory
+                            if let Ok(relative_path) = entry.path().strip_prefix(base_dir) {
+                                let relative_path_str = relative_path.to_string_lossy().to_string();
+                                
+                                // Check if the file has embeddings
+                                let has_embeddings = sqlite_manager
+                                    .get_parsed_file_by_rel_path(&relative_path_str)
+                                    .map_or(false, |pf| pf.is_some());
+
+                                let file_info = FileInfo {
+                                    path: relative_path_str,
+                                    is_directory: false,
+                                    created_time: metadata.created().ok(),
+                                    modified_time: metadata.modified().ok(),
+                                    has_embeddings,
+                                    children: None,
+                                    size: Some(metadata.len()),
+                                    name: entry.file_name().to_string_lossy().to_string(),
+                                };
+                                matching_files.push(file_info);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(matching_files)
+    }
 }
 
 // Custom serializer for SystemTime to ISO8601
@@ -876,5 +929,69 @@ mod tests {
             !file3_info.has_embeddings,
             "File 'level1/level2/level3/file3.txt' should not have embeddings."
         );
+    }
+
+    #[test]
+    #[serial]
+    fn test_search_files_by_content() {
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
+        let base_path = ShinkaiPath::from_base_path();
+
+        // Create test directory structure and files with content
+        let test_files = vec![
+            ("docs/reports/2024/january.txt", "January 2024 monthly report", 1),
+            ("docs/reports/2024/february.txt", "February 2024 quarterly update", 2),
+            ("docs/other/2024/march.txt", "March 2024 meeting notes", 3),
+            ("projects/report-2024.md", "2024 Project Status Report", 4),
+            ("misc/notes.txt", "Random notes from 2024 meetings", 5),
+        ];
+
+        // Create directories and files
+        for (path, content, id) in &test_files {
+            // Create directory structure
+            if let Some(parent) = Path::new(path).parent() {
+                fs::create_dir_all(base_path.as_path().join(parent)).unwrap();
+            }
+
+            // Create and write to file
+            let mut file = File::create(base_path.as_path().join(path)).unwrap();
+            writeln!(file, "{}", content).unwrap();
+
+            // Add file to database with embeddings
+            let pf = create_test_parsed_file(*id, path);
+            db.add_parsed_file(&pf).unwrap();
+        }
+
+        // Test exact content match
+        let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "January 2024", &db).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "docs/reports/2024/january.txt");
+        assert!(results[0].has_embeddings);
+
+        // Test partial content match
+        let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "2024", &db).unwrap();
+        assert_eq!(results.len(), 5); // Should find all files as they all contain "2024"
+
+        // Test case insensitive match
+        let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "REPORT", &db).unwrap();
+        assert_eq!(results.len(), 2); // Should find files containing "report" regardless of case
+
+        // Test content spanning multiple files
+        let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "meeting", &db).unwrap();
+        assert_eq!(results.len(), 2); // Should find both files containing "meeting"
+
+        // Test no matches
+        let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "nonexistent", &db).unwrap();
+        assert_eq!(results.len(), 0);
+
+        // Verify file metadata
+        let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "2024", &db).unwrap();
+        for file_info in results {
+            assert!(!file_info.is_directory);
+            assert!(file_info.size.is_some());
+            assert!(file_info.has_embeddings);
+            assert!(file_info.created_time.is_some());
+            assert!(file_info.modified_time.is_some());
+        }
     }
 }

@@ -6663,6 +6663,7 @@ dependencies = [
  "tokio",
  "urlencoding",
  "utoipa",
+ "walkdir",
 ]
 
 [[package]]
