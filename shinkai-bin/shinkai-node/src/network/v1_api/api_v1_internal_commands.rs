@@ -37,6 +37,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
@@ -721,17 +722,32 @@ impl Node {
         // Iterate over each agent and add it using internal_add_agent
         for agent in llm_providers {
             let profile_name = agent.full_identity_name.clone();
-            Self::internal_add_llm_provider(
-                db.clone(),
-                identity_manager.clone(),
-                job_manager.clone(),
-                identity_secret_key.clone(),
-                agent,
-                &profile_name,
-                ws_manager.clone(),
-            )
-            .await
-            .map_err(|e| format!("Failed to add agent: {}", e))?;
+            
+            // Check if the provider already exists in the database
+            match db.get_llm_provider(&agent.id, &profile_name) {
+                Ok(_) => {
+                    // Provider already exists, skip it
+                    continue;
+                }
+                Err(SqliteManagerError::DataNotFound) => {
+                    // Provider doesn't exist, add it
+                    Self::internal_add_llm_provider(
+                        db.clone(),
+                        identity_manager.clone(),
+                        job_manager.clone(),
+                        identity_secret_key.clone(),
+                        agent,
+                        &profile_name,
+                        ws_manager.clone(),
+                    )
+                    .await
+                    .map_err(|e| format!("Failed to add agent: {}", e))?;
+                }
+                Err(e) => {
+                    // Some other error occurred
+                    return Err(format!("Error checking for existing provider: {}", e));
+                }
+            }
         }
 
         Ok(())
