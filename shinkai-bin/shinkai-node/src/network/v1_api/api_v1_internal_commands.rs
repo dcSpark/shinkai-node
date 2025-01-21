@@ -605,6 +605,7 @@ impl Node {
         let urls = vec!["http://localhost:11434/api/tags", "http://localhost:11435/api/tags"];
         let client = reqwest::Client::new();
         let mut all_models = Vec::new();
+        let mut seen_models = std::collections::HashSet::new();
 
         for url in urls {
             let res = client.get(url).send().await;
@@ -618,13 +619,19 @@ impl Node {
 
                         let models_with_port: Vec<serde_json::Value> = models
                             .iter()
-                            .map(|model| {
-                                let mut model_clone = model.clone();
-                                if let Some(obj) = model_clone.as_object_mut() {
-                                    let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
-                                    obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
+                            .filter_map(|model| {
+                                let model_name = model["name"].as_str()?;
+                                eprintln!("model_name: {:?}", model_name);
+                                if seen_models.insert(model_name.to_string()) {
+                                    let mut model_clone = model.clone();
+                                    if let Some(obj) = model_clone.as_object_mut() {
+                                        let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
+                                        obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
+                                    }
+                                    Some(model_clone)
+                                } else {
+                                    None
                                 }
-                                model_clone
                             })
                             .collect();
 

@@ -1138,6 +1138,7 @@ impl Node {
                 .iter()
                 .filter_map(|model| model["name"].as_str().map(String::from))
                 .collect();
+            eprintln!("models_to_add: {:?}", models_to_add);
 
             if !models_to_add.is_empty() {
                 let add_models_result = Self::internal_add_ollama_models(
