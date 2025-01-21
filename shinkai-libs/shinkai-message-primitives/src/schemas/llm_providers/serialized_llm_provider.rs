@@ -28,6 +28,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Exo(_) => "exo",
             LLMProviderInterface::OpenRouter(_) => "openrouter",
             LLMProviderInterface::Claude(_) => "claude",
+            LLMProviderInterface::DeepSeek(_) => "deepseek",
         }
         .to_string()
     }
@@ -44,6 +45,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
             LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
             LLMProviderInterface::Claude(_) => "claude".to_string(),
+            LLMProviderInterface::DeepSeek(_) => "openai-generic".to_string(),
         }
     }
 
@@ -59,6 +61,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
             LLMProviderInterface::Claude(claude) => claude.model_type.clone(),
+            LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.clone(),
         }
     }
 
@@ -103,6 +106,7 @@ pub enum LLMProviderInterface {
     Exo(Exo),
     OpenRouter(OpenRouter),
     Claude(Claude),
+    DeepSeek(DeepSeek),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
@@ -147,6 +151,17 @@ pub struct Gemini {
 }
 
 impl Gemini {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct DeepSeek {
+    pub model_type: String,
+}
+
+impl DeepSeek {
     pub fn model_type(&self) -> String {
         self.model_type.to_string()
     }
@@ -231,6 +246,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("claude:") {
             let model_type = s.strip_prefix("claude:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Claude(Claude { model_type }))
+        } else if s.starts_with("deepseek:") {
+            let model_type = s.strip_prefix("deepseek:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::DeepSeek(DeepSeek { model_type }))
         } else {
             Err(())
         }
@@ -277,6 +295,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::Claude(claude) => {
                 let model_type = format!("claude:{}", claude.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::DeepSeek(deepseek) => {
+                let model_type = format!("deepseek:{}", deepseek.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
@@ -326,6 +348,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "claude" => Ok(LLMProviderInterface::Claude(Claude {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "deepseek" => Ok(LLMProviderInterface::DeepSeek(DeepSeek {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
             _ => Err(de::Error::unknown_variant(
                 value,
@@ -340,6 +365,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "gemini",
                     "openrouter",
                     "claude",
+                    "deepseek",
                 ],
             )),
         }

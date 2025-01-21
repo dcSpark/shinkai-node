@@ -14,6 +14,7 @@ use shinkai_message_primitives::schemas::{
 use tokio::sync::Mutex;
 
 pub mod claude;
+pub mod deepseek;
 pub mod exo;
 pub mod gemini;
 pub mod groq;
