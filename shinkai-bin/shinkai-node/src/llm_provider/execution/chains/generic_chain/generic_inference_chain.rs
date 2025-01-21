@@ -27,6 +27,7 @@ use shinkai_message_primitives::schemas::ws_types::{
     ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
@@ -36,6 +37,7 @@ use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -98,6 +100,88 @@ impl InferenceChain for GenericInferenceChain {
 }
 
 impl GenericInferenceChain {
+    /// Process image files from file paths, folder paths, and job scope
+    fn process_image_files(
+        paths: &[ShinkaiPath], 
+        folder_paths: &[ShinkaiPath],
+        scope: &MinimalJobScope,
+    ) -> HashMap<String, String> {
+        let mut image_files = HashMap::new();
+        
+        // Process individual files
+        for file_path in paths {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".png")
+                    || filename_lower.ends_with(".jpg")
+                    || filename_lower.ends_with(".jpeg")
+                    || filename_lower.ends_with(".gif")
+                {
+                    // Retrieve the file content
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::encode(&content);
+                            image_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process scope files
+        for file_path in &scope.vector_fs_items {
+            if let Some(file_name) = file_path.path.file_name() {
+                let filename_lower = file_name.to_string_lossy().to_lowercase();
+                if filename_lower.ends_with(".png")
+                    || filename_lower.ends_with(".jpg")
+                    || filename_lower.ends_with(".jpeg")
+                    || filename_lower.ends_with(".gif")
+                {
+                    match ShinkaiFileManager::get_file_content(file_path.clone()) {
+                        Ok(content) => {
+                            let base64_content = base64::encode(&content);
+                            image_files.insert(file_path.relative_path().to_string(), base64_content);
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+
+        // Process all folders (including scope folders)
+        let mut all_folders = folder_paths.to_vec();
+        all_folders.extend(scope.vector_fs_folders.clone());
+        
+        if let Ok(additional_files) = ShinkaiFileManager::get_absolute_path_for_additional_files(Vec::new(), all_folders) {
+            for file_path in additional_files {
+                let path = PathBuf::from(file_path);
+                if path.is_file() {
+                    if let Some(file_name) = path.file_name() {
+                        let filename_lower = file_name.to_string_lossy().to_lowercase();
+                        if filename_lower.ends_with(".png")
+                            || filename_lower.ends_with(".jpg")
+                            || filename_lower.ends_with(".jpeg")
+                            || filename_lower.ends_with(".gif")
+                        {
+                            // Convert path to ShinkaiPath for consistent handling
+                            let shinkai_path = ShinkaiPath::from_string(path.to_string_lossy().to_string());
+                            match ShinkaiFileManager::get_file_content(shinkai_path.clone()) {
+                                Ok(content) => {
+                                    let base64_content = base64::encode(&content);
+                                    image_files.insert(shinkai_path.relative_path().to_string(), base64_content);
+                                }
+                                Err(_) => continue,
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        image_files
+    }
+
     pub fn new(
         context: InferenceChainContext,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
@@ -117,7 +201,7 @@ impl GenericInferenceChain {
         fs_files_paths: Vec<ShinkaiPath>,
         job_filenames: Vec<String>,
         message_hash_id: Option<String>,
-        image_files: HashMap<String, String>,
+        mut image_files: HashMap<String, String>,
         llm_provider: ProviderOrAgent,
         generator: RemoteEmbeddingGenerator,
         user_profile: ShinkaiName,
@@ -129,9 +213,8 @@ impl GenericInferenceChain {
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
-        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
-        node_env: NodeEnvironment,
+        _node_env: NodeEnvironment,
     ) -> Result<InferenceChainResult, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -170,6 +253,14 @@ impl GenericInferenceChain {
             merged_fs_files_paths.extend(agent.scope.vector_fs_items.clone());
             merged_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
         }
+
+        // Process image files from merged paths, folders and scope
+        let additional_image_files = Self::process_image_files(
+            &merged_fs_files_paths, 
+            &merged_fs_folder_paths,
+            full_job.scope(),
+        );
+        image_files.extend(additional_image_files);
 
         if !scope_is_empty
             || !merged_fs_files_paths.is_empty()
@@ -367,8 +458,6 @@ impl GenericInferenceChain {
             None,
             full_job.job_id.clone(),
             additional_files.clone(),
-            node_env.clone(),
-            db.clone(),
         ).await;
 
         let mut iteration_count = 0;
@@ -490,8 +579,6 @@ impl GenericInferenceChain {
                                         }),
                                         full_job.job_id.clone(),
                                         additional_files.clone(),
-                                        node_env.clone(),
-                                        db.clone(),
                                     ).await;
 
                                     // Set flag to retry and break out of the function calls loop
@@ -561,8 +648,6 @@ impl GenericInferenceChain {
                     last_function_response,
                     full_job.job_id.clone(),
                     additional_files,
-                    node_env.clone(),
-                    db.clone(),
                 ).await;
             } else {
                 // No more function calls required, return the final response
