@@ -1,0 +1,26 @@
+[Unit]
+Description=Shinkai Node Docker Service
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+TimeoutStopSec=60
+WorkingDirectory=/opt/shinkai-node
+EnvironmentFile=/opt/shinkai-node/env.conf
+ExecStartPre=/bin/mkdir -p /opt/shinkai-node/shinkai-storage
+ExecStart=/usr/bin/docker run --rm \
+    --name=shinkai-node \
+    -p 9550:9550 \
+    -p 9551:9551 \
+    -p 9552:9552 \
+    -p 9553:9553 \
+    -v /opt/shinkai-node/shinkai-storage:/app/shinkai-storage \
+    --env-file /opt/shinkai-node/env.conf \
+    dcspark/shinkai-node:latest
+ExecStop=/usr/bin/docker stop --time=30 shinkai-node
+
+[Install]
+WantedBy=multi-user.target 
