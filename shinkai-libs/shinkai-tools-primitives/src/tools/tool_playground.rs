@@ -35,24 +35,30 @@ pub struct ToolPlayground {
 pub struct ToolPlaygroundMetadata {
     pub name: String,
     pub version: String,
+    pub homepage: Option<String>,
     pub description: String,
     pub author: String,
     pub keywords: Vec<String>,
-    #[serde(deserialize_with = "deserialize_configurations")]
+    #[serde(
+        serialize_with = "serialize_configurations",
+        deserialize_with = "deserialize_configurations"
+    )]
     pub configurations: Vec<ToolConfig>,
     pub parameters: Parameters,
     pub result: ToolResult,
 
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_sql_tables")]
+    #[serde(serialize_with = "serialize_sql_tables")]
     #[serde(rename = "sqlTables")]
     pub sql_tables: Vec<SqlTable>,
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_sql_queries")]
+    #[serde(serialize_with = "serialize_sql_queries")]
     #[serde(rename = "sqlQueries")]
     pub sql_queries: Vec<SqlQuery>,
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_tools")]
+    #[serde(deserialize_with = "deserialize_tools", serialize_with = "serialize_tools")]
     pub tools: Option<Vec<ToolRouterKey>>,
     pub oauth: Option<Vec<OAuth>>,
 }
@@ -85,7 +91,11 @@ where
                 let configs = properties
                     .iter()
                     .map(|(key, val)| {
-                        let description = val.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let description = val
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         let type_name = val.get("type").and_then(|v| v.as_str()).map(String::from);
                         let required = required_keys.contains(key);
                         let basic_config = BasicConfig {
@@ -107,6 +117,38 @@ where
     }
 }
 
+fn serialize_configurations<S>(configs: &Vec<ToolConfig>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    use std::collections::HashMap;
+
+    let mut map = serializer.serialize_map(Some(3))?;
+
+    // Create properties object
+    let mut properties = HashMap::new();
+    let mut required = Vec::new();
+
+    for config in configs {
+        let ToolConfig::BasicConfig(basic) = config;
+        let mut property = HashMap::new();
+        property.insert("description", basic.description.clone());
+        if let Some(type_name) = &basic.type_name {
+            property.insert("type", type_name.clone());
+        }
+        properties.insert(basic.key_name.clone(), property);
+
+        if basic.required {
+            required.push(basic.key_name.clone());
+        }
+    }
+
+    map.serialize_entry("type", "object")?;
+    map.serialize_entry("properties", &properties)?;
+    map.serialize_entry("required", &required)?;
+    map.end()
+}
 fn deserialize_sql_tables<'de, D>(deserializer: D) -> Result<Vec<SqlTable>, D::Error>
 where
     D: Deserializer<'de>,
@@ -145,6 +187,30 @@ where
     }
 }
 
+fn serialize_sql_tables<S>(tables: &Vec<SqlTable>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeSeq;
+    let mut seq = serializer.serialize_seq(Some(tables.len()))?;
+    for table in tables {
+        seq.serialize_element(table)?;
+    }
+    seq.end()
+}
+
+fn serialize_sql_queries<S>(queries: &Vec<SqlQuery>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeSeq;
+    let mut seq = serializer.serialize_seq(Some(queries.len()))?;
+    for query in queries {
+        seq.serialize_element(query)?;
+    }
+    seq.end()
+}
+
 fn deserialize_tools<'de, D>(deserializer: D) -> Result<Option<Vec<ToolRouterKey>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -160,6 +226,23 @@ where
         }
         JsonValue::Null => Ok(None),
         _ => Err(serde::de::Error::custom("Invalid type for tools")),
+    }
+}
+
+fn serialize_tools<S>(tools: &Option<Vec<ToolRouterKey>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match tools {
+        Some(tools) => {
+            use serde::ser::SerializeSeq;
+            let mut seq = serializer.serialize_seq(Some(tools.len()))?;
+            for tool in tools {
+                seq.serialize_element(&tool.to_string_with_version())?;
+            }
+            seq.end()
+        }
+        None => serializer.serialize_none(),
     }
 }
 
@@ -497,5 +580,322 @@ mod tests {
             Some(vec![]),
             "Non-string tools should be filtered out"
         );
+    }
+
+    #[test]
+    fn test_serialize_configurations_empty() {
+        let configs: Vec<ToolConfig> = vec![];
+        let serialized = serde_json::to_value(&configs).unwrap();
+        assert_eq!(serialized, serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_serialize_configurations_basic() {
+        let configs = vec![
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "api_key".to_string(),
+                description: "API Key for authentication".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: None,
+            }),
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "timeout".to_string(),
+                description: "Request timeout in seconds".to_string(),
+                required: false,
+                type_name: Some("number".to_string()),
+                key_value: None,
+            }),
+        ];
+
+        let metadata = ToolPlaygroundMetadata {
+            name: "Test Tool".to_string(),
+            homepage: None,
+            version: "1.0.0".to_string(),
+            description: "Test description".to_string(),
+            author: "Test Author".to_string(),
+            keywords: vec!["test".to_string()],
+            configurations: configs,
+            parameters: Parameters {
+                schema_type: "object".to_string(),
+                properties: std::collections::HashMap::new(),
+                required: vec![],
+            },
+            result: ToolResult {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({}),
+                required: vec![],
+            },
+            sql_tables: vec![],
+            sql_queries: vec![],
+            tools: None,
+            oauth: None,
+        };
+
+        let serialized = serde_json::to_value(&metadata).unwrap();
+        let expected = serde_json::json!({
+            "name": "Test Tool",
+            "homepage": null,
+            "version": "1.0.0",
+            "description": "Test description",
+            "author": "Test Author",
+            "keywords": ["test"],
+            "configurations": {
+                "type": "object",
+                "properties": {
+                    "api_key": {
+                        "description": "API Key for authentication",
+                        "type": "string"
+                    },
+                    "timeout": {
+                        "description": "Request timeout in seconds",
+                        "type": "number"
+                    }
+                },
+                "required": ["api_key"]
+            },
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+            "result": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "sqlTables": [],
+            "sqlQueries": [],
+            "tools": null,
+            "oauth": null
+        });
+
+        assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_serialize_configurations_mixed() {
+        // Create a mixed configuration with both BasicConfig and other variants
+        let configs = vec![
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "name".to_string(),
+                description: "User name".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: None,
+            }),
+            // Assuming there's another variant in ToolConfig enum
+            // If there isn't, we can modify this test to use whatever other variants exist
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "custom".to_string(),
+                description: "Custom config".to_string(),
+                required: false,
+                type_name: None,
+                key_value: Some("default".to_string()),
+            }),
+        ];
+
+        let serialized = serde_json::to_value(&configs).unwrap();
+
+        // Verify it serializes as an array when containing non-basic configs
+        assert!(serialized.is_array());
+        assert_eq!(serialized.as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_serialize_configurations_roundtrip() {
+        let original_configs = vec![
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "field1".to_string(),
+                description: "First field".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: None,
+            }),
+            ToolConfig::BasicConfig(BasicConfig {
+                key_name: "field2".to_string(),
+                description: "Second field".to_string(),
+                required: false,
+                type_name: Some("number".to_string()),
+                key_value: None,
+            }),
+        ];
+
+        // Serialize
+        let serialized = serde_json::to_value(&original_configs).unwrap();
+
+        // Deserialize
+        let deserialized: Vec<ToolConfig> = serde_json::from_value(serialized).unwrap();
+
+        // Compare
+        assert_eq!(original_configs, deserialized);
+    }
+
+    #[test]
+    fn test_serialize_tools_basic() {
+        let metadata = ToolPlaygroundMetadata {
+            name: "Test Tool".to_string(),
+            homepage: None,
+            version: "1.0.0".to_string(),
+            description: "Test description".to_string(),
+            author: "Test Author".to_string(),
+            keywords: vec!["test".to_string()],
+            configurations: vec![],
+            parameters: Parameters {
+                schema_type: "object".to_string(),
+                properties: std::collections::HashMap::new(),
+                required: vec![],
+            },
+            result: ToolResult {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({}),
+                required: vec![],
+            },
+            sql_tables: vec![],
+            sql_queries: vec![],
+            tools: Some(vec![
+                ToolRouterKey::new("local".to_string(), "toolkit1".to_string(), "tool1".to_string(), None),
+                ToolRouterKey::new(
+                    "local".to_string(),
+                    "toolkit2".to_string(),
+                    "tool2".to_string(),
+                    Some("1.0".to_string()),
+                ),
+            ]),
+            oauth: None,
+        };
+
+        let serialized = serde_json::to_value(&metadata).unwrap();
+        let expected = serde_json::json!({
+            "name": "Test Tool",
+            "homepage": null,
+            "version": "1.0.0",
+            "description": "Test description",
+            "author": "Test Author",
+            "keywords": ["test"],
+            "configurations": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+            "result": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "sqlTables": [],
+            "sqlQueries": [],
+            "tools": [
+                "local:::toolkit1:::tool1",
+                "local:::toolkit2:::tool2:::1.0"
+            ],
+            "oauth": null
+        });
+
+        assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn test_serialize_sql_components() {
+        let metadata = ToolPlaygroundMetadata {
+            name: "Test Tool".to_string(),
+            homepage: None,
+            version: "1.0.0".to_string(),
+            description: "Test description".to_string(),
+            author: "Test Author".to_string(),
+            keywords: vec!["test".to_string()],
+            configurations: vec![],
+            parameters: Parameters {
+                schema_type: "object".to_string(),
+                properties: std::collections::HashMap::new(),
+                required: vec![],
+            },
+            result: ToolResult {
+                r#type: "object".to_string(),
+                properties: serde_json::json!({}),
+                required: vec![],
+            },
+            sql_tables: vec![
+                SqlTable {
+                    name: "users".to_string(),
+                    definition: "CREATE TABLE users (id INTEGER PRIMARY KEY)".to_string(),
+                },
+                SqlTable {
+                    name: "posts".to_string(),
+                    definition: "CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER)".to_string(),
+                },
+            ],
+            sql_queries: vec![
+                SqlQuery {
+                    name: "get_user".to_string(),
+                    query: "SELECT * FROM users WHERE id = ?".to_string(),
+                },
+                SqlQuery {
+                    name: "get_posts".to_string(),
+                    query: "SELECT * FROM posts WHERE user_id = ?".to_string(),
+                },
+            ],
+            tools: None,
+            oauth: None,
+        };
+
+        let serialized = serde_json::to_value(&metadata).unwrap();
+        let expected = serde_json::json!({
+            "name": "Test Tool",
+            "homepage": null,
+            "version": "1.0.0",
+            "description": "Test description",
+            "author": "Test Author",
+            "keywords": ["test"],
+            "configurations": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+            "result": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            },
+            "sqlTables": [
+                {
+                    "name": "users",
+                    "definition": "CREATE TABLE users (id INTEGER PRIMARY KEY)"
+                },
+                {
+                    "name": "posts",
+                    "definition": "CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER)"
+                }
+            ],
+            "sqlQueries": [
+                {
+                    "name": "get_user",
+                    "query": "SELECT * FROM users WHERE id = ?"
+                },
+                {
+                    "name": "get_posts",
+                    "query": "SELECT * FROM posts WHERE user_id = ?"
+                }
+            ],
+            "tools": null,
+            "oauth": null
+        });
+
+        assert_eq!(serialized, expected);
+
+        // Test round-trip serialization
+        let deserialized: ToolPlaygroundMetadata = serde_json::from_value(serialized).unwrap();
+        assert_eq!(deserialized.sql_tables, metadata.sql_tables);
+        assert_eq!(deserialized.sql_queries, metadata.sql_queries);
     }
 }

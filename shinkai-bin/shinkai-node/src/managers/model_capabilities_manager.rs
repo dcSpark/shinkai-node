@@ -682,6 +682,14 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-pixtral")
             }
             LLMProviderInterface::Claude(_) => true,
+            LLMProviderInterface::Gemini(model) => {
+                model.model_type.starts_with("gemini-pro")
+                    || model.model_type.starts_with("gemini-pro-vision")
+                    || model.model_type.starts_with("gemini-ultra")
+                    || model.model_type.starts_with("gemini-ultra-vision")
+                    || model.model_type.starts_with("gemini-1.5")
+                    || model.model_type.starts_with("gemini-2.0")
+            }
             _ => false,
         }
     }

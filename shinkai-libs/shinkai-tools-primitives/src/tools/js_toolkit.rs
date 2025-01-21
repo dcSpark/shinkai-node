@@ -54,6 +54,7 @@ impl JSToolkit {
         DenoTool {
             toolkit_name: toolkit_name.to_string(),
             name: tool_name,
+            homepage: None,
             author: definition.author.clone(),
             version: "1.0.0".to_string(),
             config,

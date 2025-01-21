@@ -874,4 +874,38 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn v2_api_search_files_by_name(
+        db: Arc<SqliteManager>,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        name: String,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the base path for searching
+        let base_path = ShinkaiPath::from_base_path();
+
+        // Search for files using ShinkaiFileManager::search_files_by_content
+        match ShinkaiFileManager::search_files_by_content(base_path, &name, &db) {
+            Ok(files) => {
+                let json_files = serde_json::to_value(files).map_err(|e| NodeError::from(e))?;
+                let _ = res.send(Ok(json_files)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to search files: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
 }

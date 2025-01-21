@@ -25,6 +25,7 @@ use ed25519_dalek::SigningKey;
 
 use chrono::Utc;
 use regex::Regex;
+use reqwest::Client;
 use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -46,39 +47,115 @@ pub async fn handle_oauth(
                 .ok()
                 .unwrap_or(None);
 
-            let uuid = if let Some(token) = existing_token {
-                if token.access_token.is_some() {
+            let (state_uuid, pkce_uuid) = if let Some(token) = existing_token.clone() {
+                if let Some(_) = token.access_token.clone() {
                     // push to access_token
+
+                    // check if token expiored
+                    let mut u_token = token.clone();
+                    if let Some(refresh_token_expires_at) = token.refresh_token_expires_at {
+                        let now = Utc::now();
+                        let five_minutes = chrono::Duration::minutes(5);
+
+                        if now + five_minutes > refresh_token_expires_at {
+                            // Need to refresh the token
+                            if let Some(refresh_token) = &token.refresh_token {
+                                if let Some(token_url) = &token.token_url {
+                                    let client = Client::new();
+                                    let request_body = serde_json::json!({
+                                        "refresh_token": refresh_token,
+                                        "grant_type": "refresh_token",
+                                        "client_id": token.client_id.as_deref().unwrap_or_default(),
+                                    });
+                                    println!("[OAuth] Refresh request {}, {}", token_url, request_body.to_string());
+                                    let response = client
+                                        .post(token_url)
+                                        .header("Accept", "application/json")
+                                        .header("Content-Type", "application/x-www-form-urlencoded")
+                                        .form(&request_body)
+                                        .send()
+                                        .await;
+
+                                    match response {
+                                        Ok(response) => {
+                                            if let Ok(response_json) = response.json::<serde_json::Value>().await {
+                                                println!("[OAuth] Response {}", response_json.to_string());
+                                                // Update token with new values
+                                                let mut updated_token = token.clone();
+                                                if let Some(access_token) = response_json["access_token"].as_str() {
+                                                    updated_token.access_token = Some(access_token.to_string());
+                                                }
+                                                if let Some(expires_in) = response_json["expires_in"].as_i64() {
+                                                    updated_token.access_token_expires_at =
+                                                        Some(Utc::now() + chrono::Duration::seconds(expires_in));
+                                                }
+                                                if let Some(new_refresh_token) = response_json["refresh_token"].as_str()
+                                                {
+                                                    updated_token.refresh_token = Some(new_refresh_token.to_string());
+                                                    if let Some(expires_in) = response_json["expires_in"].as_i64() {
+                                                        updated_token.refresh_token_expires_at =
+                                                            Some(Utc::now() + chrono::Duration::seconds(expires_in));
+                                                    }
+                                                }
+
+                                                // Update token in database
+                                                let _ = db.update_oauth_token(&updated_token);
+                                                u_token = updated_token.clone();
+                                            }
+                                        }
+
+                                        Err(e) => {
+                                            println!("[OAuth] Response error {}", e.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     let mut oauth = HashMap::new();
                     // TODO: Add more fields (?)
-                    oauth.insert("name".to_string(), token.connection_name.clone());
-                    oauth.insert("accessToken".to_string(), token.access_token.unwrap().to_string());
-                    oauth.insert("version".to_string(), token.version.to_string());
+                    oauth.insert("name".to_string(), u_token.connection_name.clone());
+                    oauth.insert("accessToken".to_string(), u_token.access_token.unwrap_or_default());
+                    oauth.insert(
+                        "expiresAt".to_string(),
+                        u_token.expires_at.unwrap_or_default().to_string(),
+                    );
                     access_tokens.push(oauth);
                     continue;
                 }
 
                 // Token is not setup, so pass the current state to regen the link.
-                token.state
+                (token.state, token.pkce_code_verifier)
             } else {
-                let uuid = uuid::Uuid::new_v4().to_string();
+                let state_uuid = uuid::Uuid::new_v4().to_string();
+                let pkce_uuid = if let Some(_) = o.pkce_type.clone() {
+                    Some(uuid::Uuid::new_v4().to_string())
+                } else {
+                    None
+                };
+
+                let has_refresh_token = if let Some(r) = o.refresh_token.clone() {
+                    Some(r == "true".to_string())
+                } else {
+                    Some(false)
+                };
                 // Add new OAuth token record
                 let oauth_token = OAuthToken {
                     id: 0, // db will set this
                     connection_name: o.name.clone(),
-                    state: uuid.clone(),
-                    code: None,
+                    state: state_uuid.clone(),
+                    code: None, // Created in instance call
                     app_id: app_id.clone(),
                     tool_id: tool_id.clone(),
                     tool_key: tool_router_key.clone(),
-                    access_token: None,
-                    refresh_token: None,
+                    access_token: None,  // Fetched from oauth response or refresh
+                    refresh_token: None, // Fetched from oauth response
                     token_secret: None,
-                    token_type: o.grant_type.clone(),
+                    response_type: o.response_type.clone(),
                     id_token: None,
                     scope: Some(o.scopes.join(" ")),
-                    expires_at: None,
+                    expires_at: None, // Fetched from oauth response or refresh
                     metadata_json: None,
                     authorization_url: Some(o.authorization_url.clone()),
                     token_url: o.token_url.clone(),
@@ -88,23 +165,55 @@ pub async fn handle_oauth(
                     version: o.version.clone(),
                     created_at: Utc::now(),
                     updated_at: Utc::now(),
+                    access_token_expires_at: None, // Fetched from oauth response or refresh
+                    refresh_token_enabled: has_refresh_token,
+                    refresh_token_expires_at: None, //Fetched from oauth refresh
+                    pkce_type: o.pkce_type.clone(),
+                    pkce_code_verifier: pkce_uuid.clone(), // Created on instance call
                 };
 
                 db.add_oauth_token(&oauth_token)
                     .map_err(|e| ToolError::ExecutionError(format!("Failed to store OAuth token: {}", e)))?;
 
-                uuid
+                (state_uuid, pkce_uuid)
             };
 
-            // TODO This might be different for differnet OAuth versions and settings
-            let oauth_login_url = format!(
-                "{}?client_id={}&redirect_uri={}&scope={}&state={}",
-                o.authorization_url,
-                urlencoding::encode(&o.client_id),
-                urlencoding::encode(&o.redirect_url),
-                urlencoding::encode(&o.scopes.join(" ")),
-                urlencoding::encode(&uuid)
-            );
+            //https://twitter.com/i/oauth2/authorize?
+            //response_type=code&
+            //client_id=01234567890qwertyasdfzxcv1
+            //redirect_uri=https://secrets.shinkai.com/redirect
+            //scope=offline.access%20tweet.read%20tweet.write%20users.read
+            //state=000000-111111-222222-333333
+            //code_challenge=challenge
+            //code_challenge_method=plain
+            // Build query parameters
+            let mut query_params = vec![
+                ("response_type", o.response_type.clone()),
+                ("client_id", o.client_id.clone()),
+                ("redirect_uri", o.redirect_url.clone()),
+                ("scope", o.scopes.join(" ")),
+                ("state", state_uuid.clone()),
+            ];
+
+            // Add PKCE parameters if enabled
+            if let Some(pkce_type) = &o.pkce_type {
+                if let Some(pkce_uuid) = pkce_uuid {
+                    // For now we only support plain PKCE
+                    if pkce_type == "plain" {
+                        query_params.push(("code_challenge", pkce_uuid));
+                        query_params.push(("code_challenge_method", "plain".to_string()));
+                    }
+                }
+            }
+
+            // Construct the OAuth URL by joining authorization_url with encoded query parameters
+            let query_string: String = query_params
+                .iter()
+                .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
+                .collect::<Vec<String>>()
+                .join("&");
+
+            let oauth_login_url = format!("{}?{}", o.authorization_url, query_string);
 
             return Err(ToolError::OAuthError(oauth_login_url));
         }
@@ -167,7 +276,7 @@ pub async fn execute_tool_cmd(
                     tool_id.clone(),
                     tool_router_key.clone(),
                     "".to_string(), // TODO Pass data from the API
-                    &python_tool.oauth.clone(),
+                    &python_tool.oauth,
                 )
                 .await?;
 
@@ -176,6 +285,7 @@ pub async fn execute_tool_cmd(
                     python_tool.config.clone(),
                     parameters.clone(),
                     python_tool.input_args.clone(),
+                    &python_tool.oauth,
                 )?;
 
                 let node_env = fetch_node_environment();
@@ -214,7 +324,7 @@ pub async fn execute_tool_cmd(
                     tool_id.clone(),
                     tool_router_key.clone(),
                     "".to_string(), // TODO Pass data from the API
-                    &deno_tool.oauth.clone(),
+                    &deno_tool.oauth,
                 )
                 .await?;
 
@@ -223,6 +333,7 @@ pub async fn execute_tool_cmd(
                     deno_tool.config.clone(),
                     parameters.clone(),
                     deno_tool.input_args.clone(),
+                    &deno_tool.oauth,
                 )?;
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env

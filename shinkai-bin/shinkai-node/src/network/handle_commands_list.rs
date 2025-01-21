@@ -1562,6 +1562,13 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiSearchFilesByName { bearer, name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_search_files_by_name(db_clone, identity_manager_clone, name, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
                 let db_clone = Arc::clone(&self.db);
 
@@ -2754,7 +2761,18 @@ impl Node {
                         .await;
                 });
             }
-
+            NodeCommand::V2ApiEnableAllTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_enable_all_tools(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiDisableAllTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_disable_all_tools(db_clone, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }

@@ -33,6 +33,7 @@ pub async fn execute_python_tool(
     let tool = PythonTool {
         toolkit_name: "python".to_string(),
         name: "python_runtime".to_string(),
+        homepage: None,
         version: "1.0.0".to_string(),
         author: "system".to_string(),
         py_code: code,
@@ -59,7 +60,7 @@ pub async fn execute_python_tool(
         tool_id.clone(),
         "code-execution".to_string(),
         "".to_string(),
-        &oauth.clone(),
+        &oauth,
     )
     .await?;
 
@@ -68,6 +69,7 @@ pub async fn execute_python_tool(
         tool.config.clone(),
         parameters.clone(),
         tool.input_args.clone(),
+        &oauth,
     )?;
 
     let node_env = fetch_node_environment();

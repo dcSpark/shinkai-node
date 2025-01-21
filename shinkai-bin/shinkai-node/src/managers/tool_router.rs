@@ -551,6 +551,7 @@ impl ToolRouter {
                     python_tool.config.clone(),
                     function_args.clone(),
                     python_tool.input_args.clone(),
+                    &python_tool.oauth,
                 )?;
 
                 let result = python_tool.run(
@@ -608,6 +609,7 @@ impl ToolRouter {
                     vec![],
                     function_args.clone(),
                     rust_tool.input_args.clone(),
+                    &None,
                 )?;
 
                 let result = execute_custom_tool(
@@ -674,6 +676,7 @@ impl ToolRouter {
                     deno_tool.config.clone(),
                     function_args.clone(),
                     deno_tool.input_args.clone(),
+                    &deno_tool.oauth,
                 )?;
 
                 let result = deno_tool.run(
@@ -1028,6 +1031,7 @@ impl ToolRouter {
             function_config_vec.clone(),
             function_args.clone(),
             shinkai_tool.input_args(),
+            &oauth,
         )?;
 
         let result = js_tool.run(

@@ -91,16 +91,20 @@ fn get_folder_path(app_id: String) -> Result<PathBuf, ToolError> {
         .node_storage_path
         .clone()
         .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-    let p = Path::new(&node_storage_path)
+    Ok(Path::new(&node_storage_path)
         .join("tools_storage")
         .join(app_id)
         .join("home")
-        .join("db.sqlite");
-    Ok(p)
+        .join("db.sqlite"))
 }
 
 pub async fn get_current_tables(app_id: String) -> Result<Vec<String>, ToolError> {
     let full_path = get_folder_path(app_id)?;
+
+    if !full_path.exists() {
+        return Ok(vec![]);
+    }
+
     let manager = SqliteConnectionManager::file(full_path.clone());
     let pool = Pool::new(manager)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to create connection pool: {}", e)))?;

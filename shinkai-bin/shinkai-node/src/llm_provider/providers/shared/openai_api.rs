@@ -12,7 +12,8 @@ use super::shared_model_logic;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
-    id: String,
+    #[serde(default)]
+    id: Option<String>,
     object: String,
     created: u64,
     pub choices: Vec<Choice>,
@@ -210,6 +211,89 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     })
 }
 
+pub fn openai_prepare_messages_gemini(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
+    let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
+
+    // Generate the messages and filter out images
+    let chat_completion_messages = prompt.generate_llm_messages(
+        Some(max_input_tokens),
+        Some("function".to_string()),
+        &ModelCapabilitiesManager::num_tokens_from_llama3,
+    )?;
+
+    // Get a more accurate estimate of the number of used tokens
+    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
+    // Calculate the remaining output tokens available
+    let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
+
+    // Separate messages into those with a valid role and those without
+    let (messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
+        .into_iter()
+        .partition(|message| message.role.is_some());
+
+    // Convert messages to serde Value
+    let messages_json = serde_json::to_value(messages_with_role)?;
+
+    // Convert tools to the new Gemini format
+    let tools_vec: Vec<serde_json::Value> = tools
+        .into_iter()
+        .flat_map(|tool| {
+            tool.functions.unwrap_or_default().into_iter().map(|function| {
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": function.name.chars()
+                            .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                            .collect::<String>()
+                            .to_lowercase(),
+                        "description": function.description,
+                        "parameters": function.parameters
+                    }
+                })
+            })
+        })
+        .collect();
+
+    // Process messages similar to the original function
+    let messages_vec = match messages_json {
+        serde_json::Value::Array(arr) => arr
+            .into_iter()
+            .map(|mut message| {
+                let images = message.get("images").cloned();
+                let text = message.get("content").cloned();
+
+                if let Some(serde_json::Value::Array(images_array)) = images {
+                    let mut content = vec![];
+                    if let Some(text) = text {
+                        content.push(serde_json::json!({"type": "text", "text": text}));
+                    }
+                    for image in images_array {
+                        if let serde_json::Value::String(image_str) = image {
+                            if let Some(image_type) = shared_model_logic::get_image_type(&image_str) {
+                                content.push(serde_json::json!({
+                                    "type": "image_url",
+                                    "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
+                                }));
+                            }
+                        }
+                    }
+                    message["content"] = serde_json::json!(content);
+                    message.as_object_mut().unwrap().remove("images");
+                }
+                message
+            })
+            .collect(),
+        _ => vec![],
+    };
+
+    Ok(PromptResult {
+        messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
+        functions: Some(tools_vec),
+        remaining_output_tokens,
+        tokens_used: used_tokens,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,7 +459,7 @@ mod tests {
         let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
 
         // Check the deserialized values
-        assert_eq!(response.id, "chatcmpl-9cQYyc4ENYwJ5ChU4WHtRv7uPRHbN");
+        assert_eq!(response.id.clone().unwrap(), "chatcmpl-9cQYyc4ENYwJ5ChU4WHtRv7uPRHbN");
         assert_eq!(response.object, "chat.completion");
         assert_eq!(response.created, 1718945600);
         assert_eq!(response.choices.len(), 1);
@@ -441,7 +525,7 @@ mod tests {
         let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
 
         // Verify basic response fields
-        assert_eq!(response.id, "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc");
+        assert_eq!(response.id.clone().unwrap(), "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc");
         assert_eq!(response.object, "chat.completion");
         assert_eq!(response.created, 1736736692);
         assert_eq!(response.system_fingerprint, Some("fp_9cb648b966".to_string()));
