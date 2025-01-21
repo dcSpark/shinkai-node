@@ -622,7 +622,6 @@ impl Node {
                             .iter()
                             .filter_map(|model| {
                                 let model_name = model["name"].as_str()?;
-                                eprintln!("model_name: {:?}", model_name);
                                 if seen_models.insert(model_name.to_string()) {
                                     let mut model_clone = model.clone();
                                     if let Some(obj) = model_clone.as_object_mut() {
@@ -683,8 +682,10 @@ impl Node {
         let llm_providers: Vec<SerializedLLMProvider> = input_models
             .iter()
             .map(|model| {
-                // Replace non-alphanumeric characters with underscores for full_identity_name
-                let sanitized_model = Regex::new(r"[^a-zA-Z0-9]").unwrap().replace_all(model, "_").to_string();
+                // Replace any non-alphanumeric character with underscore
+                let sanitized_model = model.chars()
+                    .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                    .collect::<String>();
 
                 // Determine which URL to use based on the availability of the models
                 let model_data = available_models
