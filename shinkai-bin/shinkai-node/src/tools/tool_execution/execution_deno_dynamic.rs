@@ -113,13 +113,13 @@ pub async fn execute_deno_tool(
         false,
         assets_files,
         mounts,
-    ) {
+    ).await {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }
 }
 
-pub fn check_deno_tool(
+pub async fn check_deno_tool(
     tool_id: String,
     app_id: String,
     support_files: HashMap<String, String>,
@@ -162,5 +162,5 @@ pub fn check_deno_tool(
         node_storage_path,
         app_id.clone(),
         tool_id.clone(),
-    )
+    ).await
 }

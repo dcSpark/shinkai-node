@@ -313,6 +313,7 @@ pub async fn execute_tool_cmd(
                         Some(tool_router_key),
                         mounts,
                     )
+                    .await
                     .map(|result| json!(result.data))
             }
             ShinkaiTool::Deno(deno_tool, _) => {
@@ -359,6 +360,7 @@ pub async fn execute_tool_cmd(
                         Some(tool_router_key),
                         mounts,
                     )
+                    .await
                     .map(|result| json!(result.data))
                     .map_err(|e| ToolError::ExecutionError(e.to_string()))
             }
@@ -454,9 +456,7 @@ pub async fn check_code(
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             // Since `check_deno_tool` is synchronous, run it in a blocking task
-            tokio::task::spawn_blocking(move || check_deno_tool(tool_id, app_id, support_files, code_extracted))
-                .await
-                .map_err(|e| ToolError::ExecutionError(format!("Task Join Error: {}", e)))?
+            check_deno_tool(tool_id, app_id, support_files, code_extracted).await
         }
         DynamicToolType::PythonDynamic => Err(ToolError::ExecutionError("NYI Python".to_string())),
     }

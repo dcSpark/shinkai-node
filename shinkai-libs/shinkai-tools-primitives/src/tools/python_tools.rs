@@ -67,7 +67,7 @@ impl PythonTool {
         Ok(deserialized)
     }
 
-    pub fn run(
+    pub async fn run(
         &self,
         envs: HashMap<String, String>,
         api_ip: String,
@@ -118,10 +118,10 @@ impl PythonTool {
             is_temporary,
             assets_files,
             mounts,
-        )
+        ).await
     }
 
-    pub fn run_on_demand(
+    pub async fn run_on_demand(
         &self,
         envs: HashMap<String, String>,
         api_ip: String,
@@ -138,7 +138,7 @@ impl PythonTool {
         mounts: Option<Vec<String>>,
     ) -> Result<RunResult, ToolError> {
         println!(
-            "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
+            "[Running PythonTool] Named: {}, Input: {:?}, Extra Config: {:?}",
             self.name, parameters, self.config
         );
 
@@ -168,140 +168,129 @@ impl PythonTool {
         // Convert the config hashmap to a JSON value
         let config_json = serde_json::to_value(&config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
 
-        // Create a new thread with its own Tokio runtime
-        let py_tool_thread = thread::Builder::new().stack_size(8 * 1024 * 1024); // 8 MB
-        py_tool_thread
-            .spawn(move || {
-                fn print_result(result: &Result<RunResult, ExecutionError>) {
-                    match result {
-                        Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
-                        Err(e) => println!("[Running DenoTool] Error: {:?}", e),
-                    }
-                }
+        fn print_result(result: &Result<RunResult, ExecutionError>) {
+            match result {
+                Ok(result) => println!("[Running PythonTool] Result: {:?}", result.data),
+                Err(e) => println!("[Running PythonTool] Error: {:?}", e),
+            }
+        }
 
-                let rt = Runtime::new().expect("Failed to create Tokio runtime");
-                rt.block_on(async {
-                    println!(
-                        "[Running DenoTool] Config: {:?}. Parameters: {:?}",
-                        config_json, parameters
-                    );
-                    println!(
-                        "[Running DenoTool] Code: {} ... {}",
-                        code.chars().take(120).collect::<String>(),
-                        code.chars()
-                            .rev()
-                            .take(400)
-                            .collect::<String>()
-                            .chars()
-                            .rev()
-                            .collect::<String>()
-                    );
-                    println!(
-                        "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
-                        config_json, parameters
-                    );
+        println!(
+            "[Running PythonTool] Config: {:?}. Parameters: {:?}",
+            config_json, parameters
+        );
+        println!(
+            "[Running PythonTool] Code: {} ... {}",
+            code.chars().take(120).collect::<String>(),
+            code.chars()
+                .rev()
+                .take(400)
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect::<String>()
+        );
+        println!(
+            "[Running PythonTool] Config JSON: {}. Parameters: {:?}",
+            config_json, parameters
+        );
 
-                    // Create the directory structure for the tool
-                    let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
-                    let home_path = full_path.clone().join(app_id.clone()).join("home");
-                    let logs_path = full_path.clone().join(app_id.clone()).join("logs");
+        // Create the directory structure for the tool
+        let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
+        let home_path = full_path.clone().join(app_id.clone()).join("home");
+        let logs_path = full_path.clone().join(app_id.clone()).join("logs");
 
-                    // Ensure the root directory exists. Subdirectories will be handled by the engine
-                    std::fs::create_dir_all(full_path.clone()).map_err(|e| {
-                        ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
-                    })?;
-                    println!(
-                        "[Running DenoTool] Full path: {:?}. App ID: {}. Tool ID: {}",
-                        full_path, app_id, tool_id
-                    );
+        // Ensure the root directory exists. Subdirectories will be handled by the engine
+        std::fs::create_dir_all(full_path.clone()).map_err(|e| {
+            ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
+        })?;
+        println!(
+            "[Running PythonTool] Full path: {:?}. App ID: {}. Tool ID: {}",
+            full_path, app_id, tool_id
+        );
 
-                    // If the tool is temporary, create a .temporal file
-                    if is_temporary {
-                        // TODO: Garbage collector will delete the tool folder after some time
-                        let temporal_path = full_path.join(".temporal");
-                        std::fs::write(temporal_path, "").map_err(|e| {
-                            ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
-                        })?;
-                    }
+        // If the tool is temporary, create a .temporal file
+        if is_temporary {
+            // TODO: Garbage collector will delete the tool folder after some time
+            let temporal_path = full_path.join(".temporal");
+            std::fs::write(temporal_path, "").map_err(|e| {
+                ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
+            })?;
+        }
 
-                    // Get the start time, this is used to check if the files were modified after the tool was executed
-                    let start_time = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
+        // Get the start time, this is used to check if the files were modified after the tool was executed
+        let start_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        // Create map with file name and source code
+        let mut code_files = HashMap::new();
+        code_files.insert("index.py".to_string(), code);
+        support_files.iter().for_each(|(file_name, file_code)| {
+            code_files.insert(format!("{}.py", file_name), file_code.clone());
+        });
+
+        // Setup the engine with the code files and config
+        let tool = PythonRunner::new(
+            CodeFiles {
+                files: code_files.clone(),
+                entrypoint: "index.py".to_string(),
+            },
+            config_json,
+            Some(PythonRunnerOptions {
+                context: ExecutionContext {
+                    context_id: app_id.clone(),
+                    execution_id: tool_id.clone(),
+                    code_id: "".to_string(),
+                    storage: full_path.clone(),
+                    assets_files,
+                    mount_files: mounts
+                        .clone()
                         .unwrap_or_default()
-                        .as_secs();
+                        .iter()
+                        .map(|mount| PathBuf::from(mount))
+                        .collect(),
+                },
+                uv_binary_path: PathBuf::from(
+                    env::var("SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH")
+                        .unwrap_or_else(|_| "./shinkai-tools-runner-resources/uv".to_string()),
+                ),
+                shinkai_node_location: ShinkaiNodeLocation {
+                    protocol: String::from("http"),
+                    host: api_ip,
+                    port: api_port,
+                },
+                ..Default::default()
+            }),
+        );
 
-                    // Create map with file name and source code
-                    let mut code_files = HashMap::new();
-                    code_files.insert("index.py".to_string(), code);
-                    support_files.iter().for_each(|(file_name, file_code)| {
-                        code_files.insert(format!("{}.py", file_name), file_code.clone());
-                    });
+        // Run the tool with Python
+        let result = tool
+            .run(Some(envs), serde_json::Value::Object(parameters.clone()), None)
+            .await;
+        print_result(&result);
 
-                    // Setup the engine with the code files and config
-                    let tool = PythonRunner::new(
-                        CodeFiles {
-                            files: code_files.clone(),
-                            entrypoint: "index.py".to_string(),
-                        },
-                        config_json,
-                        Some(PythonRunnerOptions {
-                            context: ExecutionContext {
-                                context_id: app_id.clone(),
-                                execution_id: tool_id.clone(),
-                                code_id: "".to_string(),
-                                storage: full_path.clone(),
-                                assets_files,
-                                mount_files: mounts
-                                    .clone()
-                                    .unwrap_or_default()
-                                    .iter()
-                                    .map(|mount| PathBuf::from(mount))
-                                    .collect(),
-                            },
-                            uv_binary_path: PathBuf::from(
-                                env::var("SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH")
-                                    .unwrap_or_else(|_| "./shinkai-tools-runner-resources/uv".to_string()),
-                            ),
-                            shinkai_node_location: ShinkaiNodeLocation {
-                                protocol: String::from("http"),
-                                host: api_ip,
-                                port: api_port,
-                            },
-                            ..Default::default()
-                        }),
-                    );
+        match result {
+            Ok(result) => {
+                update_result_with_modified_files(
+                    result, start_time, &home_path, &logs_path, &node_name, &app_id,
+                )
+            }
+            Err(e) => {
+                let files =
+                    get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
+                        .into_iter()
+                        .map(|file| file.as_str().unwrap_or_default().to_string())
+                        .collect::<Vec<String>>()
+                        .join(" ");
 
-                    // Run the tool with DENO
-                    let result = tool
-                        .run(Some(envs), serde_json::Value::Object(parameters.clone()), None)
-                        .await;
-                    print_result(&result);
-
-                    match result {
-                        Ok(result) => {
-                            return update_result_with_modified_files(
-                                result, start_time, &home_path, &logs_path, &node_name, &app_id,
-                            )
-                        }
-                        Err(e) => {
-                            let files =
-                                get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
-                                    .into_iter()
-                                    .map(|file| file.as_str().unwrap_or_default().to_string())
-                                    .collect::<Vec<String>>()
-                                    .join(" ");
-
-                            return Err(ToolError::ExecutionError(format!(
-                                "Error: {}. Files: {}",
-                                e.message().to_string(),
-                                files
-                            )));
-                        }
-                    }
-                })
-            })
-            .unwrap()
-            .join()
-            .expect("Thread panicked")
+                Err(ToolError::ExecutionError(format!(
+                    "Error: {}. Files: {}",
+                    e.message().to_string(),
+                    files
+                )))
+            }
+        }
     }
 }
