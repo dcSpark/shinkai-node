@@ -35,7 +35,6 @@ impl KnowledgeTool {
         Self {
             tool: ShinkaiToolHeader {
                 name: "Shinkai Process Embeddings".to_string(),
-                toolkit_name: "shinkai_custom".to_string(),
                 description: r#"Tool for processing embeddings within a job scope. 
 This tool processes resources and generates embeddings using a specified mapping function.
 
@@ -44,10 +43,10 @@ Example usage:
 - Process resources in chunks to optimize performance.
 - Collect and join processed embeddings for further analysis."#
                     .to_string(),
-                tool_router_key: "local:::rust_toolkit:::shinkai_process_embeddings".to_string(),
+                tool_router_key: "local:::__official_shinkai:::shinkai_process_embeddings".to_string(),
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Process embeddings in job scope".to_string(),
-                author: "Shinkai".to_string(),
+                author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
                 input_args: {
@@ -139,7 +138,7 @@ mod tests {
         let knowledge_tool = KnowledgeTool::new();
         assert_eq!(
             knowledge_tool.tool.tool_router_key,
-            "local:::rust_toolkit:::shinkai_process_embeddings"
+            "local:::__official_shinkai:::shinkai_process_embeddings"
         );
     }
 }

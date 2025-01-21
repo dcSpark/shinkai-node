@@ -25,7 +25,6 @@ use tokio::runtime::Runtime;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DenoTool {
-    pub toolkit_name: String,
     pub name: String,
     pub homepage: Option<String>,
     pub author: String,
@@ -51,11 +50,6 @@ pub struct DenoTool {
 }
 
 impl DenoTool {
-    /// Default name of the rust toolkit
-    pub fn toolkit_name(&self) -> String {
-        "deno-toolkit".to_string()
-    }
-
     /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)

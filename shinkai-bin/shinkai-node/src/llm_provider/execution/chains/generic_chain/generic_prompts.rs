@@ -60,7 +60,7 @@ impl JobPromptGenerator {
                     match tool_content.get("function") {
                         Some(function) => {
                             let tool_router_key = function["tool_router_key"].as_str().unwrap_or("");
-                            if tool_router_key == "local:::rust_toolkit:::shinkai_sqlite_query_executor" {
+                            if tool_router_key == "local:::__official_shinkai:::shinkai_sqlite_query_executor" {
                                 let (tx, rx) = mpsc::channel();
                                 let job_id_clone = job_id.clone();
                                 // Spawn the async task on a runtime

@@ -1566,7 +1566,8 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_search_files_by_name(db_clone, identity_manager_clone, name, bearer, res).await;
+                    let _ =
+                        Node::v2_api_search_files_by_name(db_clone, identity_manager_clone, name, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiVecFSRetrieveVectorResource { bearer, path, res } => {
@@ -1860,8 +1861,9 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_add_shinkai_tool(db_clone, bearer, shinkai_tool, res).await;
+                    let _ = Node::v2_api_add_shinkai_tool(db_clone, bearer, node_env, shinkai_tool, res).await;
                 });
             }
             NodeCommand::V2ApiGetShinkaiTool { bearer, payload, res } => {

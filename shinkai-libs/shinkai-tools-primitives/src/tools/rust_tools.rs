@@ -54,9 +54,8 @@ impl RustTool {
         }
     }
 
-    /// Default name of the rust toolkit
-    pub fn toolkit_name(&self) -> String {
-        "rust_toolkit".to_string()
+    pub fn author(&self) -> String {
+        "@@official.shinkai".to_string()
     }
 
     /// Convert to json

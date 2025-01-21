@@ -296,10 +296,10 @@ impl ToolRouter {
             // Manually create NetworkTool
             let network_tool = NetworkTool {
                 name: "network__echo".to_string(),
-                toolkit_name: "shinkai-tool-echo".to_string(),
                 description: "Echoes the input message".to_string(),
                 version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
@@ -329,10 +329,10 @@ impl ToolRouter {
             // Manually create another NetworkTool
             let youtube_tool = NetworkTool {
                 name: "youtube_transcript_with_timestamps".to_string(),
-                toolkit_name: "shinkai-tool-youtube-transcript".to_string(),
                 description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
                 version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],

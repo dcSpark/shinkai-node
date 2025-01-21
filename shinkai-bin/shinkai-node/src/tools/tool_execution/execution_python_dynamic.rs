@@ -31,11 +31,10 @@ pub async fn execute_python_tool(
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
     let tool = PythonTool {
-        toolkit_name: "python".to_string(),
         name: "python_runtime".to_string(),
         homepage: None,
         version: "1.0.0".to_string(),
-        author: "system".to_string(),
+        author: "@@official.shinkai".to_string(),
         py_code: code,
         tools: vec![],
         config: extra_config.clone(),

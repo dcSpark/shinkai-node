@@ -25,7 +25,6 @@ use super::tool_playground::{SqlQuery, SqlTable};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PythonTool {
-    pub toolkit_name: String,
     pub version: String,
     pub name: String,
     pub homepage: Option<String>,
@@ -51,11 +50,6 @@ pub struct PythonTool {
 }
 
 impl PythonTool {
-    /// Default name of the rust toolkit
-    pub fn toolkit_name(&self) -> String {
-        "python-toolkit".to_string()
-    }
-
     /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)

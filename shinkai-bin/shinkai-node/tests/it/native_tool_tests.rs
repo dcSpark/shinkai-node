@@ -244,7 +244,7 @@ fn native_tool_test_knowledge() {
                     let tool_execution_result = api_execute_tool(
                         node1_commands_sender.clone(),
                         api_key_bearer.clone(),
-                        "local:::rust_toolkit:::shinkai_process_embeddings".to_string(),
+                        "local:::__official_shinkai:::shinkai_process_embeddings".to_string(),
                         parameters,
                         "your_tool_id".to_string(),
                         "your_app_id".to_string(),

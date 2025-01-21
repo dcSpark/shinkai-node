@@ -36,7 +36,7 @@ use shinkai_message_primitives::{
 };
 
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets},
     tool_config::OAuth,
     tool_playground::ToolPlayground,
 };
@@ -691,7 +691,7 @@ pub enum NodeCommand {
     },
     V2ApiAddShinkaiTool {
         bearer: String,
-        shinkai_tool: ShinkaiTool,
+        shinkai_tool: ShinkaiToolWithAssets,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetShinkaiTool {

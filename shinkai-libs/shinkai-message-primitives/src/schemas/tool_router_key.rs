@@ -7,7 +7,7 @@ use super::indexable_version::IndexableVersion;
 #[serde(try_from = "String")]
 pub struct ToolRouterKey {
     pub source: String,
-    pub toolkit_name: String,
+    pub author: String,
     pub name: String,
     pub version: Option<String>,
 }
@@ -21,10 +21,10 @@ impl TryFrom<String> for ToolRouterKey {
 }
 
 impl ToolRouterKey {
-    pub fn new(source: String, toolkit_name: String, name: String, version: Option<String>) -> Self {
+    pub fn new(source: String, author: String, name: String, version: Option<String>) -> Self {
         Self {
             source,
-            toolkit_name,
+            author,
             name,
             version,
         }
@@ -41,32 +41,27 @@ impl ToolRouterKey {
             .collect()
     }
 
-    pub fn serialize_tool_router_keys<S>(
-        tools: &Vec<ToolRouterKey>, 
-        serializer: S
-    ) -> Result<S::Ok, S::Error>
+    pub fn serialize_tool_router_keys<S>(tools: &Vec<ToolRouterKey>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let strings: Vec<String> = tools
-            .iter()
-            .map(|k| k.to_string_with_version())
-            .collect();
+        let strings: Vec<String> = tools.iter().map(|k| k.to_string_with_version()).collect();
         strings.serialize(serializer)
     }
 
     fn sanitize(input: &str) -> String {
-        input.chars()
+        input
+            .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
             .collect()
     }
 
     pub fn to_string_without_version(&self) -> String {
         let sanitized_source = Self::sanitize(&self.source);
-        let sanitized_toolkit_name = Self::sanitize(&self.toolkit_name);
+        let sanitized_author = Self::sanitize(&self.author);
         let sanitized_name = Self::sanitize(&self.name);
-        
-        let key = format!("{}:::{}:::{}", sanitized_source, sanitized_toolkit_name, sanitized_name);
+
+        let key = format!("{}:::{}:::{}", sanitized_source, sanitized_author, sanitized_name);
         key.replace('/', "|").to_lowercase()
     }
 
@@ -76,14 +71,14 @@ impl ToolRouterKey {
         }
 
         let sanitized_source = Self::sanitize(&self.source);
-        let sanitized_toolkit_name = Self::sanitize(&self.toolkit_name);
+        let sanitized_author = Self::sanitize(&self.author);
         let sanitized_name = Self::sanitize(&self.name);
-        
+
         let version_str = self.version.clone().unwrap();
 
         let key = format!(
             "{}:::{}:::{}:::{}",
-            sanitized_source, sanitized_toolkit_name, sanitized_name, version_str
+            sanitized_source, sanitized_author, sanitized_name, version_str
         );
 
         key.replace('/', "|").to_lowercase()
@@ -137,36 +132,39 @@ mod tests {
     fn test_tool_router_key_to_string_without_version() {
         let key = ToolRouterKey::new(
             "local".to_string(),
-            "rust_toolkit".to_string(),
+            "@@official.shinkai".to_string(),
             "concat_strings".to_string(),
             None,
         );
-        assert_eq!(key.to_string_without_version(), "local:::rust_toolkit:::concat_strings");
+        assert_eq!(
+            key.to_string_without_version(),
+            "local:::__official_shinkai:::concat_strings"
+        );
     }
 
     #[test]
     fn test_tool_router_key_to_string_with_version() {
         let key = ToolRouterKey::new(
             "local".to_string(),
-            "rust_toolkit".to_string(),
+            "@@official.shinkai".to_string(),
             "concat_strings".to_string(),
             Some("1.0".to_string()),
         );
         assert_eq!(
             key.to_string_with_version(),
-            "local:::rust_toolkit:::concat_strings:::1.0"
+            "local:::__official_shinkai:::concat_strings:::1.0"
         );
     }
 
     #[test]
     fn test_tool_router_key_from_string_without_version() {
-        let key_str = "local:::rust_toolkit:::concat_strings";
+        let key_str = "local:::__official_shinkai:::concat_strings";
         let key = ToolRouterKey::from_string(key_str).unwrap();
         assert_eq!(
             key,
             ToolRouterKey::new(
                 "local".to_string(),
-                "rust_toolkit".to_string(),
+                "__official_shinkai".to_string(),
                 "concat_strings".to_string(),
                 None
             )
@@ -175,13 +173,13 @@ mod tests {
 
     #[test]
     fn test_tool_router_key_from_string_with_version() {
-        let key_str = "local:::rust_toolkit:::concat_strings:::1.0";
+        let key_str = "local:::__official_shinkai:::concat_strings:::1.0";
         let key = ToolRouterKey::from_string(key_str).unwrap();
         assert_eq!(
             key,
             ToolRouterKey::new(
                 "local".to_string(),
-                "rust_toolkit".to_string(),
+                "__official_shinkai".to_string(),
                 "concat_strings".to_string(),
                 Some("1.0".to_string())
             )
@@ -199,7 +197,7 @@ mod tests {
         // Create a ToolRouterKey instance
         let tool_router_key = ToolRouterKey::new(
             "local".to_string(),
-            "deno_toolkit".to_string(),
+            "@@system.shinkai".to_string(),
             "shinkai: download pages".to_string(),
             None,
         );
@@ -208,7 +206,7 @@ mod tests {
         let router_key_string = tool_router_key.to_string_without_version();
 
         // Expected key format
-        let expected_key = "local:::deno_toolkit:::shinkai__download_pages";
+        let expected_key = "local:::__system_shinkai:::shinkai__download_pages";
 
         // Assert that the generated key matches the expected pattern
         assert_eq!(router_key_string, expected_key);
@@ -218,27 +216,27 @@ mod tests {
     fn test_tool_router_key_no_spaces_in_to_string() {
         let key = ToolRouterKey::new(
             "local".to_string(),
-            "deno toolkit".to_string(),
+            "@@system.shinkai".to_string(),
             "versioned_tool".to_string(),
             Some("2.0".to_string()),
         );
         let key_string = key.to_string_without_version();
         eprintln!("key_string: {:?}", key_string);
         assert!(!key_string.contains(' '), "Key string should not contain spaces");
-        assert_eq!(key_string, "local:::deno_toolkit:::versioned_tool");
+        assert_eq!(key_string, "local:::__system_shinkai:::versioned_tool");
     }
 
     #[test]
     fn test_tool_router_key_to_string_with_version_returns_without_version_when_none() {
         let key = ToolRouterKey::new(
             "local".to_string(),
-            "rust_toolkit".to_string(),
+            "@@official_shinkai".to_string(),
             "concat_strings".to_string(),
             None,
         );
         assert_eq!(
             key.to_string_with_version(),
-            "local:::rust_toolkit:::concat_strings"
+            "local:::__official_shinkai:::concat_strings"
         );
     }
 }
