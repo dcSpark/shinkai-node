@@ -19,7 +19,7 @@ use crate::managers::IdentityManager;
 use crate::tools::tool_implementation;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
-pub async fn execute_custom_tool(
+pub async fn try_to_execute_rust_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
     tool_id: String,
@@ -36,13 +36,6 @@ pub async fn execute_custom_tool(
     signing_secret_key: SigningKey,
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
-
-    // Check if the tool_router_key contains "rust_toolkit"
-    if !tool_router_key.contains("rust_toolkit") {
-        return Err(ToolError::InvalidFunctionArguments(
-            "The tool_router_key does not contain 'rust_toolkit'".to_string(),
-        ));
-    }
 
     let result = match tool_router_key {
         // TODO Keep in sync with definitions_custom.rs
@@ -114,9 +107,7 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        _ => Err(ToolError::InvalidFunctionArguments(
-            "The specified tool_router_key does not match any known custom tools.".to_string(),
-        )),
+        _ => return Err(ToolError::ToolNotFound(tool_router_key.to_string())),
     };
     let text_result = format!("{:?}", result);
     if text_result.chars().count() > 200 {

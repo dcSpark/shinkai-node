@@ -8,7 +8,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
-use crate::tools::tool_execution::execution_custom::execute_custom_tool;
+use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
@@ -554,21 +554,23 @@ impl ToolRouter {
                     &python_tool.oauth,
                 )?;
 
-                let result = python_tool.run(
-                    envs,
-                    node_env.api_listen_address.ip().to_string(),
-                    node_env.api_listen_address.port(),
-                    support_files,
-                    function_args,
-                    function_config_vec,
-                    node_storage_path,
-                    app_id.clone(),
-                    tool_id.clone(),
-                    node_name,
-                    false,
-                    None,
-                    Some(all_files),
-                ).await?;
+                let result = python_tool
+                    .run(
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        support_files,
+                        function_args,
+                        function_config_vec,
+                        node_storage_path,
+                        app_id.clone(),
+                        tool_id.clone(),
+                        node_name,
+                        false,
+                        None,
+                        Some(all_files),
+                    )
+                    .await?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
@@ -612,7 +614,7 @@ impl ToolRouter {
                     &None,
                 )?;
 
-                let result = execute_custom_tool(
+                let result = try_to_execute_rust_tool(
                     &shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     function_args,
                     tool_id,
@@ -679,21 +681,23 @@ impl ToolRouter {
                     &deno_tool.oauth,
                 )?;
 
-                let result = deno_tool.run(
-                    envs,
-                    node_env.api_listen_address.ip().to_string(),
-                    node_env.api_listen_address.port(),
-                    support_files,
-                    function_args,
-                    function_config_vec,
-                    node_storage_path,
-                    app_id,
-                    tool_id.clone(),
-                    node_name,
-                    false,
-                    Some(tool_id),
-                    Some(all_files),
-                ).await?;
+                let result = deno_tool
+                    .run(
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        support_files,
+                        function_args,
+                        function_config_vec,
+                        node_storage_path,
+                        app_id,
+                        tool_id.clone(),
+                        node_name,
+                        false,
+                        Some(tool_id),
+                        Some(all_files),
+                    )
+                    .await?;
 
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -1034,22 +1038,24 @@ impl ToolRouter {
             &oauth,
         )?;
 
-        let result = js_tool.run(
-            env,
-            node_env.api_listen_address.ip().to_string(),
-            node_env.api_listen_address.port(),
-            support_files,
-            function_args,
-            function_config_vec,
-            node_storage_path,
-            app_id,
-            tool_id.clone(),
-            // TODO Is this correct?
-            requester_node_name,
-            true,
-            Some(tool_id),
-            None,
-        ).await?;
+        let result = js_tool
+            .run(
+                env,
+                node_env.api_listen_address.ip().to_string(),
+                node_env.api_listen_address.port(),
+                support_files,
+                function_args,
+                function_config_vec,
+                node_storage_path,
+                app_id,
+                tool_id.clone(),
+                // TODO Is this correct?
+                requester_node_name,
+                true,
+                Some(tool_id),
+                None,
+            )
+            .await?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 

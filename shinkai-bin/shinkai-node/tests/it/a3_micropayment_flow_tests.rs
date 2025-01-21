@@ -16,10 +16,10 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
-use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
-use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
+use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
@@ -315,11 +315,16 @@ fn micropayment_flow_test() {
             };
 
             let mut input_args = Parameters::new();
-            input_args.add_property("message".to_string(), "string".to_string(), "The message to echo".to_string(), true);
+            input_args.add_property(
+                "message".to_string(),
+                "string".to_string(),
+                "The message to echo".to_string(),
+                true,
+            );
 
             let shinkai_tool_header = ShinkaiToolHeader {
                 name: "network__echo".to_string(),
-                toolkit_name: "shinkai-tool-echo".to_string(),
+
                 description: "Echoes the input message".to_string(),
                 tool_router_key: test_local_tool_key_name.to_string(),
                 tool_type: "JS".to_string(),
@@ -378,7 +383,10 @@ fn micropayment_flow_test() {
                 node1_commands_sender
                     .send(NodeCommand::V2ApiAddShinkaiTool {
                         bearer: api_v2_key.to_string(),
-                        shinkai_tool,
+                        shinkai_tool: ShinkaiToolWithAssets {
+                            tool: shinkai_tool,
+                            assets: None,
+                        },
                         res: sender,
                     })
                     .await
@@ -484,7 +492,7 @@ fn micropayment_flow_test() {
                 // Manually create NetworkTool
                 let network_tool = NetworkTool {
                     name: shinkai_tool_header.name.clone(),
-                    toolkit_name: shinkai_tool_header.toolkit_name.clone(),
+                    author: shinkai_tool_header.author.clone(),
                     description: shinkai_tool_header.description.clone(),
                     version: shinkai_tool_header.version.clone(),
                     provider: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
@@ -507,7 +515,10 @@ fn micropayment_flow_test() {
                 node2_commands_sender
                     .send(NodeCommand::V2ApiAddShinkaiTool {
                         bearer: api_v2_key.to_string(),
-                        shinkai_tool,
+                        shinkai_tool: ShinkaiToolWithAssets {
+                            tool: shinkai_tool,
+                            assets: None,
+                        },
                         res: sender,
                     })
                     .await

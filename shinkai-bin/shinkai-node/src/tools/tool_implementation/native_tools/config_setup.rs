@@ -339,7 +339,7 @@ mod tests {
     fn create_deno_tool() -> ShinkaiTool {
         let mut initial_tool = ShinkaiTool::Deno(
             DenoTool {
-                toolkit_name: "deno_toolkit".to_string(),
+
                 name: "Test Tool".to_string(),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),

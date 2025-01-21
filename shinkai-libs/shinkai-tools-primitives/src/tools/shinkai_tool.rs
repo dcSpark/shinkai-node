@@ -113,8 +113,8 @@ impl ShinkaiTool {
     }
 
     /// Generate the key that this tool will be stored under in the tool router
-    pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
-        let tool_router_key = ToolRouterKey::new(source, toolkit_name, name, None);
+    pub fn gen_router_key(source: String, author: String, name: String) -> String {
+        let tool_router_key = ToolRouterKey::new(source, author, name, None);
         tool_router_key.to_string_without_version()
     }
 

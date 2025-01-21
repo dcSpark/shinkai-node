@@ -1,5 +1,7 @@
 use rusqlite::params;
-use shinkai_message_primitives::schemas::{llm_providers::agent::Agent, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey};
+use shinkai_message_primitives::schemas::{
+    llm_providers::agent::Agent, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey,
+};
 
 use crate::{SqliteManager, SqliteManagerError};
 
@@ -30,12 +32,10 @@ impl SqliteManager {
 
         let knowledge = serde_json::to_string(&agent.knowledge).unwrap();
         let config = agent.config.map(|c| serde_json::to_string(&c).unwrap());
-        let tools: Vec<String> = agent.tools.iter()
-            .map(|t| t.to_string_with_version())
-            .collect();
+        let tools: Vec<String> = agent.tools.iter().map(|t| t.to_string_with_version()).collect();
         let tools = serde_json::to_string(&tools).unwrap();
         let scope = serde_json::to_string(&agent.scope).unwrap();
-        
+
         tx.execute(
             "INSERT INTO shinkai_agents (name, agent_id, full_identity_name, llm_provider_id, ui_description, knowledge, storage_path, tools, debug_mode, config, scope)
                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -204,9 +204,7 @@ impl SqliteManager {
 
         let knowledge = serde_json::to_string(&updated_agent.knowledge).unwrap();
         let config = updated_agent.config.map(|c| serde_json::to_string(&c).unwrap());
-        let tools: Vec<String> = updated_agent.tools.iter()
-            .map(|t| t.to_string_with_version())
-            .collect();
+        let tools: Vec<String> = updated_agent.tools.iter().map(|t| t.to_string_with_version()).collect();
         let tools = serde_json::to_string(&tools).unwrap();
         let scope = serde_json::to_string(&updated_agent.scope).unwrap(); // Serialize the scope
 
@@ -420,13 +418,13 @@ mod tests {
     #[test]
     fn test_add_and_get_agent_with_tools() {
         let db = setup_test_db();
-        
+
         // Create a proper ToolRouterKey
         let tool = ToolRouterKey::new(
             "local".to_string(),
-            "rust_toolkit".to_string(),
+            "@@author.shinkai".to_string(),
             "test_tool".to_string(),
-            Some("1.0".to_string())
+            Some("1.0".to_string()),
         );
 
         let agent = Agent {
@@ -437,7 +435,7 @@ mod tests {
             ui_description: "Test description".to_string(),
             knowledge: Default::default(),
             storage_path: "test_storage_path".to_string(),
-            tools: vec![tool.clone()],  // Add the ToolRouterKey
+            tools: vec![tool.clone()], // Add the ToolRouterKey
             debug_mode: false,
             config: None,
             scope: Default::default(),
@@ -449,7 +447,7 @@ mod tests {
 
         // Retrieve the agent
         let retrieved_agent = db.get_agent(&agent.agent_id).unwrap().unwrap();
-        
+
         // Verify the tools were correctly stored and retrieved
         assert_eq!(retrieved_agent.tools.len(), 1);
         assert_eq!(retrieved_agent.tools[0], tool);

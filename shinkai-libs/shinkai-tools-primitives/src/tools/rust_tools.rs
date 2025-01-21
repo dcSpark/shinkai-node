@@ -70,14 +70,6 @@ impl RustTool {
     }
 
     pub fn from_shinkai_tool_header(header: &ShinkaiToolHeader) -> Result<Self, ToolError> {
-        // Parse the tool_router_key to ensure it contains "rust_toolkit"
-        let parts: Vec<&str> = header.tool_router_key.split(":::").collect();
-        if parts.len() != 3 || parts[1] != "rust_toolkit" {
-            return Err(ToolError::InvalidFunctionArguments(
-                "Invalid tool_router_key format or missing 'rust_toolkit'".to_string(),
-            ));
-        }
-
         Ok(RustTool {
             name: header.name.clone(),
             description: header.description.clone(),

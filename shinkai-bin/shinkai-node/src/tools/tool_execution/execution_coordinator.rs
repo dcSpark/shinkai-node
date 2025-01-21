@@ -1,6 +1,6 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
-use crate::tools::tool_execution::execution_custom::execute_custom_tool;
+use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
@@ -238,134 +238,126 @@ pub async fn execute_tool_cmd(
     signing_secret_key: SigningKey,
     mounts: Option<Vec<String>>,
 ) -> Result<Value, ToolError> {
-    eprintln!("[execute_tool] with tool_router_key: {}", tool_router_key);
+    println!("[execute_tool] with tool_router_key: {}", tool_router_key);
+    let tool = db
+        .get_tool_by_key(&tool_router_key)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
-    // Determine the tool type based on the tool_router_key
-    if tool_router_key.contains("rust_toolkit") {
-        // Execute as a Rust tool
-        execute_custom_tool(
-            &tool_router_key,
-            parameters,
-            tool_id,
-            app_id,
-            extra_config,
-            bearer,
-            db,
-            // vector_fs,
-            llm_provider,
-            node_name,
-            identity_manager,
-            job_manager,
-            encryption_secret_key,
-            encryption_public_key,
-            signing_secret_key,
-        )
-        .await
-    } else {
-        // Assume it's a Deno tool if not Rust
-        let tool = db
-            .get_tool_by_key(&tool_router_key)
-            .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
-
-        match tool {
-            ShinkaiTool::Python(python_tool, _) => {
-                let env = generate_execution_environment(
-                    db.clone(),
-                    llm_provider.clone(),
-                    app_id.clone(),
-                    tool_id.clone(),
-                    tool_router_key.clone(),
-                    "".to_string(), // TODO Pass data from the API
-                    &python_tool.oauth,
-                )
-                .await?;
-
-                check_tool(
-                    tool_router_key.clone(),
-                    python_tool.config.clone(),
-                    parameters.clone(),
-                    python_tool.input_args.clone(),
-                    &python_tool.oauth,
-                )?;
-
-                let node_env = fetch_node_environment();
-                let node_storage_path = node_env
-                    .node_storage_path
-                    .clone()
-                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let support_files =
-                    generate_tool_definitions(python_tool.tools.clone(), CodeLanguage::Python, db, false)
-                        .await
-                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-                python_tool
-                    .run(
-                        env,
-                        node_env.api_listen_address.ip().to_string(),
-                        node_env.api_listen_address.port(),
-                        support_files,
-                        parameters,
-                        extra_config,
-                        node_storage_path,
-                        app_id.clone(),
-                        tool_id.clone(),
-                        node_name,
-                        true,
-                        Some(tool_router_key),
-                        mounts,
-                    )
-                    .await
-                    .map(|result| json!(result.data))
-            }
-            ShinkaiTool::Deno(deno_tool, _) => {
-                let env = generate_execution_environment(
-                    db.clone(),
-                    llm_provider.clone(),
-                    app_id.clone(),
-                    tool_id.clone(),
-                    tool_router_key.clone(),
-                    "".to_string(), // TODO Pass data from the API
-                    &deno_tool.oauth,
-                )
-                .await?;
-
-                check_tool(
-                    tool_router_key.clone(),
-                    deno_tool.config.clone(),
-                    parameters.clone(),
-                    deno_tool.input_args.clone(),
-                    &deno_tool.oauth,
-                )?;
-                let node_env = fetch_node_environment();
-                let node_storage_path = node_env
-                    .node_storage_path
-                    .clone()
-                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-                let support_files =
-                    generate_tool_definitions(deno_tool.tools.clone(), CodeLanguage::Typescript, db, false)
-                        .await
-                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-                deno_tool
-                    .run(
-                        env,
-                        node_env.api_listen_address.ip().to_string(),
-                        node_env.api_listen_address.port(),
-                        support_files,
-                        parameters,
-                        extra_config,
-                        node_storage_path,
-                        app_id.clone(),
-                        tool_id.clone(),
-                        node_name,
-                        true,
-                        Some(tool_router_key),
-                        mounts,
-                    )
-                    .await
-                    .map(|result| json!(result.data))
-                    .map_err(|e| ToolError::ExecutionError(e.to_string()))
-            }
-            _ => Err(ToolError::ExecutionError(format!("Unsupported tool type: {:?}", tool))),
+    match tool {
+        ShinkaiTool::Rust(_, _) => {
+            try_to_execute_rust_tool(
+                &tool_router_key,
+                parameters,
+                tool_id,
+                app_id,
+                extra_config,
+                bearer,
+                db,
+                llm_provider,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+            )
+            .await
         }
+        ShinkaiTool::Python(python_tool, _) => {
+            let env = generate_execution_environment(
+                db.clone(),
+                llm_provider.clone(),
+                app_id.clone(),
+                tool_id.clone(),
+                tool_router_key.clone(),
+                "".to_string(), // TODO Pass data from the API
+                &python_tool.oauth,
+            )
+            .await?;
+
+            check_tool(
+                tool_router_key.clone(),
+                python_tool.config.clone(),
+                parameters.clone(),
+                python_tool.input_args.clone(),
+                &python_tool.oauth,
+            )?;
+
+            let node_env = fetch_node_environment();
+            let node_storage_path = node_env
+                .node_storage_path
+                .clone()
+                .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+            let support_files = generate_tool_definitions(python_tool.tools.clone(), CodeLanguage::Python, db, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+            python_tool
+                .run(
+                    env,
+                    node_env.api_listen_address.ip().to_string(),
+                    node_env.api_listen_address.port(),
+                    support_files,
+                    parameters,
+                    extra_config,
+                    node_storage_path,
+                    app_id.clone(),
+                    tool_id.clone(),
+                    node_name,
+                    true,
+                    Some(tool_router_key),
+                    mounts,
+                )
+                .await
+                .map(|result| json!(result.data))
+        }
+        ShinkaiTool::Deno(deno_tool, _) => {
+            let env = generate_execution_environment(
+                db.clone(),
+                llm_provider.clone(),
+                app_id.clone(),
+                tool_id.clone(),
+                tool_router_key.clone(),
+                "".to_string(), // TODO Pass data from the API
+                &deno_tool.oauth,
+            )
+            .await?;
+
+            check_tool(
+                tool_router_key.clone(),
+                deno_tool.config.clone(),
+                parameters.clone(),
+                deno_tool.input_args.clone(),
+                &deno_tool.oauth,
+            )?;
+            let node_env = fetch_node_environment();
+            let node_storage_path = node_env
+                .node_storage_path
+                .clone()
+                .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+            let support_files = generate_tool_definitions(deno_tool.tools.clone(), CodeLanguage::Typescript, db, false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+            deno_tool
+                .run(
+                    env,
+                    node_env.api_listen_address.ip().to_string(),
+                    node_env.api_listen_address.port(),
+                    support_files,
+                    parameters,
+                    extra_config,
+                    node_storage_path,
+                    app_id.clone(),
+                    tool_id.clone(),
+                    node_name,
+                    true,
+                    Some(tool_router_key),
+                    mounts,
+                )
+                .await
+                .map(|result| json!(result.data))
+                .map_err(|e| ToolError::ExecutionError(e.to_string()))
+        }
+        _ => Err(ToolError::ExecutionError(format!("Unsupported tool type: {:?}", tool))),
     }
 }
 
