@@ -711,9 +711,16 @@ impl Node {
             })
             .collect();
 
+        // Deduplicate providers based on id
+        let mut seen_ids = std::collections::HashSet::new();
+        let llm_providers: Vec<SerializedLLMProvider> = llm_providers
+            .into_iter()
+            .filter(|provider| seen_ids.insert(provider.id.clone()))
+            .collect();
+
         // Iterate over each agent and add it using internal_add_agent
         for agent in llm_providers {
-            let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
+            let profile_name = agent.full_identity_name.clone();
             Self::internal_add_llm_provider(
                 db.clone(),
                 identity_manager.clone(),
