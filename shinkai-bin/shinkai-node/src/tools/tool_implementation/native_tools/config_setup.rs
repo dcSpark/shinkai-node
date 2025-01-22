@@ -32,7 +32,6 @@ impl ConfigSetupTool {
         Self {
             tool: ShinkaiToolHeader {
                 name: "Shinkai Tool Config Updater".to_string(),
-                toolkit_name: "shinkai_custom".to_string(),
                 description: r#"Tool for updating the configuration of a tool. 
 This tool allows you to update config fields of a tool by providing the tool_router_key and config key-value pairs.
 
@@ -44,10 +43,10 @@ Example usage:
             "api_secret": "some-api-secret"
     }
 }"#.to_string(),
-                tool_router_key: "local:::rust_toolkit:::shinkai_tool_config_updater".to_string(),
+                tool_router_key: "local:::__official_shinkai:::shinkai_tool_config_updater".to_string(),
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Update ShinkaiTool configurations".to_string(),
-                author: "Shinkai".to_string(),
+                author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
                 input_args: {
@@ -333,14 +332,14 @@ mod tests {
         let config_setup_tool = ConfigSetupTool::new();
         assert_eq!(
             config_setup_tool.tool.tool_router_key,
-            "local:::rust_toolkit:::shinkai_tool_config_updater"
+            "local:::__official_shinkai:::shinkai_tool_config_updater"
         );
     }
 
     fn create_deno_tool() -> ShinkaiTool {
         let mut initial_tool = ShinkaiTool::Deno(
             DenoTool {
-                toolkit_name: "deno_toolkit".to_string(),
+
                 name: "Test Tool".to_string(),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),

@@ -56,7 +56,7 @@ impl JobPromptGenerator {
                     match tool_content.get("function") {
                         Some(function) => {
                             let tool_router_key = function["tool_router_key"].as_str().unwrap_or("");
-                            if tool_router_key == "local:::rust_toolkit:::shinkai_sqlite_query_executor" {
+                            if tool_router_key == "local:::__official_shinkai:::shinkai_sqlite_query_executor" {
                                 let job_id_clone = job_id.clone();
                                 if let Ok(current_tables) = get_current_tables(job_id_clone).await {
                                     if !current_tables.is_empty() {

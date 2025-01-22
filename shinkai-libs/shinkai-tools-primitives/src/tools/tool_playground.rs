@@ -455,13 +455,11 @@ mod tests {
 
         let tool1 = &tools[0];
         assert_eq!(tool1.source, "local");
-        assert_eq!(tool1.toolkit_name, "toolkit1");
         assert_eq!(tool1.name, "tool1");
         assert_eq!(tool1.version, None);
 
         let tool2 = &tools[1];
         assert_eq!(tool2.source, "local");
-        assert_eq!(tool2.toolkit_name, "toolkit2");
         assert_eq!(tool2.name, "tool2");
         assert_eq!(tool2.version, Some("1.0".to_string()));
     }
@@ -508,7 +506,6 @@ mod tests {
 
         let valid_tool = &tools[0];
         assert_eq!(valid_tool.source, "local");
-        assert_eq!(valid_tool.toolkit_name, "toolkit2");
         assert_eq!(valid_tool.name, "tool2");
         assert_eq!(valid_tool.version, None);
     }

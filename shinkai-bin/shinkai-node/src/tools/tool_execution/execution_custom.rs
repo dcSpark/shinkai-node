@@ -19,7 +19,7 @@ use crate::managers::IdentityManager;
 use crate::tools::tool_implementation;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
-pub async fn execute_custom_tool(
+pub async fn try_to_execute_rust_tool(
     tool_router_key: &String,
     parameters: Map<String, Value>,
     tool_id: String,
@@ -37,16 +37,9 @@ pub async fn execute_custom_tool(
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
 
-    // Check if the tool_router_key contains "rust_toolkit"
-    if !tool_router_key.contains("rust_toolkit") {
-        return Err(ToolError::InvalidFunctionArguments(
-            "The tool_router_key does not contain 'rust_toolkit'".to_string(),
-        ));
-    }
-
     let result = match tool_router_key {
         // TODO Keep in sync with definitions_custom.rs
-        s if s == "local:::rust_toolkit:::shinkai_sqlite_query_executor" => {
+        s if s == "local:::__official_shinkai:::shinkai_sqlite_query_executor" => {
             tool_implementation::native_tools::sql_processor::SQLProcessorTool::execute(
                 bearer,
                 tool_id,
@@ -63,7 +56,7 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        s if s == "local:::rust_toolkit:::shinkai_tool_config_updater" => {
+        s if s == "local:::__official_shinkai:::shinkai_tool_config_updater" => {
             tool_implementation::native_tools::config_setup::ConfigSetupTool::execute(
                 bearer,
                 tool_id,
@@ -80,7 +73,7 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        s if s == "local:::rust_toolkit:::shinkai_llm_prompt_processor" => {
+        s if s == "local:::__official_shinkai:::shinkai_llm_prompt_processor" => {
             tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::execute(
                 bearer,
                 tool_id,
@@ -97,7 +90,7 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        s if s == "local:::rust_toolkit:::shinkai_process_embeddings" => {
+        s if s == "local:::__official_shinkai:::shinkai_process_embeddings" => {
             tool_implementation::native_tools::tool_knowledge::KnowledgeTool::execute(
                 bearer,
                 tool_id,
@@ -114,9 +107,7 @@ pub async fn execute_custom_tool(
             )
             .await
         }
-        _ => Err(ToolError::InvalidFunctionArguments(
-            "The specified tool_router_key does not match any known custom tools.".to_string(),
-        )),
+        _ => return Err(ToolError::ToolNotFound(tool_router_key.to_string())),
     };
     let text_result = format!("{:?}", result);
     if text_result.chars().count() > 200 {

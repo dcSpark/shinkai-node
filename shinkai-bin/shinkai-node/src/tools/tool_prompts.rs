@@ -657,7 +657,7 @@ pub async fn tool_metadata_implementation_prompt(
       }}
     ],
     "tools": [
-      "local:::rust_toolkit:::shinkai_sqlite_query_executor",
+      "local:::__official_shinkai:::shinkai_sqlite_query_executor",
       "local:::shinkai_tool_echo:::shinkai_echo"
     ],
     "oauth": {oauth_example}

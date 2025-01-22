@@ -1,13 +1,16 @@
 use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType};
 
-use super::{tool_output_arg::ToolOutputArg, error::ToolError, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::ToolConfig};
+use super::{
+    error::ToolError, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
+    tool_output_arg::ToolOutputArg,
+};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NetworkTool {
     pub name: String,
-    pub toolkit_name: String,
     pub description: String,
     pub version: String,
+    pub author: String,
     pub provider: ShinkaiName,
     pub usage_type: UsageType, // includes pricing
     pub activated: bool,
@@ -24,9 +27,9 @@ pub struct NetworkTool {
 impl NetworkTool {
     pub fn new(
         name: String,
-        toolkit_name: String,
         description: String,
         version: String,
+        author: String,
         provider: ShinkaiName,
         usage_type: UsageType,
         activated: bool,
@@ -38,9 +41,9 @@ impl NetworkTool {
     ) -> Self {
         Self {
             name,
-            toolkit_name,
             description,
             version,
+            author,
             provider,
             usage_type,
             activated,

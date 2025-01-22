@@ -21,6 +21,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
 use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
@@ -41,7 +42,6 @@ fn setup() {
 fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
-    std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
 
     // WIP: need to find a way to test the agent registration
     setup();
@@ -175,6 +175,48 @@ fn native_tool_test_knowledge() {
                 .await;
             }
             {
+                // Check that Rust tools are installed, retry up to 10 times
+                let mut retry_count = 0;
+                let max_retries = 10;
+                let retry_delay = Duration::from_millis(250);
+                
+                loop {
+                    tokio::time::sleep(retry_delay).await;
+
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
+                        .await
+                        .unwrap();
+                    
+                    match res_receiver.recv().await {
+                        Ok(result) => {
+                            match result {
+                                Ok(has_tools) => {
+                                    if has_tools {
+                                        // Rust tools are installed, we can break the loop
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Error checking Rust tools installation: {:?}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error receiving check result: {:?}", e);
+                            panic!("Error receiving check result: {:?}", e);
+                        }
+                    }
+
+                    retry_count += 1;
+                    if retry_count >= max_retries {
+                        panic!("Rust tools were not installed after {} retries", max_retries);
+                    }
+                }
+                eprintln!("Rust tools were installed after {} retries", retry_count);
+            }
+            {
                 //
                 // Creating a folder and uploading some files to the vector db
                 //
@@ -244,7 +286,7 @@ fn native_tool_test_knowledge() {
                     let tool_execution_result = api_execute_tool(
                         node1_commands_sender.clone(),
                         api_key_bearer.clone(),
-                        "local:::rust_toolkit:::shinkai_process_embeddings".to_string(),
+                        "local:::__official_shinkai:::shinkai_process_embeddings".to_string(),
                         parameters,
                         "your_tool_id".to_string(),
                         "your_app_id".to_string(),
