@@ -422,7 +422,7 @@ mod tests {
         // Create a proper ToolRouterKey
         let tool = ToolRouterKey::new(
             "local".to_string(),
-            "@@author.shinkai".to_string(),
+            "__author_shinkai".to_string(),
             "test_tool".to_string(),
             Some("1.0".to_string()),
         );

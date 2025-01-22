@@ -498,7 +498,7 @@ mod tests {
         let router_key = shinkai_tool.tool_router_key();
 
         // Expected pattern: [^a-z0-9_]+ (plus the :::)
-        let expected_key = "local:::deno_toolkit:::shinkai__download_pages";
+        let expected_key = "local:::__official_shinkai:::shinkai__download_pages";
 
         // Assert that the generated key matches the expected pattern
         assert_eq!(router_key.to_string_without_version(), expected_key);
