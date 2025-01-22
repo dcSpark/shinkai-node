@@ -1029,6 +1029,11 @@ pub enum NodeCommand {
         tool_key_path: String,
         res: Sender<Result<Vec<u8>, APIError>>,
     },
+    V2ApiPublishTool {
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiImportTool {
         bearer: String,
         url: String,
