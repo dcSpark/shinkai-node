@@ -43,7 +43,6 @@ fn micropayment_flow_test() {
 
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
-    std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
 
     setup();
     let rt = Runtime::new().unwrap();

@@ -728,7 +728,7 @@ impl Node {
         db: Arc<SqliteManager>,
         res: Sender<Result<bool, String>>,
     ) -> Result<(), Error> {
-        let result = db.has_any_rust_tools().map_err(|e| e.to_string());
+        let result = db.has_rust_tools().map_err(|e| e.to_string());
         res.send(result).await.unwrap();
         Ok(())
     }

@@ -17,9 +17,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
-use shinkai_node::managers::tool_router::ToolRouter;
-use shinkai_node::managers::identity_manager::IdentityManager;
-use shinkai_sqlite::SqliteManager;
 use std::fs;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
@@ -36,9 +33,6 @@ use super::utils::test_boilerplate::{default_embedding_model, supported_embeddin
 
 use mockito::Server;
 
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
 fn setup() {
     let path = Path::new("db_tests/");
     let _ = fs::remove_dir_all(path);
@@ -48,7 +42,6 @@ fn setup() {
 fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
-    std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
 
     // WIP: need to find a way to test the agent registration
     setup();
@@ -185,9 +178,11 @@ fn native_tool_test_knowledge() {
                 // Check that Rust tools are installed, retry up to 10 times
                 let mut retry_count = 0;
                 let max_retries = 10;
-                let retry_delay = Duration::from_millis(200);
+                let retry_delay = Duration::from_millis(250);
                 
                 loop {
+                    tokio::time::sleep(retry_delay).await;
+
                     let (res_sender, res_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
@@ -218,9 +213,8 @@ fn native_tool_test_knowledge() {
                     if retry_count >= max_retries {
                         panic!("Rust tools were not installed after {} retries", max_retries);
                     }
-                    
-                    tokio::time::sleep(retry_delay).await;
                 }
+                eprintln!("Rust tools were installed after {} retries", retry_count);
             }
             {
                 //

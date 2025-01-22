@@ -530,11 +530,11 @@ impl SqliteManager {
     }
 
     /// Checks if there are any Rust tools in the shinkai_tools table
-    pub fn has_any_rust_tools(&self) -> Result<bool, SqliteManagerError> {
+    pub fn has_rust_tools(&self) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let exists: bool = conn
+        let count: i64 = conn
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'Rust')",
+                "SELECT COUNT(*) FROM shinkai_tools WHERE tool_type = 'Rust'",
                 [],
                 |row| row.get(0),
             )
@@ -543,7 +543,7 @@ impl SqliteManager {
                 SqliteManagerError::DatabaseError(e)
             })?;
 
-        Ok(exists)
+        Ok(count >= 4)
     }
 
     // Update the FTS table when inserting or updating a tool
