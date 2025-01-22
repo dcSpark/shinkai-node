@@ -17,10 +17,14 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
+use shinkai_node::managers::tool_router::ToolRouter;
+use shinkai_node::managers::identity_manager::IdentityManager;
+use shinkai_sqlite::SqliteManager;
 use std::fs;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
 use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
@@ -31,6 +35,9 @@ use super::utils::node_test_api::api_registration_device_node_profile_main;
 use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use mockito::Server;
+
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 fn setup() {
     let path = Path::new("db_tests/");
@@ -173,6 +180,47 @@ fn native_tool_test_knowledge() {
                     node1_device_name,
                 )
                 .await;
+            }
+            {
+                // Check that Rust tools are installed, retry up to 10 times
+                let mut retry_count = 0;
+                let max_retries = 10;
+                let retry_delay = Duration::from_millis(200);
+                
+                loop {
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
+                        .await
+                        .unwrap();
+                    
+                    match res_receiver.recv().await {
+                        Ok(result) => {
+                            match result {
+                                Ok(has_tools) => {
+                                    if has_tools {
+                                        // Rust tools are installed, we can break the loop
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Error checking Rust tools installation: {:?}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error receiving check result: {:?}", e);
+                            panic!("Error receiving check result: {:?}", e);
+                        }
+                    }
+
+                    retry_count += 1;
+                    if retry_count >= max_retries {
+                        panic!("Rust tools were not installed after {} retries", max_retries);
+                    }
+                    
+                    tokio::time::sleep(retry_delay).await;
+                }
             }
             {
                 //

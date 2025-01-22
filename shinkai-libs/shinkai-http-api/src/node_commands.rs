@@ -512,6 +512,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    InternalCheckRustToolsInstallation {
+        res: Sender<Result<bool, String>>,
+    },
     // V2 API
     V2ApiGetPublicKeys {
         res: Sender<Result<GetPublicKeysResponse, APIError>>,

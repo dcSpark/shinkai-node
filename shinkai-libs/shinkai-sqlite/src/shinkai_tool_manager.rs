@@ -529,6 +529,23 @@ impl SqliteManager {
         Ok(exists)
     }
 
+    /// Checks if there are any Rust tools in the shinkai_tools table
+    pub fn has_any_rust_tools(&self) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM shinkai_tools WHERE tool_type = 'Rust')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
+
+        Ok(exists)
+    }
+
     // Update the FTS table when inserting or updating a tool
     pub fn update_tools_fts(&self, tool: &ShinkaiTool) -> Result<(), SqliteManagerError> {
         // Get a connection from the in-memory pool for FTS operations

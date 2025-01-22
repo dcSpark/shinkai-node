@@ -1260,6 +1260,12 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::InternalCheckRustToolsInstallation { res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::internal_check_rust_tools_installation(db_clone, res).await;
+                });
+            }
             //
             // V2 API
             //

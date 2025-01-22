@@ -1,5 +1,6 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
 use crate::network::node::ProxyConnectionInfo;
@@ -720,6 +721,15 @@ impl Node {
             .map_err(|e| format!("Failed to add agent: {}", e))?;
         }
 
+        Ok(())
+    }
+
+    pub async fn internal_check_rust_tools_installation(
+        db: Arc<SqliteManager>,
+        res: Sender<Result<bool, String>>,
+    ) -> Result<(), Error> {
+        let result = db.has_any_rust_tools().map_err(|e| e.to_string());
+        res.send(result).await.unwrap();
         Ok(())
     }
 }

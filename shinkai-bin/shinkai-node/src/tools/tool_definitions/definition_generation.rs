@@ -1,10 +1,8 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
-use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 

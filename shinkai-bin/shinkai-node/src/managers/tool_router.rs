@@ -100,21 +100,21 @@ impl ToolRouter {
         }
 
         if is_empty {
-            if let Err(e) = self.add_testing_network_tools().await {
-                eprintln!("Error adding testing network tools: {}", e);
-            }
             if let Err(e) = self.add_rust_tools().await {
                 eprintln!("Error adding rust tools: {}", e);
             }
             if let Err(e) = self.add_static_prompts(&generator).await {
                 eprintln!("Error adding static prompts: {}", e);
             }
-        } else if !has_any_js_tools {
             if let Err(e) = self.add_testing_network_tools().await {
                 eprintln!("Error adding testing network tools: {}", e);
             }
+        } else if !has_any_js_tools {
             if let Err(e) = self.add_rust_tools().await {
                 eprintln!("Error adding rust tools: {}", e);
+            }
+            if let Err(e) = self.add_testing_network_tools().await {
+                eprintln!("Error adding testing network tools: {}", e);
             }
         }
 
@@ -122,9 +122,6 @@ impl ToolRouter {
     }
 
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        if let Err(e) = self.add_testing_network_tools().await {
-            eprintln!("Error adding testing network tools: {}", e);
-        }
         if let Err(e) = self.add_rust_tools().await {
             eprintln!("Error adding rust tools: {}", e);
         }
@@ -133,6 +130,9 @@ impl ToolRouter {
         }
         if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
+        }
+        if let Err(e) = self.add_testing_network_tools().await {
+            eprintln!("Error adding testing network tools: {}", e);
         }
         Ok(())
     }
@@ -261,7 +261,7 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
-    async fn add_rust_tools(&self) -> Result<(), ToolError> {
+    pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
         let rust_tools = get_rust_tools();
         for tool in rust_tools {
             let rust_tool = RustTool::new(
