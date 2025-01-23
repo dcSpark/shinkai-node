@@ -19,6 +19,7 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::config_setup::ConfigSetupTool::new().tool);
+    custom_tools.push(tool_implementation::native_tools::stagehand_processor::StagehandProcessorTool::new().tool);
     custom_tools
 }
 
