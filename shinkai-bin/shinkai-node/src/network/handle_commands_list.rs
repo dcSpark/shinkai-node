@@ -2473,6 +2473,28 @@ impl Node {
                     let _ = Node::v2_api_export_tool(db_clone, bearer, node_env, tool_key_path, res).await;
                 });
             }
+            NodeCommand::V2ApiPublishTool {
+                bearer,
+                tool_key_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                let identity_manager = self.identity_manager.clone();
+                let signing_secret_key = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_publish_tool(
+                        db_clone,
+                        bearer,
+                        node_env,
+                        tool_key_path,
+                        identity_manager,
+                        signing_secret_key,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiImportTool { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
