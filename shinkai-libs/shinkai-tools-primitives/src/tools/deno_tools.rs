@@ -1,8 +1,8 @@
 use std::collections::HashMap;
+use std::env;
 use std::hash::RandomState;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, thread};
 
 use super::parameters::Parameters;
 use super::tool_config::{OAuth, ToolConfig};
@@ -21,11 +21,9 @@ use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::execution_error::ExecutionError;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
-use tokio::runtime::Runtime;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DenoTool {
-    pub toolkit_name: String,
     pub name: String,
     pub homepage: Option<String>,
     pub author: String,
@@ -51,11 +49,6 @@ pub struct DenoTool {
 }
 
 impl DenoTool {
-    /// Default name of the rust toolkit
-    pub fn toolkit_name(&self) -> String {
-        "deno-toolkit".to_string()
-    }
-
     /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
@@ -141,9 +134,8 @@ impl DenoTool {
         let logs_path = full_path.clone().join(app_id.clone()).join("logs");
 
         // Ensure the root directory exists. Subdirectories will be handled by the engine
-        std::fs::create_dir_all(full_path.clone()).map_err(|e| {
-            ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
-        })?;
+        std::fs::create_dir_all(full_path.clone())
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
         println!(
             "[Running DenoTool] Full path: {:?}. App ID: {}. Tool ID: {}",
             full_path, app_id, tool_id
@@ -153,9 +145,8 @@ impl DenoTool {
         if is_temporary {
             // TODO: Garbage collector will delete the tool folder after some time
             let temporal_path = full_path.join(".temporal");
-            std::fs::write(temporal_path, "").map_err(|e| {
-                ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
-            })?;
+            std::fs::write(temporal_path, "")
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e)))?;
         }
 
         // Get the start time, this is used to check if the files were modified after the tool was executed
@@ -233,17 +224,14 @@ impl DenoTool {
         print_result(&result);
         match result {
             Ok(result) => {
-                update_result_with_modified_files(
-                    result, start_time, &home_path, &logs_path, &node_name, &app_id,
-                )
+                update_result_with_modified_files(result, start_time, &home_path, &logs_path, &node_name, &app_id)
             }
             Err(e) => {
-                let files =
-                    get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
-                        .into_iter()
-                        .map(|file| file.as_str().unwrap_or_default().to_string())
-                        .collect::<Vec<String>>()
-                        .join(" ");
+                let files = get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
+                    .into_iter()
+                    .map(|file| file.as_str().unwrap_or_default().to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ");
 
                 Err(ToolError::ExecutionError(format!(
                     "Error: {}. Files: {}",
@@ -328,9 +316,8 @@ impl DenoTool {
         let logs_path = full_path.clone().join(app_id.clone()).join("logs");
 
         // Ensure the root directory exists. Subdirectories will be handled by the engine
-        std::fs::create_dir_all(full_path.clone()).map_err(|e| {
-            ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
-        })?;
+        std::fs::create_dir_all(full_path.clone())
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
         println!(
             "[Running DenoTool] Full path: {:?}. App ID: {}. Tool ID: {}",
             full_path, app_id, tool_id
@@ -340,9 +327,8 @@ impl DenoTool {
         if is_temporary {
             // TODO: Garbage collector will delete the tool folder after some time
             let temporal_path = full_path.join(".temporal");
-            std::fs::write(temporal_path, "").map_err(|e| {
-                ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
-            })?;
+            std::fs::write(temporal_path, "")
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e)))?;
         }
 
         // Get the start time, this is used to check if the files were modified after the tool was executed
@@ -402,17 +388,14 @@ impl DenoTool {
         print_result(&result);
         match result {
             Ok(result) => {
-                update_result_with_modified_files(
-                    result, start_time, &home_path, &logs_path, &node_name, &app_id,
-                )
+                update_result_with_modified_files(result, start_time, &home_path, &logs_path, &node_name, &app_id)
             }
             Err(e) => {
-                let files =
-                    get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
-                        .into_iter()
-                        .map(|file| file.as_str().unwrap_or_default().to_string())
-                        .collect::<Vec<String>>()
-                        .join(" ");
+                let files = get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
+                    .into_iter()
+                    .map(|file| file.as_str().unwrap_or_default().to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ");
 
                 Err(ToolError::ExecutionError(format!(
                     "Error: {}. Files: {}",
@@ -643,7 +626,6 @@ mod tests {
             "output_arg": {
                 "json": ""
             },
-            "toolkit_name": "deno-toolkit",
             "version": "1.0.0",
             "js_code": "",
             "keywords": [],
@@ -659,7 +641,6 @@ mod tests {
 
         assert_eq!(deserialized.author, "Shinkai");
         assert_eq!(deserialized.name, "Coinbase Wallet Creator");
-        assert_eq!(deserialized.toolkit_name, "deno-toolkit");
         assert_eq!(deserialized.version, "1.0.0");
         assert_eq!(deserialized.description, "Tool for creating a Coinbase wallet");
 
@@ -681,7 +662,6 @@ mod tests {
     #[test]
     fn test_email_fetcher_tool_config() {
         let tool = DenoTool {
-            toolkit_name: "deno-toolkit".to_string(),
             name: "Email Fetcher".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Shinkai".to_string(),

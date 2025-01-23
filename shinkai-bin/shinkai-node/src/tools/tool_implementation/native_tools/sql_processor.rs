@@ -37,7 +37,6 @@ impl SQLProcessorTool {
         Self {
             tool: ShinkaiToolHeader {
                 name: "Shinkai SQLite Query Executor".to_string(),
-                toolkit_name: "shinkai_custom".to_string(),
                 description: r#"Tool for executing a single SQL query on a specified database file. 
 If this tool is used, you need to create if not exists the tables used other queries.
 Table creation should always use 'CREATE TABLE IF NOT EXISTS'.
@@ -61,10 +60,10 @@ INSERT INTO table_name (field_1, field_3, field_4)
 SELECT * FROM table_name WHERE field_2 > datetime('now', '-1 day');
 SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DESC LIMIT 10;"#
                     .to_string(),
-                tool_router_key: "local:::rust_toolkit:::shinkai_sqlite_query_executor".to_string(),
+                tool_router_key: "local:::__official_shinkai:::shinkai_sqlite_query_executor".to_string(),
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Execute SQLite queries".to_string(),
-                author: "Shinkai".to_string(),
+                author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
                 input_args: {
@@ -255,7 +254,7 @@ mod tests {
         let sql_processor_tool = SQLProcessorTool::new();
         assert_eq!(
             sql_processor_tool.tool.tool_router_key,
-            "local:::rust_toolkit:::shinkai_sqlite_query_executor"
+            "local:::__official_shinkai:::shinkai_sqlite_query_executor"
         );
     }
 

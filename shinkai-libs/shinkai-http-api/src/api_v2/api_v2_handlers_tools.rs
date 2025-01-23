@@ -2,7 +2,7 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{schemas::{shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey}, shinkai_message::shinkai_message_schemas::JobMessage};
-use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiTool, tool_config::OAuth, tool_playground::ToolPlayground};
+use shinkai_tools_primitives::tools::{shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
@@ -739,7 +739,7 @@ pub async fn get_shinkai_tool_handler(
 pub async fn add_shinkai_tool_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    payload: ShinkaiTool,
+    payload: ShinkaiToolWithAssets,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);

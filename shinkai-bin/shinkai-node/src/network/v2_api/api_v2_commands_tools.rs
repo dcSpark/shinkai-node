@@ -37,7 +37,7 @@ use shinkai_tools_primitives::tools::{
     deno_tools::DenoTool,
     error::ToolError,
     python_tools::PythonTool,
-    shinkai_tool::ShinkaiTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
     tool_playground::ToolPlayground,
@@ -318,7 +318,8 @@ impl Node {
     pub async fn v2_api_add_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
-        new_tool: ShinkaiTool,
+        node_env: NodeEnvironment,
+        new_tool_with_assets: ShinkaiToolWithAssets,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -326,12 +327,63 @@ impl Node {
             return Ok(());
         }
 
-        // Save the new tool to the LanceShinkaiDb
+        let new_tool = new_tool_with_assets.tool;
+        let dependencies = new_tool.get_tools();
+        for dependency in dependencies {
+            let tool = db.get_tool_by_key(&dependency.to_string_without_version());
+            if tool.is_err() {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Tool not found: {}", dependency.to_string_without_version()),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
         let save_result = db.add_tool(new_tool).await;
 
         match save_result {
             Ok(tool) => {
                 let tool_key = tool.tool_router_key();
+
+                if let Some(assets) = new_tool_with_assets.assets {
+                    if !assets.is_empty() {
+                        let file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
+                            .join(".tools_storage")
+                            .join("tools")
+                            .join(tool.tool_router_key().convert_to_path());
+                        if !file_path.exists() {
+                            let s = std::fs::create_dir_all(&file_path);
+                            if s.is_err() {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Failed to create directory".to_string(),
+                                    message: format!("Failed to create directory: {}", s.err().unwrap()),
+                                };
+                                res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                        // Create the assets
+                        for asset in assets {
+                            let asset_path = file_path.join(asset.file_name);
+                            let asset_content = base64::decode(asset.data).unwrap();
+                            let status = fs::write(asset_path, asset_content).await;
+                            if status.is_err() {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Failed to create directory".to_string(),
+                                    message: format!("Failed to create directory: {}", status.err().unwrap()),
+                                };
+                                res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+
                 let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key.to_string_without_version()) });
                 let _ = res.send(Ok(response)).await;
                 Ok(())
@@ -423,37 +475,25 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-
-        // TODO Is this correct. There should be a builder.
-        let toolkit_name = {
-            let name = format!(
-                "{}_{}",
-                payload
-                    .metadata
-                    .name
-                    .to_lowercase()
-                    .replace(" ", "_")
-                    .replace("-", "_")
-                    .replace(":", "_"),
-                payload
-                    .metadata
-                    .author
-                    .to_lowercase()
-                    .replace(" ", "_")
-                    .replace("-", "_")
-                    .replace(":", "_")
-            );
-            // Use a regex to filter out unwanted characters
-            let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
-            re.replace_all(&name, "").to_string()
-        };
-
         let mut updated_payload = payload.clone();
+
+        let dependencies = updated_payload.metadata.tools.clone().unwrap_or_default();
+        for dependency in dependencies {
+            let tool = db.get_tool_by_key(&dependency.to_string_without_version());
+            if tool.is_err() {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Tool not found: {}", dependency.to_string_without_version()),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
 
         let shinkai_tool = match payload.language {
             CodeLanguage::Typescript => {
                 let tool = DenoTool {
-                    toolkit_name,
                     name: payload.metadata.name.clone(),
                     homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
@@ -478,7 +518,6 @@ impl Node {
             }
             CodeLanguage::Python => {
                 let tool = PythonTool {
-                    toolkit_name,
                     name: payload.metadata.name.clone(),
                     homepage: payload.metadata.homepage.clone(),
                     version: payload.metadata.version.clone(),
@@ -966,9 +1005,9 @@ impl Node {
             }
         };
 
-        let is_memory_required = tools
-            .iter()
-            .any(|tool| tool.to_string_without_version() == "local:::rust_toolkit:::shinkai_sqlite_query_executor");
+        let is_memory_required = tools.iter().any(|tool| {
+            tool.to_string_without_version() == "local:::__official_shinkai:::shinkai_sqlite_query_executor"
+        });
         let code_prompt =
             match generate_code_prompt(language.clone(), is_memory_required, "".to_string(), tool_definitions).await {
                 Ok(prompt) => prompt,
@@ -1072,10 +1111,9 @@ impl Node {
         };
 
         let prompt = job_message.content.clone();
-        let is_memory_required = tools
-            .clone()
-            .iter()
-            .any(|tool| tool.to_string_without_version() == "local:::rust_toolkit:::shinkai_sqlite_query_executor");
+        let is_memory_required = tools.clone().iter().any(|tool| {
+            tool.to_string_without_version() == "local:::__official_shinkai:::shinkai_sqlite_query_executor"
+        });
 
         // Determine the code generation prompt so we can update the message with the custom prompt if required
         let generate_code_prompt = match raw {

@@ -8,7 +8,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
-use crate::tools::tool_execution::execution_custom::execute_custom_tool;
+use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
@@ -100,21 +100,21 @@ impl ToolRouter {
         }
 
         if is_empty {
-            if let Err(e) = self.add_testing_network_tools().await {
-                eprintln!("Error adding testing network tools: {}", e);
-            }
             if let Err(e) = self.add_rust_tools().await {
                 eprintln!("Error adding rust tools: {}", e);
             }
             if let Err(e) = self.add_static_prompts(&generator).await {
                 eprintln!("Error adding static prompts: {}", e);
             }
-        } else if !has_any_js_tools {
             if let Err(e) = self.add_testing_network_tools().await {
                 eprintln!("Error adding testing network tools: {}", e);
             }
+        } else if !has_any_js_tools {
             if let Err(e) = self.add_rust_tools().await {
                 eprintln!("Error adding rust tools: {}", e);
+            }
+            if let Err(e) = self.add_testing_network_tools().await {
+                eprintln!("Error adding testing network tools: {}", e);
             }
         }
 
@@ -122,9 +122,6 @@ impl ToolRouter {
     }
 
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        if let Err(e) = self.add_testing_network_tools().await {
-            eprintln!("Error adding testing network tools: {}", e);
-        }
         if let Err(e) = self.add_rust_tools().await {
             eprintln!("Error adding rust tools: {}", e);
         }
@@ -133,6 +130,9 @@ impl ToolRouter {
         }
         if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
+        }
+        if let Err(e) = self.add_testing_network_tools().await {
+            eprintln!("Error adding testing network tools: {}", e);
         }
         Ok(())
     }
@@ -261,7 +261,7 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
-    async fn add_rust_tools(&self) -> Result<(), ToolError> {
+    pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
         let rust_tools = get_rust_tools();
         for tool in rust_tools {
             let rust_tool = RustTool::new(
@@ -296,10 +296,10 @@ impl ToolRouter {
             // Manually create NetworkTool
             let network_tool = NetworkTool {
                 name: "network__echo".to_string(),
-                toolkit_name: "shinkai-tool-echo".to_string(),
                 description: "Echoes the input message".to_string(),
                 version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
@@ -329,10 +329,10 @@ impl ToolRouter {
             // Manually create another NetworkTool
             let youtube_tool = NetworkTool {
                 name: "youtube_transcript_with_timestamps".to_string(),
-                toolkit_name: "shinkai-tool-youtube-transcript".to_string(),
                 description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
                 version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
@@ -554,21 +554,23 @@ impl ToolRouter {
                     &python_tool.oauth,
                 )?;
 
-                let result = python_tool.run(
-                    envs,
-                    node_env.api_listen_address.ip().to_string(),
-                    node_env.api_listen_address.port(),
-                    support_files,
-                    function_args,
-                    function_config_vec,
-                    node_storage_path,
-                    app_id.clone(),
-                    tool_id.clone(),
-                    node_name,
-                    false,
-                    None,
-                    Some(all_files),
-                ).await?;
+                let result = python_tool
+                    .run(
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        support_files,
+                        function_args,
+                        function_config_vec,
+                        node_storage_path,
+                        app_id.clone(),
+                        tool_id.clone(),
+                        node_name,
+                        false,
+                        None,
+                        Some(all_files),
+                    )
+                    .await?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
@@ -612,7 +614,7 @@ impl ToolRouter {
                     &None,
                 )?;
 
-                let result = execute_custom_tool(
+                let result = try_to_execute_rust_tool(
                     &shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     function_args,
                     tool_id,
@@ -679,21 +681,23 @@ impl ToolRouter {
                     &deno_tool.oauth,
                 )?;
 
-                let result = deno_tool.run(
-                    envs,
-                    node_env.api_listen_address.ip().to_string(),
-                    node_env.api_listen_address.port(),
-                    support_files,
-                    function_args,
-                    function_config_vec,
-                    node_storage_path,
-                    app_id,
-                    tool_id.clone(),
-                    node_name,
-                    false,
-                    Some(tool_id),
-                    Some(all_files),
-                ).await?;
+                let result = deno_tool
+                    .run(
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        support_files,
+                        function_args,
+                        function_config_vec,
+                        node_storage_path,
+                        app_id,
+                        tool_id.clone(),
+                        node_name,
+                        false,
+                        Some(tool_id),
+                        Some(all_files),
+                    )
+                    .await?;
 
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -1034,22 +1038,24 @@ impl ToolRouter {
             &oauth,
         )?;
 
-        let result = js_tool.run(
-            env,
-            node_env.api_listen_address.ip().to_string(),
-            node_env.api_listen_address.port(),
-            support_files,
-            function_args,
-            function_config_vec,
-            node_storage_path,
-            app_id,
-            tool_id.clone(),
-            // TODO Is this correct?
-            requester_node_name,
-            true,
-            Some(tool_id),
-            None,
-        ).await?;
+        let result = js_tool
+            .run(
+                env,
+                node_env.api_listen_address.ip().to_string(),
+                node_env.api_listen_address.port(),
+                support_files,
+                function_args,
+                function_config_vec,
+                node_storage_path,
+                app_id,
+                tool_id.clone(),
+                // TODO Is this correct?
+                requester_node_name,
+                true,
+                Some(tool_id),
+                None,
+            )
+            .await?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 
