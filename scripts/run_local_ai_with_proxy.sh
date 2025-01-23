@@ -27,6 +27,5 @@ export LOG_ALL="1"
 export DEBUG_VRKAI="1"
 # export PROXY_IDENTITY="@@kao_tcp_relayer.arb-sep-shinkai"
 export PROXY_IDENTITY="@@relayer_pub_01.arb-sep-shinkai"
-export SHINKAI_TOOLS_DIRECTORY_URL="https://download.shinkai.com/tools/directory.json"
 
 cargo run --bin shinkai_node --package shinkai_node

@@ -1705,7 +1705,6 @@ impl Node {
                 let archive_clone = zip_contents.archive.clone();
                 let files = archive_clone.file_names();
                 for file in files {
-                    println!("File: {:?}", file);
                     if file == "__tool.json" {
                         continue;
                     }
