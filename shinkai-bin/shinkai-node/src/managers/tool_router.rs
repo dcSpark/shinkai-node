@@ -150,7 +150,9 @@ impl ToolRouter {
         let start_time = Instant::now();
 
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-            .unwrap_or_else(|_| "https://download.shinkai.com/tools/directory.json".to_string());
+            .unwrap_or_else(|_| format!("https://download.shinkai.com/tools-{}/directory.json", env!("CARGO_PKG_VERSION")));
+
+        eprintln!("Importing tools from: {}", url);
 
         let response = reqwest::get(url).await.map_err(|e| ToolError::RequestError(e))?;
 
@@ -175,40 +177,46 @@ impl ToolRouter {
             .map(|(name, url, router_key)| (name.unwrap(), url.unwrap(), router_key.unwrap()))
             .collect::<Vec<_>>();
 
-        let futures = tool_urls.into_iter().map(|(tool_name, tool_url, router_key)| {
-            let db = db.clone();
-            let node_env = fetch_node_environment();
-            let tool_url = tool_url.to_string();
-            async move {
-                let tool = db.get_tool_by_key(router_key);
-                let _ = match tool {
-                    Ok(_) => {
-                        println!("Tool already exists: {}", router_key);
-                        return Ok::<(), ToolError>(());
-                    }
-                    Err(SqliteManagerError::ToolNotFound(_)) => {
-                        ();
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to get tool: {:#?}", e);
-                        return Ok::<(), ToolError>(());
-                    }
-                };
+        // Process tools in chunks of 5
+        let chunk_size = 5;
+        for chunk in tool_urls.chunks(chunk_size) {
+            let futures = chunk.iter().map(|(tool_name, tool_url, router_key)| {
+                let db = db.clone();
+                let node_env = fetch_node_environment();
+                let tool_url = tool_url.to_string();
+                let tool_name = tool_name.to_string();
+                async move {
+                    let tool = db.get_tool_by_key(router_key);
+                    let _ = match tool {
+                        Ok(_) => {
+                            println!("Tool already exists: {}", router_key);
+                            return Ok::<(), ToolError>(());
+                        }
+                        Err(SqliteManagerError::ToolNotFound(_)) => {
+                            ();
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to get tool: {:#?}", e);
+                            return Ok::<(), ToolError>(());
+                        }
+                    };
 
-                match Node::v2_api_import_tool_internal(db, node_env, tool_url).await {
-                    Ok(_) => {
-                        println!("Successfully imported tool {}", tool_name);
-                        return Ok::<(), ToolError>(());
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to import tool {}: {:#?}", tool_name, e);
-                        return Ok::<(), ToolError>(()); // Continue on error
+                    match Node::v2_api_import_tool_internal(db, node_env, tool_url).await {
+                        Ok(_) => {
+                            println!("Successfully imported tool {}", tool_name);
+                            return Ok::<(), ToolError>(());
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to import tool {}: {:#?}", tool_name, e);
+                            return Ok::<(), ToolError>(()); // Continue on error
+                        }
                     }
                 }
-            }
-        });
+            });
 
-        futures::future::join_all(futures).await;
+            // Process this chunk of futures
+            futures::future::join_all(futures).await;
+        }
 
         // Calculate and print the duration
         let duration = start_time.elapsed();
