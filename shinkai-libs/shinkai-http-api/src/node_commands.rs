@@ -1037,6 +1037,11 @@ pub enum NodeCommand {
         url: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiImportToolZip {
+        bearer: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiRemoveTool {
         bearer: String,
         tool_key: String,

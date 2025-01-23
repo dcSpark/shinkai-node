@@ -174,13 +174,20 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(import_tool_handler);
 
+    let import_tool_zip_route = warp::path("import_tool_zip")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::multipart::form().max_length(50 * 1024 * 1024))
+        .and_then(import_tool_zip_handler);
+
     let tool_asset_route = warp::path("tool_asset")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::header::<String>("x-shinkai-tool-id"))
         .and(warp::header::<String>("x-shinkai-app-id"))
-        .and(warp::multipart::form())
+        .and(warp::multipart::form().max_length(50 * 1024 * 1024))
         .and_then(tool_asset_handler);
 
     let list_tool_asset_route = warp::path("list_tool_asset")
@@ -227,6 +234,7 @@ pub fn tool_routes(
         .or(resolve_shinkai_file_protocol_route)
         .or(export_tool_route)
         .or(import_tool_route)
+        .or(import_tool_zip_route)
         .or(tool_asset_route)
         .or(list_tool_asset_route)
         .or(delete_tool_asset_route)
@@ -1301,6 +1309,122 @@ pub async fn import_tool_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/import_tool_zip",
+    responses(
+        (status = 200, description = "Successfully imported tool from zip", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn import_tool_zip_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    mut form: FormData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let mut file_data: Option<Vec<u8>> = None;
+
+    // Add error handling for form parsing
+    while let Ok(Some(part)) = form.try_next().await {
+        if part.name() == "file" {
+            // Read file data with error handling
+            let mut bytes = Vec::new();
+            let mut stream = part.stream();
+            
+            while let Ok(Some(chunk)) = stream.try_next().await {
+                if bytes.len() + chunk.chunk().len() > 50 * 1024 * 1024 {
+                    return Ok(warp::reply::with_status(
+                        warp::reply::json(&APIError {
+                            code: 400,
+                            error: "File too large".to_string(),
+                            message: "File size exceeds 50MB limit".to_string(),
+                        }),
+                        StatusCode::BAD_REQUEST,
+                    ));
+                }
+                bytes.extend_from_slice(chunk.chunk());
+            }
+            
+            if bytes.is_empty() {
+                return Ok(warp::reply::with_status(
+                    warp::reply::json(&APIError {
+                        code: 400,
+                        error: "Empty file".to_string(),
+                        message: "The uploaded file is empty".to_string(),
+                    }),
+                    StatusCode::BAD_REQUEST,
+                ));
+            }
+            
+            file_data = Some(bytes);
+        }
+    }
+
+    // Validate we have the file data
+    let file_data = match file_data {
+        Some(data) => data,
+        None => {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&APIError {
+                    code: 400,
+                    error: "Missing file".to_string(),
+                    message: "Zip file data is required".to_string(),
+                }),
+                StatusCode::BAD_REQUEST,
+            ))
+        }
+    };
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    match sender
+        .send(NodeCommand::V2ApiImportToolZip {
+            bearer,
+            file_data,
+            res: res_sender,
+        })
+        .await {
+            Ok(_) => (),
+            Err(_) => {
+                return Ok(warp::reply::with_status(
+                    warp::reply::json(&APIError {
+                        code: 500,
+                        error: "Internal server error".to_string(),
+                        message: "Failed to process the request".to_string(),
+                    }),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ))
+            }
+        };
+
+    let result = match res_receiver.recv().await {
+        Ok(result) => result,
+        Err(_) => {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&APIError {
+                    code: 500,
+                    error: "Internal server error".to_string(),
+                    message: "Failed to receive response from server".to_string(),
+                }),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    };
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
 
 #[utoipa::path(
     get,
@@ -1709,6 +1833,7 @@ pub async fn disable_all_tools_handler(
         remove_tool_handler,
         export_tool_handler,
         import_tool_handler,
+        import_tool_zip_handler,
         resolve_shinkai_file_protocol_handler,
         tool_asset_handler,
         list_tool_asset_handler,

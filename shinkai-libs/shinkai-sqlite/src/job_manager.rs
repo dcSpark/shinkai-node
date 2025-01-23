@@ -400,13 +400,6 @@ impl SqliteManager {
         let associated_ui_text: Option<String> = row.get(7)?;
         let config_text: Option<String> = row.get(8)?;
 
-        if let Some(ref text) = config_text {
-            match serde_json::from_str::<JobConfig>(text) {
-                Ok(config) => eprintln!("Deserialized config: {:?}", config),
-                Err(e) => eprintln!("Failed to deserialize config: {:?}", e),
-            }
-        }
-
         let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
         let associated_ui = associated_ui_text
             .as_deref()

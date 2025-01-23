@@ -2156,6 +2156,142 @@ impl Node {
             }
         }
     }
+
+    async fn process_tool_zip(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        zip_data: Vec<u8>,
+    ) -> Result<Value, APIError> {
+        // Create a cursor from the zip data
+        let cursor = std::io::Cursor::new(zip_data);
+        let mut archive = match zip::ZipArchive::new(cursor) {
+            Ok(archive) => archive,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Zip File".to_string(),
+                    message: format!("Failed to read zip archive: {}", err),
+                });
+            }
+        };
+
+        // Extract and parse tool.json
+        let mut buffer = Vec::new();
+        {
+            let mut file = match archive.by_name("__tool.json") {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Zip File".to_string(),
+                        message: "Archive does not contain __tool.json".to_string(),
+                    });
+                }
+            };
+
+            if let Err(err) = file.read_to_end(&mut buffer) {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool JSON".to_string(),
+                    message: format!("Failed to read tool.json: {}", err),
+                });
+            }
+        }
+
+        // Parse the JSON into a ShinkaiTool
+        let tool: ShinkaiTool = match serde_json::from_slice(&buffer) {
+            Ok(tool) => tool,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool JSON".to_string(),
+                    message: format!("Failed to parse tool.json: {}", err),
+                });
+            }
+        };
+
+        // Save the tool to the database
+        match db.add_tool(tool).await {
+            Ok(tool) => {
+                // Process all files except __tool.json
+                let mut files_to_process = Vec::new();
+                for i in 0..archive.len() {
+                    if let Ok(mut file) = archive.by_index(i) {
+                        let name = file.name().to_string();
+                        if name != "__tool.json" {
+                            // Read the file data into memory
+                            let mut buffer = Vec::new();
+                            if let Err(err) = file.read_to_end(&mut buffer) {
+                                return Err(APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Read Error".to_string(),
+                                    message: format!("Failed to read file {}: {}", name, err),
+                                });
+                            }
+                            files_to_process.push((name, buffer));
+                        }
+                    }
+                }
+
+                // Process the files after reading them all into memory
+                for (name, buffer) in files_to_process {
+                    // Create the directory structure if it doesn't exist
+                    let file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
+                        .join(".tools_storage")
+                        .join("tools")
+                        .join(tool.tool_router_key().convert_to_path());
+                    if !file_path.exists() {
+                        if let Err(err) = std::fs::create_dir_all(&file_path) {
+                            return Err(APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Failed to create directory".to_string(),
+                                message: format!("Failed to create directory: {}", err),
+                            });
+                        }
+                    }
+
+                    // Write the file
+                    let asset_path = file_path.join(&name);
+                    if let Err(err) = std::fs::write(asset_path, buffer) {
+                        return Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Failed to write file".to_string(),
+                            message: format!("Failed to write file {}: {}", name, err),
+                        });
+                    }
+                }
+
+                Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool_key": tool.tool_router_key().to_string_without_version(),
+                    "tool": tool
+                }))
+            }
+            Err(err) => Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save tool to database: {}", err),
+            }),
+        }
+    }
+
+    pub async fn v2_api_import_tool_zip(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_env: NodeEnvironment,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let result = Self::process_tool_zip(db, node_env, file_data).await;
+        let _ = res.send(result).await;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

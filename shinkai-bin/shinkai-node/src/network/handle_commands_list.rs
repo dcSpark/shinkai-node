@@ -2480,6 +2480,13 @@ impl Node {
                     let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, res).await;
                 });
             }
+            NodeCommand::V2ApiImportToolZip { bearer, file_data, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_tool_zip(db_clone, bearer, node_env, file_data, res).await;
+                });
+            }
             NodeCommand::V2ApiRemoveTool { bearer, tool_key, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
