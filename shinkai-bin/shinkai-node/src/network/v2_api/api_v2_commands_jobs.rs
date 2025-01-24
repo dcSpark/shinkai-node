@@ -423,8 +423,8 @@ impl Node {
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
-        limit: Option<usize>,
-        offset: Option<String>,
+        _limit: Option<usize>,
+        _offset: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
