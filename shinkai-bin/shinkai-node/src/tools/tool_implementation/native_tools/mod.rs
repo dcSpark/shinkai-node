@@ -6,7 +6,9 @@
 // Solo tiene que mantener la firma del run
 
 pub mod config_setup;
+pub mod demo_2048_processor;
 pub mod llm_prompt_processor;
 pub mod sql_processor;
 pub mod stagehand_processor;
 pub mod tool_knowledge;
+pub mod typescript_unsafe_processor;

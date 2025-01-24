@@ -10,6 +10,8 @@ use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
+use crate::tools::tool_implementation::native_tools::demo_2048_processor::install_2048_processor;
+use crate::tools::tool_implementation::native_tools::stagehand_processor::install_stagehand_processor;
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -277,6 +279,8 @@ impl ToolRouter {
                 .await
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
+        install_stagehand_processor(self.sqlite_manager.clone()).await?;
+        install_2048_processor(self.sqlite_manager.clone()).await?;
         Ok(())
     }
 

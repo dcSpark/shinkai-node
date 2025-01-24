@@ -39,8 +39,8 @@ pub async fn try_to_execute_rust_tool(
 
     let result = match tool_router_key {
         // TODO Keep in sync with definitions_custom.rs
-        s if s == "local:::__official_shinkai:::shinkai_stagehand_processor" => {
-            tool_implementation::native_tools::stagehand_processor::StagehandProcessorTool::execute(
+        s if s == "local:::__official_shinkai:::shinkai_typescript_unsafe_processor" => {
+            tool_implementation::native_tools::typescript_unsafe_processor::TypescriptUnsafeProcessorTool::execute(
                 bearer,
                 tool_id,
                 app_id,
