@@ -88,12 +88,21 @@ impl PythonTool {
                     .join(".tools_storage")
                     .join("tools")
                     .join(tool_key.convert_to_path());
-                self.assets
-                    .clone()
-                    .unwrap_or(vec![])
-                    .iter()
-                    .map(|asset| path.clone().join(asset))
-                    .collect()
+
+                let mut assets_files = Vec::new();
+                if path.exists() {
+                    for entry in std::fs::read_dir(&path)
+                        .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+                    {
+                        let entry = entry
+                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
+                        let file_path = entry.path();
+                        if file_path.is_file() {
+                            assets_files.push(file_path);
+                        }
+                    }
+                }
+                assets_files
             }
             None => vec![],
         };
@@ -112,7 +121,8 @@ impl PythonTool {
             is_temporary,
             assets_files,
             mounts,
-        ).await
+        )
+        .await
     }
 
     pub async fn run_on_demand(
@@ -195,9 +205,8 @@ impl PythonTool {
         let logs_path = full_path.clone().join(app_id.clone()).join("logs");
 
         // Ensure the root directory exists. Subdirectories will be handled by the engine
-        std::fs::create_dir_all(full_path.clone()).map_err(|e| {
-            ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
-        })?;
+        std::fs::create_dir_all(full_path.clone())
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
         println!(
             "[Running PythonTool] Full path: {:?}. App ID: {}. Tool ID: {}",
             full_path, app_id, tool_id
@@ -207,9 +216,8 @@ impl PythonTool {
         if is_temporary {
             // TODO: Garbage collector will delete the tool folder after some time
             let temporal_path = full_path.join(".temporal");
-            std::fs::write(temporal_path, "").map_err(|e| {
-                ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
-            })?;
+            std::fs::write(temporal_path, "")
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e)))?;
         }
 
         // Get the start time, this is used to check if the files were modified after the tool was executed
@@ -267,17 +275,14 @@ impl PythonTool {
 
         match result {
             Ok(result) => {
-                update_result_with_modified_files(
-                    result, start_time, &home_path, &logs_path, &node_name, &app_id,
-                )
+                update_result_with_modified_files(result, start_time, &home_path, &logs_path, &node_name, &app_id)
             }
             Err(e) => {
-                let files =
-                    get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
-                        .into_iter()
-                        .map(|file| file.as_str().unwrap_or_default().to_string())
-                        .collect::<Vec<String>>()
-                        .join(" ");
+                let files = get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
+                    .into_iter()
+                    .map(|file| file.as_str().unwrap_or_default().to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ");
 
                 Err(ToolError::ExecutionError(format!(
                     "Error: {}. Files: {}",

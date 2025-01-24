@@ -177,12 +177,21 @@ impl DenoTool {
                     .join(".tools_storage")
                     .join("tools")
                     .join(tool_key.convert_to_path());
-                self.assets
-                    .clone()
-                    .unwrap_or(vec![])
-                    .iter()
-                    .map(|asset| path.clone().join(asset))
-                    .collect()
+
+                let mut assets_files = Vec::new();
+                if path.exists() {
+                    for entry in std::fs::read_dir(&path)
+                        .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+                    {
+                        let entry = entry
+                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
+                        let file_path = entry.path();
+                        if file_path.is_file() {
+                            assets_files.push(file_path);
+                        }
+                    }
+                }
+                assets_files
             }
             None => vec![],
         };
