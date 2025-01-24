@@ -115,7 +115,6 @@ pub async fn install_stagehand_processor(db: Arc<SqliteManager>) -> Result<(), T
 
 fn get_ts_code() -> String {
     let code = r#"
-
     import { jsonSchemaToZod } from "json-schema-to-zod";
     import pkg from '@browserbasehq/stagehand';
     const { Stagehand, ConstructorParams } = pkg;
