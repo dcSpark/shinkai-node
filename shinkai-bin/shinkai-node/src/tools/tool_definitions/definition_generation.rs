@@ -70,20 +70,34 @@ pub async fn generate_tool_definitions(
             );
         }
     };
-    // Filter tools
+    // Filter tools and prevent duplicates
+    let mut seen_keys = HashSet::new();
     let all_tools: Vec<ShinkaiToolHeader> = get_all_deno_tools(sqlite_manager.clone())
         .await
         .into_iter()
         .filter(|tool| {
-            tools.iter().any(|t| {
+            if seen_keys.contains(&tool.tool_router_key) {
+                eprintln!("Skipping duplicate tool with key: {}", tool.tool_router_key);
+                return false;
+            }
+            let matches = tools.iter().any(|t| {
                 let version = t.version.clone();
                 match version {
                     Some(v) => t.to_string_without_version() == tool.tool_router_key && v == tool.version,
                     None => t.to_string_without_version() == tool.tool_router_key,
                 }
-            })
+            });
+            if matches {
+                seen_keys.insert(tool.tool_router_key.clone());
+            }
+            matches
         })
         .collect();
+
+    eprintln!("Found tools:");
+    for tool in &all_tools {
+        eprintln!("- Name: {}, Key: {}, Version: {}", tool.name, tool.tool_router_key, tool.version);
+    }
 
     if all_tools.is_empty() {
         return Ok(support_files);
