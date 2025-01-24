@@ -211,6 +211,7 @@ async function stagehandRun(config: CONFIG, inputs: INPUTS) {{
         console.log("🌟 Initializing Stagehand...");
         await stagehand.init();
         console.log("🌐 Navigating to 2048...");
+
         for (const input of inputs.commands) {{
             switch (input.action) {{
                 case "goto":
@@ -229,28 +230,35 @@ async function stagehandRun(config: CONFIG, inputs: INPUTS) {{
         }}
     }} catch (error) {{
         console.error("❌ Error", error);
-        throw error; // Re-throw non-game-over errors
+        throw error;
+    }} finally {{
+        console.log("Cleaning up Stagehand...");
+        try {{
+            if (typeof stagehand.end === 'function') {{
+                await stagehand.end();
+            }} else if (typeof stagehand.close === 'function') {{
+                await stagehand.close();
+            }} else if (stagehand.browser) {{
+                await stagehand.browser.close();
+            }}
+        }} catch (cleanupError) {{
+            console.error("Error during cleanup:", cleanupError);
+        }}
+        console.log("Done; exiting...");
     }}
 }}
-
 
 const x = jsonSchemaToZod({{
     "$schema": "http://json-schema.org/draft-07/schema#",
     "type": "object",
     "properties": {{
-        "score": {{
-            "type": "number"
-        }},
-        "highestTile": {{
-            "type": "number"
-        }},
+        "score": {{ "type": "number" }},
+        "highestTile": {{ "type": "number" }},
         "grid": {{
             "type": "array",
             "items": {{
                 "type": "array",
-                "items": {{
-                    "type": "number"
-                }}
+                "items": {{ "type": "number" }}
             }}
         }}
     }},
@@ -268,12 +276,8 @@ const moveSchema = eval(jsonSchemaToZod({{
             "type": "string",
             "enum": ["up", "down", "left", "right"]
         }},
-        "confidence": {{
-            "type": "number"
-        }},
-        "reasoning": {{
-            "type": "string"
-        }}
+        "confidence": {{ "type": "number" }},
+        "reasoning": {{ "type": "string" }}
     }},
     "required": ["move", "confidence", "reasoning"],
     "additionalProperties": false
@@ -281,29 +285,33 @@ const moveSchema = eval(jsonSchemaToZod({{
 
 type CONFIG = {{}};
 type INPUTS = {{
-    commands: {{
-        id: string,
-        action: 'goto' | 'wait' | 'evaluate' | 'act' | 'goto-stage',
-        payload: string,
-        jsonSchema?: object
-    }}[]
+    commands: Array<{{ 
+        id: string;
+        action: 'goto' | 'wait' | 'evaluate' | 'act' | 'goto-stage';
+        payload: string;
+        jsonSchema?: object;
+    }}>;
 }};
 
 type OUTPUTS = {{ message: string }};
-const inputs = {json_string}
-;
+const inputs = {json_string};
 
 async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUTS> {{
     await stagehandRun(config, inputs);
     return {{ message: "OK" }};
 }}
 
-run({{}}, inputs).then((result) => {{
+run({{}}, inputs)
+  .then((result) => {{
     console.log(">>>", result);
-}}).catch((error) => {{
+    // Force exit after completion
+    setTimeout(() => process.exit(0), 1000);
+  }})
+  .catch((error) => {{
     console.error(">>>", error);
-}});
-
+    // Force exit after error
+    setTimeout(() => process.exit(1), 1000);
+  }});
 "#
     );
     println!("STAGEHAND CODE");
@@ -357,6 +365,10 @@ impl ToolExecutor for StagehandProcessorTool {
 
         let code = get_ts_code(json_string);
         let package = get_ts_package();
+
+        // TODO: add the LLM Provider here
+        // check if it has the right capabilities if not thrown an error
+        // the other option is to have a pre-saved / configuration for this specific tool
 
         // Run the Node.js code and get the output
         let stdout = Self::run_node_code(&code, &package).await?;
