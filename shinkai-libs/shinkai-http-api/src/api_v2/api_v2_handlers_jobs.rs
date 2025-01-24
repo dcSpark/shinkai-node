@@ -62,6 +62,7 @@ pub fn job_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetAllSmartInboxesRequest>())
         .and_then(get_all_smart_inboxes_handler);
 
     let available_llm_providers_route = warp::path("available_models")
@@ -272,6 +273,12 @@ pub struct AddMessagesGodModeRequest {
     pub messages: Vec<JobMessage>,
 }
 
+#[derive(Deserialize)]
+pub struct GetAllSmartInboxesRequest {
+    pub limit: Option<usize>,
+    pub offset: Option<String>,
+}
+
 #[utoipa::path(
     post,
     path = "/v2/retry_message",
@@ -438,6 +445,10 @@ pub async fn get_last_messages_handler(
 #[utoipa::path(
     get,
     path = "/v2/all_inboxes",
+    params(
+        ("limit" = Option<usize>, Query, description = "Maximum number of inboxes to return"),
+        ("offset" = Option<String>, Query, description = "Inbox ID to start from (exclusive)")
+    ),
     responses(
         (status = 200, description = "Successfully retrieved all smart inboxes", body = Vec<V2SmartInbox>),
         (status = 400, description = "Bad request", body = APIError),
@@ -447,6 +458,7 @@ pub async fn get_last_messages_handler(
 pub async fn get_all_smart_inboxes_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
+    query: GetAllSmartInboxesRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let node_commands_sender = node_commands_sender.clone();
@@ -454,6 +466,8 @@ pub async fn get_all_smart_inboxes_handler(
     node_commands_sender
         .send(NodeCommand::V2ApiGetAllSmartInboxes {
             bearer,
+            limit: query.limit,
+            offset: query.offset,
             res: res_sender,
         })
         .await

@@ -423,6 +423,8 @@ impl Node {
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
+        limit: Option<usize>,
+        offset: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -447,8 +449,8 @@ impl Node {
             }
         };
 
-        // Retrieve all smart inboxes for the profile
-        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
+        // Retrieve all smart inboxes for the profile with pagination
+        let smart_inboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset) {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {
@@ -929,8 +931,8 @@ impl Node {
             recipient,
             &serde_json::to_string(&job_message).unwrap(),
             MessageSchemaType::JobMessageSchema,
-            node_encryption_sk,
-            node_signing_sk,
+            node_encryption_sk.clone(),
+            node_signing_sk.clone(),
             node_encryption_pk,
             Some(job_id.clone()),
         ) {
