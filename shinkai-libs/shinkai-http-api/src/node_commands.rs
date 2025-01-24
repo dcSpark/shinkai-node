@@ -529,7 +529,15 @@ pub enum NodeCommand {
     },
     V2ApiGetAllSmartInboxes {
         bearer: String,
+        limit: Option<usize>,
+        offset: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
+    },
+    V2ApiGetAllSmartInboxesPaginated {
+        bearer: String,
+        limit: Option<usize>,
+        offset: Option<String>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiUpdateSmartInboxName {
         bearer: String,
