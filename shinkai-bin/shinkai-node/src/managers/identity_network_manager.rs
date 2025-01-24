@@ -48,7 +48,7 @@ impl IdentityNetworkManager {
             let node_base = node.split(':').next().unwrap_or(node);
             node_base.ends_with(".sepolia-shinkai") || 
             node_base.ends_with(".shinkai") || 
-            node_base.ends_with(".arb-sep-shinkai")
+            node_base.ends_with(".sep-shinkai")
         }) {
             // Call the proxy node to get the actual data
             let proxy_identity = record.address_or_proxy_nodes.clone();

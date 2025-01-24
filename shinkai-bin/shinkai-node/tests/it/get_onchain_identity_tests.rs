@@ -18,12 +18,12 @@ mod tests {
             .await
             .unwrap();
 
-            let identity = "node1_test.arb-sep-shinkai".to_string();
+            let identity = "node1_test.sep-shinkai".to_string();
 
             let record = registry.get_identity_record(identity.clone()).await.unwrap();
 
             let expected_record = OnchainIdentity {
-                shinkai_identity: "node1_test.arb-sep-shinkai".to_string(),
+                shinkai_identity: "node1_test.sep-shinkai".to_string(),
                 bound_nft: U256::from_dec_str("19").unwrap(),
                 staked_tokens: U256::from_dec_str("55000000000000000000").unwrap(),
                 encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),

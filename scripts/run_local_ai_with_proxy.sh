@@ -25,7 +25,7 @@ export SUBSCRIPTION_HTTP_UPLOAD_INTERVAL_MINUTES="1"
 export SUBSCRIPTION_UPDATE_CACHE_INTERVAL_MINUTES="1"
 export LOG_ALL="1"
 export DEBUG_VRKAI="1"
-# export PROXY_IDENTITY="@@kao_tcp_relayer.arb-sep-shinkai"
-export PROXY_IDENTITY="@@relayer_pub_01.arb-sep-shinkai"
+# export PROXY_IDENTITY="@@kao_tcp_relayer.sep-shinkai"
+export PROXY_IDENTITY="@@relayer_pub_01.sep-shinkai"
 
 cargo run --bin shinkai_node --package shinkai_node

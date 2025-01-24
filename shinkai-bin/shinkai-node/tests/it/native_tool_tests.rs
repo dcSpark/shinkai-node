@@ -50,7 +50,7 @@ fn native_tool_test_knowledge() {
     let mut server = Server::new();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
+        let node1_identity_name = "@@node1_test.sep-shinkai";
         let node1_subidentity_name = "main";
         let node1_device_name = "node1_device";
         let node1_agent = "node1_gpt_agent";

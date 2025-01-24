@@ -25,7 +25,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key, shinkai_path::ShinkaiPath,
+        signatures::clone_signature_secret_key,
     },
 };
 
@@ -517,7 +517,8 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let paginated_inboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset) {
+        let paginated_inboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset)
+        {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {
@@ -531,7 +532,8 @@ impl Node {
         };
 
         // Convert SmartInbox to V2SmartInbox
-        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes.inboxes
+        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
+            .inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
@@ -1802,4 +1804,3 @@ impl Node {
         Ok(())
     }
 }
-

@@ -861,7 +861,7 @@ impl TCPProxy {
         _subidentity: String,
     ) -> Result<ShinkaiMessage, NetworkMessageError> {
         let mut modified_message = message;
-        modified_message.external_metadata.recipient = "@@locahost.arb-sep-shinkai".to_string();
+        modified_message.external_metadata.recipient = "@@locahost.sep-shinkai".to_string();
         modified_message.external_metadata.intra_sender = "".to_string();
         modified_message.body = match modified_message.body {
             MessageBody::Unencrypted(mut body) => {

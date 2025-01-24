@@ -262,9 +262,9 @@ impl ShinkaiRegistry {
 
         let rpc_endpoints = vec![
             url.to_string(),
-            "https://arbitrum-sepolia.blockpi.network/v1/rpc/public".to_string(),
-            "https://endpoints.omniatech.io/v1/arbitrum/sepolia/public".to_string(),
-            "https://sepolia-rollup.arbitrum.io/rpc".to_string(),
+            "https://sepolia.base.org".to_string(),
+            "https://base-sepolia-rpc.publicnode.com".to_string(),
+            "https://base-sepolia.gateway.tenderly.co".to_string(),
         ];
 
         Ok(Self {
