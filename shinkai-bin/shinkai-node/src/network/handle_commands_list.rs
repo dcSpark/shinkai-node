@@ -1433,6 +1433,13 @@ impl Node {
                     let _ = Node::v2_get_all_smart_inboxes(db_clone, identity_manager_clone, bearer, limit, offset, res).await;
                 });
             }
+            NodeCommand::V2ApiGetAllSmartInboxesPaginated { bearer, limit, offset, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_get_all_smart_inboxes_paginated(db_clone, identity_manager_clone, bearer, limit, offset, res).await;
+                });
+            }
             NodeCommand::V2ApiAvailableLLMProviders { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();

@@ -65,6 +65,13 @@ pub fn job_routes(
         .and(warp::query::<GetAllSmartInboxesRequest>())
         .and_then(get_all_smart_inboxes_handler);
 
+    let get_all_smart_inboxes_paginated_route = warp::path("all_inboxes_paginated")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetAllSmartInboxesRequest>())
+        .and_then(get_all_smart_inboxes_paginated_handler);
+
     let available_llm_providers_route = warp::path("available_models")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -179,6 +186,7 @@ pub fn job_routes(
         .or(job_message_route)
         .or(get_last_messages_route)
         .or(get_all_smart_inboxes_route)
+        .or(get_all_smart_inboxes_paginated_route)
         .or(available_llm_providers_route)
         .or(update_smart_inbox_name_route)
         .or(create_files_inbox_route)
@@ -465,6 +473,50 @@ pub async fn get_all_smart_inboxes_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::V2ApiGetAllSmartInboxes {
+            bearer,
+            limit: query.limit,
+            offset: query.offset,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/all_inboxes_paginated",
+    params(
+        ("limit" = Option<usize>, Query, description = "Maximum number of inboxes to return"),
+        ("offset" = Option<String>, Query, description = "Inbox ID to start from (exclusive)")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved all smart inboxes", body = Vec<V2SmartInbox>),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_all_smart_inboxes_paginated_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    query: GetAllSmartInboxesRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let node_commands_sender = node_commands_sender.clone();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetAllSmartInboxesPaginated {
             bearer,
             limit: query.limit,
             offset: query.offset,

@@ -23,6 +23,12 @@ use tokio::sync::Mutex;
 
 use crate::{SqliteManager, SqliteManagerError};
 
+#[derive(Debug)]
+pub struct PaginatedSmartInboxes {
+    pub inboxes: Vec<SmartInbox>,
+    pub has_next_page: bool,
+}
+
 impl SqliteManager {
     pub fn create_empty_inbox(&self, inbox_name: String) -> Result<(), SqliteManagerError> {
         let smart_inbox_name = format!("New Inbox: {}", inbox_name);
@@ -494,7 +500,8 @@ impl SqliteManager {
         &self,
         profile_name_identity: StandardIdentity,
     ) -> Result<Vec<SmartInbox>, SqliteManagerError> {
-        self.get_all_smart_inboxes_for_profile_with_pagination(profile_name_identity, None, None)
+        let result = self.get_all_smart_inboxes_for_profile_with_pagination(profile_name_identity, None, None)?;
+        Ok(result.inboxes)
     }
 
     pub fn get_all_smart_inboxes_for_profile_with_pagination(
@@ -502,7 +509,7 @@ impl SqliteManager {
         profile_name_identity: StandardIdentity,
         limit: Option<usize>,
         offset: Option<String>,
-    ) -> Result<Vec<SmartInbox>, SqliteManagerError> {
+    ) -> Result<PaginatedSmartInboxes, SqliteManagerError> {
         let conn = self.get_connection()?;
 
         let inboxes = self.get_inboxes_for_profile(profile_name_identity.clone())?;
@@ -518,11 +525,9 @@ impl SqliteManager {
         let inboxes = &inboxes[start_index..];
 
         // Apply limit if provided, otherwise use default of 20
-        let inboxes = if let Some(limit) = limit {
-            &inboxes[..inboxes.len().min(limit)]
-        } else {
-            &inboxes[..inboxes.len().min(20)]
-        };
+        let limit = limit.unwrap_or(20);
+        let has_next_page = inboxes.len() > limit;
+        let inboxes = &inboxes[..inboxes.len().min(limit)];
 
         let smart_inbox_names = {
             let mut stmt = conn.prepare("SELECT inbox_name, smart_inbox_name FROM inboxes")?;
@@ -651,7 +656,10 @@ impl SqliteManager {
             (None, None) => std::cmp::Ordering::Equal,
         });
 
-        Ok(smart_inboxes)
+        Ok(PaginatedSmartInboxes {
+            inboxes: smart_inboxes,
+            has_next_page,
+        })
     }
 
     // Note: This is unsafe because it does not update folder names which depend on the inbox name
