@@ -1209,4 +1209,33 @@ pub enum NodeCommand {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiAddWallet {
+        bearer: String,
+        secret_key: String,
+        is_encrypted: bool,
+        key_hash: Option<String>,
+        wallet_type: String,
+        compatible_networks: Vec<String>,
+        wallet_data: Value,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetWallet {
+        bearer: String,
+        wallet_id: i64,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiRemoveWallet {
+        bearer: String,
+        wallet_id: i64,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiUnlockWallets {
+        bearer: String,
+        password: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetWallets {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }

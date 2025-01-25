@@ -2817,6 +2817,72 @@ impl Node {
                     let _ = Node::v2_api_disable_all_tools(db_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiAddWallet {
+                bearer,
+                secret_key,
+                is_encrypted,
+                key_hash,
+                wallet_type,
+                compatible_networks,
+                wallet_data,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_add_wallet(
+                        db_clone,
+                        bearer,
+                        secret_key,
+                        is_encrypted,
+                        key_hash,
+                        wallet_type,
+                        compatible_networks,
+                        wallet_data,
+                        res,
+                    )
+                    .await;
+                });
+            }
+
+            NodeCommand::V2ApiGetWallet {
+                bearer,
+                wallet_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_get_wallet(db_clone, bearer, wallet_id, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiRemoveWallet {
+                bearer,
+                wallet_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_remove_wallet(db_clone, bearer, wallet_id, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiUnlockWallets {
+                bearer,
+                password,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_unlock_wallets(db_clone, bearer, password, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiGetWallets { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_get_wallets(db_clone, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }
