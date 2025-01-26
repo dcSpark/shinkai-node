@@ -121,6 +121,7 @@ impl PythonTool {
             is_temporary,
             assets_files,
             mounts,
+            false,
         )
         .await
     }
@@ -140,6 +141,7 @@ impl PythonTool {
         is_temporary: bool,
         assets_files: Vec<PathBuf>,
         mounts: Option<Vec<String>>,
+        is_playground: bool,
     ) -> Result<RunResult, ToolError> {
         println!(
             "[Running PythonTool] Named: {}, Input: {:?}, Extra Config: {:?}",
@@ -232,6 +234,26 @@ impl PythonTool {
         support_files.iter().for_each(|(file_name, file_code)| {
             code_files.insert(format!("{}.py", file_name), file_code.clone());
         });
+
+        let original_path = assets_files;
+        let mut assets_files = vec![];
+        if is_playground {
+            for asset in original_path {
+                // Copy each asset file to the home directory
+                let file_name = asset
+                    .file_name()
+                    .ok_or_else(|| ToolError::ExecutionError("Invalid asset filename".to_string()))?
+                    .to_string_lossy()
+                    .into_owned();
+
+                let dest_path = home_path.join(&file_name);
+                std::fs::copy(&asset, &dest_path)
+                    .map_err(|e| ToolError::ExecutionError(format!("Failed to copy asset {}: {}", file_name, e)))?;
+                assets_files.push(dest_path);
+            }
+        } else {
+            assets_files = original_path;
+        }
 
         // Setup the engine with the code files and config
         let tool = PythonRunner::new(
