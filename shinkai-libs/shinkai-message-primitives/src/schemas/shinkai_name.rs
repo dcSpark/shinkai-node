@@ -118,7 +118,7 @@ impl ShinkaiName {
                 ShinkaiLogLevel::Info,
                 &format!("Validation error: {}", raw_name),
             );
-            return Err("Node part of the name should start with '@@' and end with a valid ending ('.shinkai', '.arb-sep-shinkai', etc.).");
+            return Err("Node part of the name should start with '@@' and end with a valid ending ('.shinkai', '.arb-sep-shinkai', '.sep-shinkai', etc.).");
         }
 
         let node_name_regex = r"^@@[a-zA-Z0-9\_\.]+(\.shinkai|\.arb-sep-shinkai|\.sepolia-shinkai|\.sep-shinkai)$";
