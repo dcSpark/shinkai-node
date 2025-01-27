@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
@@ -89,8 +90,20 @@ impl PythonTool {
                     .join("tools")
                     .join(tool_key.convert_to_path());
 
+                let assets_files_: Vec<PathBuf> = self
+                    .assets
+                    .clone()
+                    .unwrap_or(vec![])
+                    .iter()
+                    .map(|asset| path.clone().join(asset))
+                    .collect();
+                println!("[Running PythonTool] Assets files: {:?}", assets_files_);
+                let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
+                let home_path = full_path.clone().join(app_id.clone()).join("home");
+
                 let mut assets_files = Vec::new();
                 if path.exists() {
+                    let _ = create_dir_all(&home_path);
                     for entry in std::fs::read_dir(&path)
                         .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
                     {
@@ -98,7 +111,9 @@ impl PythonTool {
                             .map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
                         let file_path = entry.path();
                         if file_path.is_file() {
-                            assets_files.push(file_path);
+                            assets_files.push(file_path.clone());
+                            // In case of docker the files should be located in the home directory
+                            let _ = std::fs::copy(&file_path, &home_path.join(file_path.file_name().unwrap()));
                         }
                     }
                 }
@@ -247,6 +262,7 @@ impl PythonTool {
                     .into_owned();
 
                 let dest_path = home_path.join(&file_name);
+                let _ = create_dir_all(&home_path);
                 std::fs::copy(&asset, &dest_path)
                     .map_err(|e| ToolError::ExecutionError(format!("Failed to copy asset {}: {}", file_name, e)))?;
                 assets_files.push(dest_path);

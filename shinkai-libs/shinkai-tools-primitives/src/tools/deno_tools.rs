@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env;
+use std::fs::create_dir_all;
 use std::hash::RandomState;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -178,8 +179,18 @@ impl DenoTool {
                     .join("tools")
                     .join(tool_key.convert_to_path());
 
+                let assets_files_: Vec<PathBuf> = self
+                    .assets
+                    .clone()
+                    .unwrap_or(vec![])
+                    .iter()
+                    .map(|asset| path.clone().join(asset))
+                    .collect();
+                println!("[Running DenoTool] Assets files: {:?}", assets_files_);
+
                 let mut assets_files = Vec::new();
                 if path.exists() {
+                    let _ = create_dir_all(&home_path);
                     for entry in std::fs::read_dir(&path)
                         .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
                     {
@@ -187,7 +198,9 @@ impl DenoTool {
                             .map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
                         let file_path = entry.path();
                         if file_path.is_file() {
-                            assets_files.push(file_path);
+                            assets_files.push(file_path.clone());
+                            // In case of docker the files should be located in the home directory
+                            let _ = std::fs::copy(&file_path, &home_path.join(file_path.file_name().unwrap()));
                         }
                     }
                 }
@@ -264,7 +277,7 @@ impl DenoTool {
         tool_id: String,
         node_name: ShinkaiName,
         is_temporary: bool,
-        assets_files: Vec<PathBuf>,
+        playground_assets_files: Vec<PathBuf>,
         mounts: Option<Vec<String>>,
     ) -> Result<RunResult, ToolError> {
         println!(
@@ -359,6 +372,23 @@ impl DenoTool {
             .iter()
             .map(|mount| PathBuf::from(mount))
             .collect();
+
+        let original_path = playground_assets_files;
+        let mut assets_files = vec![];
+        for asset in original_path {
+            // Copy each asset file to the home directory
+            let file_name = asset
+                .file_name()
+                .ok_or_else(|| ToolError::ExecutionError("Invalid asset filename".to_string()))?
+                .to_string_lossy()
+                .into_owned();
+
+            let dest_path = home_path.join(&file_name);
+            let _ = create_dir_all(&home_path);
+            std::fs::copy(&asset, &dest_path)
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to copy asset {}: {}", file_name, e)))?;
+            assets_files.push(dest_path);
+        }
 
         // Setup the engine with the code files and config
         let tool = DenoRunner::new(
