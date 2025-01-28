@@ -218,15 +218,11 @@ impl ToolExecutor for TypescriptUnsafeProcessorTool {
         parameters: &Map<String, Value>,
         llm_provider: String,
     ) -> Result<Value, ToolError> {
-        println!("Node Name: {:?}", node_name);
         let profile_name = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())
             .map_err(|e| ToolError::ExecutionError(format!("Failed to get profile name: {}", e)))?;
-        println!("Profile Name: {:?}", profile_name);
         let llm_providers = db
             .get_llm_providers_for_profile(profile_name)
             .map_err(|e| ToolError::ExecutionError(format!("Failed to get LLM providers: {}", e)))?;
-        println!("LLM Providers: {:?}", llm_providers);
-
         let open_ai_key = match llm_providers
             .iter()
             .find(|provider| provider.external_url == Some("https://api.openai.com".to_string()))
@@ -271,6 +267,14 @@ impl ToolExecutor for TypescriptUnsafeProcessorTool {
         )
         .await?;
 
+        // TODO get this from node_env
+        let protocol = "http".to_string();
+        let api_ip = env::var("NODE_API_IP").unwrap_or_else(|_| "0.0.0.0".to_string());
+        let api_port = env::var("NODE_API_PORT").unwrap_or_else(|_| "9550".to_string());
+        envs.insert(
+            "SHINKAI_NODE_LOCATION".to_string(),
+            format!("{}://{}:{}", protocol, api_ip, api_port),
+        );
         envs.insert("OPENAI_KEY".to_string(), open_ai_key);
         envs.insert(
             "CHROME_PATH".to_string(),
@@ -303,10 +307,8 @@ impl ToolExecutor for TypescriptUnsafeProcessorTool {
 
         // Run the Node.js code and get the output
         let stdout = Self::run_node_code(&code, package, &parameters_json_string, &config_json_string, &envs).await?;
-
-        Ok(json!({
-            "stdout": stdout
-        }))
+        let result = serde_json::from_str(&stdout).unwrap_or_default();
+        Ok(result)
     }
 }
 
