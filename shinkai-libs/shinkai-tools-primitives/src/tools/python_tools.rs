@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env, thread};
@@ -88,12 +89,35 @@ impl PythonTool {
                     .join(".tools_storage")
                     .join("tools")
                     .join(tool_key.convert_to_path());
-                self.assets
+
+                let assets_files_: Vec<PathBuf> = self
+                    .assets
                     .clone()
                     .unwrap_or(vec![])
                     .iter()
                     .map(|asset| path.clone().join(asset))
-                    .collect()
+                    .collect();
+                println!("[Running PythonTool] Assets files: {:?}", assets_files_);
+                let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
+                let home_path = full_path.clone().join(app_id.clone()).join("home");
+
+                let mut assets_files = Vec::new();
+                if path.exists() {
+                    let _ = create_dir_all(&home_path);
+                    for entry in std::fs::read_dir(&path)
+                        .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+                    {
+                        let entry = entry
+                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
+                        let file_path = entry.path();
+                        if file_path.is_file() {
+                            assets_files.push(file_path.clone());
+                            // In case of docker the files should be located in the home directory
+                            let _ = std::fs::copy(&file_path, &home_path.join(file_path.file_name().unwrap()));
+                        }
+                    }
+                }
+                assets_files
             }
             None => vec![],
         };
@@ -112,7 +136,9 @@ impl PythonTool {
             is_temporary,
             assets_files,
             mounts,
-        ).await
+            false,
+        )
+        .await
     }
 
     pub async fn run_on_demand(
@@ -130,6 +156,7 @@ impl PythonTool {
         is_temporary: bool,
         assets_files: Vec<PathBuf>,
         mounts: Option<Vec<String>>,
+        is_playground: bool,
     ) -> Result<RunResult, ToolError> {
         println!(
             "[Running PythonTool] Named: {}, Input: {:?}, Extra Config: {:?}",
@@ -195,9 +222,8 @@ impl PythonTool {
         let logs_path = full_path.clone().join(app_id.clone()).join("logs");
 
         // Ensure the root directory exists. Subdirectories will be handled by the engine
-        std::fs::create_dir_all(full_path.clone()).map_err(|e| {
-            ToolError::ExecutionError(format!("Failed to create directory structure: {}", e))
-        })?;
+        std::fs::create_dir_all(full_path.clone())
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
         println!(
             "[Running PythonTool] Full path: {:?}. App ID: {}. Tool ID: {}",
             full_path, app_id, tool_id
@@ -207,9 +233,8 @@ impl PythonTool {
         if is_temporary {
             // TODO: Garbage collector will delete the tool folder after some time
             let temporal_path = full_path.join(".temporal");
-            std::fs::write(temporal_path, "").map_err(|e| {
-                ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e))
-            })?;
+            std::fs::write(temporal_path, "")
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e)))?;
         }
 
         // Get the start time, this is used to check if the files were modified after the tool was executed
@@ -224,6 +249,27 @@ impl PythonTool {
         support_files.iter().for_each(|(file_name, file_code)| {
             code_files.insert(format!("{}.py", file_name), file_code.clone());
         });
+
+        let original_path = assets_files;
+        let mut assets_files = vec![];
+        if is_playground {
+            for asset in original_path {
+                // Copy each asset file to the home directory
+                let file_name = asset
+                    .file_name()
+                    .ok_or_else(|| ToolError::ExecutionError("Invalid asset filename".to_string()))?
+                    .to_string_lossy()
+                    .into_owned();
+
+                let dest_path = home_path.join(&file_name);
+                let _ = create_dir_all(&home_path);
+                std::fs::copy(&asset, &dest_path)
+                    .map_err(|e| ToolError::ExecutionError(format!("Failed to copy asset {}: {}", file_name, e)))?;
+                assets_files.push(dest_path);
+            }
+        } else {
+            assets_files = original_path;
+        }
 
         // Setup the engine with the code files and config
         let tool = PythonRunner::new(
@@ -267,17 +313,14 @@ impl PythonTool {
 
         match result {
             Ok(result) => {
-                update_result_with_modified_files(
-                    result, start_time, &home_path, &logs_path, &node_name, &app_id,
-                )
+                update_result_with_modified_files(result, start_time, &home_path, &logs_path, &node_name, &app_id)
             }
             Err(e) => {
-                let files =
-                    get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
-                        .into_iter()
-                        .map(|file| file.as_str().unwrap_or_default().to_string())
-                        .collect::<Vec<String>>()
-                        .join(" ");
+                let files = get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
+                    .into_iter()
+                    .map(|file| file.as_str().unwrap_or_default().to_string())
+                    .collect::<Vec<String>>()
+                    .join(" ");
 
                 Err(ToolError::ExecutionError(format!(
                     "Error: {}. Files: {}",
