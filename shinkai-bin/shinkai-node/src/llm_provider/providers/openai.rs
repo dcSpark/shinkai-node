@@ -52,7 +52,7 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
 pub struct PartialFunctionCall {
     pub name: Option<String>,
     pub arguments: String,
-    pub is_accumulating: bool,  // Track if we're currently accumulating a function call
+    pub is_accumulating: bool, // Track if we're currently accumulating a function call
 }
 
 #[async_trait]
@@ -174,10 +174,12 @@ fn finalize_function_call_sync(
     if let Some(ref name) = partial_fc.name {
         if !name.is_empty() {
             // Clean up the arguments string and unescape quotes
-            let cleaned_args = partial_fc.arguments.trim()
-                .replace(r#"\""#, "\"")  // Unescape quotes
+            let cleaned_args = partial_fc
+                .arguments
+                .trim()
+                .replace(r#"\""#, "\"") // Unescape quotes
                 .to_string();
-            
+
             // Attempt to parse the accumulated arguments
             let fc_arguments = if cleaned_args.is_empty() {
                 serde_json::Map::new()
@@ -191,12 +193,10 @@ fn finalize_function_call_sync(
                 };
 
                 match parse_result {
-                    Ok(value) => {
-                        value.as_object().cloned().unwrap_or_else(|| {
-                            eprintln!("Failed to convert value to object: {:?}", value);
-                            serde_json::Map::new()
-                        })
-                    }
+                    Ok(value) => value.as_object().cloned().unwrap_or_else(|| {
+                        eprintln!("Failed to convert value to object: {:?}", value);
+                        serde_json::Map::new()
+                    }),
                     Err(e) => {
                         eprintln!("Failed to parse arguments: {}", e);
                         eprintln!("Arguments string was: {}", cleaned_args);
@@ -209,7 +209,8 @@ fn finalize_function_call_sync(
             let tool_router_key = tools.as_ref().and_then(|tools_array| {
                 tools_array.iter().find_map(|tool| {
                     if tool.get("name")?.as_str()? == name {
-                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                        tool.get("tool_router_key")
+                            .and_then(|key| key.as_str().map(|s| s.to_string()))
                     } else {
                         None
                     }
@@ -245,122 +246,38 @@ pub async fn parse_openai_stream_chunk(
 ) -> Result<Option<String>, LLMProviderError> {
     let mut error_message: Option<String> = None;
 
-    loop {
-        // Look for a newline in `buffer`; if none is found, break.
-        let Some(newline_pos) = buffer.find('\n') else {
-            // No complete line yet, so we can't parse anything. We'll wait for more data.
-            break;
-        };
-
-        // Extract this line (including the '\n') from the buffer:
+    // Keep consuming lines from buffer so long as we find a newline
+    while let Some(newline_pos) = buffer.find('\n') {
         let line_with_newline = buffer.drain(..=newline_pos).collect::<String>();
-        // Trim trailing whitespace from it:
         let line = line_with_newline.trim();
-
-        // Skip empty lines
         if line.is_empty() {
             continue;
         }
-
-        // If the line doesn't start with "data: ", check if it's an array-formatted error
-        if !line.starts_with("data: ") {
-            // If it is literally [DONE], skip
-            if line == "[DONE]" {
-                // If we were accumulating a function call, finalize it
-                if partial_fc.is_accumulating && partial_fc.name.is_some() {
-                    finalize_function_call_sync(partial_fc, function_calls, tools);
-                }
-                continue;
-            }
-
-            // Check if the buffer contains an array-formatted error response
-            if line.starts_with("[") {
-                match serde_json::from_str::<Vec<JsonValue>>(line) {
-                    Ok(array) => {
-                        if let Some(first_item) = array.first() {
-                            if let Some(error) = first_item.get("error") {
-                                let code = error
-                                    .get("code")
-                                    .and_then(|c| {
-                                        c.as_u64()
-                                            .map(|n| n.to_string())
-                                            .or_else(|| c.as_str().map(|s| s.to_string()))
-                                    })
-                                    .unwrap_or_else(|| "Unknown code".to_string());
-                                let msg = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-                                error_message = Some(format!("{}: {}", code, msg));
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        // Not a valid array JSON yet, continue accumulating
-                        continue;
-                    }
-                }
-            }
-            continue;
-        }
-
-        // Slice out whatever came after "data: "
-        let chunk = &line["data: ".len()..];
-
-        // If it's "[DONE]", send final update and skip
-        if chunk.trim() == "[DONE]" {
-            // If we were accumulating a function call, finalize it
+        // If it's literally "[DONE]", finalize function call if needed and skip
+        if line == "[DONE]" {
             if partial_fc.is_accumulating && partial_fc.name.is_some() {
                 finalize_function_call_sync(partial_fc, function_calls, tools);
             }
-            if let Some(inbox_name) = inbox_name.as_ref() {
-                send_ws_update(
-                    ws_manager_trait,
-                    Some(inbox_name.clone()),
-                    session_id,
-                    "".to_string(),
-                    true,
-                    None,
-                )
-                .await?;
-            }
+            // Possibly send a final WS update
             continue;
         }
 
-        // Extract any function call arguments before parsing JSON
-        let (maybe_args, cleaned_chunk) = extract_and_remove_arguments(chunk);
-
-        // If we extracted arguments and we're accumulating a function call, append them
-        if let Some(args) = maybe_args {
-            if partial_fc.is_accumulating {
-                // If this is the start of a new argument object, clear any previous arguments
-                if args.starts_with('{') {
-                    partial_fc.arguments.clear();
-                }
-                partial_fc.arguments.push_str(&args);
-                
-                // If we have a complete JSON object, try to parse it
-                if partial_fc.arguments.starts_with('{') && partial_fc.arguments.ends_with('}') {
-                    match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
-                        Ok(_) => {
-                            // We have a complete valid JSON object, finalize the function call
-                            finalize_function_call_sync(partial_fc, function_calls, tools);
-                        }
-                        Err(_) => {
-                            // Not a complete valid JSON yet, continue accumulating
-                        }
-                    }
-                }
-            }
+        // If the line doesn't start with "data: ", we just skip it or accumulate
+        if !line.starts_with("data: ") {
+            // Could be an error or partial line. If it starts with '[' or '{',
+            // you might want to attempt JSON parsing anyway.
+            continue;
         }
 
-        // Attempt to parse the cleaned JSON
-        match serde_json::from_str::<JsonValue>(&cleaned_chunk) {
+        // Get the JSON text after "data: "
+        let chunk_str = line["data: ".len()..].trim();
+
+        // Attempt to parse as JSON
+        match serde_json::from_str::<serde_json::Value>(chunk_str) {
             Ok(json_data) => {
                 // If there's an error object, record it
                 if let Some(error_obj) = json_data.get("error") {
-                    let code = error_obj
-                        .get("code")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("Unknown code")
-                        .to_string();
+                    let code = error_obj.get("code").and_then(|c| c.as_str()).unwrap_or("Unknown code");
                     let msg = error_obj
                         .get("message")
                         .and_then(|m| m.as_str())
@@ -369,57 +286,60 @@ pub async fn parse_openai_stream_chunk(
                     continue;
                 }
 
-                // Otherwise, look for "choices"
+                // If there's a "choices" array, process it
                 if let Some(choices) = json_data.get("choices") {
-                    // Each item in "choices" may have "delta": { "content": "..."} or "function_call": ...
                     for choice in choices.as_array().unwrap_or(&vec![]) {
                         let finish_reason = choice
                             .get("finish_reason")
                             .and_then(|fr| fr.as_str())
                             .unwrap_or_default();
 
+                        // The "delta" pattern from streaming
                         if let Some(delta) = choice.get("delta") {
-                            // If there's text content, append it and send WS update
+                            // Plain text
                             if let Some(content) = delta.get("content").and_then(|c| c.as_str()) {
                                 response_text.push_str(content);
-
-                                // Send WS update for the new content
-                                if let Some(inbox_name) = inbox_name.as_ref() {
-                                    send_ws_update(
-                                        ws_manager_trait,
-                                        Some(inbox_name.clone()),
-                                        session_id,
-                                        content.to_string(),
-                                        // if finish_reason is empty, we are not at the end of the stream
-                                        !finish_reason.is_empty(),
-                                        Some(finish_reason.to_string()),
-                                    )
-                                    .await?;
-                                }
+                                // Possibly send WS update for each chunk
                             }
-
-                            // If there's function_call
-                            if let Some(fc) = delta.get("function_call") {
-                                if let Some(name) = fc.get("name").and_then(|n| n.as_str()) {
-                                    // If partial_fc already had a different name, finalize that first
-                                    if let Some(old_name) = &partial_fc.name {
-                                        if !old_name.is_empty() && old_name != name {
-                                            finalize_function_call_sync(partial_fc, function_calls, tools);
-                                        }
+                            // function_call
+                            if let Some(fc_json) = delta.get("function_call") {
+                                if let Some(name) = fc_json.get("name").and_then(|n| n.as_str()) {
+                                    // If we previously had a partial call with a different name, finalize it
+                                    if partial_fc.is_accumulating && partial_fc.name.as_ref() != Some(&name.to_string())
+                                    {
+                                        finalize_function_call_sync(partial_fc, function_calls, tools);
                                     }
                                     partial_fc.name = Some(name.to_string());
                                     partial_fc.is_accumulating = true;
                                 }
+                                if let Some(args_str) = fc_json.get("arguments").and_then(|a| a.as_str()) {
+                                    // Merge with partial_fc.arguments
+                                    partial_fc.arguments.push_str(args_str);
+                                }
+                            }
+                        }
+                        // The "non-streaming" pattern: choice.message.function_call
+                        else if let Some(msg) = choice.get("message") {
+                            if let Some(fc_json) = msg.get("function_call") {
+                                if let Some(name) = fc_json.get("name").and_then(|n| n.as_str()) {
+                                    partial_fc.name = Some(name.to_string());
+                                    partial_fc.is_accumulating = true;
+                                }
+                                if let Some(args_str) = fc_json.get("arguments").and_then(|a| a.as_str()) {
+                                    partial_fc.arguments.push_str(args_str);
+                                }
+                            }
+                            if let Some(content) = msg.get("content").and_then(|c| c.as_str()) {
+                                response_text.push_str(content);
                             }
                         }
 
-                        // If finish_reason == "function_call", finalize the partial
+                        // If we have a function_call finish reason, finalize immediately
                         if finish_reason == "function_call" {
                             finalize_function_call_sync(partial_fc, function_calls, tools);
                         } else if finish_reason == "stop" {
-                            // If the user or model stops, we can finalize
-                            // any function call that wasn't yet finished.
-                            if partial_fc.name.is_some() {
+                            // typical end of response
+                            if partial_fc.is_accumulating && partial_fc.name.is_some() {
                                 finalize_function_call_sync(partial_fc, function_calls, tools);
                             }
                         }
@@ -427,18 +347,14 @@ pub async fn parse_openai_stream_chunk(
                 }
             }
             Err(_) => {
-                // If we're accumulating a function call, keep accumulating
-                if partial_fc.is_accumulating {
-                    continue;
-                }
-                // Otherwise, this might be a partial line that got split up
-                // Put it back into `buffer` so next chunk can finish it
+                // Not valid JSON yet – maybe partial?
+                // Typically, you'd accumulate in a persistent buffer.
+                // We'll just break, waiting for more data.
                 buffer.insert_str(0, &(line.to_string() + "\n"));
                 break;
             }
         }
     }
-
     Ok(error_message)
 }
 
@@ -865,7 +781,10 @@ async fn send_tool_ws_update(
 
             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
-            eprintln!("Websocket content (function_call): {}", serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string()));
+            eprintln!(
+                "Websocket content (function_call): {}",
+                serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string())
+            );
 
             let _ = m
                 .queue_message(
@@ -886,11 +805,11 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
     let args_prefix = r#""function_call":{"arguments":""#;
     if let Some(args_start_pos) = json_str.find(args_prefix) {
         let content_start = args_start_pos + args_prefix.len();
-        
+
         // Find the end of arguments value by looking for the closing quotes and braces
         // We need to handle both cases: when it's just a piece of a JSON string and when it's a complete one
         let mut content_end = None;
-        
+
         // First try to find the standard end pattern
         if let Some(end_pos) = json_str[content_start..].find(r#""}}"#) {
             content_end = Some(content_start + end_pos);
@@ -899,19 +818,19 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
         else if let Some(end_pos) = json_str[content_start..].find('"') {
             content_end = Some(content_start + end_pos);
         }
-        
+
         if let Some(content_end) = content_end {
             // Extract the arguments content
             let content = json_str[content_start..content_end].to_string();
-            
+
             // Build the cleaned JSON by replacing the arguments content with empty string
             let cleaned_json = format!(
                 "{}{}{}",
-                &json_str[..content_start],  // everything up to the content
-                "",                          // empty string for arguments
-                &json_str[content_end..]     // everything after the content
+                &json_str[..content_start], // everything up to the content
+                "",                         // empty string for arguments
+                &json_str[content_end..]    // everything after the content
             );
-            
+
             (Some(content), cleaned_json)
         } else {
             (None, json_str.to_string())
@@ -1032,8 +951,6 @@ mod tests {
         assert_eq!(function_calls[0].name, "test_function");
         assert_eq!(function_calls[0].tool_router_key, Some("test_router".to_string()));
     }
-
-
 
     #[tokio::test]
     async fn test_parse_openai_stream_complete_response() {
@@ -1244,7 +1161,6 @@ mod tests {
         assert!(choice.message.function_call.is_none());
     }
 
-
     #[tokio::test]
     async fn test_parse_openai_stream_chunk_riddle_response() {
         let mut buffer = String::new();
@@ -1356,11 +1272,52 @@ mod tests {
 
         // Function call argument chunks
         let argument_chunks = vec![
-            "{\"", "tool", "_router", "_key", "\":\"", "local", "::", "none", "\",\"",
-            "config", "\":{\"", "smtp", "_server", "\":\"", "smtp", ".", "zo", "ho", ".com",
-            "\",\"", "port", "\":", "465", ",\"", "sender", "_email", "\":\"", "bat", "ata",
-            "@", "z", "oh", "om", "ail", ".com", "\",\"", "sender", "_password", "\":\"",
-            "ber", "emu", "\",\"", "ssl", "\":", "true", "}}"
+            "{\"",
+            "tool",
+            "_router",
+            "_key",
+            "\":\"",
+            "local",
+            "::",
+            "none",
+            "\",\"",
+            "config",
+            "\":{\"",
+            "smtp",
+            "_server",
+            "\":\"",
+            "smtp",
+            ".",
+            "zo",
+            "ho",
+            ".com",
+            "\",\"",
+            "port",
+            "\":",
+            "465",
+            ",\"",
+            "sender",
+            "_email",
+            "\":\"",
+            "bat",
+            "ata",
+            "@",
+            "z",
+            "oh",
+            "om",
+            "ail",
+            ".com",
+            "\",\"",
+            "sender",
+            "_password",
+            "\":\"",
+            "ber",
+            "emu",
+            "\",\"",
+            "ssl",
+            "\":",
+            "true",
+            "}}",
         ];
 
         for chunk in argument_chunks {
@@ -1455,7 +1412,7 @@ mod tests {
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"movies"}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\"}"}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"function_call"}]}"#,
-            "data: [DONE]\n"
+            "data: [DONE]\n",
         ];
 
         for chunk in chunks {
@@ -1479,7 +1436,10 @@ mod tests {
         assert_eq!(function_calls.len(), 1);
         let fc = &function_calls[0];
         assert_eq!(fc.name, "duckduckgo_search");
-        assert_eq!(fc.tool_router_key, Some("local:::duckduckgo_search:::duckduckgo_search".to_string()));
+        assert_eq!(
+            fc.tool_router_key,
+            Some("local:::duckduckgo_search:::duckduckgo_search".to_string())
+        );
 
         // Verify the arguments
         let expected_args = serde_json::json!({
@@ -1495,7 +1455,7 @@ mod tests {
         let (maybe_args, cleaned) = extract_and_remove_arguments(json_str);
 
         // Check we extracted the inner content - in this case just the start of a JSON object
-        assert_eq!(maybe_args, Some("{\\\"".to_string()));  // This is what's actually in the JSON
+        assert_eq!(maybe_args, Some("{\\\"".to_string())); // This is what's actually in the JSON
 
         // The cleaned JSON should have empty arguments but maintain structure
         assert!(cleaned.contains(r#""function_call""#));
@@ -1511,7 +1471,12 @@ mod tests {
 
         // Verify the cleaned JSON is valid and has the expected structure
         let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
-        assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+        assert_eq!(
+            parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                .as_str()
+                .unwrap(),
+            ""
+        );
     }
 
     #[test]
@@ -1542,7 +1507,12 @@ mod tests {
         match serde_json::from_str::<serde_json::Value>(&cleaned) {
             Ok(parsed) => {
                 eprintln!("Successfully parsed JSON");
-                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+                assert_eq!(
+                    parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                        .as_str()
+                        .unwrap(),
+                    ""
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse JSON: {}", e);
@@ -1577,7 +1547,12 @@ mod tests {
         match serde_json::from_str::<serde_json::Value>(&cleaned) {
             Ok(parsed) => {
                 eprintln!("Successfully parsed JSON");
-                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+                assert_eq!(
+                    parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                        .as_str()
+                        .unwrap(),
+                    ""
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse JSON: {}", e);
@@ -1587,4 +1562,3 @@ mod tests {
         }
     }
 }
-
