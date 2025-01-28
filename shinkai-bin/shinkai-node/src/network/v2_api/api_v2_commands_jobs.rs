@@ -425,6 +425,7 @@ impl Node {
         bearer: String,
         _limit: Option<usize>,
         _offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -450,7 +451,7 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
+        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden) {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {
@@ -492,6 +493,7 @@ impl Node {
         bearer: String,
         limit: Option<usize>,
         offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -517,7 +519,7 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let paginated_inboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset) {
+        let paginated_inboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden) {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {

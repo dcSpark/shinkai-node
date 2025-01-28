@@ -8,6 +8,8 @@ use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use rusqlite::params;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 
 pub mod agent_manager;
 pub mod cron_task_manager;
@@ -249,7 +251,8 @@ impl SqliteManager {
                 inbox_name TEXT NOT NULL UNIQUE,
                 smart_inbox_name TEXT NOT NULL,
                 read_up_to_message_hash TEXT,
-                last_modified TEXT
+                last_modified TEXT,
+                is_hidden BOOLEAN DEFAULT FALSE
             );",
             [],
         )?;
@@ -260,9 +263,15 @@ impl SqliteManager {
             [],
         )?;
 
-        // Create an index for sorting by most recent
+        // Create a composite index for filtering hidden inboxes and sorting by last_modified
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_inboxes_last_modified_desc ON inboxes (last_modified DESC);",
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_hidden_modified ON inboxes (is_hidden, last_modified DESC);",
+            [],
+        )?;
+
+        // Create an index for sorting by last_modified only (for when show_hidden is true)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_last_modified ON inboxes (last_modified DESC);",
             [],
         )?;
 

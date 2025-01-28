@@ -17,7 +17,7 @@ use shinkai_message_primitives::{
         shinkai_message::{NodeApiData, ShinkaiMessage},
         shinkai_message_schemas::WSTopic,
     },
-    shinkai_utils::{job_scope::MinimalJobScope, search_mode::VectorSearchMode, shinkai_time::ShinkaiStringTime},
+    shinkai_utils::shinkai_time::ShinkaiStringTime,
 };
 use tokio::sync::Mutex;
 
@@ -30,12 +30,17 @@ pub struct PaginatedSmartInboxes {
 }
 
 impl SqliteManager {
-    pub fn create_empty_inbox(&self, inbox_name: String) -> Result<(), SqliteManagerError> {
+    pub fn create_empty_inbox(&self, inbox_name: String, is_hidden: Option<bool>) -> Result<(), SqliteManagerError> {
         let smart_inbox_name = format!("New Inbox: {}", inbox_name);
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO inboxes (inbox_name, smart_inbox_name, last_modified) VALUES (?1, ?2, ?3)",
-            params![inbox_name, smart_inbox_name, ShinkaiStringTime::generate_time_now()],
+            "INSERT INTO inboxes (inbox_name, smart_inbox_name, last_modified, is_hidden) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                inbox_name,
+                smart_inbox_name,
+                ShinkaiStringTime::generate_time_now(),
+                is_hidden
+            ],
         )?;
         Ok(())
     }
@@ -58,7 +63,7 @@ impl SqliteManager {
         }
 
         if !self.does_inbox_exist(&inbox_name)? {
-            self.create_empty_inbox(inbox_name.clone())?;
+            self.create_empty_inbox(inbox_name.clone(), None)?;
         }
 
         // If this message has a parent, add this message as a child of the parent
@@ -487,6 +492,7 @@ impl SqliteManager {
     pub fn get_inboxes_for_profile(
         &self,
         profile_name_identity: StandardIdentity,
+        show_hidden: Option<bool>,
     ) -> Result<Vec<String>, SqliteManagerError> {
         // Check if profile exists using does_identity_exists
         let profile_exists = self.does_identity_exist(&profile_name_identity.full_identity_name)?;
@@ -498,7 +504,12 @@ impl SqliteManager {
         }
 
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT inbox_name FROM inboxes ORDER BY last_modified DESC")?;
+        let query = match show_hidden {
+            Some(true) => "SELECT inbox_name FROM inboxes ORDER BY last_modified DESC",
+            _ => "SELECT inbox_name FROM inboxes WHERE is_hidden = FALSE OR is_hidden IS NULL ORDER BY last_modified DESC",
+        };
+
+        let mut stmt = conn.prepare(query)?;
         let mut rows = stmt.query([])?;
 
         let mut inboxes = Vec::new();
@@ -513,8 +524,10 @@ impl SqliteManager {
     pub fn get_all_smart_inboxes_for_profile(
         &self,
         profile_name_identity: StandardIdentity,
+        show_hidden: Option<bool>,
     ) -> Result<Vec<SmartInbox>, SqliteManagerError> {
-        let result = self.get_all_smart_inboxes_for_profile_with_pagination(profile_name_identity, None, None)?;
+        let result =
+            self.get_all_smart_inboxes_for_profile_with_pagination(profile_name_identity, None, None, show_hidden)?;
         Ok(result.inboxes)
     }
 
@@ -523,10 +536,11 @@ impl SqliteManager {
         profile_name_identity: StandardIdentity,
         limit: Option<usize>,
         offset: Option<String>,
+        show_hidden: Option<bool>,
     ) -> Result<PaginatedSmartInboxes, SqliteManagerError> {
         let conn = self.get_connection()?;
 
-        let inboxes = self.get_inboxes_for_profile(profile_name_identity.clone())?;
+        let inboxes = self.get_inboxes_for_profile(profile_name_identity.clone(), show_hidden)?;
 
         // If offset is provided, find its position in the list
         let start_index = if let Some(offset_id) = offset {
@@ -725,6 +739,19 @@ impl SqliteManager {
 
         Ok(messages)
     }
+
+    pub fn update_inbox_hidden_status(&self, inbox_name: &str, is_hidden: bool) -> Result<(), SqliteManagerError> {
+        if !self.does_inbox_exist(inbox_name)? {
+            return Err(SqliteManagerError::InboxNotFound(inbox_name.to_string()));
+        }
+
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE inboxes SET is_hidden = ?1 WHERE inbox_name = ?2",
+            params![is_hidden, inbox_name],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -735,11 +762,13 @@ mod tests {
     use shinkai_message_primitives::{
         schemas::identity::StandardIdentityType,
         shinkai_message::{
-            shinkai_message::{MessageBody, MessageData, ShinkaiVersion},
+            shinkai_message::MessageBody,
             shinkai_message_schemas::{IdentityPermissions, MessageSchemaType},
         },
         shinkai_utils::{
             encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod},
+            job_scope::MinimalJobScope,
+            search_mode::VectorSearchMode,
             shinkai_message_builder::ShinkaiMessageBuilder,
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
         },
@@ -1434,7 +1463,7 @@ mod tests {
 
         // Measure the time taken by get_all_smart_inboxes_for_profile
         let start_time = std::time::Instant::now();
-        let smart_inboxes = db.get_all_smart_inboxes_for_profile(profile_identity).unwrap();
+        let smart_inboxes = db.get_all_smart_inboxes_for_profile(profile_identity, None).unwrap();
         let duration = start_time.elapsed();
 
         println!("Time taken to get all smart inboxes: {:?}", duration);
@@ -1513,6 +1542,7 @@ mod tests {
                         profile_identity.clone(),
                         Some(page_size),
                         current_offset.clone(),
+                        None,
                     )
                     .unwrap();
 
@@ -1578,7 +1608,12 @@ mod tests {
 
         // Test empty offset (should return first page)
         let empty_offset_result = db
-            .get_all_smart_inboxes_for_profile_with_pagination(profile_identity.clone(), Some(10), Some("".to_string()))
+            .get_all_smart_inboxes_for_profile_with_pagination(
+                profile_identity.clone(),
+                Some(10),
+                Some("".to_string()),
+                None,
+            )
             .unwrap();
         assert_eq!(empty_offset_result.inboxes.len(), 10);
         assert!(empty_offset_result.has_next_page);
@@ -1589,6 +1624,7 @@ mod tests {
                 profile_identity.clone(),
                 Some(10),
                 Some("non_existent_inbox".to_string()),
+                None,
             )
             .unwrap();
         assert_eq!(non_existent_result.inboxes.len(), 0);
@@ -1596,7 +1632,7 @@ mod tests {
 
         // Test with a limit larger than total inboxes
         let large_limit_result = db
-            .get_all_smart_inboxes_for_profile_with_pagination(profile_identity.clone(), Some(50), None)
+            .get_all_smart_inboxes_for_profile_with_pagination(profile_identity.clone(), Some(50), None, None)
             .unwrap();
         assert_eq!(large_limit_result.inboxes.len(), 25);
         assert!(!large_limit_result.has_next_page);
