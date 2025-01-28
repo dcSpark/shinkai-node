@@ -1,6 +1,7 @@
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::{json, Map, Value};
@@ -15,6 +16,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
+use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
 use tokio::sync::Mutex;
@@ -85,6 +87,7 @@ impl TypescriptUnsafeProcessorTool {
         package: Option<&str>,
         parameters_json_string: &str,
         config_json_string: &str,
+        envs: &HashMap<String, String>,
     ) -> Result<String, ToolError> {
         // Get npm and node binary locations from env or use defaults
         let npm_binary = env::var("NPM_BINARY_LOCATION").unwrap_or_else(|_| "npm".to_string());
@@ -95,7 +98,13 @@ impl TypescriptUnsafeProcessorTool {
         const inputs = {};
         const config = {};
         run(config, inputs).then((result) => {{
+            console.log("<TYPE_SCRIPT_UNSAFE_PROCESSOR_OUTPUT>");
             console.log(JSON.stringify(result));
+            console.log("</TYPE_SCRIPT_UNSAFE_PROCESSOR_OUTPUT>");
+        }}).catch((error) => {{
+            console.log("<TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>");
+            console.log(JSON.stringify({{ error }}));
+            console.log("</TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>");
         }});
         "#,
             parameters_json_string, config_json_string
@@ -123,7 +132,7 @@ impl TypescriptUnsafeProcessorTool {
                 .arg("install")
                 .current_dir(temp_path.clone())
                 .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
+                // .stderr(Stdio::inherit())
                 .output()
                 .map_err(|e| {
                     if e.kind() == std::io::ErrorKind::NotFound {
@@ -134,6 +143,7 @@ impl TypescriptUnsafeProcessorTool {
                         ToolError::ExecutionError(format!("Failed to run npm install: {}", e))
                     }
                 })?;
+            let npm_output_string = String::from_utf8_lossy(&npm_output.stdout).to_string();
 
             if !npm_output.status.success() {
                 return Err(ToolError::ExecutionError(format!(
@@ -145,6 +155,11 @@ impl TypescriptUnsafeProcessorTool {
 
         // Run node index.ts
         let node_output = Command::new(&node_binary)
+            .envs(envs)
+            .env(
+                "CHROME_PATH",
+                env::var("CHROME_PATH").unwrap_or_else(|_| "".to_string()),
+            )
             .arg("--experimental-strip-types")
             .arg("index.ts")
             .current_dir(temp_path.clone())
@@ -169,6 +184,23 @@ impl TypescriptUnsafeProcessorTool {
             )));
         }
 
+        // Extract content between tags
+        if let Some(start_idx) = stdout.find("<TYPE_SCRIPT_UNSAFE_PROCESSOR_OUTPUT>") {
+            if let Some(end_idx) = stdout.find("</TYPE_SCRIPT_UNSAFE_PROCESSOR_OUTPUT>") {
+                let content = stdout[start_idx + "<TYPE_SCRIPT_UNSAFE_PROCESSOR_OUTPUT>".len()..end_idx].trim();
+                return Ok(content.to_string());
+            }
+        }
+
+        // Check for error tags if output tags weren't found
+        if let Some(start_idx) = stdout.find("<TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>") {
+            if let Some(end_idx) = stdout.find("</TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>") {
+                let content = stdout[start_idx + "<TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>".len()..end_idx].trim();
+                return Ok(content.to_string());
+            }
+        }
+
+        // If no tags found, return the raw output
         Ok(stdout)
     }
 }
@@ -177,9 +209,9 @@ impl TypescriptUnsafeProcessorTool {
 impl ToolExecutor for TypescriptUnsafeProcessorTool {
     async fn execute(
         _bearer: String,
-        _tool_id: String,
-        _app_id: String,
-        _db_clone: Arc<SqliteManager>,
+        tool_id: String,
+        app_id: String,
+        db_clone: Arc<SqliteManager>,
         _node_name_clone: ShinkaiName,
         _identity_manager_clone: Arc<Mutex<IdentityManager>>,
         _job_manager_clone: Arc<Mutex<JobManager>>,
@@ -187,7 +219,7 @@ impl ToolExecutor for TypescriptUnsafeProcessorTool {
         _encryption_public_key_clone: EncryptionPublicKey,
         _signing_secret_key_clone: SigningKey,
         parameters: &Map<String, Value>,
-        _llm_provider: String,
+        llm_provider: String,
     ) -> Result<Value, ToolError> {
         // Extract required parameters
         let code = parameters
@@ -213,8 +245,43 @@ impl ToolExecutor for TypescriptUnsafeProcessorTool {
             "{}".to_string()
         };
 
+        let envs = generate_execution_environment(
+            db_clone,
+            llm_provider,
+            app_id,
+            tool_id,
+            "".to_string(), // Tool router key needed for oauth validation.
+            "unknown".to_string(),
+            &None,
+        )
+        .await?;
+
+        // Store in temporal storage the code and the parameters
+        let temporal_folder = env::temp_dir().join(format!("shinkai_ts_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(temporal_folder.clone())
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to create temp dir: {}", e)))?;
+        fs::write(temporal_folder.join("code.ts"), code)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to write code.ts: {}", e)))?;
+        if let Some(package) = package {
+            fs::write(temporal_folder.join("package.json"), package)
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to write package.json: {}", e)))?;
+        }
+        fs::write(temporal_folder.join("parameters.json"), parameters_json_string.clone())
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to write parameters.json: {}", e)))?;
+        fs::write(temporal_folder.join("config.json"), config_json_string.clone())
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to write config.json: {}", e)))?;
+        fs::write(
+            temporal_folder.join(".env"),
+            envs.iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<String>>()
+                .join("\n"),
+        )
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to write env: {}", e)))?;
+        println!("[TS Unsafe Processor] Temporal folder: {:?}", temporal_folder);
+
         // Run the Node.js code and get the output
-        let stdout = Self::run_node_code(&code, package, &parameters_json_string, &config_json_string).await?;
+        let stdout = Self::run_node_code(&code, package, &parameters_json_string, &config_json_string, &envs).await?;
 
         Ok(json!({
             "stdout": stdout
@@ -241,7 +308,8 @@ mod tests {
             "dependencies": {}
         }"#;
 
-        let result = TypescriptUnsafeProcessorTool::run_node_code(code, Some(package), "{}", "{}").await;
+        let result =
+            TypescriptUnsafeProcessorTool::run_node_code(code, Some(package), "{}", "{}", &HashMap::new()).await;
         // println!("Result: {:?}", result);
         assert!(result.is_ok());
         assert!(result.unwrap().contains(r#"{"message":"Hello, World!"}"#));
@@ -266,7 +334,8 @@ mod tests {
             }
         }"#;
 
-        let result = TypescriptUnsafeProcessorTool::run_node_code(code, Some(package), "{}", "{}").await;
+        let result =
+            TypescriptUnsafeProcessorTool::run_node_code(code, Some(package), "{}", "{}", &HashMap::new()).await;
         assert!(result.is_ok());
     }
 
@@ -290,6 +359,7 @@ mod tests {
             Some(package),
             "{ \"name\": \"Alice\", \"age\": 30 }",
             "{}",
+            &HashMap::new(),
         )
         .await;
         assert!(result.is_ok());
@@ -320,6 +390,7 @@ mod tests {
             Some(package),
             "{}",
             "{ \"mode\": \"debug\", \"maxRetries\": 3 }",
+            &HashMap::new(),
         )
         .await;
         assert!(result.is_ok());
@@ -341,7 +412,8 @@ mod tests {
             "dependencies": {}
         }"#;
 
-        let result = TypescriptUnsafeProcessorTool::run_node_code(code, Some(package), "{}", "{}").await;
+        let result =
+            TypescriptUnsafeProcessorTool::run_node_code(code, Some(package), "{}", "{}", &HashMap::new()).await;
         assert!(result.is_err());
     }
 
@@ -353,7 +425,7 @@ mod tests {
         }
         "#;
 
-        let result = TypescriptUnsafeProcessorTool::run_node_code(code, None, "{}", "{}").await;
+        let result = TypescriptUnsafeProcessorTool::run_node_code(code, None, "{}", "{}", &HashMap::new()).await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains(r#"{"message":"Hello without package.json!"}"#));
     }
