@@ -17,7 +17,7 @@ use shinkai_message_primitives::{
         shinkai_message::{NodeApiData, ShinkaiMessage},
         shinkai_message_schemas::WSTopic,
     },
-    shinkai_utils::shinkai_time::ShinkaiStringTime,
+    shinkai_utils::{job_scope::MinimalJobScope, search_mode::VectorSearchMode, shinkai_time::ShinkaiStringTime},
 };
 use tokio::sync::Mutex;
 
@@ -34,8 +34,8 @@ impl SqliteManager {
         let smart_inbox_name = format!("New Inbox: {}", inbox_name);
         let conn = self.get_connection()?;
         conn.execute(
-            "INSERT INTO inboxes (inbox_name, smart_inbox_name) VALUES (?1, ?2)",
-            params![inbox_name, smart_inbox_name],
+            "INSERT INTO inboxes (inbox_name, smart_inbox_name, last_modified) VALUES (?1, ?2, ?3)",
+            params![inbox_name, smart_inbox_name, ShinkaiStringTime::generate_time_now()],
         )?;
         Ok(())
     }
@@ -121,12 +121,27 @@ impl SqliteManager {
         let encoded_message = updated_message
             .encode_message()
             .map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
+        {
+            let mut conn = self.get_connection()?;
 
-        let conn = self.get_connection()?;
-        conn.execute(
+            // Start a transaction to ensure both operations are atomic
+            let tx = conn.transaction()?;
+
+            // Update the message in inbox_messages
+            tx.execute(
             "INSERT OR REPLACE INTO inbox_messages (message_hash, inbox_name, shinkai_message, parent_message_hash, time_key) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![hash_key, inbox_name, encoded_message, parent_key, time_key],
+        params![hash_key, inbox_name, encoded_message, parent_key, time_key],
         )?;
+
+            // Update the last_modified timestamp in inboxes
+            tx.execute(
+                "UPDATE inboxes SET last_modified = ?1 WHERE inbox_name = ?2",
+                params![time_key, inbox_name],
+            )?;
+
+            // Commit the transaction
+            tx.commit()?;
+        }
 
         {
             // Note: this is the code for enabling WS
@@ -483,13 +498,12 @@ impl SqliteManager {
         }
 
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT inbox_name FROM inboxes")?;
+        let mut stmt = conn.prepare("SELECT inbox_name FROM inboxes ORDER BY last_modified DESC")?;
         let mut rows = stmt.query([])?;
 
         let mut inboxes = Vec::new();
         while let Some(row) = rows.next()? {
             let inbox_name: String = row.get(0)?;
-
             inboxes.push(inbox_name);
         }
 
@@ -516,7 +530,15 @@ impl SqliteManager {
 
         // If offset is provided, find its position in the list
         let start_index = if let Some(offset_id) = offset {
-            inboxes.iter().position(|inbox| inbox == &offset_id).map(|pos| pos + 1).unwrap_or(0)
+            if offset_id.is_empty() {
+                0
+            } else {
+                inboxes
+                    .iter()
+                    .position(|inbox| inbox == &offset_id)
+                    .map(|pos| pos + 1)
+                    .unwrap_or(inboxes.len())
+            }
         } else {
             0
         };
@@ -585,7 +607,6 @@ impl SqliteManager {
                                 .map_err(|e| SqliteManagerError::SomeError(e.to_string()))?
                             {
                                 InboxName::JobInbox { unique_id, .. } => {
-                                    // Start the timer
                                     let job = self.get_job_with_options(&unique_id, false)?;
                                     let agent_id = job.parent_agent_or_llm_provider_id;
 
@@ -1418,5 +1439,166 @@ mod tests {
 
         println!("Time taken to get all smart inboxes: {:?}", duration);
         println!("Number of smart inboxes retrieved: {}", smart_inboxes.len());
+    }
+
+    #[tokio::test]
+    async fn test_smart_inboxes_pagination() {
+        let db = setup_test_db();
+
+        let node_identity_name = "@@node.shinkai";
+        let subidentity_name = "main";
+        let (node_identity_sk, node_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node_encryption_sk, node_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let (_, node_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+        let (_, node_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+
+        // Create a profile identity
+        let profile_identity = StandardIdentity::new(
+            ShinkaiName::from_node_and_profile_names(node_identity_name.to_string(), subidentity_name.to_string())
+                .unwrap(),
+            None,
+            node_encryption_pk.clone(),
+            node_identity_pk.clone(),
+            Some(node_subencryption_pk),
+            Some(node_subidentity_pk),
+            StandardIdentityType::Profile,
+            IdentityPermissions::Standard,
+        );
+        let _ = db.insert_profile(profile_identity.clone());
+
+        // Create 25 jobs first
+        for job_index in 0..25 {
+            let job_id = format!("{}", job_index);
+            let job_scope = MinimalJobScope {
+                vector_fs_items: vec![],
+                vector_fs_folders: vec![],
+                vector_search_mode: VectorSearchMode::FillUpTo25k,
+            };
+            let job_config = JobConfig::empty();
+            let agent_id = "test_agent".to_string();
+            let is_hidden = false;
+            let _ = db.create_new_job(job_id, agent_id, job_scope, is_hidden, None, Some(job_config));
+        }
+
+        // Create 25 inboxes with 1 message each, with different timestamps
+        for inbox_index in 0..25 {
+            let inbox_name = format!("job_inbox::{}::false", inbox_index);
+            let message_content = format!("Message for inbox {}", inbox_index);
+            let message = generate_message_with_text_and_inbox(
+                message_content,
+                node_encryption_sk.clone(),
+                clone_signature_secret_key(&node_identity_sk),
+                node_subencryption_pk,
+                subidentity_name.to_string(),
+                node_identity_name.to_string(),
+                // Create messages with different timestamps, newer messages for higher indexes
+                format!("2023-07-02T20:{:02}:34.814Z", inbox_index),
+                inbox_name.clone(),
+            );
+
+            db.unsafe_insert_inbox_message(&message, None, None).await.unwrap();
+        }
+
+        // Test pagination with different page sizes
+        let page_sizes = vec![5, 10, 15];
+        for page_size in page_sizes {
+            let mut all_inboxes = Vec::new();
+            let mut current_offset = None;
+            let mut page_count = 0;
+
+            loop {
+                let result = db
+                    .get_all_smart_inboxes_for_profile_with_pagination(
+                        profile_identity.clone(),
+                        Some(page_size),
+                        current_offset.clone(),
+                    )
+                    .unwrap();
+
+                println!("Page {}: Got {} inboxes", page_count + 1, result.inboxes.len());
+                println!("Current offset: {:?}", current_offset);
+                println!("Has next page: {}", result.has_next_page);
+                if let Some(last) = result.inboxes.last() {
+                    println!("Last inbox ID: {}", last.inbox_id);
+                }
+
+                // Store the inboxes from this page
+                all_inboxes.extend(result.inboxes.clone());
+                page_count += 1;
+
+                // Verify has_next_page is accurate
+                if !result.has_next_page {
+                    break;
+                }
+
+                // Set the offset for the next page to the last inbox's ID
+                current_offset = result.inboxes.last().map(|inbox| inbox.inbox_id.clone());
+            }
+
+            // Verify we got all inboxes
+            assert_eq!(
+                all_inboxes.len(),
+                25,
+                "Should have retrieved all 25 inboxes with page size {}",
+                page_size
+            );
+
+            // Verify inboxes are in correct order (newest first)
+            for i in 1..all_inboxes.len() {
+                let prev_inbox = &all_inboxes[i - 1];
+                let curr_inbox = &all_inboxes[i];
+
+                // Extract timestamps from last_message
+                let prev_time = prev_inbox
+                    .last_message
+                    .as_ref()
+                    .map(|msg| msg.external_metadata.scheduled_time.clone())
+                    .unwrap();
+                let curr_time = curr_inbox
+                    .last_message
+                    .as_ref()
+                    .map(|msg| msg.external_metadata.scheduled_time.clone())
+                    .unwrap();
+
+                assert!(
+                    prev_time >= curr_time,
+                    "Inboxes should be ordered by timestamp (newest first)"
+                );
+            }
+
+            // Verify expected number of pages
+            let expected_pages = (25 + page_size - 1) / page_size; // Ceiling division
+            assert_eq!(
+                page_count, expected_pages,
+                "Expected {} pages for page size {}, got {}",
+                expected_pages, page_size, page_count
+            );
+        }
+
+        // Test empty offset (should return first page)
+        let empty_offset_result = db
+            .get_all_smart_inboxes_for_profile_with_pagination(profile_identity.clone(), Some(10), Some("".to_string()))
+            .unwrap();
+        assert_eq!(empty_offset_result.inboxes.len(), 10);
+        assert!(empty_offset_result.has_next_page);
+
+        // Test non-existent offset (should return empty result)
+        let non_existent_result = db
+            .get_all_smart_inboxes_for_profile_with_pagination(
+                profile_identity.clone(),
+                Some(10),
+                Some("non_existent_inbox".to_string()),
+            )
+            .unwrap();
+        assert_eq!(non_existent_result.inboxes.len(), 0);
+        assert!(!non_existent_result.has_next_page);
+
+        // Test with a limit larger than total inboxes
+        let large_limit_result = db
+            .get_all_smart_inboxes_for_profile_with_pagination(profile_identity.clone(), Some(50), None)
+            .unwrap();
+        assert_eq!(large_limit_result.inboxes.len(), 25);
+        assert!(!large_limit_result.has_next_page);
     }
 }

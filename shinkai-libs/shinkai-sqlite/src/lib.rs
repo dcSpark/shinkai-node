@@ -248,7 +248,8 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS inboxes (
                 inbox_name TEXT NOT NULL UNIQUE,
                 smart_inbox_name TEXT NOT NULL,
-                read_up_to_message_hash TEXT
+                read_up_to_message_hash TEXT,
+                last_modified TEXT
             );",
             [],
         )?;
@@ -256,6 +257,12 @@ impl SqliteManager {
         // Create an index for the inbox_name column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_inboxes_inbox_name ON inboxes (inbox_name);",
+            [],
+        )?;
+
+        // Create an index for sorting by most recent
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_last_modified_desc ON inboxes (last_modified DESC);",
             [],
         )?;
 
