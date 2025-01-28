@@ -1699,6 +1699,31 @@ impl Node {
             }
         };
 
+        // Check if the job is empty before adding messages
+        if db.is_job_inbox_empty(&job_id)? && !messages.is_empty() {
+            // Extract first 20 characters from the first message's content
+            let first_message_content = &messages[0].content;
+            let custom_name: String = if first_message_content.len() > 20 {
+                first_message_content[..20].to_string()
+            } else {
+                first_message_content.to_string()
+            };
+
+            // Get the inbox name for the job
+            let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
+            
+            // Update the inbox name
+            if let Err(e) = db.unsafe_update_smart_inbox_name(&inbox_name.to_string(), &custom_name) {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update inbox name: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
         // Process each message alternating between user and AI
         for (index, message) in messages.into_iter().enumerate() {
             if index % 2 == 0 {

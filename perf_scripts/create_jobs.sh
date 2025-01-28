@@ -27,6 +27,7 @@
 # AUTH_TOKEN    - Bearer token for API authentication
 #                 (default: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6Ikpva")
 # API_BASE_URL  - Base URL of the Shinkai API (default: "http://127.0.0.1:9950")
+# DELAY_MS      - Delay between requests in milliseconds (default: 100ms)
 #
 # Usage Examples:
 # --------------
@@ -63,6 +64,7 @@
 JOBS_COUNT=${JOBS_COUNT:-1}
 AUTH_TOKEN=${AUTH_TOKEN:-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6Ikpva"}
 API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:9950"}
+DELAY_MS=${DELAY_MS:-100}  # Default delay of 100ms between requests
 
 # Function to create a job and add messages
 create_job_and_add_messages() {
@@ -94,6 +96,9 @@ create_job_and_add_messages() {
 
     echo "Created job with ID: $job_id"
 
+    # Sleep for the specified delay
+    sleep $(echo "scale=3; $DELAY_MS/1000" | bc)
+
     # Add messages to the job
     curl -s -X "POST" "$API_BASE_URL/v2/add_messages_god_mode" \
         -H "Authorization: Bearer $AUTH_TOKEN" \
@@ -103,7 +108,7 @@ create_job_and_add_messages() {
             \"messages\": [
                 {
                     \"parent\": \"\",
-                    \"content\": \"I'm working on a React component that needs to handle real-time updates. What's the best approach?\",
+                    \"content\": \"Message ${i}: I'm working on a React component that needs to handle real-time updates. What's the best approach?\",
                     \"job_id\": \"$job_id\",
                     \"files_inbox\": \"\"
                 },
