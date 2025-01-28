@@ -979,6 +979,7 @@ impl Node {
         language: CodeLanguage,
         tools: Vec<ToolRouterKey>,
         code: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -1016,19 +1017,25 @@ impl Node {
                 }
             };
 
-        let metadata_prompt =
-            match tool_metadata_implementation_prompt(language.clone(), code.clone(), tools.clone()).await {
-                Ok(prompt) => prompt,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to generate tool definitions: {:?}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
+        let metadata_prompt = match tool_metadata_implementation_prompt(
+            language.clone(),
+            code.clone(),
+            tools.clone(),
+            identity_manager.clone(),
+        )
+        .await
+        {
+            Ok(prompt) => prompt,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         let library_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), false).await {
             Ok(code) => code,
@@ -1169,7 +1176,7 @@ impl Node {
         tools: Vec<ToolRouterKey>,
         db: Arc<SqliteManager>,
         node_name_clone: ShinkaiName,
-        identity_manager_clone: Arc<Mutex<IdentityManager>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
         encryption_secret_key_clone: EncryptionStaticKey,
         encryption_public_key_clone: EncryptionPublicKey,
@@ -1258,7 +1265,8 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata = match tool_metadata_implementation_prompt(language, code, tools).await {
+        let metadata = match tool_metadata_implementation_prompt(language, code, tools, identity_manager.clone()).await
+        {
             Ok(metadata) => metadata,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
@@ -1280,7 +1288,7 @@ impl Node {
             metadata,
             db,
             node_name_clone,
-            identity_manager_clone,
+            identity_manager,
             job_manager_clone,
             encryption_secret_key_clone,
             encryption_public_key_clone,
@@ -1649,6 +1657,136 @@ impl Node {
             }
         }
         Ok(())
+    }
+
+    pub async fn v2_api_publish_tool(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_env: NodeEnvironment,
+        tool_key_path: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        signing_secret_key: SigningKey,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let response = Self::publish_tool(db, node_env, tool_key_path, identity_manager, signing_secret_key).await;
+
+        match response {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+            }
+        }
+        Ok(())
+    }
+
+    async fn publish_tool(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        tool_key_path: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        signing_secret_key: SigningKey,
+    ) -> Result<Value, APIError> {
+        // Generate zip file.
+        let tool = db.get_tool_by_key(&tool_key_path.clone()).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to get tool: {}", e),
+        })?;
+
+        let file_bytes: Vec<u8> = Self::get_tool_zip(tool, node_env).await.map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to get tool zip: {}", e),
+        })?;
+
+        let identity_manager = identity_manager.lock().await;
+        let local_node_name = identity_manager.local_node_name.clone();
+        let identity_name = local_node_name.to_string();
+        drop(identity_manager);
+
+        // Hash
+        let hash_raw = blake3::hash(&file_bytes.clone());
+        let hash_hex = hash_raw.to_hex();
+        let hash = hash_hex.to_string();
+
+        // Signature
+        let signature = signing_secret_key
+            .clone()
+            .try_sign(hash_hex.as_bytes())
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to sign tool: {}", e),
+            })?;
+
+        let signature_bytes = signature.to_bytes();
+        let signature_hex = hex::encode(signature_bytes);
+
+        // Publish the tool to the store.
+        let client = reqwest::Client::new();
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(file_bytes)
+                    .file_name(format!("{}.zip", tool_key_path.replace(':', "_"))),
+            )
+            .text("type", "Tool")
+            .text("routerKey", tool_key_path.clone())
+            .text("hash", hash.clone())
+            .text("signature", signature_hex.clone())
+            .text("identity", identity_name.clone());
+
+        println!("[Publish Tool] Type: {}", "tool");
+        println!("[Publish Tool] Router Key: {}", tool_key_path.clone());
+        println!("[Publish Tool] Hash: {}", hash.clone());
+        println!("[Publish Tool] Signature: {}", signature_hex.clone());
+        println!("[Publish Tool] Identity: {}", identity_name.clone());
+
+        let store_url = env::var("SHINKAI_STORE_URL")
+            .unwrap_or("https://shinkai-store-302883622007.us-central1.run.app".to_string());
+        let response = client
+            .post(format!("{}/store/revisions", store_url))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to publish tool: {}", e),
+            })?;
+
+        let status = response.status();
+        let response_text = response.text().await.unwrap_or_default().clone();
+        println!("Response: {:?}", response_text);
+        if status.is_success() {
+            let r = json!({
+                "status": "success",
+                "message": "Tool published successfully",
+                "tool_key": tool_key_path.clone(),
+            });
+            let r: Value = match r {
+                Value::Object(mut map) => {
+                    let response_json = serde_json::from_str(&response_text).unwrap_or_default();
+                    map.insert("response".to_string(), response_json);
+                    Value::Object(map)
+                }
+                o => o,
+            };
+            return Ok(r);
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Store Upload Error".to_string(),
+                message: format!("Failed to upload to store: {}: {}", status, response_text),
+            };
+            return Err(api_error);
+        }
     }
 
     pub async fn v2_api_import_tool(

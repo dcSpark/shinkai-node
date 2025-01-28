@@ -1,7 +1,8 @@
-use std::collections::HashMap;
-
+use crate::managers::IdentityManager;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{shinkai_tools::CodeLanguage, tool_router_key::ToolRouterKey};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 pub async fn generate_code_prompt(
     language: CodeLanguage,
@@ -240,7 +241,11 @@ pub async fn tool_metadata_implementation_prompt(
     language: CodeLanguage,
     code: String,
     tools: Vec<ToolRouterKey>,
+    identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<String, APIError> {
+    let identity_manager = identity_manager.lock().await;
+    let identity_name = identity_manager.local_node_name.to_string();
+    drop(identity_manager);
     // code might be json string as {
     //  "job_id":"jobid_c7c5c9f5-e3a3-4667-ba67-e8b838c2f5db",
     //  "content":"```typescript\ ..console.log.. ```",
@@ -318,7 +323,7 @@ pub async fn tool_metadata_implementation_prompt(
       "name": "<name>",
       "homepage": "<url>",
       "description": "<description>",
-      "author": "<author>",
+      "author": "{identity_name}",
       "version": "1.0.0",
       "keywords": [],
       "configurations": {{
@@ -610,7 +615,7 @@ pub async fn tool_metadata_implementation_prompt(
     "name": "Coinbase Wallet Creator",
     "homepage": "https://shinkai.com",
     "description": "Tool for creating a Coinbase wallet",
-    "author": "Shinkai",
+    "author": "{identity_name}",
     "version": "1.0.0",
     "keywords": [
       "coinbase",
@@ -670,7 +675,7 @@ pub async fn tool_metadata_implementation_prompt(
     "name": "Download Pages",
     "homepage": "https://shinkai.com",
     "description": "Downloads one or more URLs and sends the html content as markdown to an email address.",
-    "author": "Shinkai",
+    "author": "{identity_name}",
     "version": "1.0.0",
     "keywords": [
       "HTML to Markdown",

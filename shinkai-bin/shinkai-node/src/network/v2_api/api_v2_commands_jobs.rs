@@ -423,6 +423,8 @@ impl Node {
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
+        _limit: Option<usize>,
+        _offset: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -447,7 +449,7 @@ impl Node {
             }
         };
 
-        // Retrieve all smart inboxes for the profile
+        // Retrieve all smart inboxes for the profile with pagination
         let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
             Ok(inboxes) => inboxes,
             Err(err) => {
@@ -470,6 +472,77 @@ impl Node {
         match v2_smart_inboxes {
             Ok(inboxes) => {
                 let _ = res.send(Ok(inboxes)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert smart inboxes: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_get_all_smart_inboxes_paginated(
+        db: Arc<SqliteManager>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        bearer: String,
+        limit: Option<usize>,
+        offset: Option<String>,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the main identity from the identity manager
+        let main_identity = {
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(Identity::Standard(identity)) => identity.clone(),
+                _ => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get main identity".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        // Retrieve all smart inboxes for the profile with pagination
+        let paginated_inboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset) {
+            Ok(inboxes) => inboxes,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve smart inboxes: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Convert SmartInbox to V2SmartInbox
+        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes.inboxes
+            .into_iter()
+            .map(Self::convert_smart_inbox_to_v2_smart_inbox)
+            .collect();
+
+        match v2_smart_inboxes {
+            Ok(inboxes) => {
+                let response = json!({
+                    "inboxes": inboxes,
+                    "hasNextPage": paginated_inboxes.has_next_page
+                });
+                let _ = res.send(Ok(response)).await;
             }
             Err(err) => {
                 let api_error = APIError {
@@ -929,8 +1002,8 @@ impl Node {
             recipient,
             &serde_json::to_string(&job_message).unwrap(),
             MessageSchemaType::JobMessageSchema,
-            node_encryption_sk,
-            node_signing_sk,
+            node_encryption_sk.clone(),
+            node_signing_sk.clone(),
             node_encryption_pk,
             Some(job_id.clone()),
         ) {
