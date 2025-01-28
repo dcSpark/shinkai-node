@@ -438,6 +438,8 @@ impl JobManager {
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
+            
+            // Create the job
             match db_arc.create_new_job(
                 job_id.clone(),
                 llm_or_agent_provider_id.clone(),

@@ -248,7 +248,9 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS inboxes (
                 inbox_name TEXT NOT NULL UNIQUE,
                 smart_inbox_name TEXT NOT NULL,
-                read_up_to_message_hash TEXT
+                read_up_to_message_hash TEXT,
+                last_modified TEXT,
+                is_hidden BOOLEAN DEFAULT FALSE
             );",
             [],
         )?;
@@ -256,6 +258,18 @@ impl SqliteManager {
         // Create an index for the inbox_name column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_inboxes_inbox_name ON inboxes (inbox_name);",
+            [],
+        )?;
+
+        // Create a composite index for filtering hidden inboxes and sorting by last_modified
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_hidden_modified ON inboxes (is_hidden, last_modified DESC);",
+            [],
+        )?;
+
+        // Create an index for sorting by last_modified only (for when show_hidden is true)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_last_modified ON inboxes (last_modified DESC);",
             [],
         )?;
 
@@ -882,14 +896,6 @@ impl SqliteManager {
     pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
         vec![value; 384]
     }
-
-    // pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
-    //     Ok(self.model_type.clone())
-    // }
-    // pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
-    //     self.model_type = model;
-    //     Ok(())
-    // }
 
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {

@@ -531,12 +531,14 @@ pub enum NodeCommand {
         bearer: String,
         limit: Option<usize>,
         offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     },
     V2ApiGetAllSmartInboxesPaginated {
         bearer: String,
         limit: Option<usize>,
         offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiUpdateSmartInboxName {

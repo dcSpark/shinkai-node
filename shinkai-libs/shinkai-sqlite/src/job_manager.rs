@@ -65,7 +65,7 @@ impl SqliteManager {
             ])?;
         }
 
-        self.create_empty_inbox(job_inbox_name)?;
+        self.create_empty_inbox(job_inbox_name, Some(is_hidden))?;
 
         Ok(())
     }
@@ -1049,7 +1049,7 @@ mod tests {
         .unwrap();
 
         let smart_inboxes = db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false))
             .unwrap();
         assert_eq!(smart_inboxes.len(), 2);
 
@@ -1064,7 +1064,7 @@ mod tests {
 
         // Check if the smart_inbox is removed
         let smart_inboxes = db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false))
             .unwrap();
         assert_eq!(smart_inboxes.len(), 1);
         assert!(smart_inboxes[0].inbox_id != inbox1_name.to_string());
