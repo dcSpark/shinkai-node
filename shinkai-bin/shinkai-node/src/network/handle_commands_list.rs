@@ -2387,9 +2387,19 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::generate_tool_fetch_query(bearer, db_clone, language, tools, code, res).await;
+                    let _ = Node::generate_tool_fetch_query(
+                        bearer,
+                        db_clone,
+                        language,
+                        tools,
+                        code,
+                        identity_manager_clone,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiGenerateToolImplementation {
