@@ -1,9 +1,70 @@
 #!/bin/bash
 
+# Performance Testing Script - create_jobs.sh
+# ==========================================
+#
+# Description:
+# ------------
+# This script creates test jobs with simulated chat conversations for performance testing purposes.
+# It creates a specified number of jobs through the Shinkai API, each containing a simulated
+# conversation about React and WebSocket implementation.
+#
+# Use Cases:
+# ----------
+# - Load testing the job creation system
+# - Performance testing with multiple concurrent jobs
+# - Testing message handling capabilities
+#
+# Prerequisites:
+# -------------
+# - Bash shell
+# - curl command-line tool
+# - Access to a running Shinkai API instance
+#
+# Environment Variables:
+# --------------------
+# JOBS_COUNT    - Number of jobs to create (default: 1)
+# AUTH_TOKEN    - Bearer token for API authentication
+#                 (default: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6Ikpva")
+# API_BASE_URL  - Base URL of the Shinkai API (default: "http://127.0.0.1:9950")
+# DELAY_MS      - Delay between requests in milliseconds (default: 100ms)
+#
+# Usage Examples:
+# --------------
+# 1. Create a single job with default settings:
+#    ./create_jobs.sh
+#
+# 2. Create multiple jobs:
+#    JOBS_COUNT=5 ./create_jobs.sh
+#
+# 3. Use custom API endpoint:
+#    API_BASE_URL="http://my-api-server:9950" ./create_jobs.sh
+#
+# 4. Combine multiple settings:
+#    JOBS_COUNT=3 API_BASE_URL="http://custom-server:9950" AUTH_TOKEN="your-token" ./create_jobs.sh
+#
+# Example Output:
+# -------------
+# Creating 3 jobs...
+# Processing job 1 of 3
+# Created job with ID: abc123
+# Added messages to job: abc123
+# ----------------------------------------
+# Processing job 2 of 3
+# Created job with ID: def456
+# Added messages to job: def456
+# ----------------------------------------
+# Processing job 3 of 3
+# Created job with ID: ghi789
+# Added messages to job: ghi789
+# ----------------------------------------
+# Completed creating 3 jobs
+
 # Default values for environment variables
 JOBS_COUNT=${JOBS_COUNT:-1}
 AUTH_TOKEN=${AUTH_TOKEN:-"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6Ikpva"}
 API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:9950"}
+DELAY_MS=${DELAY_MS:-100}  # Default delay of 100ms between requests
 
 # Function to create a job and add messages
 create_job_and_add_messages() {
@@ -35,6 +96,9 @@ create_job_and_add_messages() {
 
     echo "Created job with ID: $job_id"
 
+    # Sleep for the specified delay
+    sleep $(echo "scale=3; $DELAY_MS/1000" | bc)
+
     # Add messages to the job
     curl -s -X "POST" "$API_BASE_URL/v2/add_messages_god_mode" \
         -H "Authorization: Bearer $AUTH_TOKEN" \
@@ -44,7 +108,7 @@ create_job_and_add_messages() {
             \"messages\": [
                 {
                     \"parent\": \"\",
-                    \"content\": \"I'm working on a React component that needs to handle real-time updates. What's the best approach?\",
+                    \"content\": \"Message ${i}: I'm working on a React component that needs to handle real-time updates. What's the best approach?\",
                     \"job_id\": \"$job_id\",
                     \"files_inbox\": \"\"
                 },
