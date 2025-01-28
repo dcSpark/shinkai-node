@@ -8,8 +8,6 @@ use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use rusqlite::params;
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 
 pub mod agent_manager;
 pub mod cron_task_manager;
@@ -898,14 +896,6 @@ impl SqliteManager {
     pub fn generate_vector_for_testing(value: f32) -> Vec<f32> {
         vec![value; 384]
     }
-
-    // pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
-    //     Ok(self.model_type.clone())
-    // }
-    // pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
-    //     self.model_type = model;
-    //     Ok(())
-    // }
 
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
