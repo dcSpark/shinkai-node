@@ -63,7 +63,13 @@ impl LLMService for LocalRegex {
         };
 
         // Get patterns from the database for this specific provider
-        let patterns = db.get_enabled_regex_patterns_for_provider(&model.model_type())
+        let provider_str = match &model {
+            LLMProviderInterface::LocalRegex(local_regex) => &local_regex.model_type,
+            _ => return Err(LLMProviderError::InvalidConfiguration(
+                "Expected LocalRegex provider type".to_string()
+            )),
+        };
+        let patterns = db.get_enabled_regex_patterns_for_provider(provider_str)
             .map_err(|e| LLMProviderError::DatabaseError(format!("Failed to get regex patterns: {}", e)))?;
 
         // Try to match the message against patterns
