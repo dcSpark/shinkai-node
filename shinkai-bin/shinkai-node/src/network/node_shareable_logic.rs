@@ -15,6 +15,8 @@ use shinkai_message_primitives::{
     shinkai_utils::encryption::string_to_encryption_public_key,
 };
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
+use hex;
 
 pub async fn validate_message_main_logic(
     encryption_secret_key: &EncryptionStaticKey,
@@ -194,15 +196,40 @@ pub struct ZipFileContents {
     pub archive: zip::ZipArchive<std::io::Cursor<Bytes>>,
 }
 
-pub async fn download_zip_file(url: String, file_name: String) -> Result<ZipFileContents, APIError> {
-    // Download the zip file
-    let response = match reqwest::get(&url).await {
+pub async fn download_zip_file(
+    url: String,
+    file_name: String,
+    node_name: String,
+    signing_secret_key: SigningKey,
+) -> Result<ZipFileContents, APIError> {
+    // Signature
+    let signature = signing_secret_key
+        .clone()
+        .try_sign(url.as_bytes())
+        .map_err(|e| APIError {
+        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to sign tool: {}", e),
+    })?;
+
+    let signature_bytes = signature.to_bytes();
+    let signature_hex = hex::encode(signature_bytes);
+
+    // Create the request with headers
+    let client = reqwest::Client::new();
+    let request = client.get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .header("X-Shinkai-Identity", node_name)
+        .header("X-Shinkai-Signature", signature_hex);
+
+    // Send the request
+    let response = match request.send().await {
         Ok(response) => response,
         Err(err) => {
             return Err(APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Download Failed".to_string(),
-                message: format!("Failed to download agent from URL: {}", err),
+                message: format!("Failed to download asset from URL: {}", err),
             });
         }
     };

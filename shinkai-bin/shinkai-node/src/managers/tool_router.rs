@@ -95,7 +95,7 @@ impl ToolRouter {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
-        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = self.import_tools_from_directory(self.sqlite_manager.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
 
@@ -128,7 +128,7 @@ impl ToolRouter {
         if let Err(e) = self.add_static_prompts(generator).await {
             eprintln!("Error adding static prompts: {}", e);
         }
-        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = self.import_tools_from_directory(self.sqlite_manager.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
         if let Err(e) = self.add_testing_network_tools().await {
@@ -137,7 +137,7 @@ impl ToolRouter {
         Ok(())
     }
 
-    async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
+    async fn import_tools_from_directory(&self, db: Arc<SqliteManager>) -> Result<(), ToolError> {
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
             .to_lowercase()
@@ -189,6 +189,8 @@ impl ToolRouter {
                 let node_env = fetch_node_environment();
                 let tool_url = tool_url.to_string();
                 let tool_name = tool_name.to_string();
+                let node_name = node_env.global_identity_name.clone();
+                let signing_secret_key = self.signing_secret_key.clone();                
                 async move {
                     let tool = db.get_tool_by_key(router_key);
                     let _ = match tool {
@@ -205,7 +207,7 @@ impl ToolRouter {
                         }
                     };
 
-                    match Node::v2_api_import_tool_internal(db, node_env, tool_url).await {
+                    match Node::v2_api_import_tool_internal(db, node_env, tool_url, node_name, signing_secret_key).await {
                         Ok(_) => {
                             println!("Successfully imported tool {}", tool_name);
                             return Ok::<(), ToolError>(());

@@ -240,8 +240,10 @@ impl Node {
             }
             NodeCommand::V2ApiImportAgent { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_name = self.node_name.node_name.clone();
+                let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent(db_clone, bearer, url, res).await;
+                    let _ = Node::v2_api_import_agent(db_clone, bearer, url, node_name, signing_secret_key, res).await;
                 });
             }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
@@ -2515,8 +2517,10 @@ impl Node {
             NodeCommand::V2ApiImportTool { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let node_name = self.node_name.node_name.clone();
+                let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, res).await;
+                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, node_name, signing_secret_key, res).await;
                 });
             }
             NodeCommand::V2ApiImportToolZip { bearer, file_data, res } => {
@@ -2649,8 +2653,10 @@ impl Node {
             }
             NodeCommand::V2ApiImportCronTask { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_name = self.node_name.node_name.clone();
+                let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_cron_task(db_clone, bearer, url, res).await;
+                    let _ = Node::v2_api_import_cron_task(db_clone, bearer, url, node_name, signing_secret_key, res).await;
                 });
             }
             NodeCommand::V2ApiExportCronTask {
