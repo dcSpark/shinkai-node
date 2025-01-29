@@ -266,7 +266,7 @@ pub async fn tool_metadata_implementation_prompt(
     }
 
     let has_oauth = (language == CodeLanguage::Typescript && final_code.contains("getAccessToken("))
-        || (language == CodeLanguage::Python && final_code.contains("get_access_token"));
+        || (language == CodeLanguage::Python && final_code.contains("get_access_token("));
     let oauth_example = if has_oauth {
         r#"[
       {{
