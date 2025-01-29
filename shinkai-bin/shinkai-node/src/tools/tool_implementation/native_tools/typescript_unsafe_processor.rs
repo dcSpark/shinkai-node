@@ -69,7 +69,7 @@ impl TypescriptUnsafeProcessorTool {
                         "config".to_string(),
                         Property::new("object".to_string(), "Configuration for the code execution".to_string()),
                     );
-                    params.required.push("code".to_string());
+                    params.required.push("config".to_string());
                     params
                 },
                 output_arg: ToolOutputArg {
