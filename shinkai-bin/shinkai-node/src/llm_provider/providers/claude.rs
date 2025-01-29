@@ -23,6 +23,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
+use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -49,6 +50,7 @@ impl LLMService for Claude {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
+        _db: Arc<SqliteManager>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {

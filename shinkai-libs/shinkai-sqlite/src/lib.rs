@@ -27,6 +27,7 @@ pub mod keys_manager;
 pub mod llm_provider_manager;
 pub mod oauth_manager;
 pub mod prompt_manager;
+pub mod regex_pattern_manager;
 pub mod retry_manager;
 pub mod settings_manager;
 pub mod sheet_manager;
@@ -171,6 +172,7 @@ impl SqliteManager {
         Self::initialize_wallets_table(conn)?;
         Self::initialize_filesystem_tables(conn)?;
         Self::initialize_oauth_table(conn)?;
+        Self::initialize_regex_patterns_table(conn)?;
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
@@ -777,6 +779,36 @@ impl SqliteManager {
         )?;
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_tokens_connection_name_tool_key ON oauth_tokens (connection_name, tool_key);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_regex_patterns_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS regex_patterns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_name TEXT NOT NULL,
+                pattern TEXT NOT NULL,
+                response TEXT NOT NULL,
+                description TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE,
+                priority INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(provider_name, pattern)
+            );",
+            [],
+        )?;
+
+        // Create indexes for pattern lookups
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_regex_patterns_pattern ON regex_patterns (pattern);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_regex_patterns_provider ON regex_patterns (provider_name);",
             [],
         )?;
 

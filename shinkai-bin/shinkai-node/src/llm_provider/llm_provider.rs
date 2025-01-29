@@ -28,6 +28,7 @@ pub struct LLMProvider {
     pub api_key: Option<String>,
     pub model: LLMProviderInterface,
     pub agent: Option<Agent>,
+    pub db: Arc<SqliteManager>,
 }
 
 impl LLMProvider {
@@ -39,6 +40,7 @@ impl LLMProvider {
         api_key: Option<String>,
         model: LLMProviderInterface,
         agent: Option<Agent>,
+        db: Arc<SqliteManager>,
     ) -> Self {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300)) // 5 min TTFT
@@ -52,6 +54,7 @@ impl LLMProvider {
             api_key,
             model,
             agent,
+            db,
         }
     }
 
@@ -109,6 +112,7 @@ impl LLMProvider {
                         ws_manager_trait,
                         merged_config,
                         llm_stopper,
+                        self.db.clone(),
                     )
                     .await
             }
@@ -124,6 +128,7 @@ impl LLMProvider {
                         ws_manager_trait,
                         merged_config,
                         llm_stopper,
+                        self.db.clone(),
                     )
                     .await
             }
@@ -139,6 +144,7 @@ impl LLMProvider {
                         ws_manager_trait,
                         merged_config,
                         llm_stopper,
+                        self.db.clone(),
                     )
                     .await
             }
@@ -153,6 +159,7 @@ impl LLMProvider {
                     ws_manager_trait,
                     merged_config,
                     llm_stopper,
+                    self.db.clone(),
                 )
                 .await
             }
@@ -168,6 +175,7 @@ impl LLMProvider {
                         ws_manager_trait,
                         merged_config,
                         llm_stopper,
+                        self.db.clone(),
                     )
                     .await
             }
@@ -182,6 +190,7 @@ impl LLMProvider {
                     ws_manager_trait,
                     merged_config,
                     llm_stopper,
+                    self.db.clone(),
                 )
                 .await
             }
@@ -197,6 +206,7 @@ impl LLMProvider {
                         ws_manager_trait,
                         merged_config,
                         llm_stopper,
+                        self.db.clone(),
                     )
                     .await
             }
@@ -212,6 +222,7 @@ impl LLMProvider {
                         ws_manager_trait,
                         merged_config,
                         llm_stopper,
+                        self.db.clone(),
                     )
                     .await
             }
@@ -227,11 +238,28 @@ impl LLMProvider {
                         ws_manager_trait,
                         merged_config,
                         llm_stopper,
+                        self.db.clone(),
                     )
                     .await
             }
             LLMProviderInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
+            }
+            LLMProviderInterface::LocalRegex(local_regex) => {
+                local_regex
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                        self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
+                        merged_config,
+                        llm_stopper,
+                        self.db.clone(),
+                    )
+                    .await
             }
         }?;
         Ok(response)
@@ -239,7 +267,7 @@ impl LLMProvider {
 }
 
 impl LLMProvider {
-    pub fn from_serialized_llm_provider(serialized_llm_provider: SerializedLLMProvider) -> Self {
+    pub fn from_serialized_llm_provider(serialized_llm_provider: SerializedLLMProvider, db: Arc<SqliteManager>) -> Self {
         Self::new(
             serialized_llm_provider.id,
             serialized_llm_provider.full_identity_name,
@@ -247,6 +275,7 @@ impl LLMProvider {
             serialized_llm_provider.api_key,
             serialized_llm_provider.model,
             None,
+            db,
         )
     }
 
@@ -256,7 +285,7 @@ impl LLMProvider {
     ) -> Result<Self, LLMProviderError> {
         match provider_or_agent {
             ProviderOrAgent::LLMProvider(serialized_llm_provider) => {
-                Ok(Self::from_serialized_llm_provider(serialized_llm_provider))
+                Ok(Self::from_serialized_llm_provider(serialized_llm_provider, db))
             }
             ProviderOrAgent::Agent(agent) => {
                 let llm_id = &agent.llm_provider_id;
@@ -264,7 +293,7 @@ impl LLMProvider {
                     .get_llm_provider(llm_id, &agent.full_identity_name)
                     .map_err(|_e| LLMProviderError::AgentNotFound(llm_id.clone()))?;
                 if let Some(llm_provider) = llm_provider {
-                    Ok(Self::from_serialized_llm_provider(llm_provider))
+                    Ok(Self::from_serialized_llm_provider(llm_provider, db))
                 } else {
                     Err(LLMProviderError::AgentNotFound(llm_id.clone()))
                 }

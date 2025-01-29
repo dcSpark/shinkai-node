@@ -83,6 +83,14 @@ pub enum SqliteManagerError {
     VersionMismatch { expected: String, found: String },
     #[error("Version parse error: {0}")]
     VersionParseError(String),
+    #[error("Regex pattern not found")]
+    RegexPatternNotFound,
+    #[error("Regex pattern already exists")]
+    RegexPatternAlreadyExists,
+    #[error("Regex pattern validation error: {0}")]
+    RegexPatternValidationError(String),
+    #[error("Validation error: {0}")]
+    ValidationError(String),
     // Add other error variants as needed
 }
 
