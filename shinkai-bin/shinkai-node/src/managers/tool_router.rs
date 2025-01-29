@@ -150,15 +150,18 @@ impl ToolRouter {
         let start_time = Instant::now();
 
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL").unwrap_or_else(|_| {
-            format!(
-                "https://download.shinkai.com/tools-{}/directory.json",
-                env!("CARGO_PKG_VERSION")
-            )
+           format!("https://shinkai-store-302883622007.us-central1.run.app/store/defaults")
         });
 
         eprintln!("Importing tools from: {}", url);
 
-        let response = reqwest::get(url).await.map_err(|e| ToolError::RequestError(e))?;
+        let client = reqwest::Client::new();
+        let response = client
+            .get(url)
+            .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+            .send()
+            .await
+            .map_err(|e| ToolError::RequestError(e))?;
 
         if response.status() != 200 {
             return Err(ToolError::ExecutionError(format!(
