@@ -734,7 +734,7 @@ pub async fn tool_metadata_implementation_prompt(
 </agent_metadata_rules>
 
 <available_tools>
-{:?}
+{}
 </available_tools>
 
 <agent_metadata_implementation>
@@ -757,6 +757,12 @@ pub async fn tool_metadata_implementation_prompt(
 </empty_template>
 
 "####,
-        tools, final_code, empty_template
+        tools
+            .iter()
+            .map(|tool: &ToolRouterKey| tool.to_string_without_version())
+            .collect::<Vec<String>>()
+            .join("\n"),
+        final_code,
+        empty_template
     ))
 }

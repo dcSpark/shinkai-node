@@ -9,3 +9,4 @@ pub mod config_setup;
 pub mod llm_prompt_processor;
 pub mod sql_processor;
 pub mod tool_knowledge;
+pub mod typescript_unsafe_processor;

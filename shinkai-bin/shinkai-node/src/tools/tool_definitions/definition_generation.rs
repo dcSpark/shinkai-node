@@ -15,6 +15,9 @@ use crate::tools::tool_implementation;
 // TODO keep in sync with execution_custom.rs
 pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     let mut custom_tools = Vec::new();
+    custom_tools.push(
+        tool_implementation::native_tools::typescript_unsafe_processor::TypescriptUnsafeProcessorTool::new().tool,
+    );
     custom_tools.push(tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);

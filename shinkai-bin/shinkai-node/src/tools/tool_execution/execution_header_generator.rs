@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     error::ToolError,
-    parameters::Parameters,
+    parameters::{Parameters, Property},
     tool_config::{OAuth, ToolConfig},
 };
 
@@ -112,8 +112,8 @@ fn check_tool_config(tool_router_key: String, tool_config: Vec<ToolConfig>) -> R
     Ok(())
 }
 
-fn validate_type(param_name: &str, param_value: &Value, property_type: &str, errors: &mut Vec<String>) {
-    match property_type {
+fn validate_type(param_name: &str, param_value: &Value, property: &Property, errors: &mut Vec<String>) {
+    match property.property_type.as_str() {
         "string" => {
             if !param_value.is_string() {
                 errors.push(format!("Parameter '{}' must be a string", param_name));
@@ -137,34 +137,22 @@ fn validate_type(param_name: &str, param_value: &Value, property_type: &str, err
         "array" => {
             if !param_value.is_array() {
                 errors.push(format!("Parameter '{}' must be an array", param_name));
-            } else {
-                // If array has items type specified, validate each item
-                if let Some(items) = property_type.strip_prefix("array<").and_then(|s| s.strip_suffix(">")) {
-                    for (i, item) in param_value.as_array().unwrap().iter().enumerate() {
-                        validate_type(&format!("{}[{}]", param_name, i), item, items, errors);
-                    }
+            } else if let Some(items) = &property.items {
+                // Validate each array item against the items type
+                for (i, item) in param_value.as_array().unwrap().iter().enumerate() {
+                    validate_type(&format!("{}[{}]", param_name, i), item, items, errors);
                 }
             }
         }
         "object" => {
             if !param_value.is_object() {
                 errors.push(format!("Parameter '{}' must be an object", param_name));
-            } else {
-                // If object has property types specified, validate each property
-                if let Some(obj) = param_value.as_object() {
-                    if let Some(properties) = property_type.strip_prefix("object<").and_then(|s| s.strip_suffix(">")) {
-                        let property_types: serde_json::Map<String, Value> =
-                            serde_json::from_str(properties).unwrap_or_default();
-                        for (key, value) in obj {
-                            if let Some(prop_type) = property_types.get(key) {
-                                validate_type(
-                                    &format!("{}.{}", param_name, key),
-                                    value,
-                                    prop_type.as_str().unwrap_or("any"),
-                                    errors,
-                                );
-                            }
-                        }
+            } else if let Some(properties) = &property.properties {
+                // Validate each property of the object
+                let obj = param_value.as_object().unwrap();
+                for (key, prop) in properties {
+                    if let Some(value) = obj.get(key) {
+                        validate_type(&format!("{}.{}", param_name, key), value, prop, errors);
                     }
                 }
             }
@@ -202,7 +190,7 @@ fn check_tool_parameters(parameters: Parameters, value: Map<String, Value>) -> R
             if param_value.is_null() && !parameters.required.contains(param_name) {
                 continue;
             }
-            validate_type(param_name, param_value, &property.property_type, &mut errors);
+            validate_type(param_name, param_value, property, &mut errors);
         }
     }
 
@@ -811,6 +799,157 @@ mod tests {
             assert!(msg.contains("shinkai://config?tool=invalid_oauth"));
         } else {
             panic!("Expected MissingConfigError");
+        }
+    }
+
+    #[test]
+    fn test_check_tool_parameters_array_validation() {
+        let mut params = Parameters::new();
+
+        // Create an array of strings property
+        let string_prop = Property::new("string".to_string(), "A string item".to_string());
+        let array_prop = Property::with_array_items("An array of strings".to_string(), string_prop);
+        params.properties.insert("tags".to_string(), array_prop);
+        params.required.push("tags".to_string());
+
+        // Test valid array
+        let mut value = Map::new();
+        value.insert("tags".to_string(), json!(["tag1", "tag2"]));
+        assert!(check_tool_parameters(params.clone(), value).is_ok());
+
+        // Test invalid array item type
+        let mut value = Map::new();
+        value.insert("tags".to_string(), json!(["tag1", 42]));
+        let result = check_tool_parameters(params.clone(), value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("'tags[1]' must be a string"));
+        }
+
+        // Test non-array value
+        let mut value = Map::new();
+        value.insert("tags".to_string(), json!("not an array"));
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("'tags' must be an array"));
+        }
+    }
+
+    #[test]
+    fn test_check_tool_parameters_nested_object_validation() {
+        let mut params = Parameters::new();
+
+        // Create nested user object property
+        let mut user_props = std::collections::HashMap::new();
+        user_props.insert(
+            "name".to_string(),
+            Property::new("string".to_string(), "The user's name".to_string()),
+        );
+        user_props.insert(
+            "age".to_string(),
+            Property::new("integer".to_string(), "The user's age".to_string()),
+        );
+
+        params.add_nested_property(
+            "user".to_string(),
+            "object".to_string(),
+            "User information".to_string(),
+            user_props,
+            true,
+        );
+
+        // Test valid nested object
+        let mut value = Map::new();
+        value.insert(
+            "user".to_string(),
+            json!({
+                "name": "John",
+                "age": 30
+            }),
+        );
+        assert!(check_tool_parameters(params.clone(), value).is_ok());
+
+        // Test invalid nested property type
+        let mut value = Map::new();
+        value.insert(
+            "user".to_string(),
+            json!({
+                "name": "John",
+                "age": "thirty" // Should be integer
+            }),
+        );
+        let result = check_tool_parameters(params.clone(), value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("'user.age' must be an integer"));
+        }
+
+        // Test non-object value
+        let mut value = Map::new();
+        value.insert("user".to_string(), json!("not an object"));
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("'user' must be an object"));
+        }
+    }
+
+    #[test]
+    fn test_check_tool_parameters_array_of_objects() {
+        let mut params = Parameters::new();
+
+        // Create an array of user objects
+        let mut user_props = std::collections::HashMap::new();
+        user_props.insert(
+            "name".to_string(),
+            Property::new("string".to_string(), "The user's name".to_string()),
+        );
+        user_props.insert(
+            "age".to_string(),
+            Property::new("integer".to_string(), "The user's age".to_string()),
+        );
+
+        let object_prop =
+            Property::with_nested_properties("object".to_string(), "A user object".to_string(), user_props);
+        let array_prop = Property::with_array_items("List of users".to_string(), object_prop);
+
+        params.properties.insert("users".to_string(), array_prop);
+        params.required.push("users".to_string());
+
+        // Test valid array of objects
+        let mut value = Map::new();
+        value.insert(
+            "users".to_string(),
+            json!([
+                {"name": "John", "age": 30},
+                {"name": "Jane", "age": 25}
+            ]),
+        );
+        assert!(check_tool_parameters(params.clone(), value).is_ok());
+
+        // Test invalid nested property in array item
+        let mut value = Map::new();
+        value.insert(
+            "users".to_string(),
+            json!([
+                {"name": "John", "age": 30},
+                {"name": "Jane", "age": "twenty-five"} // Should be integer
+            ]),
+        );
+        let result = check_tool_parameters(params.clone(), value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("'users[1].age' must be an integer"));
+        }
+
+        // Test non-array value
+        let mut value = Map::new();
+        value.insert("users".to_string(), json!({"name": "John", "age": 30}));
+        let result = check_tool_parameters(params, value);
+        assert!(result.is_err());
+        if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
+            assert!(msg.contains("'users' must be an array"));
         }
     }
 }
