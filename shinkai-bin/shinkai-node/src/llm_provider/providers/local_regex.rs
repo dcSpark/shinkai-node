@@ -65,7 +65,7 @@ impl LLMService for LocalRegex {
         // Get patterns from the database for this specific provider
         let provider_str = match &model {
             LLMProviderInterface::LocalRegex(local_regex) => &local_regex.model_type,
-            _ => return Err(LLMProviderError::InvalidConfiguration(
+            _ => return Err(LLMProviderError::SomeError(
                 "Expected LocalRegex provider type".to_string()
             )),
         };
