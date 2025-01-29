@@ -3,6 +3,7 @@ use std::io::Write;
 use std::{env, sync::Arc};
 
 use serde_json::{json, Value};
+use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use tokio::fs;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -1631,6 +1632,53 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Database Error".to_string(),
                     message: format!("Failed to save agent to database: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_add_regex_pattern(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        provider_name: String,
+        pattern: String,
+        response: String,
+        description: Option<String>,
+        priority: i32,
+        res: Sender<Result<i64, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Create the regex pattern
+        let regex_pattern = match RegexPattern::new(provider_name, pattern, response, description, priority) {
+            Ok(pattern) => pattern,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to create regex pattern: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Add the pattern to the database
+        match db.add_regex_pattern(&regex_pattern) {
+            Ok(id) => {
+                let _ = res.send(Ok(id)).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add regex pattern: {}", e),
                 };
                 let _ = res.send(Err(api_error)).await;
             }

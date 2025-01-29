@@ -2847,6 +2847,30 @@ impl Node {
                     let _ = Node::v2_api_disable_all_tools(db_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiAddRegexPattern {
+                bearer,
+                provider_name,
+                pattern,
+                response,
+                description,
+                priority,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_regex_pattern(
+                        db_clone,
+                        bearer,
+                        provider_name,
+                        pattern,
+                        response,
+                        description,
+                        priority,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }
