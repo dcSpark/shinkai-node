@@ -25,6 +25,7 @@ pub mod job_manager;
 pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
+pub mod multi_wallet_manager;
 pub mod oauth_manager;
 pub mod prompt_manager;
 pub mod retry_manager;
@@ -169,6 +170,7 @@ impl SqliteManager {
         Self::initialize_tool_playground_code_history_table(conn)?;
         Self::initialize_version_table(conn)?;
         Self::initialize_wallets_table(conn)?;
+        Self::initialize_shinkai_multi_wallets_table(conn)?;
         Self::initialize_filesystem_tables(conn)?;
         Self::initialize_oauth_table(conn)?;
         // Vector tables
@@ -608,6 +610,34 @@ impl SqliteManager {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 wallet_data BLOB NOT NULL
             );",
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    fn initialize_shinkai_multi_wallets_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS shinkai_multi_wallets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                secret_key TEXT NOT NULL,
+                is_encrypted INTEGER NOT NULL CHECK (is_encrypted IN (0, 1)),
+                key_hash TEXT, -- Hash of the encryption key, only present when is_encrypted = 1
+                wallet_type TEXT NOT NULL CHECK (wallet_type IN ('mnemonic', 'hex', 'mpc')),
+                compatible_networks TEXT NOT NULL, -- JSON array of network types (evm, svm, etc)
+                wallet_data TEXT NOT NULL, -- JSON object containing type-specific data:
+                                         -- For LocalWallet: derivation_path, provider_url, public_address (object mapping networks to addresses)
+                                         -- For CoinbaseMPCWallet: name, private_key, wallet_id, use_server_signer
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CHECK ((is_encrypted = 1 AND key_hash IS NOT NULL) OR (is_encrypted = 0 AND key_hash IS NULL))
+            );",
+            [],
+        )?;
+
+        // Create indexes for common query patterns
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shinkai_multi_wallets_type ON shinkai_multi_wallets (wallet_type);",
             [],
         )?;
 

@@ -11,7 +11,6 @@ use shinkai_message_primitives::schemas::{
     wallet_mixed::{Asset, Balance, Network, PublicAddress},
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::{

@@ -54,6 +54,26 @@ impl APIError {
             message: message.to_string(),
         }
     }
+
+    pub fn Unauthorized() -> Self {
+        Self::new(
+            StatusCode::UNAUTHORIZED,
+            "Unauthorized",
+            "Invalid or missing bearer token",
+        )
+    }
+
+    pub fn NotFound(message: String) -> Self {
+        Self::new(StatusCode::NOT_FOUND, "Not Found", &message)
+    }
+
+    pub fn InternalServerError(message: String) -> Self {
+        Self::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            &message,
+        )
+    }
 }
 
 impl From<&str> for APIError {

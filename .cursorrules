@@ -1,0 +1,169 @@
+# Cursor Rules for Shinkai Node Project
+
+## Adding New API Endpoints
+
+### 1. API Route Definition (Choose Appropriate Handler File)
+- Choose or create the appropriate handler file based on the endpoint's functionality:
+  - `api_v2_handlers_jobs.rs` for job-related endpoints
+  - `api_v2_handlers_tools.rs` for tool-related endpoints
+  - `api_v2_handlers_vecfs.rs` for filesystem operations
+  - `api_v2_handlers_oauth.rs` for OAuth functionality
+  - `api_v2_handlers_sheets.rs` for sheet operations
+  - `api_v2_handlers_wallets.rs` for wallet functionality
+  - `api_v2_handlers_cron.rs` for cron tasks
+  - `api_v2_handlers_prompts.rs` for prompt management
+  - Create new handler file if functionality doesn't fit existing categories
+  - These files are located in `shinkai-bin/shinkai-node/src/network/api_v2/`
+
+- Follow the existing pattern for route construction:
+  ```rust
+  let new_endpoint_route = warp::path("endpoint_name")
+      .and(warp::get()) // or .post() depending on the HTTP method
+      .and(with_sender(node_commands_sender.clone()))
+      .and(warp::header::<String>("authorization"))
+      .and(warp::query::<RequestType>()) // for GET requests
+      // or .and(warp::body::json()) for POST requests
+      .and_then(endpoint_handler_function);
+  ```
+- Define corresponding request structs with clear field documentation
+- Add OpenAPI documentation using the `utoipa` attributes
+
+### 2. Command Implementation (Choose Appropriate Commands File)
+- Choose or create the appropriate commands file in `v2_api/`:
+  - `api_v2_commands_jobs.rs` for job-related logic
+  - `api_v2_commands_tools.rs` for tool-related logic
+  - `api_v2_commands_vecfs.rs` for filesystem operations
+  - `api_v2_commands_oauth.rs` for OAuth functionality
+  - `api_v2_commands_sheets.rs` for sheet operations
+  - `api_v2_commands_wallets.rs` for wallet functionality
+  - `api_v2_commands_cron.rs` for cron tasks
+  - `api_v2_commands_prompts.rs` for prompt management
+  - Create new commands file if functionality doesn't fit existing categories
+
+- Follow the naming convention: `v2_{action_name}`
+- Structure:
+  ```rust
+  pub async fn v2_new_endpoint_function(
+      db: Arc<SqliteManager>,
+      // Other required parameters
+      res: Sender<Result<ResponseType, APIError>>,
+  ) -> Result<(), NodeError> {
+      // Validate bearer token
+      // Implement business logic
+      // Send response through the channel
+  }
+  ```
+
+For bearer token validation use something like this:
+
+```rust
+if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+    return Ok(());
+}
+```
+
+### 3. Node Command Definition (node_commands.rs)
+- Add a new variant to the `NodeCommand` enum
+- Follow the naming convention: `V2Api{ActionName}`
+- Include all necessary fields for the command
+- Example structure:
+  ```rust
+  V2ApiNewEndpoint {
+      bearer: String,
+      // Add other required fields
+      res: Sender<Result<ResponseType, APIError>>,
+  }
+  ```
+
+### 4. Command Handler (handle_commands_list.rs)
+- Add a new match arm in the `handle_command` function
+- Follow the pattern:
+  ```rust
+  NodeCommand::V2ApiNewEndpoint { bearer, ..., res } => {
+      let db_clone = Arc::clone(&self.db);
+      // Clone other required managers
+      tokio::spawn(async move {
+          let _ = Node::v2_new_endpoint_function(
+              db_clone,
+              // Pass other required parameters
+              res
+          ).await;
+      });
+  }
+  ```
+
+### 5. Database Operations (lib.rs or job_queue_manager.rs)
+- Add new database operations in the appropriate manager
+- Follow existing patterns for database queries
+- Use proper error handling and type safety
+- Include documentation for complex queries
+
+### 6. Module Updates
+- If creating a new category of endpoints:
+  1. Create new handler file in `api_v2/`
+  2. Create new commands file in `v2_api/`
+  3. Update `mod.rs` in both directories
+  4. Add new route to the main API router
+
+## Best Practices
+
+### Error Handling
+- Use `APIError` for client-facing errors
+- Use `NodeError` for internal errors
+- Provide clear error messages
+- Handle all potential error cases
+
+### Security
+- Always validate bearer tokens
+- Sanitize input data
+- Follow principle of least privilege
+- Use proper authentication and authorization
+
+### Performance
+- Use async/await properly
+- Minimize database operations
+- Use connection pooling
+- Consider pagination for large datasets
+
+### Code Style
+- Use 4 spaces for indentation
+- Follow Rust naming conventions
+  - snake_case for functions and variables
+  - PascalCase for types and traits
+- Document public interfaces
+- Add unit tests for new functionality
+
+### Testing
+- Write unit tests for new endpoints
+- Include error case testing
+- Test with different input scenarios
+- Verify database operations
+
+## Project Structure
+- Keep related functionality together
+- Follow the existing module organization
+- Place new files in appropriate directories
+- Maintain separation of concerns
+
+## Documentation
+- Add OpenAPI documentation for new endpoints
+- Include examples in documentation
+- Document error responses
+- Keep README up to date
+
+## Version Control
+- Use descriptive commit messages
+- Keep changes focused and atomic
+- Update tests with changes
+- Document breaking changes
+
+### Not Allowed
+
+- As a note, you are not allowed to modify the following functions:
+
+```rust
+#[derive(Debug)]
+pub struct NodeError {
+    pub message: String,
+}
+```
