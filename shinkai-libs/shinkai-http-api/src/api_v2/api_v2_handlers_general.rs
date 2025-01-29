@@ -184,6 +184,13 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(test_llm_provider_handler);
 
+    let add_regex_pattern_route = warp::path("add_regex_pattern")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_regex_pattern_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -209,6 +216,7 @@ pub fn general_routes(
         .or(export_agent_route)
         .or(import_agent_route)        
         .or(test_llm_provider_route)
+        .or(add_regex_pattern_route)
 }
 
 #[derive(Deserialize)]
@@ -996,6 +1004,52 @@ pub async fn test_llm_provider_handler(
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct AddRegexPatternRequest {
+    pub provider_name: String,
+    pub pattern: String,
+    pub response: String,
+    pub description: Option<String>,
+    pub priority: i32,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/add_regex_pattern",
+    request_body = AddRegexPatternRequest,
+    responses(
+        (status = 200, description = "Successfully added regex pattern", body = i64),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_regex_pattern_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: AddRegexPatternRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiAddRegexPattern {
+            bearer,
+            provider_name: payload.provider_name,
+            pattern: payload.pattern,
+            response: payload.response,
+            description: payload.description,
+            priority: payload.priority,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(pattern_id) => Ok(warp::reply::json(&pattern_id)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1024,6 +1078,7 @@ pub async fn test_llm_provider_handler(
         get_agent_handler,
         get_all_agents_handler,
         test_llm_provider_handler,
+        add_regex_pattern_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
@@ -1031,7 +1086,8 @@ pub async fn test_llm_provider_handler(
             OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
             ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
             NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
-            APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError, Agent)
+            APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError, Agent,
+            AddRegexPatternRequest)
     ),
     tags(
         (name = "general", description = "General API endpoints")

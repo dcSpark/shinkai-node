@@ -1211,4 +1211,13 @@ pub enum NodeCommand {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiAddRegexPattern {
+        bearer: String,
+        provider_name: String,
+        pattern: String,
+        response: String,
+        description: Option<String>,
+        priority: i32,
+        res: Sender<Result<i64, APIError>>,
+    },
 }
