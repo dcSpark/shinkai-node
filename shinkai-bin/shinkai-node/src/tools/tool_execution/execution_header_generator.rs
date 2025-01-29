@@ -823,7 +823,7 @@ mod tests {
         let result = check_tool_parameters(params.clone(), value);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
-            assert!(msg.contains("tags[1] must be a string"));
+            assert!(msg.contains("'tags[1]' must be a string"));
         }
 
         // Test non-array value
@@ -832,7 +832,7 @@ mod tests {
         let result = check_tool_parameters(params, value);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
-            assert!(msg.contains("tags must be an array"));
+            assert!(msg.contains("'tags' must be an array"));
         }
     }
 
@@ -882,7 +882,7 @@ mod tests {
         let result = check_tool_parameters(params.clone(), value);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
-            assert!(msg.contains("user.age must be an integer"));
+            assert!(msg.contains("'user.age' must be an integer"));
         }
 
         // Test non-object value
@@ -891,7 +891,7 @@ mod tests {
         let result = check_tool_parameters(params, value);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
-            assert!(msg.contains("user must be an object"));
+            assert!(msg.contains("'user' must be an object"));
         }
     }
 
@@ -940,7 +940,7 @@ mod tests {
         let result = check_tool_parameters(params.clone(), value);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
-            assert!(msg.contains("users[1].age must be an integer"));
+            assert!(msg.contains("'users[1].age' must be an integer"));
         }
 
         // Test non-array value
@@ -949,7 +949,7 @@ mod tests {
         let result = check_tool_parameters(params, value);
         assert!(result.is_err());
         if let Err(ToolError::InvalidFunctionArguments(msg)) = result {
-            assert!(msg.contains("users must be an array"));
+            assert!(msg.contains("'users' must be an array"));
         }
     }
 }
