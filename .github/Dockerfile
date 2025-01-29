@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-de
 # Install nvm, npm and node
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 ENV NVM_DIR /usr/local/nvm
-ENV NODE_VERSION v16.20.1
+ENV NODE_VERSION v22.13.1
 RUN mkdir $NVM_DIR
 
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash

@@ -248,7 +248,9 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS inboxes (
                 inbox_name TEXT NOT NULL UNIQUE,
                 smart_inbox_name TEXT NOT NULL,
-                read_up_to_message_hash TEXT
+                read_up_to_message_hash TEXT,
+                last_modified TEXT,
+                is_hidden BOOLEAN DEFAULT FALSE
             );",
             [],
         )?;
@@ -256,6 +258,18 @@ impl SqliteManager {
         // Create an index for the inbox_name column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_inboxes_inbox_name ON inboxes (inbox_name);",
+            [],
+        )?;
+
+        // Create a composite index for filtering hidden inboxes and sorting by last_modified
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_hidden_modified ON inboxes (is_hidden, last_modified DESC);",
+            [],
+        )?;
+
+        // Create an index for sorting by last_modified only (for when show_hidden is true)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_last_modified ON inboxes (last_modified DESC);",
             [],
         )?;
 
@@ -883,18 +897,10 @@ impl SqliteManager {
         vec![value; 384]
     }
 
-    // pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
-    //     Ok(self.model_type.clone())
-    // }
-    // pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
-    //     self.model_type = model;
-    //     Ok(())
-    // }
-
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7"];
+        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7", "0.9.8"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions

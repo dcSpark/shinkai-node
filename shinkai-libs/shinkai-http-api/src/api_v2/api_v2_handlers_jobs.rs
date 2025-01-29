@@ -285,6 +285,7 @@ pub struct AddMessagesGodModeRequest {
 pub struct GetAllSmartInboxesRequest {
     pub limit: Option<usize>,
     pub offset: Option<String>,
+    pub show_hidden: Option<bool>,
 }
 
 #[utoipa::path(
@@ -476,6 +477,7 @@ pub async fn get_all_smart_inboxes_handler(
             bearer,
             limit: query.limit,
             offset: query.offset,
+            show_hidden: query.show_hidden,
             res: res_sender,
         })
         .await
@@ -499,7 +501,8 @@ pub async fn get_all_smart_inboxes_handler(
     path = "/v2/all_inboxes_paginated",
     params(
         ("limit" = Option<usize>, Query, description = "Maximum number of inboxes to return"),
-        ("offset" = Option<String>, Query, description = "Inbox ID to start from (exclusive)")
+        ("offset" = Option<String>, Query, description = "Inbox ID to start from (exclusive)"),
+        ("show_hidden" = Option<bool>, Query, description = "Whether to show hidden inboxes")
     ),
     responses(
         (status = 200, description = "Successfully retrieved all smart inboxes", body = Vec<V2SmartInbox>),
@@ -520,6 +523,7 @@ pub async fn get_all_smart_inboxes_paginated_handler(
             bearer,
             limit: query.limit,
             offset: query.offset,
+            show_hidden: query.show_hidden,
             res: res_sender,
         })
         .await
