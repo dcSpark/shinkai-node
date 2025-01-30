@@ -8,25 +8,14 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity,
-        inbox_name::InboxName,
-        job::{ForkedJob, JobLike},
-        job_config::JobConfig,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData},
-        shinkai_message_schemas::{
-            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key, shinkai_path::ShinkaiPath,
-    },
+        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath, signatures::clone_signature_secret_key
+    }
 };
 
 use shinkai_sqlite::SqliteManager;
@@ -34,9 +23,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -177,6 +164,7 @@ impl Node {
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
         node_signing_sk: SigningKey,
+        high_priority: Option<bool>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token and extract the sender identity
@@ -519,21 +507,23 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let paginated_inboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden) {
-            Ok(inboxes) => inboxes,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve smart inboxes: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let paginated_inboxes =
+            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden) {
+                Ok(inboxes) => inboxes,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve smart inboxes: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         // Convert SmartInbox to V2SmartInbox
-        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes.inboxes
+        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
+            .inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
@@ -1713,7 +1703,7 @@ impl Node {
 
             // Get the inbox name for the job
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
-            
+
             // Update the inbox name
             if let Err(e) = db.unsafe_update_smart_inbox_name(&inbox_name.to_string(), &custom_name) {
                 let api_error = APIError {
@@ -1829,4 +1819,3 @@ impl Node {
         Ok(())
     }
 }
-
