@@ -1365,6 +1365,7 @@ impl Node {
                         encryption_secret_key_clone,
                         encryption_public_key_clone,
                         signing_secret_key_clone,
+                        None,
                         res,
                     )
                     .await;

@@ -1779,7 +1779,7 @@ impl Node {
             return Ok(());
         }
 
-        match Self::internal_job_message(job_manager, msg.clone()).await {
+        match Self::internal_job_message(job_manager, msg.clone(), false).await {
             Ok(_) => {
                 let inbox_name = match InboxName::from_message(&msg.clone()) {
                     Ok(inbox) => inbox.to_string(),

@@ -4,7 +4,7 @@ use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_outp
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 use shinkai_tools_primitives::tools::error::ToolError;
 
 use ed25519_dalek::SigningKey;
