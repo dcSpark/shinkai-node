@@ -45,7 +45,7 @@ pub async fn generate_code_prompt(
 
 <agent_deno_libraries>
   * Prefer libraries in the following order:
-    1. A function provided by './shinkai-local-tools.ts' that resolves correctly the requierement.
+    1. A function provided by './shinkai-local-tools.ts' that resolves correctly the requirement.
     2. If fetch is required, it is available in the global scope without any import.
     3. The code will be ran with Deno Runtime, so prefer Deno default and standard libraries.
     4. If an external system has a well known and defined API, prefer to call the API instead of downloading a library.
@@ -143,7 +143,7 @@ pub async fn generate_code_prompt(
 
 <agent_python_libraries>
 * Prefer libraries in the following order:
-  1. A function provided by './shinkai_local_tools.py' that resolves correctly the requierement.
+  1. A function provided by './shinkai_local_tools.py' that resolves correctly the requirement.
   2. If network fetch is required, use the "requests" library and import it with using `import requests`.
   3. The code will be ran with Python Runtime, so prefer Python default and standard libraries. Import all used libraries as `from <library> import <function>` for example for Lists use `from typing import List`.
   4. If an external system requires to be used through a package, or the API is unknown use "pip" libraries.
@@ -265,8 +265,8 @@ pub async fn tool_metadata_implementation_prompt(
         }
     }
 
-    let has_oauth = (language == CodeLanguage::Typescript && final_code.contains("getAccessToken"))
-        || (language == CodeLanguage::Python && final_code.contains("get_access_token"));
+    let has_oauth = (language == CodeLanguage::Typescript && final_code.contains("getAccessToken("))
+        || (language == CodeLanguage::Python && final_code.contains("get_access_token("));
     let oauth_example = if has_oauth {
         r#"[
       {{
