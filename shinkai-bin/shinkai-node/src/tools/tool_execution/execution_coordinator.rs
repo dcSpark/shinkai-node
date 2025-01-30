@@ -78,8 +78,23 @@ pub async fn handle_oauth(
 
                                     match response {
                                         Ok(response) => {
+                                            if !response.status().is_success() {
+                                                return Err(ToolError::ExecutionError(format!(
+                                                    "Failed to refresh OAuth token: {}",
+                                                    response.status()
+                                                )));
+                                            }
+
                                             if let Ok(response_json) = response.json::<serde_json::Value>().await {
                                                 println!("[OAuth] Response {}", response_json.to_string());
+                                                if let Some(error) = response_json["error"].as_str() {
+                                                    if !error.is_empty() {
+                                                        return Err(ToolError::ExecutionError(format!(
+                                                            "Failed to refresh OAuth token: {}",
+                                                            response_json
+                                                        )));
+                                                    }
+                                                }
                                                 // Update token with new values
                                                 let mut updated_token = token.clone();
                                                 if let Some(access_token) = response_json["access_token"].as_str() {

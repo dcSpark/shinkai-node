@@ -105,7 +105,7 @@ impl Node {
         let client = Client::new();
         let mut request_body = serde_json::json!({
             "client_id": oauth_data.client_id.as_deref().unwrap_or_default(),
-            // "client_secret": oauth_data.client_secret.as_deref().unwrap_or_default(),
+            "client_secret": oauth_data.client_secret.as_deref().unwrap_or_default(),
             "code": code,
             "redirect_uri": oauth_data.redirect_url.as_deref().unwrap_or_default(),
             "grant_type": "authorization_code"
@@ -136,6 +136,14 @@ impl Node {
             });
         }
         let response = response.unwrap();
+        println!("[OAuth] Response status {}", response.status());
+        if !response.status().is_success() {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to get OAuth token: {}", response.status()),
+            });
+        }
         let response = response.json::<serde_json::Value>().await;
         if response.is_err() {
             return Err(APIError {
@@ -156,6 +164,15 @@ impl Node {
         //   "token_type":"bearer"
         // }
         // Update the token with the new code and OAuth response data
+        if let Some(error) = response["error"].as_str() {
+            if !error.is_empty() {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get OAuth token: {:?}", response),
+                });
+            }
+        }
         oauth_data.code = Some(code);
         if let Some(access_token) = response["access_token"].as_str() {
             oauth_data.access_token = Some(access_token.to_string());
