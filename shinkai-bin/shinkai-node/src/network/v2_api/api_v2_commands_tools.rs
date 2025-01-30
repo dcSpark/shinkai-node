@@ -2449,26 +2449,23 @@ impl Node {
         ));
         new_tool.update_author(node_name.node_name.clone());
 
-        let job_id = Self::create_job_for_duplicate_tool(
-            db.clone(),
-            node_name.clone(),
-            identity_manager.clone(),
-            job_manager.clone(),
-            bearer,
-            llm_provider.id,
-            encryption_secret_key.clone(),
-            encryption_public_key.clone(),
-            signing_secret_key.clone(),
-        )
-        .await?;
-
         // Try to get the original playground tool, or create one from the tool data
         let new_playground = match db.get_tool_playground(&tool_key_path) {
             Ok(playground) => {
                 let mut new_playground = playground.clone();
                 new_playground.metadata.name = new_tool.name();
                 new_playground.metadata.author = new_tool.author();
-                new_playground.job_id = job_id;
+                new_playground.job_id = Self::fork_job(
+                    db.clone(),
+                    node_name.clone(),
+                    identity_manager.clone(),
+                    playground.job_id,
+                    None,
+                    encryption_secret_key.clone(),
+                    encryption_public_key.clone(),
+                    signing_secret_key.clone(),
+                )
+                .await?;
                 new_playground.job_id_history = vec![];
                 new_playground.tool_router_key = Some(new_tool.tool_router_key().to_string_without_version());
                 new_playground
@@ -2502,7 +2499,18 @@ impl Node {
                         oauth: new_tool.get_oauth(),
                     },
                     tool_router_key: Some(new_tool.tool_router_key().to_string_without_version()),
-                    job_id,
+                    job_id: Self::create_job_for_duplicate_tool(
+                        db.clone(),
+                        node_name.clone(),
+                        identity_manager.clone(),
+                        job_manager.clone(),
+                        bearer,
+                        llm_provider.id,
+                        encryption_secret_key.clone(),
+                        encryption_public_key.clone(),
+                        signing_secret_key.clone(),
+                    )
+                    .await?,
                     job_id_history: vec![],
                     code: new_tool.get_code(),
                     assets: new_tool.get_assets(),
