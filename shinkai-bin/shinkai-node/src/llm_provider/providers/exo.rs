@@ -22,6 +22,7 @@ use shinkai_message_primitives::schemas::ws_types::WSMetadata;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use std::env;
 use std::error::Error;
 use std::sync::Arc;
@@ -72,6 +73,7 @@ impl LLMService for Exo {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         _config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
+        _db: Arc<SqliteManager>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {

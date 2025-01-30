@@ -85,6 +85,7 @@ pub enum LLMProviderError {
     MessageTooLargeForLLM { max_tokens: usize, used_tokens: usize },
     SomeError(String),
     APIError(String),
+    DatabaseError(String),
 }
 
 impl fmt::Display for LLMProviderError {
@@ -178,6 +179,7 @@ impl fmt::Display for LLMProviderError {
             },
             LLMProviderError::SomeError(s) => write!(f, "{}", s),
             LLMProviderError::APIError(s) => write!(f, "{}", s),
+            LLMProviderError::DatabaseError(s) => write!(f, "{}", s),
         }
     }
 }
@@ -259,6 +261,7 @@ impl LLMProviderError {
             LLMProviderError::MessageTooLargeForLLM { .. } => "MessageTooLargeForLLM",
             LLMProviderError::SomeError(_) => "SomeError",
             LLMProviderError::APIError(_) => "APIError",
+            LLMProviderError::DatabaseError(_) => "DatabaseError",
         };
 
         format!("Error {} with message: {}", error_name, self)
