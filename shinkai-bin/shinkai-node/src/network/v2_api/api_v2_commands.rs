@@ -885,15 +885,22 @@ impl Node {
         // Search in job manager and fill the job as well
         if let Some(job_manager) = job_manager {
             if let Some(job_id) = inbox_name.get_job_id() {
-                // Get the job queue manager in a separate scope
-                let job_queue_manager = job_manager.lock().await.job_queue_manager.clone();
+                // Get both queue managers
+                let job_queue_manager_normal = job_manager.lock().await.job_queue_manager_normal.clone();
+                let job_queue_manager_immediate = job_manager.lock().await.job_queue_manager_immediate.clone();
 
-                // Now use the job queue manager
-                let dequeue_result = job_queue_manager.lock().await.dequeue(&job_id).await;
-                if let Ok(Some(_)) = dequeue_result {
-                    // Job was successfully dequeued
+                // First try to dequeue from immediate queue
+                let dequeue_result_immediate = job_queue_manager_immediate.lock().await.dequeue(&job_id).await;
+                if let Ok(Some(_)) = dequeue_result_immediate {
+                    // Job was successfully dequeued from immediate queue
                 } else {
-                    eprintln!("Job {} not found in job manager", job_id);
+                    // If not found in immediate queue, try normal queue
+                    let dequeue_result_normal = job_queue_manager_normal.lock().await.dequeue(&job_id).await;
+                    if let Ok(Some(_)) = dequeue_result_normal {
+                        // Job was successfully dequeued from normal queue
+                    } else {
+                        eprintln!("Job {} not found in either queue", job_id);
+                    }
                 }
             }
         }
