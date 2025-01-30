@@ -1426,18 +1426,48 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiGetAllSmartInboxes { bearer, limit, offset, show_hidden, res } => {
+            NodeCommand::V2ApiGetAllSmartInboxes {
+                bearer,
+                limit,
+                offset,
+                show_hidden,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_get_all_smart_inboxes(db_clone, identity_manager_clone, bearer, limit, offset, show_hidden, res).await;
+                    let _ = Node::v2_get_all_smart_inboxes(
+                        db_clone,
+                        identity_manager_clone,
+                        bearer,
+                        limit,
+                        offset,
+                        show_hidden,
+                        res,
+                    )
+                    .await;
                 });
             }
-            NodeCommand::V2ApiGetAllSmartInboxesPaginated { bearer, limit, offset, show_hidden, res } => {
+            NodeCommand::V2ApiGetAllSmartInboxesPaginated {
+                bearer,
+                limit,
+                offset,
+                show_hidden,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_get_all_smart_inboxes_paginated(db_clone, identity_manager_clone, bearer, limit, offset, show_hidden, res).await;
+                    let _ = Node::v2_get_all_smart_inboxes_paginated(
+                        db_clone,
+                        identity_manager_clone,
+                        bearer,
+                        limit,
+                        offset,
+                        show_hidden,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiAvailableLLMProviders { bearer, res } => {
@@ -2825,6 +2855,35 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_disable_all_tools(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiDuplicateTool {
+                bearer,
+                tool_key_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let identity_manager = self.identity_manager.clone();
+                let job_manager = self.job_manager.clone();
+                let encryption_secret_key = self.encryption_secret_key.clone();
+                let encryption_public_key = self.encryption_public_key.clone();
+                let signing_secret_key = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_duplicate_tool(
+                        db_clone,
+                        bearer,
+                        tool_key_path,
+                        node_name_clone,
+                        identity_manager,
+                        job_manager,
+                        encryption_secret_key,
+                        encryption_public_key,
+                        signing_secret_key,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiAddRegexPattern {

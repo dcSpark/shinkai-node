@@ -23,7 +23,10 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
     },
     shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_message_primitives::{
     schemas::{
@@ -34,19 +37,20 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
+    deno_tools::{DenoTool, ToolResult},
     error::ToolError,
     python_tools::PythonTool,
     shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
-    tool_playground::ToolPlayground,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
 };
 
 use std::{
     env,
     fs::File,
     io::{Read, Write},
+    result,
     sync::Arc,
     time::Instant,
 };
@@ -2311,6 +2315,221 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_api_duplicate_tool(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_key_path: String,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let result = Self::duplicate_tool(
+            db,
+            tool_key_path,
+            node_name,
+            identity_manager,
+            job_manager,
+            bearer,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+        )
+        .await;
+        let _ = match result {
+            Ok(result) => res.send(Ok(result)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+        Ok(())
+    }
+
+    async fn create_job_for_duplicate_tool(
+        db_clone: Arc<SqliteManager>,
+        node_name_clone: ShinkaiName,
+        identity_manager_clone: Arc<Mutex<IdentityManager>>,
+        job_manager_clone: Option<Arc<Mutex<JobManager>>>,
+        bearer: String,
+        llm_provider: String,
+        encryption_secret_key_clone: EncryptionStaticKey,
+        encryption_public_key_clone: EncryptionPublicKey,
+        signing_secret_key_clone: SigningKey,
+    ) -> Result<String, APIError> {
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+
+        let job_creation_info = JobCreationInfo {
+            scope: MinimalJobScope::default(),
+            is_hidden: Some(true),
+            associated_ui: None,
+        };
+        let job_manager = match job_manager_clone {
+            Some(job_manager) => job_manager,
+            None => {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Job manager not found".to_string(),
+                })
+            }
+        };
+        let _ = Node::v2_create_new_job(
+            db_clone.clone(),
+            node_name_clone.clone(),
+            identity_manager_clone.clone(),
+            job_manager.clone(),
+            bearer.clone(),
+            job_creation_info,
+            llm_provider,
+            encryption_secret_key_clone.clone(),
+            encryption_public_key_clone.clone(),
+            signing_secret_key_clone.clone(),
+            res_sender,
+        )
+        .await;
+
+        let job_id = res_receiver
+            .recv()
+            .await
+            .map_err(|e| Node::generic_api_error(&e.to_string()))
+            .map_err(|_| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Failed to create job".to_string(),
+            })?;
+
+        return job_id;
+    }
+
+    async fn duplicate_tool(
+        db: Arc<SqliteManager>,
+        tool_key_path: String,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Option<Arc<Mutex<JobManager>>>,
+        bearer: String,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+    ) -> Result<Value, APIError> {
+        // Get the original tool
+        let original_tool = db.get_tool_by_key(&tool_key_path).map_err(|_| APIError {
+            code: StatusCode::NOT_FOUND.as_u16(),
+            error: "Not Found".to_string(),
+            message: format!("Tool not found: {}", tool_key_path),
+        })?;
+
+        let llm_providers = db.get_all_llm_providers().map_err(|_| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: "Failed to get all llm providers".to_string(),
+        })?;
+        if llm_providers.is_empty() {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "No LLM providers found".to_string(),
+            });
+        }
+        let llm_provider = llm_providers[0].clone();
+
+        // Create a copy of the tool with "_copy" appended to the name
+        let mut new_tool = original_tool.clone();
+        new_tool.update_name(format!(
+            "{}_{}",
+            original_tool.name(),
+            chrono::Local::now().format("%Y%m%d_%H%M%S")
+        ));
+        new_tool.update_author(node_name.node_name.clone());
+
+        let job_id = Self::create_job_for_duplicate_tool(
+            db.clone(),
+            node_name.clone(),
+            identity_manager.clone(),
+            job_manager.clone(),
+            bearer,
+            llm_provider.id,
+            encryption_secret_key.clone(),
+            encryption_public_key.clone(),
+            signing_secret_key.clone(),
+        )
+        .await?;
+
+        // Try to get the original playground tool, or create one from the tool data
+        let new_playground = match db.get_tool_playground(&tool_key_path) {
+            Ok(playground) => {
+                let mut new_playground = playground.clone();
+                new_playground.metadata.name = new_tool.name();
+                new_playground.metadata.author = new_tool.author();
+                new_playground.job_id = job_id;
+                new_playground.job_id_history = vec![];
+                new_playground.tool_router_key = Some(new_tool.tool_router_key().to_string_without_version());
+                new_playground
+            }
+            Err(_) => {
+                // Create a new playground from the tool data
+                let output = new_tool.output_arg();
+                let output_json = output.json;
+                let result: ToolResult = ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]);
+                println!("output_json: {:?} | result: {:?}", output_json, result);
+
+                ToolPlayground {
+                    language: match original_tool {
+                        ShinkaiTool::Deno(_, _) => CodeLanguage::Typescript,
+                        ShinkaiTool::Python(_, _) => CodeLanguage::Python,
+                        _ => CodeLanguage::Typescript, // Default to typescript for other types
+                    },
+                    metadata: ToolPlaygroundMetadata {
+                        name: new_tool.name(),
+                        homepage: new_tool.get_homepage(),
+                        version: new_tool.version(),
+                        description: new_tool.description(),
+                        author: new_tool.author(),
+                        keywords: new_tool.get_keywords(),
+                        configurations: new_tool.get_config(),
+                        parameters: new_tool.input_args(),
+                        result,
+                        sql_tables: new_tool.sql_tables(),
+                        sql_queries: new_tool.sql_queries(),
+                        tools: Some(new_tool.get_tools()),
+                        oauth: new_tool.get_oauth(),
+                    },
+                    tool_router_key: Some(new_tool.tool_router_key().to_string_without_version()),
+                    job_id,
+                    job_id_history: vec![],
+                    code: new_tool.get_code(),
+                    assets: new_tool.get_assets(),
+                }
+            }
+        };
+
+        // Add the new tool to the database
+        // Add the new tool to the database
+        let new_tool = db.add_tool(new_tool).await.map_err(|_| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: "Failed to add duplicated tool".to_string(),
+        })?;
+        // Add the new playground tool
+        db.set_tool_playground(&new_playground).map_err(|_| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: "Failed to add duplicated playground tool".to_string(),
+        })?;
+
+        // Return the new tool's router key
+        let response = json!({
+            "tool_router_key": new_tool.tool_router_key().to_string_without_version(),
+            "version": new_tool.version(),
+        });
+        Ok(response)
     }
 
     async fn process_tool_zip(

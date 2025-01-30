@@ -227,6 +227,30 @@ impl ShinkaiTool {
         )
     }
 
+    pub fn get_code(&self) -> String {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.js_code.clone(),
+            ShinkaiTool::Python(p, _) => p.py_code.clone(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn update_name(&mut self, name: String) {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.name = name,
+            ShinkaiTool::Python(p, _) => p.name = name,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn update_author(&mut self, author: String) {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.author = author,
+            ShinkaiTool::Python(p, _) => p.author = author,
+            _ => unreachable!(),
+        }
+    }
+
     /// Sets the embedding for the tool
     pub fn set_embedding(&mut self, embedding: Vec<f32>) {
         match self {
@@ -432,6 +456,15 @@ impl ShinkaiTool {
                 }
             })
             .collect::<String>()
+    }
+
+    pub fn get_keywords(&self) -> Vec<String> {
+        match self {
+            ShinkaiTool::Rust(_, _) => vec![],
+            ShinkaiTool::Network(_, _) => vec![],
+            ShinkaiTool::Deno(d, _) => d.keywords.clone(),
+            ShinkaiTool::Python(p, _) => p.keywords.clone(),
+        }
     }
 }
 
