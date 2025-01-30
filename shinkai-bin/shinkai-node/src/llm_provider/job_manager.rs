@@ -207,12 +207,19 @@ impl JobManager {
     ) -> tokio::task::JoinHandle<()> {
         let mut rx_normal = queue_normal.lock().await.subscribe_to_all().await;
         let mut rx_immediate = queue_immediate.lock().await.subscribe_to_all().await;
+
         let db_clone = db.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
         let llm_stopper = Arc::clone(&llm_stopper);
+
+        // A set of in-progress job IDs, just to avoid re-processing duplicates
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
-        let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
+
+        // Normal jobs limited to `max_parallel_jobs`
+        let normal_semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
+        // Immediate jobs can exceed normal concurrency if needed
+        let immediate_semaphore = Arc::new(Semaphore::new(max_parallel_jobs * 2));
 
         tokio::spawn(async move {
             shinkai_log(
@@ -222,34 +229,31 @@ impl JobManager {
             );
 
             loop {
-                // First try to process immediate jobs
+                // 1) Pull any immediate jobs if available
                 let immediate_jobs_to_process: Vec<(String, JobForProcessing)> = {
-                    let mut processing_jobs_lock = processing_jobs.lock().await;
-                    let job_queue_manager_lock = queue_immediate.lock().await;
-                    let all_jobs = match job_queue_manager_lock.get_all_elements_interleave().await {
-                        Ok(jobs) => jobs,
-                        Err(_) => Vec::new(),
-                    };
-                    std::mem::drop(job_queue_manager_lock);
+                    let mut processing_lock = processing_jobs.lock().await;
+                    let mgr = queue_immediate.lock().await;
+                    let all_imm = mgr.get_all_elements_interleave().await.unwrap_or_else(|_| vec![]);
+                    drop(mgr);
 
-                    all_jobs
+                    all_imm
                         .into_iter()
                         .filter_map(|job| {
-                            let job_id = job.job_message.job_id.clone();
-                            if !processing_jobs_lock.contains(&job_id) {
-                                processing_jobs_lock.insert(job_id.clone());
-                                Some((job_id, job))
+                            let jid = job.job_message.job_id.clone();
+                            if !processing_lock.contains(&jid) {
+                                processing_lock.insert(jid.clone());
+                                Some((jid, job))
                             } else {
                                 None
                             }
                         })
-                        .collect::<Vec<_>>()
+                        .collect()
                 };
 
                 if !immediate_jobs_to_process.is_empty() {
-                    // Process immediate jobs
+                    // 1A) Spawn all immediate jobs
                     for (job_id, job) in immediate_jobs_to_process {
-                        let permit = semaphore.clone().acquire_owned().await.unwrap();
+                        let permit = immediate_semaphore.clone().acquire_owned().await.unwrap();
                         let job_processing_fn = Arc::clone(&job_processing_fn);
                         let db_clone = db_clone.clone();
                         let node_profile_name = node_profile_name.clone();
@@ -259,11 +263,11 @@ impl JobManager {
                         let tool_router = tool_router.clone();
                         let sheet_manager = sheet_manager.clone();
                         let callback_manager = callback_manager.clone();
-                        let queue_immediate = Arc::clone(&queue_immediate);
+                        let queue_immediate = queue_immediate.clone();
                         let my_agent_payments_manager = my_agent_payments_manager.clone();
                         let ext_agent_payments_manager = ext_agent_payments_manager.clone();
-                        let llm_stopper = Arc::clone(&llm_stopper);
-                        let processing_jobs = Arc::clone(&processing_jobs);
+                        let llm_stopper = llm_stopper.clone();
+                        let in_progress = processing_jobs.clone();
 
                         tokio::spawn(async move {
                             let result = (job_processing_fn)(
@@ -286,184 +290,179 @@ impl JobManager {
                             if result.is_ok() {
                                 let _ = queue_immediate.lock().await.dequeue(&job_id).await;
                             }
-
-                            let mut processing_jobs = processing_jobs.lock().await;
-                            processing_jobs.remove(&job_id);
+                            let mut inprog = in_progress.lock().await;
+                            inprog.remove(&job_id);
                             drop(permit);
                         });
                     }
+                    // Done immediate; continue so we can re-check normal vs. immediate again
                     continue;
                 }
 
-                // If no immediate jobs, process normal jobs
+                // 2) If no immediate jobs, let's gather normal jobs
                 let normal_jobs_to_process: Vec<(String, JobForProcessing)> = {
-                    let mut processing_jobs_lock = processing_jobs.lock().await;
-                    let job_queue_manager_lock = queue_normal.lock().await;
-                    let all_jobs = match job_queue_manager_lock.get_all_elements_interleave().await {
-                        Ok(jobs) => jobs,
-                        Err(_) => Vec::new(),
-                    };
-                    std::mem::drop(job_queue_manager_lock);
+                    let mut processing_lock = processing_jobs.lock().await;
+                    let mgr = queue_normal.lock().await;
+                    let all_norm = mgr.get_all_elements_interleave().await.unwrap_or_else(|_| vec![]);
+                    drop(mgr);
 
-                    all_jobs
+                    all_norm
                         .into_iter()
                         .filter_map(|job| {
-                            let job_id = job.job_message.job_id.clone();
-                            if !processing_jobs_lock.contains(&job_id) {
-                                processing_jobs_lock.insert(job_id.clone());
-                                Some((job_id, job))
+                            let jid = job.job_message.job_id.clone();
+                            if !processing_lock.contains(&jid) {
+                                processing_lock.insert(jid.clone());
+                                Some((jid, job))
                             } else {
                                 None
                             }
                         })
                         .take(max_parallel_jobs)
-                        .collect::<Vec<_>>()
+                        .collect()
                 };
 
                 if normal_jobs_to_process.is_empty() {
-                    // No jobs in either queue: wait for new jobs
+                    // 2A) Wait for any new job events from either queue
                     tokio::select! {
                         maybe_imm = rx_immediate.recv() => {
-                            if maybe_imm.is_none() {
+                            if let Some(imm_job) = maybe_imm {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Received new immediate job {:?}", imm_job.job_message.job_id),
+                                );
+                            } else {
                                 eprintln!("rx_immediate closed, shutting down...");
                                 break;
                             }
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Info,
-                                &format!("Received new immediate job {:?}", maybe_imm.unwrap().job_message.job_id),
-                            );
                         }
                         maybe_norm = rx_normal.recv() => {
-                            if maybe_norm.is_none() {
+                            if let Some(norm_job) = maybe_norm {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Received new normal job {:?}", norm_job.job_message.job_id),
+                                );
+                            } else {
                                 eprintln!("rx_normal closed, shutting down...");
                                 break;
                             }
-                            shinkai_log(
-                                ShinkaiLogOption::JobExecution,
-                                ShinkaiLogLevel::Info,
-                                &format!("Received new normal job {:?}", maybe_norm.unwrap().job_message.job_id),
-                            );
                         }
                     }
                 } else {
-                    // Process normal jobs
+                    // 2B) We have normal jobs; but we check again for immediate jobs while
+                    // waiting for the normal semaphore
                     for (job_id, job) in normal_jobs_to_process {
-                        // Check for immediate jobs before processing each normal job
-                        let immediate_jobs_to_process: Vec<(String, JobForProcessing)> = {
-                            let mut processing_jobs_lock = processing_jobs.lock().await;
-                            let job_queue_manager_lock = queue_immediate.lock().await;
-                            let all_jobs = match job_queue_manager_lock.get_all_elements_interleave().await {
-                                Ok(jobs) => jobs,
-                                Err(_) => Vec::new(),
-                            };
-                            std::mem::drop(job_queue_manager_lock);
+                        loop {
+                            tokio::select! {
+                                permit = normal_semaphore.clone().acquire_owned() => {
+                                    // We got a normal-job permit; spawn the normal job and move on
+                                    let job_processing_fn = Arc::clone(&job_processing_fn);
+                                    let db_clone = db_clone.clone();
+                                    let node_profile_name = node_profile_name.clone();
+                                    let identity_sk = clone_signature_secret_key(&identity_sk);
+                                    let generator = generator.clone();
+                                    let ws_manager = ws_manager.clone();
+                                    let tool_router = tool_router.clone();
+                                    let sheet_manager = sheet_manager.clone();
+                                    let callback_manager = callback_manager.clone();
+                                    let queue_normal = queue_normal.clone();
+                                    let my_agent_payments_manager = my_agent_payments_manager.clone();
+                                    let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                                    let llm_stopper = llm_stopper.clone();
+                                    let in_progress = processing_jobs.clone();
 
-                            all_jobs
-                                .into_iter()
-                                .filter_map(|job| {
-                                    let job_id = job.job_message.job_id.clone();
-                                    if !processing_jobs_lock.contains(&job_id) {
-                                        processing_jobs_lock.insert(job_id.clone());
-                                        Some((job_id, job))
+                                    tokio::spawn(async move {
+                                        let result = (job_processing_fn)(
+                                            job,
+                                            db_clone,
+                                            node_profile_name,
+                                            identity_sk,
+                                            generator,
+                                            ws_manager,
+                                            tool_router,
+                                            sheet_manager,
+                                            callback_manager,
+                                            queue_normal.clone(),
+                                            my_agent_payments_manager,
+                                            ext_agent_payments_manager,
+                                            llm_stopper,
+                                        )
+                                        .await;
+
+                                        if result.is_ok() {
+                                            let _ = queue_normal.lock().await.dequeue(&job_id).await;
+                                        }
+                                        let mut inprog = in_progress.lock().await;
+                                        inprog.remove(&job_id);
+                                        drop(permit);
+                                    });
+
+                                    // Done with this normal job
+                                    break;
+                                }
+
+                                maybe_imm = rx_immediate.recv() => {
+                                    // A new immediate job arrived
+                                    if let Some(imm_job) = maybe_imm {
+                                        let imm_id = imm_job.job_message.job_id.clone();
+                                        shinkai_log(
+                                            ShinkaiLogOption::JobExecution,
+                                            ShinkaiLogLevel::Info,
+                                            &format!("Received new immediate job {:?} while waiting for normal job permit", imm_id),
+                                        );
+
+                                        let permit = immediate_semaphore.clone().acquire_owned().await.unwrap();
+                                        let job_processing_fn = Arc::clone(&job_processing_fn);
+                                        let db_clone = db_clone.clone();
+                                        let node_profile_name = node_profile_name.clone();
+                                        let identity_sk = clone_signature_secret_key(&identity_sk);
+                                        let generator = generator.clone();
+                                        let ws_manager = ws_manager.clone();
+                                        let tool_router = tool_router.clone();
+                                        let sheet_manager = sheet_manager.clone();
+                                        let callback_manager = callback_manager.clone();
+                                        let queue_immediate = queue_immediate.clone();
+                                        let my_agent_payments_manager = my_agent_payments_manager.clone();
+                                        let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                                        let llm_stopper = llm_stopper.clone();
+                                        let in_progress = processing_jobs.clone();
+
+                                        tokio::spawn(async move {
+                                            let result = (job_processing_fn)(
+                                                imm_job,
+                                                db_clone,
+                                                node_profile_name,
+                                                identity_sk,
+                                                generator,
+                                                ws_manager,
+                                                tool_router,
+                                                sheet_manager,
+                                                callback_manager,
+                                                queue_immediate.clone(),
+                                                my_agent_payments_manager,
+                                                ext_agent_payments_manager,
+                                                llm_stopper,
+                                            )
+                                            .await;
+
+                                            if result.is_ok() {
+                                                let _ = queue_immediate.lock().await.dequeue(&imm_id).await;
+                                            }
+                                            let mut inprog = in_progress.lock().await;
+                                            inprog.remove(&imm_id);
+                                            drop(permit);
+                                        });
                                     } else {
-                                        None
-                                    }
-                                })
-                                .collect::<Vec<_>>()
-                        };
-
-                        // If we found immediate jobs, process them first
-                        if !immediate_jobs_to_process.is_empty() {
-                            for (imm_job_id, imm_job) in immediate_jobs_to_process {
-                                let permit = semaphore.clone().acquire_owned().await.unwrap();
-                                let job_processing_fn = Arc::clone(&job_processing_fn);
-                                let db_clone = db_clone.clone();
-                                let node_profile_name = node_profile_name.clone();
-                                let identity_sk = clone_signature_secret_key(&identity_sk);
-                                let generator = generator.clone();
-                                let ws_manager = ws_manager.clone();
-                                let tool_router = tool_router.clone();
-                                let sheet_manager = sheet_manager.clone();
-                                let callback_manager = callback_manager.clone();
-                                let queue_immediate = Arc::clone(&queue_immediate);
-                                let my_agent_payments_manager = my_agent_payments_manager.clone();
-                                let ext_agent_payments_manager = ext_agent_payments_manager.clone();
-                                let llm_stopper = Arc::clone(&llm_stopper);
-                                let processing_jobs = Arc::clone(&processing_jobs);
-
-                                tokio::spawn(async move {
-                                    let result = (job_processing_fn)(
-                                        imm_job,
-                                        db_clone,
-                                        node_profile_name,
-                                        identity_sk,
-                                        generator,
-                                        ws_manager,
-                                        tool_router,
-                                        sheet_manager,
-                                        callback_manager,
-                                        queue_immediate.clone(),
-                                        my_agent_payments_manager,
-                                        ext_agent_payments_manager,
-                                        llm_stopper,
-                                    )
-                                    .await;
-
-                                    if result.is_ok() {
-                                        let _ = queue_immediate.lock().await.dequeue(&imm_job_id).await;
+                                        eprintln!("rx_immediate closed, shutting down...");
+                                        return;
                                     }
 
-                                    let mut processing_jobs = processing_jobs.lock().await;
-                                    processing_jobs.remove(&imm_job_id);
-                                    drop(permit);
-                                });
+                                    // Still need to wait for a normal-job permit
+                                    continue;
+                                }
                             }
                         }
-
-                        // Now process the normal job
-                        let permit = semaphore.clone().acquire_owned().await.unwrap();
-                        let job_processing_fn = Arc::clone(&job_processing_fn);
-                        let db_clone = db_clone.clone();
-                        let node_profile_name = node_profile_name.clone();
-                        let identity_sk = clone_signature_secret_key(&identity_sk);
-                        let generator = generator.clone();
-                        let ws_manager = ws_manager.clone();
-                        let tool_router = tool_router.clone();
-                        let sheet_manager = sheet_manager.clone();
-                        let callback_manager = callback_manager.clone();
-                        let queue_normal = Arc::clone(&queue_normal);
-                        let my_agent_payments_manager = my_agent_payments_manager.clone();
-                        let ext_agent_payments_manager = ext_agent_payments_manager.clone();
-                        let llm_stopper = Arc::clone(&llm_stopper);
-                        let processing_jobs = Arc::clone(&processing_jobs);
-
-                        tokio::spawn(async move {
-                            let result = (job_processing_fn)(
-                                job,
-                                db_clone,
-                                node_profile_name,
-                                identity_sk,
-                                generator,
-                                ws_manager,
-                                tool_router,
-                                sheet_manager,
-                                callback_manager,
-                                queue_normal.clone(),
-                                my_agent_payments_manager,
-                                ext_agent_payments_manager,
-                                llm_stopper,
-                            )
-                            .await;
-
-                            if result.is_ok() {
-                                let _ = queue_normal.lock().await.dequeue(&job_id).await;
-                            }
-
-                            let mut processing_jobs = processing_jobs.lock().await;
-                            processing_jobs.remove(&job_id);
-                            drop(permit);
-                        });
                     }
                 }
             }
