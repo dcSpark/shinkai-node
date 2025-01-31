@@ -1009,6 +1009,7 @@ pub enum NodeCommand {
         payload: ToolPlayground,
         tool_id: String,
         app_id: String,
+        original_tool_key_path: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListPlaygroundTools {
