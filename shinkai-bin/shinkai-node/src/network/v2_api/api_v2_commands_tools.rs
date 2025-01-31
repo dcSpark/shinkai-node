@@ -1,7 +1,14 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::IdentityManager,
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 
 use async_channel::Sender;
@@ -12,21 +19,36 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
+    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
-    }, shinkai_message::shinkai_message_schemas::JobMessage
+        shinkai_name::ShinkaiName,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+    },
+    shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
+    deno_tools::DenoTool,
+    error::ToolError,
+    python_tools::PythonTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::ToolPlayground,
 };
 
 use std::{
-    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
+    env,
+    fs::File,
+    io::{Read, Write},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
@@ -1277,6 +1299,7 @@ impl Node {
             job_creation_info,
             job.parent_agent_or_llm_provider_id.clone(),
             metadata,
+            None,
             db,
             node_name_clone,
             identity_manager,
@@ -1504,6 +1527,7 @@ impl Node {
             tool_key: None,
             fs_files_paths: vec![],
             job_filenames: vec![],
+            tools: None,
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(

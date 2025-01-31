@@ -322,6 +322,7 @@ pub struct JobMessage {
     pub content: String,
     pub parent: Option<String>,
     pub sheet_job_data: Option<String>,
+    pub tools: Option<Vec<String>>,
     // Whenever we need to chain actions, we can use this
     pub callback: Option<Box<CallbackAction>>,
     // This is added from the node
@@ -863,5 +864,111 @@ impl fmt::Display for RegistrationCodeType {
             RegistrationCodeType::Device(device_name) => write!(f, "device:{}", device_name),
             RegistrationCodeType::Profile => write!(f, "profile"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_job_message_serialization() {
+        let job_message = JobMessage {
+            job_id: "test_job".to_string(),
+            content: "test content".to_string(),
+            parent: Some("parent_id".to_string()),
+            sheet_job_data: Some("sheet_data".to_string()),
+            tools: Some(vec!["tool1".to_string(), "tool2".to_string()]),
+            callback: Some(Box::new(CallbackAction::Job(JobMessage {
+                job_id: "callback_job".to_string(),
+                content: "callback content".to_string(),
+                parent: None,
+                sheet_job_data: None,
+                tools: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+                fs_files_paths: vec![],
+                job_filenames: vec![],
+            }))),
+            metadata: Some(MessageMetadata {
+                tps: Some("10".to_string()),
+                duration_ms: Some("100".to_string()),
+                function_calls: Some(vec![FunctionCallMetadata {
+                    name: "test_function".to_string(),
+                    arguments: {
+                        let mut map = serde_json::Map::new();
+                        map.insert("arg1".to_string(), json!("value1"));
+                        map
+                    },
+                    tool_router_key: Some("router_key".to_string()),
+                    response: Some("function response".to_string()),
+                }]),
+            }),
+            tool_key: Some("specific_tool".to_string()),
+            fs_files_paths: vec![],
+            job_filenames: vec!["file1.txt".to_string()],
+        };
+
+        // Test serialization
+        let serialized = serde_json::to_string(&job_message).expect("Failed to serialize JobMessage");
+
+        // Test deserialization
+        let deserialized: JobMessage = serde_json::from_str(&serialized).expect("Failed to deserialize JobMessage");
+
+        assert_eq!(job_message, deserialized);
+    }
+
+    #[test]
+    fn test_job_message_minimal() {
+        let minimal_message = JobMessage {
+            job_id: "minimal_job".to_string(),
+            content: "minimal content".to_string(),
+            parent: None,
+            sheet_job_data: None,
+            tools: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+            fs_files_paths: vec![],
+            job_filenames: vec![],
+        };
+
+        let serialized = serde_json::to_string(&minimal_message).expect("Failed to serialize minimal JobMessage");
+        let deserialized: JobMessage =
+            serde_json::from_str(&serialized).expect("Failed to deserialize minimal JobMessage");
+
+        assert_eq!(minimal_message, deserialized);
+    }
+
+    #[test]
+    fn test_job_message_with_sheet_callback() {
+        let message_with_sheet_callback = JobMessage {
+            job_id: "sheet_job".to_string(),
+            content: "sheet content".to_string(),
+            parent: None,
+            sheet_job_data: Some("sheet1".to_string()),
+            tools: None,
+            callback: Some(Box::new(CallbackAction::Sheet(SheetManagerAction {
+                job_message_next: None,
+                sheet_action: SheetJobAction {
+                    sheet_id: "sheet1".to_string(),
+                    row: RowUuid::from("row1"),
+                    col: ColumnUuid::from("col1"),
+                },
+            }))),
+            metadata: None,
+            tool_key: None,
+            fs_files_paths: vec![],
+            job_filenames: vec![],
+        };
+
+        let serialized = serde_json::to_string(&message_with_sheet_callback)
+            .expect("Failed to serialize JobMessage with sheet callback");
+        let deserialized: JobMessage =
+            serde_json::from_str(&serialized).expect("Failed to deserialize JobMessage with sheet callback");
+
+        assert_eq!(message_with_sheet_callback, deserialized);
     }
 }
