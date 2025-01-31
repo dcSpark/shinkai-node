@@ -40,6 +40,8 @@ pub struct OAuthToken {
     pub created_at: DateTime<Utc>,
     #[serde(with = "chrono::serde::ts_seconds")]
     pub updated_at: DateTime<Utc>,
+    pub request_token_auth_header: Option<String>,
+    pub request_token_content_type: Option<String>,
 }
 
 impl SqliteManager {
@@ -76,9 +78,9 @@ impl SqliteManager {
                 id_token, scope, pkce_type, pkce_code_verifier,
                 expires_at, metadata_json, authorization_url, token_url,
                 client_id, client_secret, redirect_url, version, created_at,
-                updated_at
+                updated_at, request_token_auth_header, request_token_content_type
             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,
-                      ?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27)",
+                      ?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29)",
             params![
                 token.connection_name,
                 token.response_type,
@@ -107,6 +109,8 @@ impl SqliteManager {
                 token.version,
                 token.created_at.to_rfc3339(),
                 token.updated_at.to_rfc3339(),
+                token.request_token_auth_header,
+                token.request_token_content_type,
             ],
         )?;
 
@@ -134,7 +138,7 @@ impl SqliteManager {
                     response_type, id_token, scope, pkce_type, pkce_code_verifier,
                     expires_at, metadata_json, authorization_url, token_url,
                     client_id, client_secret, redirect_url, version, created_at,
-                    updated_at
+                    updated_at, request_token_auth_header, request_token_content_type
              FROM oauth_tokens WHERE connection_name = ?1 and tool_key = ?2",
         )?;
 
@@ -180,6 +184,8 @@ impl SqliteManager {
                 updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(27)?)
                     .unwrap()
                     .with_timezone(&Utc),
+                request_token_auth_header: row.get(28)?,
+                request_token_content_type: row.get(29)?,
             }))
         } else {
             Ok(None)
@@ -215,8 +221,10 @@ impl SqliteManager {
                 client_secret = ?21,
                 redirect_url = ?22,
                 version = ?23,
-                updated_at = ?24
-            WHERE connection_name = ?25 and tool_key = ?26",
+                request_token_auth_header = ?24,
+                request_token_content_type = ?25,
+                updated_at = ?26
+            WHERE connection_name = ?27 and tool_key = ?28",
             params![
                 token.state,
                 token.code,
@@ -241,6 +249,8 @@ impl SqliteManager {
                 token.client_secret,
                 token.redirect_url,
                 token.version,
+                token.request_token_auth_header,
+                token.request_token_content_type,
                 Utc::now().to_rfc3339(),
                 token.connection_name,
                 token.tool_key,
@@ -260,7 +270,7 @@ impl SqliteManager {
                     response_type, id_token, scope, pkce_type, pkce_code_verifier,
                     expires_at, metadata_json, authorization_url, token_url,
                     client_id, client_secret, redirect_url, version, created_at,
-                    updated_at
+                    updated_at, request_token_auth_header, request_token_content_type
              FROM oauth_tokens",
         )?;
 
@@ -304,6 +314,8 @@ impl SqliteManager {
                 updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(27)?)
                     .unwrap()
                     .with_timezone(&Utc),
+                request_token_auth_header: row.get(28)?,
+                request_token_content_type: row.get(29)?,
             })
         })?;
 
@@ -321,7 +333,7 @@ impl SqliteManager {
                     response_type, id_token, scope, pkce_type, pkce_code_verifier,
                     expires_at, metadata_json, authorization_url, token_url,
                     client_id, client_secret, redirect_url, version, created_at,
-                    updated_at
+                    updated_at, request_token_auth_header, request_token_content_type
              FROM oauth_tokens WHERE state = ?1",
         )?;
 
@@ -367,6 +379,8 @@ impl SqliteManager {
                 updated_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(27)?)
                     .unwrap()
                     .with_timezone(&Utc),
+                request_token_auth_header: row.get(28)?,
+                request_token_content_type: row.get(29)?,
             }))
         } else {
             Ok(None)
@@ -421,6 +435,8 @@ mod tests {
             version: "1.0.0".to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            request_token_auth_header: None,
+            request_token_content_type: None,
         }
     }
 
@@ -745,6 +761,8 @@ mod tests {
             version: oauth.version,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            request_token_auth_header: None,
+            request_token_content_type: None,
         };
 
         // Save token to database
@@ -864,6 +882,8 @@ mod tests {
             version: oauth.version,
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            request_token_auth_header: None,
+            request_token_content_type: None,
         };
 
         // Save token to database
@@ -908,5 +928,27 @@ mod tests {
         assert_eq!(restored_oauth.scopes, oauth_scopes);
         assert_eq!(restored_oauth.pkce_type, oauth_pkce_type);
         assert_eq!(restored_oauth.refresh_token, oauth_refresh_token);
+    }
+
+    #[test]
+    fn test_oauth_token_with_request_headers() {
+        let manager = setup_test_db();
+        let mut token = create_test_token();
+
+        // Set the new fields
+        token.request_token_auth_header = Some("Bearer".to_string());
+        token.request_token_content_type = Some("application/json".to_string());
+
+        let token_id = manager.add_oauth_token(&token).unwrap();
+        let retrieved_token = manager
+            .get_oauth_token(token.connection_name.clone(), token.tool_key.clone())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(retrieved_token.request_token_auth_header, Some("Bearer".to_string()));
+        assert_eq!(
+            retrieved_token.request_token_content_type,
+            Some("application/json".to_string())
+        );
     }
 }

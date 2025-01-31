@@ -112,11 +112,36 @@ impl Node {
         });
 
         // Add code_verifier if PKCE is enabled
-        if oauth_data.pkce_type.is_some() {
-            // TODO For now we only support plain.
-            if let Some(verifier) = &oauth_data.pkce_code_verifier {
-                request_body["code_verifier"] = serde_json::Value::String(verifier.clone());
+        match oauth_data.pkce_type.clone() {
+            Some(pkce_type) => {
+                match pkce_type.as_str() {
+                    "plain" => {
+                        // TODO For now we only support plain.
+                        if let Some(verifier) = &oauth_data.pkce_code_verifier {
+                            request_body["code_verifier"] = serde_json::Value::String(verifier.clone());
+                        }
+                    }
+                    "S256" => {
+                        // TODO For now we only support S256.
+                        if let Some(verifier) = &oauth_data.pkce_code_verifier {
+                            request_body["code_verifier"] = serde_json::Value::String(verifier.clone());
+                        }
+                        // TODO Verify the challange/code sent.
+                        //     let mut hasher = Sha256::new();
+                        //     hasher.update(pkce_uuid.as_bytes());
+                        //     let challenge = hasher.finalize();
+
+                        //     // Base64url encode the challenge
+                        //     let encoded_challenge = URL_SAFE_NO_PAD.encode(challenge);
+
+                        //     query_params.push(("code_challenge", encoded_challenge));
+                        //     query_params.push(("code_challenge_method", "S256".to_string()));
+                        // }
+                    }
+                    _ => {}
+                }
             }
+            None => {}
         }
         let url = &oauth_data.clone().token_url.unwrap_or_default();
 

@@ -785,6 +785,8 @@ impl SqliteManager {
                 client_id TEXT,
                 client_secret TEXT,
                 redirect_url TEXT,
+                request_token_auth_header TEXT,
+                request_token_content_type TEXT,
                 version TEXT NOT NULL DEFAULT '1.0.0',  -- Added version field with default
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
