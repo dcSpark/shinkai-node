@@ -486,6 +486,12 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama3.4") => 128_000,
             model_type if model_type.starts_with("llama-3.1") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
+            model_type if model_type.starts_with("deepseek-r1:14b") => 128_000,
+            model_type if model_type.starts_with("deepseek-r1:8b") => 128_000,
+            model_type if model_type.starts_with("deepseek-r1:70b") => 128_000,
+            model_type if model_type.starts_with("deepseek-v3") => 128_000,
+            model_type if model_type.starts_with("command-r7b") => 128_000,
+            model_type if model_type.starts_with("mistral-small") => 128_000,
             _ => 4096, // Default token count if no specific model type matches
         }
     }
@@ -665,7 +671,13 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwq")
-            }
+                    || model.model_type.starts_with("deepseek-r1:14b")
+                    || model.model_type.starts_with("deepseek-r1:8b")
+                    || model.model_type.starts_with("deepseek-r1:70b")
+                    || model.model_type.starts_with("deepseek-v3")
+                    || model.model_type.starts_with("command-r7b")
+                    || model.model_type.starts_with("mistral-small")
+            },
             LLMProviderInterface::Groq(model) => {
                 model.model_type.starts_with("llama-3.3-70b-versatile")
                     || model.model_type.starts_with("llama-3.1-8b-instant") 

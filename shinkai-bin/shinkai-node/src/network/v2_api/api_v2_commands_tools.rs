@@ -1,14 +1,7 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 
 use async_channel::Sender;
@@ -19,36 +12,21 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-    },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
+    }, shinkai_message::shinkai_message_schemas::JobMessage
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    python_tools::PythonTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::ToolPlayground,
+    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
 };
 
 use std::{
-    env,
-    fs::File,
-    io::{Read, Write},
-    sync::Arc,
-    time::Instant,
+    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
 };
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
@@ -62,13 +40,16 @@ use std::path::PathBuf;
 use tokio::fs;
 
 impl Node {
-    /// Searches for Shinkai tools using both vector and full-text search (FTS) methods.
+    /// Searches for Shinkai tools using both vector and full-text search (FTS)
+    /// methods.
     ///
     /// The function returns a total of 10 results based on the following logic:
     /// 1. All FTS results are added first.
-    /// 2. If there is a vector search result with a score under 0.2, it is added as the second result.
+    /// 2. If there is a vector search result with a score under 0.2, it is
+    ///    added as the second result.
     /// 3. Remaining FTS results are added.
-    /// 4. If there are remaining slots after adding FTS results, they are filled with additional vector search results.
+    /// 4. If there are remaining slots after adding FTS results, they are
+    ///    filled with additional vector search results.
     ///
     /// # Arguments
     ///
@@ -566,7 +547,8 @@ impl Node {
             }
         }
 
-        // Copy asset to permanent tool_storage folder {storage}/tool_storage/{tool_key}.assets/
+        // Copy asset to permanent tool_storage folder
+        // {storage}/tool_storage/{tool_key}.assets/
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
@@ -1122,7 +1104,8 @@ impl Node {
             tool.to_string_without_version() == "local:::__official_shinkai:::shinkai_sqlite_query_executor"
         });
 
-        // Determine the code generation prompt so we can update the message with the custom prompt if required
+        // Determine the code generation prompt so we can update the message with the
+        // custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
             false => match generate_code_prompt(language.clone(), is_memory_required, prompt, tool_definitions).await {
@@ -1170,6 +1153,7 @@ impl Node {
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
+            Some(true),
             res,
         )
         .await
@@ -1193,7 +1177,8 @@ impl Node {
             return Ok(());
         }
 
-        // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
+        // We can automatically extract the code (last message from the AI in the job
+        // inbox) using the job_id
         let job = match db.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
@@ -1343,7 +1328,8 @@ impl Node {
             }
         };
 
-        // Determine if it's an AI or user message, if it's a user message then we need to return an error
+        // Determine if it's an AI or user message, if it's a user message then we need
+        // to return an error
         if message.is_receiver_subidentity_agent() {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
@@ -1355,7 +1341,8 @@ impl Node {
         }
 
         let mut new_message = message.clone();
-        // Update the scheduled time to now so the messages are content wise the same but produce a different hash
+        // Update the scheduled time to now so the messages are content wise the same
+        // but produce a different hash
         new_message.external_metadata.scheduled_time = Utc::now().to_rfc3339();
 
         let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
@@ -1931,9 +1918,10 @@ impl Node {
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
     ///
-    /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
-    /// This function validates the protocol format, constructs the actual file path in the node's storage,
-    /// and returns the file contents as bytes.
+    /// The Shinkai file protocol follows the format:
+    /// `shinkai://file/{node_name}/{app-id}/{full-path}` This function
+    /// validates the protocol format, constructs the actual file path in the
+    /// node's storage, and returns the file contents as bytes.
     ///
     /// # Arguments
     /// * `bearer` - Bearer token for authentication

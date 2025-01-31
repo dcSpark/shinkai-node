@@ -10,3 +10,5 @@ match_arm_blocks = true
 trailing_comma = "Vertical"
 
 wrap_comments = true
+
+edition = "2021"
