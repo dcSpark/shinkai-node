@@ -1,14 +1,7 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 
 use async_channel::Sender;
@@ -19,36 +12,21 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-    },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
+    }, shinkai_message::shinkai_message_schemas::JobMessage
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    python_tools::PythonTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::ToolPlayground,
+    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
 };
 
 use std::{
-    env,
-    fs::File,
-    io::{Read, Write},
-    sync::Arc,
-    time::Instant,
+    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
 };
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
@@ -62,13 +40,16 @@ use std::path::PathBuf;
 use tokio::fs;
 
 impl Node {
-    /// Searches for Shinkai tools using both vector and full-text search (FTS) methods.
+    /// Searches for Shinkai tools using both vector and full-text search (FTS)
+    /// methods.
     ///
     /// The function returns a total of 10 results based on the following logic:
     /// 1. All FTS results are added first.
-    /// 2. If there is a vector search result with a score under 0.2, it is added as the second result.
+    /// 2. If there is a vector search result with a score under 0.2, it is
+    ///    added as the second result.
     /// 3. Remaining FTS results are added.
-    /// 4. If there are remaining slots after adding FTS results, they are filled with additional vector search results.
+    /// 4. If there are remaining slots after adding FTS results, they are
+    ///    filled with additional vector search results.
     ///
     /// # Arguments
     ///
@@ -566,7 +547,8 @@ impl Node {
             }
         }
 
-        // Copy asset to permanent tool_storage folder {storage}/tool_storage/{tool_key}.assets/
+        // Copy asset to permanent tool_storage folder
+        // {storage}/tool_storage/{tool_key}.assets/
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
@@ -985,6 +967,7 @@ impl Node {
         language: CodeLanguage,
         tools: Vec<ToolRouterKey>,
         code: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -1022,19 +1005,25 @@ impl Node {
                 }
             };
 
-        let metadata_prompt =
-            match tool_metadata_implementation_prompt(language.clone(), code.clone(), tools.clone()).await {
-                Ok(prompt) => prompt,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to generate tool definitions: {:?}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
+        let metadata_prompt = match tool_metadata_implementation_prompt(
+            language.clone(),
+            code.clone(),
+            tools.clone(),
+            identity_manager.clone(),
+        )
+        .await
+        {
+            Ok(prompt) => prompt,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         let library_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), false).await {
             Ok(code) => code,
@@ -1115,7 +1104,8 @@ impl Node {
             tool.to_string_without_version() == "local:::__official_shinkai:::shinkai_sqlite_query_executor"
         });
 
-        // Determine the code generation prompt so we can update the message with the custom prompt if required
+        // Determine the code generation prompt so we can update the message with the
+        // custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
             false => match generate_code_prompt(language.clone(), is_memory_required, prompt, tool_definitions).await {
@@ -1163,6 +1153,7 @@ impl Node {
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
+            Some(true),
             res,
         )
         .await
@@ -1175,7 +1166,7 @@ impl Node {
         tools: Vec<ToolRouterKey>,
         db: Arc<SqliteManager>,
         node_name_clone: ShinkaiName,
-        identity_manager_clone: Arc<Mutex<IdentityManager>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
         encryption_secret_key_clone: EncryptionStaticKey,
         encryption_public_key_clone: EncryptionPublicKey,
@@ -1186,7 +1177,8 @@ impl Node {
             return Ok(());
         }
 
-        // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
+        // We can automatically extract the code (last message from the AI in the job
+        // inbox) using the job_id
         let job = match db.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
@@ -1264,7 +1256,8 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata = match tool_metadata_implementation_prompt(language, code, tools).await {
+        let metadata = match tool_metadata_implementation_prompt(language, code, tools, identity_manager.clone()).await
+        {
             Ok(metadata) => metadata,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
@@ -1286,7 +1279,7 @@ impl Node {
             metadata,
             db,
             node_name_clone,
-            identity_manager_clone,
+            identity_manager,
             job_manager_clone,
             encryption_secret_key_clone,
             encryption_public_key_clone,
@@ -1335,7 +1328,8 @@ impl Node {
             }
         };
 
-        // Determine if it's an AI or user message, if it's a user message then we need to return an error
+        // Determine if it's an AI or user message, if it's a user message then we need
+        // to return an error
         if message.is_receiver_subidentity_agent() {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
@@ -1347,7 +1341,8 @@ impl Node {
         }
 
         let mut new_message = message.clone();
-        // Update the scheduled time to now so the messages are content wise the same but produce a different hash
+        // Update the scheduled time to now so the messages are content wise the same
+        // but produce a different hash
         new_message.external_metadata.scheduled_time = Utc::now().to_rfc3339();
 
         let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
@@ -1683,8 +1678,7 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-        let response =
-            Self::v2_api_publish_tool_local(db, node_env, tool_key_path, identity_manager, signing_secret_key).await;
+        let response = Self::publish_tool(db, node_env, tool_key_path, identity_manager, signing_secret_key).await;
 
         match response {
             Ok(response) => {
@@ -1697,7 +1691,7 @@ impl Node {
         Ok(())
     }
 
-    async fn v2_api_publish_tool_local(
+    async fn publish_tool(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         tool_key_path: String,
@@ -1718,21 +1712,19 @@ impl Node {
         })?;
 
         let identity_manager = identity_manager.lock().await;
-        let identity = identity_manager.get_main_identity().ok_or(APIError {
-            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            error: "Internal Server Error".to_string(),
-            message: "Failed to get main identity".to_string(),
-        })?;
         let local_node_name = identity_manager.local_node_name.clone();
-        println!("Identity: {:?}", identity);
-        println!("Local node name: {:?}", local_node_name);
-        let identity_name = identity.get_full_identity_name();
+        let identity_name = local_node_name.to_string();
         drop(identity_manager);
+
+        // Hash
+        let hash_raw = blake3::hash(&file_bytes.clone());
+        let hash_hex = hash_raw.to_hex();
+        let hash = hash_hex.to_string();
 
         // Signature
         let signature = signing_secret_key
             .clone()
-            .try_sign(file_bytes.clone().as_slice())
+            .try_sign(hash_hex.as_bytes())
             .map_err(|e| APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
@@ -1741,9 +1733,6 @@ impl Node {
 
         let signature_bytes = signature.to_bytes();
         let signature_hex = hex::encode(signature_bytes);
-
-        // Hash
-        let hash = blake3::hash(&file_bytes.clone()).to_hex().to_string();
 
         // Publish the tool to the store.
         let client = reqwest::Client::new();
@@ -1759,11 +1748,12 @@ impl Node {
             .text("signature", signature_hex.clone())
             .text("identity", identity_name.clone());
 
-        println!("FORM Type {}", "tool");
-        println!("FORM Router Key {}", tool_key_path.clone());
-        println!("FORM Hash {}", hash.clone());
-        println!("FORM Signature {}", signature_hex.clone());
-        println!("FORM Identity {}", identity_name.clone());
+        println!("[Publish Tool] Type: {}", "tool");
+        println!("[Publish Tool] Router Key: {}", tool_key_path.clone());
+        println!("[Publish Tool] Hash: {}", hash.clone());
+        println!("[Publish Tool] Signature: {}", signature_hex.clone());
+        println!("[Publish Tool] Identity: {}", identity_name.clone());
+
         let store_url = env::var("SHINKAI_STORE_URL")
             .unwrap_or("https://shinkai-store-302883622007.us-central1.run.app".to_string());
         let response = client
@@ -1928,9 +1918,10 @@ impl Node {
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
     ///
-    /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
-    /// This function validates the protocol format, constructs the actual file path in the node's storage,
-    /// and returns the file contents as bytes.
+    /// The Shinkai file protocol follows the format:
+    /// `shinkai://file/{node_name}/{app-id}/{full-path}` This function
+    /// validates the protocol format, constructs the actual file path in the
+    /// node's storage, and returns the file contents as bytes.
     ///
     /// # Arguments
     /// * `bearer` - Bearer token for authentication

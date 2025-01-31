@@ -18,10 +18,11 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -52,7 +53,7 @@ pub fn truncate_image_url_in_payload(payload: &mut JsonValue) {
 pub struct PartialFunctionCall {
     pub name: Option<String>,
     pub arguments: String,
-    pub is_accumulating: bool,  // Track if we're currently accumulating a function call
+    pub is_accumulating: bool, // Track if we're currently accumulating a function call
 }
 
 #[async_trait]
@@ -68,6 +69,7 @@ impl LLMService for OpenAI {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
+        _db: Arc<SqliteManager>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
@@ -76,7 +78,8 @@ impl LLMService for OpenAI {
 
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
-                // Note: we can use prepare_messages directly or we could have called ModelCapabilitiesManager
+                // Note: we can use prepare_messages directly or we could have called
+                // ModelCapabilitiesManager
                 let result = openai_prepare_messages(&model, prompt)?;
                 let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
@@ -165,7 +168,8 @@ impl LLMService for OpenAI {
     }
 }
 
-/// A synchronous version of finalize_function_call that doesn't deal with WebSocket updates
+/// A synchronous version of finalize_function_call that doesn't deal with
+/// WebSocket updates
 fn finalize_function_call_sync(
     partial_fc: &mut PartialFunctionCall,
     function_calls: &mut Vec<FunctionCall>,
@@ -174,10 +178,12 @@ fn finalize_function_call_sync(
     if let Some(ref name) = partial_fc.name {
         if !name.is_empty() {
             // Clean up the arguments string and unescape quotes
-            let cleaned_args = partial_fc.arguments.trim()
-                .replace(r#"\""#, "\"")  // Unescape quotes
+            let cleaned_args = partial_fc
+                .arguments
+                .trim()
+                .replace(r#"\""#, "\"") // Unescape quotes
                 .to_string();
-            
+
             // Attempt to parse the accumulated arguments
             let fc_arguments = if cleaned_args.is_empty() {
                 serde_json::Map::new()
@@ -191,12 +197,10 @@ fn finalize_function_call_sync(
                 };
 
                 match parse_result {
-                    Ok(value) => {
-                        value.as_object().cloned().unwrap_or_else(|| {
-                            eprintln!("Failed to convert value to object: {:?}", value);
-                            serde_json::Map::new()
-                        })
-                    }
+                    Ok(value) => value.as_object().cloned().unwrap_or_else(|| {
+                        eprintln!("Failed to convert value to object: {:?}", value);
+                        serde_json::Map::new()
+                    }),
                     Err(e) => {
                         eprintln!("Failed to parse arguments: {}", e);
                         eprintln!("Arguments string was: {}", cleaned_args);
@@ -209,7 +213,8 @@ fn finalize_function_call_sync(
             let tool_router_key = tools.as_ref().and_then(|tools_array| {
                 tools_array.iter().find_map(|tool| {
                     if tool.get("name")?.as_str()? == name {
-                        tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                        tool.get("tool_router_key")
+                            .and_then(|key| key.as_str().map(|s| s.to_string()))
                     } else {
                         None
                     }
@@ -262,7 +267,26 @@ pub async fn parse_openai_stream_chunk(
             continue;
         }
 
-        // If the line doesn't start with "data: ", check if it's an array-formatted error
+        // First try to parse as a regular JSON object
+        if let Ok(json_data) = serde_json::from_str::<JsonValue>(line) {
+            // Check for error object at the root level
+            if let Some(error_obj) = json_data.get("error") {
+                let code = error_obj
+                    .get("code")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("Unknown code")
+                    .to_string();
+                let msg = error_obj
+                    .get("message")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("Unknown error");
+                error_message = Some(format!("{}: {}", code, msg));
+                continue;
+            }
+        }
+
+        // If the line doesn't start with "data: ", check if it's an array-formatted
+        // error
         if !line.starts_with("data: ") {
             // If it is literally [DONE], skip
             if line == "[DONE]" {
@@ -335,7 +359,7 @@ pub async fn parse_openai_stream_chunk(
                     partial_fc.arguments.clear();
                 }
                 partial_fc.arguments.push_str(&args);
-                
+
                 // If we have a complete JSON object, try to parse it
                 if partial_fc.arguments.starts_with('{') && partial_fc.arguments.ends_with('}') {
                     match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
@@ -344,7 +368,8 @@ pub async fn parse_openai_stream_chunk(
                             finalize_function_call_sync(partial_fc, function_calls, tools);
                         }
                         Err(_) => {
-                            // Not a complete valid JSON yet, continue accumulating
+                            // Not a complete valid JSON yet, continue
+                            // accumulating
                         }
                     }
                 }
@@ -371,7 +396,8 @@ pub async fn parse_openai_stream_chunk(
 
                 // Otherwise, look for "choices"
                 if let Some(choices) = json_data.get("choices") {
-                    // Each item in "choices" may have "delta": { "content": "..."} or "function_call": ...
+                    // Each item in "choices" may have "delta": { "content": "..."} or
+                    // "function_call": ...
                     for choice in choices.as_array().unwrap_or(&vec![]) {
                         let finish_reason = choice
                             .get("finish_reason")
@@ -764,7 +790,8 @@ pub fn add_options_to_payload(payload: &mut serde_json::Value, config: Option<&J
         config_value.cloned().or_else(|| read_env_var::<T>(env_key))
     }
 
-    // Read options from environment variables or config and add them directly to the payload
+    // Read options from environment variables or config and add them directly to
+    // the payload
     if let Some(seed) = get_value("LLM_SEED", config.and_then(|c| c.seed.as_ref())) {
         payload["seed"] = serde_json::json!(seed);
     }
@@ -865,7 +892,10 @@ async fn send_tool_ws_update(
 
             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
-            eprintln!("Websocket content (function_call): {}", serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string()));
+            eprintln!(
+                "Websocket content (function_call): {}",
+                serde_json::to_string(function_call).unwrap_or_else(|_| "{}".to_string())
+            );
 
             let _ = m
                 .queue_message(
@@ -886,11 +916,12 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
     let args_prefix = r#""function_call":{"arguments":""#;
     if let Some(args_start_pos) = json_str.find(args_prefix) {
         let content_start = args_start_pos + args_prefix.len();
-        
+
         // Find the end of arguments value by looking for the closing quotes and braces
-        // We need to handle both cases: when it's just a piece of a JSON string and when it's a complete one
+        // We need to handle both cases: when it's just a piece of a JSON string and
+        // when it's a complete one
         let mut content_end = None;
-        
+
         // First try to find the standard end pattern
         if let Some(end_pos) = json_str[content_start..].find(r#""}}"#) {
             content_end = Some(content_start + end_pos);
@@ -899,19 +930,19 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
         else if let Some(end_pos) = json_str[content_start..].find('"') {
             content_end = Some(content_start + end_pos);
         }
-        
+
         if let Some(content_end) = content_end {
             // Extract the arguments content
             let content = json_str[content_start..content_end].to_string();
-            
+
             // Build the cleaned JSON by replacing the arguments content with empty string
             let cleaned_json = format!(
                 "{}{}{}",
-                &json_str[..content_start],  // everything up to the content
-                "",                          // empty string for arguments
-                &json_str[content_end..]     // everything after the content
+                &json_str[..content_start], // everything up to the content
+                "",                         // empty string for arguments
+                &json_str[content_end..]    // everything after the content
             );
-            
+
             (Some(content), cleaned_json)
         } else {
             (None, json_str.to_string())
@@ -1032,8 +1063,6 @@ mod tests {
         assert_eq!(function_calls[0].name, "test_function");
         assert_eq!(function_calls[0].tool_router_key, Some("test_router".to_string()));
     }
-
-
 
     #[tokio::test]
     async fn test_parse_openai_stream_complete_response() {
@@ -1244,7 +1273,6 @@ mod tests {
         assert!(choice.message.function_call.is_none());
     }
 
-
     #[tokio::test]
     async fn test_parse_openai_stream_chunk_riddle_response() {
         let mut buffer = String::new();
@@ -1356,11 +1384,52 @@ mod tests {
 
         // Function call argument chunks
         let argument_chunks = vec![
-            "{\"", "tool", "_router", "_key", "\":\"", "local", "::", "none", "\",\"",
-            "config", "\":{\"", "smtp", "_server", "\":\"", "smtp", ".", "zo", "ho", ".com",
-            "\",\"", "port", "\":", "465", ",\"", "sender", "_email", "\":\"", "bat", "ata",
-            "@", "z", "oh", "om", "ail", ".com", "\",\"", "sender", "_password", "\":\"",
-            "ber", "emu", "\",\"", "ssl", "\":", "true", "}}"
+            "{\"",
+            "tool",
+            "_router",
+            "_key",
+            "\":\"",
+            "local",
+            "::",
+            "none",
+            "\",\"",
+            "config",
+            "\":{\"",
+            "smtp",
+            "_server",
+            "\":\"",
+            "smtp",
+            ".",
+            "zo",
+            "ho",
+            ".com",
+            "\",\"",
+            "port",
+            "\":",
+            "465",
+            ",\"",
+            "sender",
+            "_email",
+            "\":\"",
+            "bat",
+            "ata",
+            "@",
+            "z",
+            "oh",
+            "om",
+            "ail",
+            ".com",
+            "\",\"",
+            "sender",
+            "_password",
+            "\":\"",
+            "ber",
+            "emu",
+            "\",\"",
+            "ssl",
+            "\":",
+            "true",
+            "}}",
         ];
 
         for chunk in argument_chunks {
@@ -1455,7 +1524,7 @@ mod tests {
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"movies"}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\"}"}},"logprobs":null,"finish_reason":null}]}"#,
             r#"data: {"id":"chatcmpl-Ar9TM4lQXVkjrdwTchuU6H3TPiAFB","object":"chat.completion.chunk","created":1737231160,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"function_call"}]}"#,
-            "data: [DONE]\n"
+            "data: [DONE]\n",
         ];
 
         for chunk in chunks {
@@ -1479,7 +1548,10 @@ mod tests {
         assert_eq!(function_calls.len(), 1);
         let fc = &function_calls[0];
         assert_eq!(fc.name, "duckduckgo_search");
-        assert_eq!(fc.tool_router_key, Some("local:::duckduckgo_search:::duckduckgo_search".to_string()));
+        assert_eq!(
+            fc.tool_router_key,
+            Some("local:::duckduckgo_search:::duckduckgo_search".to_string())
+        );
 
         // Verify the arguments
         let expected_args = serde_json::json!({
@@ -1494,8 +1566,9 @@ mod tests {
 
         let (maybe_args, cleaned) = extract_and_remove_arguments(json_str);
 
-        // Check we extracted the inner content - in this case just the start of a JSON object
-        assert_eq!(maybe_args, Some("{\\\"".to_string()));  // This is what's actually in the JSON
+        // Check we extracted the inner content - in this case just the start of a JSON
+        // object
+        assert_eq!(maybe_args, Some("{\\\"".to_string())); // This is what's actually in the JSON
 
         // The cleaned JSON should have empty arguments but maintain structure
         assert!(cleaned.contains(r#""function_call""#));
@@ -1511,7 +1584,12 @@ mod tests {
 
         // Verify the cleaned JSON is valid and has the expected structure
         let parsed: serde_json::Value = serde_json::from_str(&cleaned).unwrap();
-        assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+        assert_eq!(
+            parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                .as_str()
+                .unwrap(),
+            ""
+        );
     }
 
     #[test]
@@ -1542,7 +1620,12 @@ mod tests {
         match serde_json::from_str::<serde_json::Value>(&cleaned) {
             Ok(parsed) => {
                 eprintln!("Successfully parsed JSON");
-                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+                assert_eq!(
+                    parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                        .as_str()
+                        .unwrap(),
+                    ""
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse JSON: {}", e);
@@ -1577,7 +1660,12 @@ mod tests {
         match serde_json::from_str::<serde_json::Value>(&cleaned) {
             Ok(parsed) => {
                 eprintln!("Successfully parsed JSON");
-                assert_eq!(parsed["choices"][0]["delta"]["function_call"]["arguments"].as_str().unwrap(), "");
+                assert_eq!(
+                    parsed["choices"][0]["delta"]["function_call"]["arguments"]
+                        .as_str()
+                        .unwrap(),
+                    ""
+                );
             }
             Err(e) => {
                 eprintln!("Failed to parse JSON: {}", e);
@@ -1586,5 +1674,48 @@ mod tests {
             }
         }
     }
-}
 
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_invalid_function_parameters() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+        };
+        let tools = None;
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        // Add the error response exactly as provided
+        buffer.push_str(r#"{"error": {"message": "Invalid schema for function 'shinkai_typescript_unsafe_processor': ['code', 'package', 'parameters', 'code'] has non-unique elements.", "type": "invalid_request_error", "param": "functions[2].parameters", "code": "invalid_function_parameters"}}"#);
+        buffer.push('\n');
+
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+
+        // Verify that we got an error message back
+        assert!(result.is_ok());
+        let error_message = result.unwrap();
+        assert!(error_message.is_some());
+        assert_eq!(
+            error_message.unwrap(),
+            "invalid_function_parameters: Invalid schema for function 'shinkai_typescript_unsafe_processor': ['code', 'package', 'parameters', 'code'] has non-unique elements."
+        );
+
+        // Verify no function calls were created
+        assert!(function_calls.is_empty());
+        // Verify no response text was generated
+        assert!(response_text.is_empty());
+    }
+}

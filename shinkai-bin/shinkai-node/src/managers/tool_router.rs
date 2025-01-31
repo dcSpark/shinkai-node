@@ -149,8 +149,12 @@ impl ToolRouter {
         // Start timing before the HTTP request
         let start_time = Instant::now();
 
-        let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-            .unwrap_or_else(|_| format!("https://download.shinkai.com/tools-{}/directory.json", env!("CARGO_PKG_VERSION")));
+        let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL").unwrap_or_else(|_| {
+            format!(
+                "https://download.shinkai.com/tools-{}/directory.json",
+                env!("CARGO_PKG_VERSION")
+            )
+        });
 
         eprintln!("Importing tools from: {}", url);
 
@@ -539,7 +543,7 @@ impl ToolRouter {
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = python_tool.tools.clone();
                 let support_files =
-                    generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                    generate_tool_definitions(tools, CodeLanguage::Python, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
 
@@ -575,7 +579,7 @@ impl ToolRouter {
                         tool_id.clone(),
                         node_name,
                         false,
-                        None,
+                        Some(tool_id),
                         Some(all_files),
                     )
                     .await?;

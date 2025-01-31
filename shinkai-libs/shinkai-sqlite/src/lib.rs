@@ -27,6 +27,7 @@ pub mod keys_manager;
 pub mod llm_provider_manager;
 pub mod oauth_manager;
 pub mod prompt_manager;
+pub mod regex_pattern_manager;
 pub mod retry_manager;
 pub mod settings_manager;
 pub mod sheet_manager;
@@ -171,6 +172,7 @@ impl SqliteManager {
         Self::initialize_wallets_table(conn)?;
         Self::initialize_filesystem_tables(conn)?;
         Self::initialize_oauth_table(conn)?;
+        Self::initialize_regex_patterns_table(conn)?;
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
@@ -248,7 +250,9 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS inboxes (
                 inbox_name TEXT NOT NULL UNIQUE,
                 smart_inbox_name TEXT NOT NULL,
-                read_up_to_message_hash TEXT
+                read_up_to_message_hash TEXT,
+                last_modified TEXT,
+                is_hidden BOOLEAN DEFAULT FALSE
             );",
             [],
         )?;
@@ -256,6 +260,18 @@ impl SqliteManager {
         // Create an index for the inbox_name column
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_inboxes_inbox_name ON inboxes (inbox_name);",
+            [],
+        )?;
+
+        // Create a composite index for filtering hidden inboxes and sorting by last_modified
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_hidden_modified ON inboxes (is_hidden, last_modified DESC);",
+            [],
+        )?;
+
+        // Create an index for sorting by last_modified only (for when show_hidden is true)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_inboxes_last_modified ON inboxes (last_modified DESC);",
             [],
         )?;
 
@@ -783,6 +799,36 @@ impl SqliteManager {
         Ok(())
     }
 
+    fn initialize_regex_patterns_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS regex_patterns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_name TEXT NOT NULL,
+                pattern TEXT NOT NULL,
+                response TEXT NOT NULL,
+                description TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE,
+                priority INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(provider_name, pattern)
+            );",
+            [],
+        )?;
+
+        // Create indexes for pattern lookups
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_regex_patterns_pattern ON regex_patterns (pattern);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_regex_patterns_provider ON regex_patterns (provider_name);",
+            [],
+        )?;
+
+        Ok(())
+    }
+
     // fn initialize_source_file_maps_table(conn: &rusqlite::Connection) -> Result<()> {
     //     conn.execute(
     //         "CREATE TABLE IF NOT EXISTS source_file_maps (
@@ -883,18 +929,10 @@ impl SqliteManager {
         vec![value; 384]
     }
 
-    // pub fn get_default_embedding_model(&self) -> Result<EmbeddingModelType, SqliteManagerError> {
-    //     Ok(self.model_type.clone())
-    // }
-    // pub fn update_default_embedding_model(&mut self, model: EmbeddingModelType) -> Result<(), SqliteManagerError> {
-    //     self.model_type = model;
-    //     Ok(())
-    // }
-
     // Method to set the version and determine if a global reset is needed
     pub fn set_version(&self, version: &str) -> Result<()> {
         // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7"];
+        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7", "0.9.8"];
 
         let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
             breaking_versions

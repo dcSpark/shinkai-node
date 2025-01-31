@@ -129,7 +129,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_inboxes_for_profile(standard_identity) {
+        let result = match db.get_inboxes_for_profile(standard_identity, Some(true)) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -216,7 +216,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_all_smart_inboxes_for_profile(standard_identity) {
+        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true)) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -352,7 +352,7 @@ impl Node {
         sender: Identity,
     ) -> Result<String, NodeError> {
         let mut job_manager = job_manager.lock().await;
-        match job_manager.process_job_message(shinkai_message).await {
+        match job_manager.process_job_message(shinkai_message, false).await {
             Ok(job_id) => {
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
                 let sender_standard = match sender {
@@ -401,9 +401,10 @@ impl Node {
     pub async fn internal_job_message(
         job_manager: Arc<Mutex<JobManager>>,
         shinkai_message: ShinkaiMessage,
+        high_priority: bool,
     ) -> Result<(), NodeError> {
         let mut job_manager = job_manager.lock().await;
-        match job_manager.process_job_message(shinkai_message).await {
+        match job_manager.process_job_message(shinkai_message, high_priority).await {
             Ok(_) => Ok(()),
             Err(err) => Err(NodeError {
                 message: format!("Error with process job message: {}", err),

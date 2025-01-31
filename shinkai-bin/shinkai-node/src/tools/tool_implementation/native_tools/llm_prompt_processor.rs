@@ -2,7 +2,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::{
-    error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
+    error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
 use std::sync::Arc;
 

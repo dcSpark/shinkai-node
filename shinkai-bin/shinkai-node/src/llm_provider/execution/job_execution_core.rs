@@ -88,30 +88,7 @@ impl JobManager {
         )
         .unwrap();
 
-        // Note: remove later on. This code is for the meantime only while we add embeddings to tools so they can get added at the first Shinkai start
-        {
-            if let Some(tool_router) = tool_router.clone() {
-                let _ = tool_router.initialization(Box::new(generator.clone())).await;
-            }
-        }
-
-        // TODO: Fix this if it's still needed
-        // // 1.- Processes any files which were sent with the job message
-        // let process_files_result = JobManager::process_job_message_files_for_vector_resources(
-        //     db.clone(),
-        //     &job_message.job_message,
-        //     llm_provider_found.clone(),
-        //     &mut full_job,
-        //     user_profile.clone(),
-        //     generator.clone(),
-        //     ws_manager.clone(),
-        // )
-        // .await;
-        // if let Err(e) = process_files_result {
-        //     return Self::handle_error(&db, Some(user_profile), &job_id, &identity_secret_key, e, ws_manager).await;
-        // }
-
-        // 2.- *If* a sheet job is found, processing job message is taken over by this alternate logic
+        // 1.- *If* a sheet job is found, processing job message is taken over by this alternate logic
         let sheet_job_found = JobManager::process_sheet_job(
             db.clone(),
             &job_message.job_message,

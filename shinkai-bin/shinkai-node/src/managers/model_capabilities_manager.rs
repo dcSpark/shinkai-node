@@ -170,6 +170,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
         }
     }
 
@@ -186,6 +187,9 @@ impl ModelCapabilitiesManager {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             model_type if model_type.contains("minicpm-v") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             _ => vec![ModelCapability::TextInference],
@@ -231,6 +235,7 @@ impl ModelCapabilitiesManager {
                 "claude-3-haiku-20240307" => ModelCost::VeryCheap,
                 _ => ModelCost::Unknown,
             },
+            LLMProviderInterface::LocalRegex(_) => ModelCost::Free,
         }
     }
 
@@ -252,6 +257,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
             LLMProviderInterface::Claude(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::LocalRegex(_) => ModelPrivacy::Local,
         }
     }
 
@@ -357,6 +363,11 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, claude.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::LocalRegex(local_regex) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, local_regex.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
         }
     }
 
@@ -412,6 +423,7 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
+            LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
 
@@ -545,6 +557,7 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
+            LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
 

@@ -531,12 +531,14 @@ pub enum NodeCommand {
         bearer: String,
         limit: Option<usize>,
         offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     },
     V2ApiGetAllSmartInboxesPaginated {
         bearer: String,
         limit: Option<usize>,
         offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiUpdateSmartInboxName {
@@ -1208,5 +1210,14 @@ pub enum NodeCommand {
     V2ApiDisableAllTools {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAddRegexPattern {
+        bearer: String,
+        provider_name: String,
+        pattern: String,
+        response: String,
+        description: Option<String>,
+        priority: i32,
+        res: Sender<Result<i64, APIError>>,
     },
 }

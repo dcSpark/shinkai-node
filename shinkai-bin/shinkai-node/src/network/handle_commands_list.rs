@@ -1365,6 +1365,7 @@ impl Node {
                         encryption_secret_key_clone,
                         encryption_public_key_clone,
                         signing_secret_key_clone,
+                        None,
                         res,
                     )
                     .await;
@@ -1426,18 +1427,18 @@ impl Node {
                     .await;
                 });
             }
-            NodeCommand::V2ApiGetAllSmartInboxes { bearer, limit, offset, res } => {
+            NodeCommand::V2ApiGetAllSmartInboxes { bearer, limit, offset, show_hidden, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_get_all_smart_inboxes(db_clone, identity_manager_clone, bearer, limit, offset, res).await;
+                    let _ = Node::v2_get_all_smart_inboxes(db_clone, identity_manager_clone, bearer, limit, offset, show_hidden, res).await;
                 });
             }
-            NodeCommand::V2ApiGetAllSmartInboxesPaginated { bearer, limit, offset, res } => {
+            NodeCommand::V2ApiGetAllSmartInboxesPaginated { bearer, limit, offset, show_hidden, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_get_all_smart_inboxes_paginated(db_clone, identity_manager_clone, bearer, limit, offset, res).await;
+                    let _ = Node::v2_get_all_smart_inboxes_paginated(db_clone, identity_manager_clone, bearer, limit, offset, show_hidden, res).await;
                 });
             }
             NodeCommand::V2ApiAvailableLLMProviders { bearer, res } => {
@@ -2387,9 +2388,19 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let identity_manager_clone = self.identity_manager.clone();
 
                 tokio::spawn(async move {
-                    let _ = Node::generate_tool_fetch_query(bearer, db_clone, language, tools, code, res).await;
+                    let _ = Node::generate_tool_fetch_query(
+                        bearer,
+                        db_clone,
+                        language,
+                        tools,
+                        code,
+                        identity_manager_clone,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiGenerateToolImplementation {
@@ -2815,6 +2826,30 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_disable_all_tools(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiAddRegexPattern {
+                bearer,
+                provider_name,
+                pattern,
+                response,
+                description,
+                priority,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_regex_pattern(
+                        db_clone,
+                        bearer,
+                        provider_name,
+                        pattern,
+                        response,
+                        description,
+                        priority,
+                        res,
+                    )
+                    .await;
                 });
             }
             _ => (),

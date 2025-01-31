@@ -6,6 +6,7 @@ use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_sqlite::SqliteManager;
 
 use super::super::error::LLMProviderError;
 use super::shared::togetherai::TogetherAPIResponse;
@@ -33,6 +34,7 @@ impl LLMService for TogetherAI {
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         _config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
+        _db: Arc<SqliteManager>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
