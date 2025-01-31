@@ -2,7 +2,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::{
-    error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
+    error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
 };
 use std::sync::Arc;
 
@@ -110,7 +110,7 @@ impl ToolExecutor for LlmPromptProcessorTool {
             .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
         let start_time = std::time::Instant::now();
-        let timeout = Duration::from_secs(180); // 3 minutes timeout
+        let timeout = Duration::from_secs(60 * 5); // 5 minutes timeout
         let delay = Duration::from_secs(1); // 1 second delay between polls
 
         let x = loop {
