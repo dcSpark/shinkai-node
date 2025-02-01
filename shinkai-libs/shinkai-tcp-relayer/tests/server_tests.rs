@@ -563,9 +563,9 @@ async fn create_shinkai_message_for_shared_files(
 }
 
 async fn get_onchain_identity(node_name: &str) -> (VerifyingKey, EncryptionPublicKey) {
-    let rpc_url = env::var("RPC_URL").unwrap_or("https://arbitrum-sepolia.blockpi.network/v1/rpc/public".to_string());
+    let rpc_url = env::var("RPC_URL").unwrap_or("https://sepolia.base.org".to_string());
     let contract_address =
-        env::var("CONTRACT_ADDRESS").unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
+        env::var("CONTRACT_ADDRESS").unwrap_or("0x425fb20ba3874e887336aaa7f3fab32d08135ba9".to_string());
 
     let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 

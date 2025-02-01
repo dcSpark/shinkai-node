@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key,
+    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key
 };
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
@@ -32,7 +32,8 @@ pub type TCPProxyPKtoIdentity = Arc<Mutex<HashMap<String, String>>>; // e.g. PK 
 pub type PublicKeyHex = String;
 
 // Notes:
-// TODO: Messages redirected to someone should be checked if the client is still connected if not send an error message back to the sender
+// TODO: Messages redirected to someone should be checked if the client is still connected if not send an error message
+// back to the sender
 
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
@@ -62,10 +63,10 @@ impl TCPProxy {
     ) -> Result<Self, NetworkMessageError> {
         let rpc_url = rpc_url
             .or_else(|| env::var("RPC_URL").ok())
-            .unwrap_or("https://arbitrum-sepolia.blockpi.network/v1/rpc/public".to_string());
+            .unwrap_or("https://sepolia.base.org".to_string());
         let contract_address = contract_address
             .or_else(|| env::var("CONTRACT_ADDRESS").ok())
-            .unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
+            .unwrap_or("0x425fb20ba3874e887336aaa7f3fab32d08135ba9".to_string());
         let max_connections = max_connections
             .or_else(|| env::var("MAX_CONNECTIONS").ok().and_then(|s| s.parse().ok()))
             .unwrap_or(20);

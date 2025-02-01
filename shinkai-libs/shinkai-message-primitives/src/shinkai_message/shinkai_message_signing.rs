@@ -268,8 +268,7 @@ impl ShinkaiMessage {
 #[cfg(test)]
 mod tests {
     use crate::{
-        shinkai_message::shinkai_message::{EncryptedShinkaiBody, ExternalMetadata, ShinkaiVersion},
-        shinkai_utils::{encryption::EncryptionMethod, signatures::unsafe_deterministic_signature_keypair},
+        shinkai_message::shinkai_message::{EncryptedShinkaiBody, ExternalMetadata, ShinkaiVersion}, shinkai_utils::{encryption::EncryptionMethod, signatures::unsafe_deterministic_signature_keypair}
     };
 
     use super::*;
@@ -348,7 +347,7 @@ mod tests {
         let calculated_hash = message.calculate_message_hash_with_empty_outer_signature();
 
         // Expected hash
-        let expected_hash = "271820710f6653e3aa53b1071d82ebb6073685bce44246c5bad48fa92faa998b";
+        let expected_hash = "66dce7c91f78164b611327b310211ad6ec5d08a9861b9c1689a51c514d990fce";
 
         // Check that the calculated hash matches the expected hash
         assert_eq!(calculated_hash, expected_hash);
