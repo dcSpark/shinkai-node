@@ -33,6 +33,7 @@ use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
+use crate::managers::tool_router::ToolRouter;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
@@ -1682,8 +1683,14 @@ impl Node {
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         identity_manager: Arc<Mutex<IdentityManager>>,
+        tool_router: Option<Arc<ToolRouter>>,
     ) -> Result<(), NodeError> {
-        // TODO: Implement periodic maintenance tasks
+        // Import tools from directory if tool_router is available
+        if let Some(tool_router) = tool_router {
+            if let Err(e) = tool_router.sync_tools_from_directory().await {
+                eprintln!("Error during periodic tool import: {}", e);
+            }
+        }
         Ok(())
     }
 }

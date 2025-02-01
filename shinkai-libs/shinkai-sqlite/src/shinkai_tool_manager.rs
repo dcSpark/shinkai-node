@@ -4,6 +4,7 @@ use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
 use std::collections::HashSet;
 
 impl SqliteManager {
@@ -126,6 +127,126 @@ impl SqliteManager {
         tx.commit()?;
 
         Ok(tool_clone)
+    }
+
+    pub async fn upgrade_tool(&self, new_tool: ShinkaiTool) -> Result<ShinkaiTool, SqliteManagerError> {
+        // Generate or retrieve the embedding
+        let embedding = self.generate_embeddings(&new_tool.format_embedding_string()).await?;
+        self.upgrade_tool_with_vector(new_tool, embedding)
+    }
+
+    pub fn upgrade_tool_with_vector(
+        &self,
+        new_tool: ShinkaiTool,
+        embedding: Vec<f32>,
+    ) -> Result<ShinkaiTool, SqliteManagerError> {
+        // Use the tool_router_key (without version) to locate the old version
+        let tool_key = new_tool.tool_router_key().to_string_without_version();
+        let old_tool = self.get_tool_by_key(&tool_key)?;
+
+        // Get configurations based on tool type
+        let (_old_config, upgraded): (Vec<ToolConfig>, ShinkaiTool) = match (old_tool, new_tool) {
+            (ShinkaiTool::Deno(old_deno, _), ShinkaiTool::Deno(mut new_deno, is_enabled)) => {
+                let old_config = old_deno.config.clone();
+
+                // Merge configuration
+                let merged_config: Vec<ToolConfig> = new_deno
+                    .config
+                    .into_iter()
+                    .map(|new_entry| match new_entry {
+                        ToolConfig::BasicConfig(new_basic) => {
+                            let preserved_value = old_config.iter().find_map(|old_entry| match old_entry {
+                                ToolConfig::BasicConfig(old_basic) => {
+                                    if old_basic.key_name == new_basic.key_name {
+                                        return old_basic.key_value.clone();
+                                    }
+                                    None
+                                }
+                                _ => None,
+                            });
+                            ToolConfig::BasicConfig(BasicConfig {
+                                key_name: new_basic.key_name,
+                                description: new_basic.description,
+                                required: new_basic.required,
+                                type_name: new_basic.type_name,
+                                key_value: preserved_value,
+                            })
+                        }
+                    })
+                    .collect();
+
+                new_deno.config = merged_config;
+                (old_config, ShinkaiTool::Deno(new_deno, is_enabled))
+            }
+            (ShinkaiTool::Network(old_network, _), ShinkaiTool::Network(mut new_network, is_enabled)) => {
+                let old_config = old_network.config.clone();
+
+                // Merge configuration
+                let merged_config: Vec<ToolConfig> = new_network
+                    .config
+                    .into_iter()
+                    .map(|new_entry| match new_entry {
+                        ToolConfig::BasicConfig(new_basic) => {
+                            let preserved_value = old_config.iter().find_map(|old_entry| match old_entry {
+                                ToolConfig::BasicConfig(old_basic) => {
+                                    if old_basic.key_name == new_basic.key_name {
+                                        return old_basic.key_value.clone();
+                                    }
+                                    None
+                                }
+                                _ => None,
+                            });
+                            ToolConfig::BasicConfig(BasicConfig {
+                                key_name: new_basic.key_name,
+                                description: new_basic.description,
+                                required: new_basic.required,
+                                type_name: new_basic.type_name,
+                                key_value: preserved_value,
+                            })
+                        }
+                    })
+                    .collect();
+
+                new_network.config = merged_config;
+                (old_config, ShinkaiTool::Network(new_network, is_enabled))
+            }
+            (ShinkaiTool::Python(old_python, _), ShinkaiTool::Python(mut new_python, is_enabled)) => {
+                let old_config = old_python.config.clone();
+
+                // Merge configuration
+                let merged_config: Vec<ToolConfig> = new_python
+                    .config
+                    .into_iter()
+                    .map(|new_entry| match new_entry {
+                        ToolConfig::BasicConfig(new_basic) => {
+                            let preserved_value = old_config.iter().find_map(|old_entry| match old_entry {
+                                ToolConfig::BasicConfig(old_basic) => {
+                                    if old_basic.key_name == new_basic.key_name {
+                                        return old_basic.key_value.clone();
+                                    }
+                                    None
+                                }
+                                _ => None,
+                            });
+                            ToolConfig::BasicConfig(BasicConfig {
+                                key_name: new_basic.key_name,
+                                description: new_basic.description,
+                                required: new_basic.required,
+                                type_name: new_basic.type_name,
+                                key_value: preserved_value,
+                            })
+                        }
+                    })
+                    .collect();
+
+                new_python.config = merged_config;
+                (old_config, ShinkaiTool::Python(new_python, is_enabled))
+            }
+            _ => return Err(SqliteManagerError::ToolTypeMismatch),
+        };
+
+        // Add the upgraded tool to the database
+        self.add_tool_with_vector(upgraded.clone(), embedding)
     }
 
     // Performs a vector search for tools using a precomputed vector
@@ -804,6 +925,9 @@ mod tests {
     use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
+    use shinkai_tools_primitives::tools::python_tools::PythonTool;
+    use shinkai_tools_primitives::tools::tool_config::BasicConfig;
+    use shinkai_tools_primitives::tools::tool_config::ToolConfig;
     use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -1775,5 +1899,195 @@ mod tests {
         assert_eq!(fts_results.len(), 1);
         assert_eq!(fts_results[0].name, "Versioned Tool");
         assert_eq!(fts_results[0].version, "2.0");
+    }
+
+    #[tokio::test]
+    async fn test_upgrade_tool_preserves_config() {
+        let manager = setup_test_db().await;
+
+        // Create version 1.0.0 with a config entry
+        let deno_tool_v1 = DenoTool {
+            name: "Configurable Tool".to_string(),
+            homepage: Some("http://example.com".to_string()),
+            author: "Test Author".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "console.log('v1');".to_string(),
+            tools: vec![],
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "enable_feature_x".to_string(),
+                description: "Enable feature X".to_string(),
+                required: false,
+                type_name: Some("boolean".to_string()),
+                key_value: Some("true".to_string()),
+            })],
+            oauth: None,
+            description: "A tool to test config update".to_string(),
+            keywords: vec!["config".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+            assets: None,
+        };
+        let shinkai_tool_v1 = ShinkaiTool::Deno(deno_tool_v1.clone(), true);
+        let vector_v1 = SqliteManager::generate_vector_for_testing(0.1);
+        manager
+            .add_tool_with_vector(shinkai_tool_v1.clone(), vector_v1)
+            .unwrap();
+
+        // Create version 2.0.0
+        let deno_tool_v2 = DenoTool {
+            name: "Configurable Tool".to_string(),
+            homepage: Some("http://example.com".to_string()),
+            author: "Test Author".to_string(),
+            version: "2.0.0".to_string(),
+            js_code: "console.log('v2');".to_string(),
+            tools: vec![],
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "enable_feature_x".to_string(),
+                description: "Enable feature X - updated".to_string(),
+                required: false,
+                type_name: Some("boolean".to_string()),
+                key_value: None,
+            })],
+            oauth: None,
+            description: "A tool to test config upgrade".to_string(),
+            keywords: vec!["config".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+            assets: None,
+        };
+        let shinkai_tool_v2 = ShinkaiTool::Deno(deno_tool_v2.clone(), true);
+
+        // Upgrade to version 2.0.0
+        let vector_v2 = SqliteManager::generate_vector_for_testing(0.2);
+        let upgraded = manager
+            .upgrade_tool_with_vector(shinkai_tool_v2.clone(), vector_v2)
+            .unwrap();
+
+        // Verify version 2.0.0
+        let version_2 = IndexableVersion::from_string("2.0.0").unwrap();
+        let retrieved = manager
+            .get_tool_by_key_and_version(&upgraded.tool_router_key().to_string_without_version(), Some(version_2))
+            .unwrap();
+
+        if let ShinkaiTool::Deno(new_tool, _) = retrieved {
+            assert_eq!(new_tool.version, "2.0.0", "Version mismatch");
+            assert_eq!(new_tool.js_code, "console.log('v2');", "JS code mismatch");
+
+            // Check that the config entry was preserved
+            let config_value = new_tool.config.iter().find_map(|entry| match entry {
+                ToolConfig::BasicConfig(bc) => {
+                    if bc.key_name == "enable_feature_x" {
+                        return bc.key_value.clone();
+                    }
+                    None
+                }
+            });
+            assert_eq!(config_value, Some("true".to_string()), "Config value not preserved");
+        } else {
+            panic!("Retrieved tool is not a DenoTool");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upgrade_tool_preserves_config_python() {
+        let manager = setup_test_db().await;
+        let python_tool_v1 = PythonTool {
+            name: "Configurable Python Tool".to_string(),
+            homepage: Some("http://example.com".to_string()),
+            author: "Test Author".to_string(),
+            version: "1.0.0".to_string(),
+            py_code: "print('v1')".to_string(),
+            tools: vec![],
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "enable_feature_x".to_string(),
+                description: "Enable feature X".to_string(),
+                required: false,
+                type_name: Some("boolean".to_string()),
+                key_value: Some("true".to_string()),
+            })],
+            oauth: None,
+            description: "A python tool to test config update".to_string(),
+            keywords: vec!["config".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+            assets: None,
+        };
+        let shinkai_tool_v1 = ShinkaiTool::Python(python_tool_v1, true);
+        manager
+            .add_tool_with_vector(shinkai_tool_v1, SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+
+        let python_tool_v2 = PythonTool {
+            name: "Configurable Python Tool".to_string(),
+            homepage: Some("http://example.com".to_string()),
+            author: "Test Author".to_string(),
+            version: "2.0.0".to_string(),
+            py_code: "print('v2')".to_string(),
+            tools: vec![],
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "enable_feature_x".to_string(),
+                description: "Enable feature X - updated".to_string(),
+                required: false,
+                type_name: Some("boolean".to_string()),
+                key_value: None,
+            })],
+            oauth: None,
+            description: "A python tool to test config upgrade".to_string(),
+            keywords: vec!["config".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+            assets: None,
+        };
+        let shinkai_tool_v2 = ShinkaiTool::Python(python_tool_v2, true);
+        let upgraded = manager
+            .upgrade_tool_with_vector(shinkai_tool_v2, SqliteManager::generate_vector_for_testing(0.2))
+            .unwrap();
+
+        let version_2 = IndexableVersion::from_string("2.0.0").unwrap();
+        let retrieved = manager
+            .get_tool_by_key_and_version(&upgraded.tool_router_key().to_string_without_version(), Some(version_2))
+            .unwrap();
+
+        if let ShinkaiTool::Python(new_tool, _) = retrieved {
+            assert_eq!(new_tool.version, "2.0.0");
+            assert_eq!(new_tool.py_code, "print('v2')");
+            let config_value = new_tool.config.iter().find_map(|entry| match entry {
+                ToolConfig::BasicConfig(bc) => {
+                    if bc.key_name == "enable_feature_x" {
+                        bc.key_value.clone()
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            });
+            assert_eq!(config_value, Some("true".to_string()));
+        } else {
+            panic!("Retrieved tool is not a PythonTool");
+        }
     }
 }
