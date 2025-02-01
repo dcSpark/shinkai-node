@@ -385,7 +385,6 @@ mod tests {
 
     async fn add_tool_to_db(manager: &mut SqliteManager) -> String {
         let deno_tool = DenoTool {
-            toolkit_name: "Deno Toolkit".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: "Deno Test Tool".to_string(),
             author: "Deno Author".to_string(),
@@ -514,7 +513,6 @@ mod tests {
     // Helper function to add a tool with a unique name
     async fn add_tool_to_db_with_unique_name(manager: &mut SqliteManager, name: &str) -> String {
         let deno_tool = DenoTool {
-            toolkit_name: "Deno Toolkit".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: name.to_string(),
             author: "Deno Author".to_string(),
@@ -588,7 +586,6 @@ mod tests {
 
         // Add a tool to ensure the tool_router_key exists
         let deno_tool = DenoTool {
-            toolkit_name: "Deno Toolkit".to_string(),
             name: "Deno Test Tool".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author".to_string(),

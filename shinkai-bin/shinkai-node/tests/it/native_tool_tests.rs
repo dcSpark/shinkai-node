@@ -21,6 +21,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
 use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
@@ -41,7 +42,6 @@ fn setup() {
 fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
-    std::env::set_var("ONLY_TESTING_WORKFLOWS", "true");
 
     // WIP: need to find a way to test the agent registration
     setup();
@@ -175,6 +175,48 @@ fn native_tool_test_knowledge() {
                 .await;
             }
             {
+                // Check that Rust tools are installed, retry up to 10 times
+                let mut retry_count = 0;
+                let max_retries = 20;
+                let retry_delay = Duration::from_millis(500);
+                
+                loop {
+                    tokio::time::sleep(retry_delay).await;
+
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
+                        .await
+                        .unwrap();
+                    
+                    match res_receiver.recv().await {
+                        Ok(result) => {
+                            match result {
+                                Ok(has_tools) => {
+                                    if has_tools {
+                                        // Rust tools are installed, we can break the loop
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Error checking Rust tools installation: {:?}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error receiving check result: {:?}", e);
+                            panic!("Error receiving check result: {:?}", e);
+                        }
+                    }
+
+                    retry_count += 1;
+                    if retry_count >= max_retries {
+                        panic!("Rust tools were not installed after {} retries", max_retries);
+                    }
+                }
+                eprintln!("Rust tools were installed after {} retries", retry_count);
+            }
+            {
                 //
                 // Creating a folder and uploading some files to the vector db
                 //
@@ -244,7 +286,7 @@ fn native_tool_test_knowledge() {
                     let tool_execution_result = api_execute_tool(
                         node1_commands_sender.clone(),
                         api_key_bearer.clone(),
-                        "local:::rust_toolkit:::shinkai_process_embeddings".to_string(),
+                        "local:::__official_shinkai:::shinkai_process_embeddings".to_string(),
                         parameters,
                         "your_tool_id".to_string(),
                         "your_app_id".to_string(),
@@ -267,81 +309,6 @@ fn native_tool_test_knowledge() {
                         }
                     }
                 }
-                // {
-                //     // Send a Message to the Job for processing
-                //     shinkai_log(
-                //         ShinkaiLogOption::Api,
-                //         ShinkaiLogLevel::Debug,
-                //         &format!("Sending a message to Job {}", job_id.clone()),
-                //     );
-                //     let message = "Run this workflow (this message is not used)".to_string();
-
-                //     api_message_job(
-                //         node1_commands_sender.clone(),
-                //         clone_static_secret_key(&node1_profile_encryption_sk),
-                //         node1_encryption_pk,
-                //         clone_signature_secret_key(&node1_profile_identity_sk),
-                //         node1_identity_name,
-                //         node1_subidentity_name,
-                //         &agent_subidentity.clone(),
-                //         &job_id.clone().to_string(),
-                //         &message,
-                //         "",
-                //         "",
-                //         None,
-                //     )
-                //     .await;
-                // }
-                // {
-                //     let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                //     let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
-
-                //     let mut node2_last_messages = vec![];
-                //     for _ in 0..30 {
-                //         let msg = ShinkaiMessageBuilder::get_last_messages_from_inbox(
-                //             clone_static_secret_key(&node1_profile_encryption_sk),
-                //             clone_signature_secret_key(&node1_profile_identity_sk),
-                //             node1_encryption_pk,
-                //             inbox_name.to_string(),
-                //             10,
-                //             None,
-                //             "".to_string(),
-                //             sender.clone(),
-                //             node1_identity_name.to_string(),
-                //         )
-                //         .unwrap();
-                //         let (res2_sender, res2_receiver) = async_channel::bounded(1);
-                //         node1_commands_sender
-                //             .send(NodeCommand::APIGetLastMessagesFromInbox { msg, res: res2_sender })
-                //             .await
-                //             .unwrap();
-                //         node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-
-                //         if node2_last_messages.len() >= 2 {
-                //             eprintln!("breaking>> node2_last_messages: {:?}", node2_last_messages);
-                //             break;
-                //         }
-
-                //         tokio::time::sleep(Duration::from_millis(500)).await;
-                //     }
-
-                //     shinkai_log(
-                //         ShinkaiLogOption::Tests,
-                //         ShinkaiLogLevel::Debug,
-                //         &format!("node2_last_messages: {:?}", node2_last_messages),
-                //     );
-
-                //     eprintln!("node2_last_messages: {:?}", node2_last_messages);
-                //     let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
-                //     let message_content_agent: JobMessage =
-                //         serde_json::from_str(&shinkai_message_content_agent).unwrap();
-
-                //     assert_eq!(
-                //         message_content_agent.content,
-                //         "The Roman Empire is very interesting".to_string()
-                //     );
-                //     assert!(node2_last_messages.len() == 2);
-                // }
 
                 abort_handler.abort();
             }

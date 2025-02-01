@@ -132,7 +132,7 @@ impl JobCallbackManager {
         };
 
         if let Some(job_manager) = job_manager {
-            let _result = Node::internal_job_message(job_manager, shinkai_message.clone()).await;
+            let _result = Node::internal_job_message(job_manager, shinkai_message.clone(), true).await;
         } else {
             eprintln!("Job manager is not set in JobCallbackManager");
         }

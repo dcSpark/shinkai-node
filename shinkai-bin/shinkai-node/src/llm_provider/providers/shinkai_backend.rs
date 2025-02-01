@@ -6,6 +6,7 @@ use crate::managers::model_capabilities_manager::PromptResultEnum;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_sqlite::SqliteManager;
 
 use super::super::error::LLMProviderError;
 use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
@@ -58,6 +59,7 @@ impl LLMService for ShinkaiBackend {
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
+        _db: Arc<SqliteManager>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             let url = format!("{}/ai/chat/completions", base_url);

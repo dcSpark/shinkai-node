@@ -8,25 +8,14 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity,
-        inbox_name::InboxName,
-        job::{ForkedJob, JobLike},
-        job_config::JobConfig,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData},
-        shinkai_message_schemas::{
-            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key, shinkai_path::ShinkaiPath,
-    },
+        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath, signatures::clone_signature_secret_key
+    }
 };
 
 use shinkai_sqlite::SqliteManager;
@@ -34,9 +23,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -177,6 +164,7 @@ impl Node {
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
         node_signing_sk: SigningKey,
+        high_priority: Option<bool>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token and extract the sender identity
@@ -270,7 +258,7 @@ impl Node {
         };
 
         // Process the job message
-        match Self::internal_job_message(job_manager, shinkai_message.clone()).await {
+        match Self::internal_job_message(job_manager, shinkai_message.clone(), high_priority.unwrap_or(false)).await {
             Ok(_) => {
                 let inbox_name = match InboxName::get_job_inbox_name_from_params(job_message.job_id) {
                     Ok(inbox) => inbox.to_string(),
@@ -423,6 +411,9 @@ impl Node {
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
+        _limit: Option<usize>,
+        _offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -447,8 +438,8 @@ impl Node {
             }
         };
 
-        // Retrieve all smart inboxes for the profile
-        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity) {
+        // Retrieve all smart inboxes for the profile with pagination
+        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden) {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {
@@ -470,6 +461,80 @@ impl Node {
         match v2_smart_inboxes {
             Ok(inboxes) => {
                 let _ = res.send(Ok(inboxes)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert smart inboxes: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_get_all_smart_inboxes_paginated(
+        db: Arc<SqliteManager>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        bearer: String,
+        limit: Option<usize>,
+        offset: Option<String>,
+        show_hidden: Option<bool>,
+        res: Sender<Result<serde_json::Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Get the main identity from the identity manager
+        let main_identity = {
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(Identity::Standard(identity)) => identity.clone(),
+                _ => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get main identity".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        // Retrieve all smart inboxes for the profile with pagination
+        let paginated_inboxes =
+            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden) {
+                Ok(inboxes) => inboxes,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve smart inboxes: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+        // Convert SmartInbox to V2SmartInbox
+        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
+            .inboxes
+            .into_iter()
+            .map(Self::convert_smart_inbox_to_v2_smart_inbox)
+            .collect();
+
+        match v2_smart_inboxes {
+            Ok(inboxes) => {
+                let response = json!({
+                    "inboxes": inboxes,
+                    "hasNextPage": paginated_inboxes.has_next_page
+                });
+                let _ = res.send(Ok(response)).await;
             }
             Err(err) => {
                 let api_error = APIError {
@@ -929,8 +994,8 @@ impl Node {
             recipient,
             &serde_json::to_string(&job_message).unwrap(),
             MessageSchemaType::JobMessageSchema,
-            node_encryption_sk,
-            node_signing_sk,
+            node_encryption_sk.clone(),
+            node_signing_sk.clone(),
             node_encryption_pk,
             Some(job_id.clone()),
         ) {
@@ -948,7 +1013,7 @@ impl Node {
 
         // Send it for processing
         // Process the job message
-        match Self::internal_job_message(job_manager, shinkai_message.clone()).await {
+        match Self::internal_job_message(job_manager, shinkai_message.clone(), false).await {
             Ok(_) => {
                 let scheduled_time = shinkai_message.clone().external_metadata.scheduled_time;
                 let message_hash = shinkai_message.calculate_message_hash_for_pagination();
@@ -1626,6 +1691,31 @@ impl Node {
             }
         };
 
+        // Check if the job is empty before adding messages
+        if db.is_job_inbox_empty(&job_id)? && !messages.is_empty() {
+            // Extract first 20 characters from the first message's content
+            let first_message_content = &messages[0].content;
+            let custom_name: String = if first_message_content.len() > 20 {
+                first_message_content[..20].to_string()
+            } else {
+                first_message_content.to_string()
+            };
+
+            // Get the inbox name for the job
+            let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
+
+            // Update the inbox name
+            if let Err(e) = db.unsafe_update_smart_inbox_name(&inbox_name.to_string(), &custom_name) {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update inbox name: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
         // Process each message alternating between user and AI
         for (index, message) in messages.into_iter().enumerate() {
             if index % 2 == 0 {
@@ -1729,4 +1819,3 @@ impl Node {
         Ok(())
     }
 }
-

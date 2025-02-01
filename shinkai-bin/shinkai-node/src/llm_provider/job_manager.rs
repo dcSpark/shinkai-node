@@ -9,6 +9,7 @@ use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentO
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
@@ -16,12 +17,9 @@ use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName,
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{JobCreationInfo, JobMessage, MessageSchemaType},
-    },
-    shinkai_utils::signatures::clone_signature_secret_key,
+    schemas::shinkai_name::ShinkaiName, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{JobCreationInfo, JobMessage, MessageSchemaType}
+    }, shinkai_utils::signatures::clone_signature_secret_key
 };
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashSet;
@@ -31,7 +29,6 @@ use std::result::Result::Ok;
 use std::sync::Weak;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
-use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 
 const NUM_THREADS: usize = 4;
 
@@ -56,7 +53,8 @@ pub struct JobManager {
     pub db: Weak<SqliteManager>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub identity_secret_key: SigningKey,
-    pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+    pub job_queue_manager_normal: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+    pub job_queue_manager_immediate: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
     // Websocket manager for sending updates to the frontend
@@ -89,27 +87,36 @@ impl JobManager {
             }
         }
 
-        let db_prefix = "job_manager_abcdeprefix_";
-        let job_queue_result = JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix.to_string())).await;
-
-        if let Err(ref e) = job_queue_result {
-            eprintln!("Error initializing JobQueueManager: {:?}", e);
+        // Create a manager for normal jobs
+        let db_prefix_normal = "job_manager_normal_";
+        let job_queue_result_normal =
+            JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix_normal.to_string())).await;
+        if let Err(ref e) = job_queue_result_normal {
+            eprintln!("Error initializing normal JobQueueManager: {:?}", e);
         }
+        let job_queue_normal = Arc::new(Mutex::new(job_queue_result_normal.unwrap()));
 
-        let job_queue = job_queue_result.unwrap();
-        let job_queue_manager = Arc::new(Mutex::new(job_queue));
+        // Create a manager for immediate jobs
+        let db_prefix_immediate = "job_manager_immediate_";
+        let job_queue_result_immediate =
+            JobQueueManager::<JobForProcessing>::new(db.clone(), Some(db_prefix_immediate.to_string())).await;
+        if let Err(ref e) = job_queue_result_immediate {
+            eprintln!("Error initializing immediate JobQueueManager: {:?}", e);
+        }
+        let job_queue_immediate = Arc::new(Mutex::new(job_queue_result_immediate.unwrap()));
 
-        let thread_number = env::var("JOB_MANAGER_THREADS")
+        let max_jobs = env::var("JOB_MANAGER_THREADS")
             .unwrap_or(NUM_THREADS.to_string())
             .parse::<usize>()
             .unwrap_or(NUM_THREADS);
 
-        // Start processing the job queue
+        // Start processing both queues
         let job_queue_handler = JobManager::process_job_queue(
-            job_queue_manager.clone(),
+            job_queue_normal.clone(),
+            job_queue_immediate.clone(),
             db.clone(),
             node_profile_name.clone(),
-            thread_number,
+            max_jobs,
             clone_signature_secret_key(&identity_secret_key),
             embedding_generator.clone(),
             ws_manager.clone(),
@@ -118,7 +125,6 @@ impl JobManager {
             callback_manager.clone(),
             Some(my_agent_payments_manager.clone()),
             Some(ext_agent_payments_manager.clone()),
-            // sqlite_logger.clone(),
             llm_stopper.clone(),
             |job,
              db,
@@ -132,7 +138,6 @@ impl JobManager {
              job_queue_manager,
              my_agent_payments_manager,
              ext_agent_payments_manager,
-             //  sqlite_logger,
              llm_stopper| {
                 Box::pin(JobManager::process_job_message_queued(
                     job,
@@ -147,7 +152,6 @@ impl JobManager {
                     job_queue_manager,
                     my_agent_payments_manager.clone(),
                     ext_agent_payments_manager.clone(),
-                    // sqlite_logger.clone(),
                     llm_stopper.clone(),
                 ))
             },
@@ -160,15 +164,16 @@ impl JobManager {
             node_profile_name,
             jobs: jobs_map,
             identity_manager,
-            job_queue_manager: job_queue_manager.clone(),
+            job_queue_manager_normal: job_queue_normal,
+            job_queue_manager_immediate: job_queue_immediate,
             job_processing_task: Some(job_queue_handler),
             ws_manager,
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn process_job_queue(
-        job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+        queue_normal: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+        queue_immediate: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Weak<SqliteManager>,
         node_profile_name: ShinkaiName,
         max_parallel_jobs: usize,
@@ -180,7 +185,6 @@ impl JobManager {
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
         job_processing_fn: impl Fn(
                 JobForProcessing,
@@ -195,22 +199,27 @@ impl JobManager {
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
                 Option<Arc<Mutex<MyAgentOfferingsManager>>>,
                 Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-                // Option<Arc<SqliteLogger>>,
                 Arc<LLMStopper>,
             ) -> Pin<Box<dyn Future<Output = Result<String, LLMProviderError>> + Send>>
             + Send
             + Sync
             + 'static,
     ) -> tokio::task::JoinHandle<()> {
-        let job_queue_manager = Arc::clone(&job_queue_manager);
-        let mut receiver = job_queue_manager.lock().await.subscribe_to_all().await;
+        let mut rx_normal = queue_normal.lock().await.subscribe_to_all().await;
+        let mut rx_immediate = queue_immediate.lock().await.subscribe_to_all().await;
+
         let db_clone = db.clone();
         let identity_sk = clone_signature_secret_key(&identity_sk);
         let job_processing_fn = Arc::new(job_processing_fn);
-        // let sqlite_logger = sqlite_logger.clone();
         let llm_stopper = Arc::clone(&llm_stopper);
+
+        // A set of in-progress job IDs, just to avoid re-processing duplicates
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
-        let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
+
+        // Normal jobs limited to `max_parallel_jobs`
+        let normal_semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
+        // Immediate jobs can exceed normal concurrency if needed
+        let immediate_semaphore = Arc::new(Semaphore::new(max_parallel_jobs * 2));
 
         tokio::spawn(async move {
             shinkai_log(
@@ -220,135 +229,240 @@ impl JobManager {
             );
 
             loop {
-                // Fetch jobs to process
-                let job_ids_to_process: Vec<String> = {
-                    let mut processing_jobs_lock = processing_jobs.lock().await;
-                    let job_queue_manager_lock = job_queue_manager.lock().await;
-                    let all_jobs = match job_queue_manager_lock.get_all_elements_interleave().await {
-                        Ok(jobs) => jobs,
-                        Err(_) => Vec::new(),
-                    };
-                    std::mem::drop(job_queue_manager_lock);
+                // 1) Pull any immediate jobs if available
+                let immediate_jobs_to_process: Vec<(String, JobForProcessing)> = {
+                    let mut processing_lock = processing_jobs.lock().await;
+                    let mgr = queue_immediate.lock().await;
+                    let all_imm = mgr.get_all_elements_interleave().await.unwrap_or_else(|_| vec![]);
+                    drop(mgr);
 
-                    all_jobs
+                    all_imm
                         .into_iter()
                         .filter_map(|job| {
-                            let job_id = job.job_message.job_id.clone().to_string();
-                            if !processing_jobs_lock.contains(&job_id) {
-                                processing_jobs_lock.insert(job_id.clone());
-                                Some(job_id)
+                            let jid = job.job_message.job_id.clone();
+                            if !processing_lock.contains(&jid) {
+                                processing_lock.insert(jid.clone());
+                                Some((jid, job))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                };
+
+                if !immediate_jobs_to_process.is_empty() {
+                    // 1A) Spawn all immediate jobs
+                    for (job_id, job) in immediate_jobs_to_process {
+                        let permit = immediate_semaphore.clone().acquire_owned().await.unwrap();
+                        let job_processing_fn = Arc::clone(&job_processing_fn);
+                        let db_clone = db_clone.clone();
+                        let node_profile_name = node_profile_name.clone();
+                        let identity_sk = clone_signature_secret_key(&identity_sk);
+                        let generator = generator.clone();
+                        let ws_manager = ws_manager.clone();
+                        let tool_router = tool_router.clone();
+                        let sheet_manager = sheet_manager.clone();
+                        let callback_manager = callback_manager.clone();
+                        let queue_immediate = queue_immediate.clone();
+                        let my_agent_payments_manager = my_agent_payments_manager.clone();
+                        let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                        let llm_stopper = llm_stopper.clone();
+                        let in_progress = processing_jobs.clone();
+
+                        tokio::spawn(async move {
+                            let result = (job_processing_fn)(
+                                job,
+                                db_clone,
+                                node_profile_name,
+                                identity_sk,
+                                generator,
+                                ws_manager,
+                                tool_router,
+                                sheet_manager,
+                                callback_manager,
+                                queue_immediate.clone(),
+                                my_agent_payments_manager,
+                                ext_agent_payments_manager,
+                                llm_stopper,
+                            )
+                            .await;
+
+                            if result.is_ok() {
+                                let _ = queue_immediate.lock().await.dequeue(&job_id).await;
+                            }
+                            let mut inprog = in_progress.lock().await;
+                            inprog.remove(&job_id);
+                            drop(permit);
+                        });
+                    }
+                    // Done immediate; continue so we can re-check normal vs. immediate again
+                    continue;
+                }
+
+                // 2) If no immediate jobs, let's gather normal jobs
+                let normal_jobs_to_process: Vec<(String, JobForProcessing)> = {
+                    let mut processing_lock = processing_jobs.lock().await;
+                    let mgr = queue_normal.lock().await;
+                    let all_norm = mgr.get_all_elements_interleave().await.unwrap_or_else(|_| vec![]);
+                    drop(mgr);
+
+                    all_norm
+                        .into_iter()
+                        .filter_map(|job| {
+                            let jid = job.job_message.job_id.clone();
+                            if !processing_lock.contains(&jid) {
+                                processing_lock.insert(jid.clone());
+                                Some((jid, job))
                             } else {
                                 None
                             }
                         })
                         .take(max_parallel_jobs)
-                        .collect::<Vec<_>>()
+                        .collect()
                 };
 
-                if job_ids_to_process.is_empty() {
-                    // No jobs to process, wait for new jobs
-                    if let Some(new_job) = receiver.recv().await {
-                        shinkai_log(
-                            ShinkaiLogOption::JobExecution,
-                            ShinkaiLogLevel::Info,
-                            &format!("Received new job {:?}", new_job.job_message.job_id),
-                        );
-                    } else {
-                        // Receiver closed, exit the loop
-                        eprintln!("Receiver closed, exiting job queue processing loop");
-                        break;
+                if normal_jobs_to_process.is_empty() {
+                    // 2A) Wait for any new job events from either queue
+                    tokio::select! {
+                        maybe_imm = rx_immediate.recv() => {
+                            if let Some(imm_job) = maybe_imm {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Received new immediate job {:?}", imm_job.job_message.job_id),
+                                );
+                            } else {
+                                eprintln!("rx_immediate closed, shutting down...");
+                                break;
+                            }
+                        }
+                        maybe_norm = rx_normal.recv() => {
+                            if let Some(norm_job) = maybe_norm {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Received new normal job {:?}", norm_job.job_message.job_id),
+                                );
+                            } else {
+                                eprintln!("rx_normal closed, shutting down...");
+                                break;
+                            }
+                        }
                     }
                 } else {
-                    // Spawn tasks for the jobs
-                    for job_id in job_ids_to_process {
-                        let job_queue_manager = Arc::clone(&job_queue_manager);
-                        let processing_jobs = Arc::clone(&processing_jobs);
-                        let semaphore = Arc::clone(&semaphore);
-                        let db_clone_2 = db_clone.clone();
-                        let identity_sk_clone = clone_signature_secret_key(&identity_sk);
-                        let job_processing_fn = Arc::clone(&job_processing_fn);
-                        let cloned_generator = generator.clone();
-                        let node_profile_name = node_profile_name.clone();
-                        let ws_manager = ws_manager.clone();
-                        let tool_router = tool_router.clone();
-                        let sheet_manager = sheet_manager.clone();
-                        let callback_manager = callback_manager.clone();
-                        let my_agent_payments_manager = my_agent_payments_manager.clone();
-                        let ext_agent_payments_manager = ext_agent_payments_manager.clone();
-                        // let sqlite_logger = sqlite_logger.clone();
-                        let llm_stopper = Arc::clone(&llm_stopper);
+                    // 2B) We have normal jobs; but we check again for immediate jobs while
+                    // waiting for the normal semaphore
+                    for (job_id, job) in normal_jobs_to_process {
+                        loop {
+                            tokio::select! {
+                                permit = normal_semaphore.clone().acquire_owned() => {
+                                    // We got a normal-job permit; spawn the normal job and move on
+                                    let job_processing_fn = Arc::clone(&job_processing_fn);
+                                    let db_clone = db_clone.clone();
+                                    let node_profile_name = node_profile_name.clone();
+                                    let identity_sk = clone_signature_secret_key(&identity_sk);
+                                    let generator = generator.clone();
+                                    let ws_manager = ws_manager.clone();
+                                    let tool_router = tool_router.clone();
+                                    let sheet_manager = sheet_manager.clone();
+                                    let callback_manager = callback_manager.clone();
+                                    let queue_normal = queue_normal.clone();
+                                    let my_agent_payments_manager = my_agent_payments_manager.clone();
+                                    let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                                    let llm_stopper = llm_stopper.clone();
+                                    let in_progress = processing_jobs.clone();
 
-                        tokio::spawn(async move {
-                            let _permit = semaphore.acquire().await.unwrap();
-
-                            // Acquire the lock, dequeue the job, and immediately release the lock
-                            let job = {
-                                let job_queue_manager = job_queue_manager.lock().await;
-                                job_queue_manager.peek(&job_id).await
-                            };
-
-                            match job {
-                                Ok(Some(job)) => {
-                                    // Acquire the lock, process the job, and immediately release the lock
-                                    let result = {
+                                    tokio::spawn(async move {
                                         let result = (job_processing_fn)(
                                             job,
-                                            db_clone_2,
+                                            db_clone,
                                             node_profile_name,
-                                            identity_sk_clone,
-                                            cloned_generator,
+                                            identity_sk,
+                                            generator,
                                             ws_manager,
                                             tool_router,
                                             sheet_manager,
                                             callback_manager,
-                                            job_queue_manager.clone(),
+                                            queue_normal.clone(),
                                             my_agent_payments_manager,
                                             ext_agent_payments_manager,
-                                            // sqlite_logger,
                                             llm_stopper,
                                         )
                                         .await;
-                                        if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id).await {
-                                            result
-                                        } else {
-                                            Err(LLMProviderError::JobDequeueFailed(job_id.clone()))
-                                        }
-                                    };
 
-                                    if result.is_ok() {
+                                        if result.is_ok() {
+                                            let _ = queue_normal.lock().await.dequeue(&job_id).await;
+                                        }
+                                        let mut inprog = in_progress.lock().await;
+                                        inprog.remove(&job_id);
+                                        drop(permit);
+                                    });
+
+                                    // Done with this normal job
+                                    break;
+                                }
+
+                                maybe_imm = rx_immediate.recv() => {
+                                    // A new immediate job arrived
+                                    if let Some(imm_job) = maybe_imm {
+                                        let imm_id = imm_job.job_message.job_id.clone();
                                         shinkai_log(
                                             ShinkaiLogOption::JobExecution,
-                                            ShinkaiLogLevel::Debug,
-                                            "Job processed successfully",
+                                            ShinkaiLogLevel::Info,
+                                            &format!("Received new immediate job {:?} while waiting for normal job permit", imm_id),
                                         );
+
+                                        let permit = immediate_semaphore.clone().acquire_owned().await.unwrap();
+                                        let job_processing_fn = Arc::clone(&job_processing_fn);
+                                        let db_clone = db_clone.clone();
+                                        let node_profile_name = node_profile_name.clone();
+                                        let identity_sk = clone_signature_secret_key(&identity_sk);
+                                        let generator = generator.clone();
+                                        let ws_manager = ws_manager.clone();
+                                        let tool_router = tool_router.clone();
+                                        let sheet_manager = sheet_manager.clone();
+                                        let callback_manager = callback_manager.clone();
+                                        let queue_immediate = queue_immediate.clone();
+                                        let my_agent_payments_manager = my_agent_payments_manager.clone();
+                                        let ext_agent_payments_manager = ext_agent_payments_manager.clone();
+                                        let llm_stopper = llm_stopper.clone();
+                                        let in_progress = processing_jobs.clone();
+
+                                        tokio::spawn(async move {
+                                            let result = (job_processing_fn)(
+                                                imm_job,
+                                                db_clone,
+                                                node_profile_name,
+                                                identity_sk,
+                                                generator,
+                                                ws_manager,
+                                                tool_router,
+                                                sheet_manager,
+                                                callback_manager,
+                                                queue_immediate.clone(),
+                                                my_agent_payments_manager,
+                                                ext_agent_payments_manager,
+                                                llm_stopper,
+                                            )
+                                            .await;
+
+                                            if result.is_ok() {
+                                                let _ = queue_immediate.lock().await.dequeue(&imm_id).await;
+                                            }
+                                            let mut inprog = in_progress.lock().await;
+                                            inprog.remove(&imm_id);
+                                            drop(permit);
+                                        });
                                     } else {
-                                        shinkai_log(
-                                            ShinkaiLogOption::JobExecution,
-                                            ShinkaiLogLevel::Error,
-                                            "Job processing failed",
-                                        );
+                                        eprintln!("rx_immediate closed, shutting down...");
+                                        return;
                                     }
-                                }
-                                Ok(None) => {
-                                    // Job not found, possibly already processed
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Debug,
-                                        &format!("Job {} not found", job_id),
-                                    );
-                                }
-                                Err(e) => {
-                                    // Log the error
-                                    shinkai_log(
-                                        ShinkaiLogOption::JobExecution,
-                                        ShinkaiLogLevel::Error,
-                                        &format!("Error peeking job {}: {:?}", job_id, e),
-                                    );
+
+                                    // Still need to wait for a normal-job permit
+                                    continue;
                                 }
                             }
-                            drop(_permit);
-                            processing_jobs.lock().await.remove(&job_id);
-                        });
+                        }
                     }
                 }
             }
@@ -361,7 +475,11 @@ impl JobManager {
         })
     }
 
-    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, LLMProviderError> {
+    pub async fn process_job_message(
+        &mut self,
+        message: ShinkaiMessage,
+        high_priority: bool,
+    ) -> Result<String, LLMProviderError> {
         let profile = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
 
         if self.is_job_message(message.clone()) {
@@ -394,10 +512,12 @@ impl JobManager {
                                 MessageSchemaType::JobMessageSchema => {
                                     let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
                                         .map_err(|_| LLMProviderError::ContentParseFailed)?;
-                                    self.add_to_job_processing_queue(message, job_message).await
+                                    self.add_to_job_processing_queue(message, job_message, high_priority)
+                                        .await
                                 }
                                 _ => {
-                                    // Handle Empty message type if needed, or return an error if it's not a valid job message
+                                    // Handle Empty message type if needed, or return an error if it's not a valid
+                                    // job message
                                     Err(LLMProviderError::NotAJobMessage)
                                 }
                             }
@@ -438,6 +558,8 @@ impl JobManager {
         {
             let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
             let is_hidden = job_creation.is_hidden.unwrap_or(false);
+
+            // Create the job
             match db_arc.create_new_job(
                 job_id.clone(),
                 llm_or_agent_provider_id.clone(),
@@ -469,29 +591,32 @@ impl JobManager {
     ) -> Result<(), LLMProviderError> {
         // Parse the inbox name to check if it's a job inbox
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
-        
+
         // Get the current folder name before updating
-        let old_folder = db_arc.get_job_folder_name(job_id)
+        let old_folder = db_arc
+            .get_job_folder_name(job_id)
             .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
-        
+
         // Update the inbox name
         let mut truncated_content = content.to_string();
         if truncated_content.chars().count() > 120 {
             truncated_content = format!("{}...", truncated_content.chars().take(120).collect::<String>());
         }
-        db_arc.unsafe_update_smart_inbox_name(&inbox_name.to_string(), &truncated_content)
+        db_arc
+            .unsafe_update_smart_inbox_name(&inbox_name.to_string(), &truncated_content)
             .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
-        
+
         // Get the new folder name after updating
-        let new_folder = db_arc.get_job_folder_name(job_id)
+        let new_folder = db_arc
+            .get_job_folder_name(job_id)
             .map_err(|e| LLMProviderError::ShinkaiDB(e))?;
-        
+
         // Move the folder if it exists
         if old_folder.exists() {
             ShinkaiFileManager::move_folder(old_folder, new_folder, db_arc)
                 .map_err(|e| LLMProviderError::SomeError(format!("Failed to move folder: {}", e)))?;
         }
-        
+
         Ok(())
     }
 
@@ -499,6 +624,7 @@ impl JobManager {
         &mut self,
         message: ShinkaiMessage,
         job_message: JobMessage,
+        high_priority: bool,
     ) -> Result<String, LLMProviderError> {
         // Verify identity/profile match
         let sender_subidentity_result = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
@@ -515,7 +641,8 @@ impl JobManager {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
         let is_empty = db_arc.is_job_inbox_empty(&job_message.job_id.clone())?;
         if is_empty {
-            self.update_job_folder_name(&job_message.job_id, &job_message.content, &db_arc).await?;
+            self.update_job_folder_name(&job_message.job_id, &job_message.content, &db_arc)
+                .await?;
         }
 
         db_arc
@@ -529,7 +656,7 @@ impl JobManager {
         std::mem::drop(db_arc);
 
         let message_hash_id = message.calculate_message_hash_for_pagination();
-        self.add_job_message_to_job_queue(&job_message, &profile, Some(message_hash_id))
+        self.add_job_message_to_job_queue(&job_message, &profile, Some(message_hash_id), high_priority)
             .await?;
 
         Ok(job_message.job_id.clone().to_string())
@@ -540,11 +667,17 @@ impl JobManager {
         job_message: &JobMessage,
         profile: &ShinkaiName,
         message_hash_id: Option<String>,
+        high_priority: bool,
     ) -> Result<String, LLMProviderError> {
         let job_for_processing = JobForProcessing::new(job_message.clone(), profile.clone(), message_hash_id);
 
-        let mut job_queue_manager = self.job_queue_manager.lock().await;
-        let _ = job_queue_manager.push(&job_message.job_id, job_for_processing).await;
+        if high_priority {
+            let mut imm = self.job_queue_manager_immediate.lock().await;
+            let _ = imm.push(&job_message.job_id, job_for_processing).await;
+        } else {
+            let mut norm = self.job_queue_manager_normal.lock().await;
+            let _ = norm.push(&job_message.job_id, job_for_processing).await;
+        }
 
         Ok(job_message.job_id.clone().to_string())
     }
@@ -576,7 +709,7 @@ impl JobManagerTrait for JobManager {
             } else {
                 Some(message_hash_id.to_string())
             };
-            self.add_job_message_to_job_queue(job_message, user_profile, message_hash_id_option)
+            self.add_job_message_to_job_queue(job_message, user_profile, message_hash_id_option, false)
                 .await
                 .map_err(|e| e.to_string())
         })

@@ -36,15 +36,14 @@ impl LlmPromptProcessorTool {
         Self {
             tool: ShinkaiToolHeader {
                 name: "Shinkai LLM Prompt Processor".to_string(),
-                toolkit_name: "shinkai_custom".to_string(),
                 description: r#"Tool for processing any prompt using an AI LLM. 
 Analyzing the input prompt and returning a string with the result of the prompt.
 This can be used to process complex requests, text analysis, text matching, text generation, and any other AI LLM task."#
                     .to_string(),
-                tool_router_key: "local:::rust_toolkit:::shinkai_llm_prompt_processor".to_string(),
+                tool_router_key: "local:::__official_shinkai:::shinkai_llm_prompt_processor".to_string(),
                 tool_type: "Rust".to_string(),
                 formatted_tool_summary_for_ui: "Tool for processing prompts with LLM".to_string(),
-                author: "Shinkai".to_string(),
+                author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
                 input_args: {
@@ -111,7 +110,7 @@ impl ToolExecutor for LlmPromptProcessorTool {
             .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
         let start_time = std::time::Instant::now();
-        let timeout = Duration::from_secs(180); // 3 minutes timeout
+        let timeout = Duration::from_secs(60 * 5); // 5 minutes timeout
         let delay = Duration::from_secs(1); // 1 second delay between polls
 
         let x = loop {

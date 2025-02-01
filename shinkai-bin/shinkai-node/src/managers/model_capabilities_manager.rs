@@ -1,20 +1,16 @@
 use crate::llm_provider::{
-    error::LLMProviderError,
-    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
+    error::LLMProviderError, providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages}
 };
-use shinkai_message_primitives::{schemas::{
-    llm_message::LlmMessage,
-    llm_providers::{
-        common_agent_llm_provider::ProviderOrAgent,
-        serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
-    },
-    prompts::Prompt,
-    shinkai_name::ShinkaiName,
-}, shinkai_utils::utils::count_tokens_from_message_llama3};
+use shinkai_message_primitives::{
+    schemas::{
+        llm_message::LlmMessage, llm_providers::{
+            common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}
+        }, prompts::Prompt, shinkai_name::ShinkaiName
+    }, shinkai_utils::utils::count_tokens_from_message_llama3
+};
 use shinkai_sqlite::SqliteManager;
 use std::{
-    fmt,
-    sync::{Arc, Weak},
+    fmt, sync::{Arc, Weak}
 };
 use tokio::sync::RwLock;
 
@@ -170,6 +166,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
         }
     }
 
@@ -186,6 +183,9 @@ impl ModelCapabilitiesManager {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             model_type if model_type.contains("minicpm-v") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             _ => vec![ModelCapability::TextInference],
@@ -231,6 +231,7 @@ impl ModelCapabilitiesManager {
                 "claude-3-haiku-20240307" => ModelCost::VeryCheap,
                 _ => ModelCost::Unknown,
             },
+            LLMProviderInterface::LocalRegex(_) => ModelCost::Free,
         }
     }
 
@@ -252,6 +253,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
             LLMProviderInterface::Claude(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::LocalRegex(_) => ModelPrivacy::Local,
         }
     }
 
@@ -357,6 +359,12 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, claude.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::LocalRegex(local_regex) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string =
+                    llama_prepare_messages(model, local_regex.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
         }
     }
 
@@ -412,6 +420,7 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
+            LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
 
@@ -474,11 +483,18 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama3.4") => 128_000,
             model_type if model_type.starts_with("llama-3.1") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
+            model_type if model_type.starts_with("deepseek-r1:14b") => 128_000,
+            model_type if model_type.starts_with("deepseek-r1:8b") => 128_000,
+            model_type if model_type.starts_with("deepseek-r1:70b") => 128_000,
+            model_type if model_type.starts_with("deepseek-v3") => 128_000,
+            model_type if model_type.starts_with("command-r7b") => 128_000,
+            model_type if model_type.starts_with("mistral-small") => 128_000,
             _ => 4096, // Default token count if no specific model type matches
         }
     }
 
-    /// Returns the maximum number of input tokens allowed for the given model, leaving room for output tokens.
+    /// Returns the maximum number of input tokens allowed for the given model,
+    /// leaving room for output tokens.
     pub fn get_max_input_tokens(model: &LLMProviderInterface) -> usize {
         let max_tokens = Self::get_max_tokens(model);
         let max_output_tokens = Self::get_max_output_tokens(model) / 2;
@@ -545,6 +561,7 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
+            LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
 
@@ -571,7 +588,9 @@ impl ModelCapabilitiesManager {
                 total_characters += content.chars().count() + 1; // +1 for spaces or newlines between messages
             }
             if let Some(ref name) = message.name {
-                total_characters += name.chars().count() + 1; // +1 for a space or newline after the name
+                total_characters += name.chars().count() + 1; // +1 for a space
+                                                              // or newline
+                                                              // after the name
             }
         }
 
@@ -585,8 +604,8 @@ impl ModelCapabilitiesManager {
     }
 
     /// Counts the number of tokens from the list of messages for llama3 model,
-    /// where every three normal letters (a-zA-Z) allow an empty space to not be counted,
-    /// and other symbols are counted as 1 token.
+    /// where every three normal letters (a-zA-Z) allow an empty space to not be
+    /// counted, and other symbols are counted as 1 token.
     /// This implementation avoids floating point arithmetic by scaling counts.
     pub fn num_tokens_from_llama3(messages: &[LlmMessage]) -> usize {
         let num: usize = messages
@@ -610,7 +629,8 @@ impl ModelCapabilitiesManager {
         (num as f32 * 1.04) as usize
     }
 
-    /// Returns whether the given model supports tool/function calling capabilities
+    /// Returns whether the given model supports tool/function calling
+    /// capabilities
     pub async fn has_tool_capabilities_for_provider_or_agent(
         provider_or_agent: ProviderOrAgent,
         db: Arc<SqliteManager>,
@@ -635,7 +655,8 @@ impl ModelCapabilitiesManager {
         }
     }
 
-    /// Returns whether the given model supports tool/function calling capabilities
+    /// Returns whether the given model supports tool/function calling
+    /// capabilities
     pub fn has_tool_capabilities(model: &LLMProviderInterface, _stream: Option<bool>) -> bool {
         eprintln!("has tool capabilities model: {:?}", model);
         match model {
@@ -652,10 +673,16 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwq")
+                    || model.model_type.starts_with("deepseek-r1:14b")
+                    || model.model_type.starts_with("deepseek-r1:8b")
+                    || model.model_type.starts_with("deepseek-r1:70b")
+                    || model.model_type.starts_with("deepseek-v3")
+                    || model.model_type.starts_with("command-r7b")
+                    || model.model_type.starts_with("mistral-small")
             }
             LLMProviderInterface::Groq(model) => {
                 model.model_type.starts_with("llama-3.3-70b-versatile")
-                    || model.model_type.starts_with("llama-3.1-8b-instant") 
+                    || model.model_type.starts_with("llama-3.1-8b-instant")
                     || model.model_type.starts_with("llama-guard-3-8b")
                     || model.model_type.starts_with("llama3-70b-8192")
                     || model.model_type.starts_with("llama3-8b-8192")
@@ -695,14 +722,16 @@ impl ModelCapabilitiesManager {
     }
 }
 
-// TODO: add a tokenizer library only in the dev env and test that the estimations are always above it and in a specific margin (% wise)
+// TODO: add a tokenizer library only in the dev env and test that the
+// estimations are always above it and in a specific margin (% wise)
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use super::*;
 
-    // Helper function to convert a vector of ChatCompletionRequestMessage to a single string
+    // Helper function to convert a vector of ChatCompletionRequestMessage to a
+    // single string
     fn messages_to_string(messages: &[LlmMessage]) -> String {
         messages
             .iter()
@@ -893,7 +922,8 @@ mod tests {
         println!("Number of tokens calculated: {}", num_tokens);
         println!("Number of tokens calculated for llama3: {}", num_tokens_llama3);
 
-        // Check that the estimate is greater than the numbers below to ensure it over estimates and not under
+        // Check that the estimate is greater than the numbers below to ensure it over
+        // estimates and not under
         assert!(num_tokens_llama3 > 28000);
         assert!(num_tokens > 34000);
     }

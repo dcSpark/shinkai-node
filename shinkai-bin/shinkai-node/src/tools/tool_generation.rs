@@ -130,7 +130,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         metadata: None,
         tool_key: None,
         fs_files_paths: vec![],
-                job_filenames: vec![],
+        job_filenames: vec![],
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
@@ -145,6 +145,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         encryption_secret_key_clone,
         encryption_public_key_clone,
         signing_secret_key_clone,
+        Some(true),
         res_sender,
     )
     .await;

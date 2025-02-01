@@ -578,9 +578,9 @@ impl MyAgentOfferingsManager {
         // TODO: avoid the expects
         let network_tool = NetworkTool::new(
             tool_header.name,
-            tool_header.toolkit_name,
             tool_header.description,
             tool_header.version,
+            provider.node_name.clone(),
             provider,
             tool_header.usage_type.expect("Usage type is required"),
             true, // Assuming the tool is activated by default

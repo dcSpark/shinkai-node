@@ -1867,6 +1867,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 
 [[package]]
+name = "docx-rs"
+version = "0.4.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e593b51d4fe95d69d70fd40da4b314b029736302c986c3c760826e842fd27dc3"
+dependencies = [
+ "base64 0.13.1",
+ "image 0.24.9",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "xml-rs",
+ "zip 0.6.6",
+]
+
+[[package]]
 name = "dotenv"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3523,6 +3538,22 @@ dependencies = [
  "png 0.16.8",
  "scoped_threadpool",
  "tiff 0.6.1",
+]
+
+[[package]]
+name = "image"
+version = "0.24.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5690139d2f55868e080017335e4b94cb7414274c74f1669c84fb5feba2c9f69d"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "color_quant",
+ "gif 0.13.1",
+ "jpeg-decoder 0.3.1",
+ "num-traits",
+ "png 0.17.14",
+ "tiff 0.9.1",
 ]
 
 [[package]]
@@ -6583,7 +6614,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai-spreadsheet-llm"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6598,7 +6629,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "chrono",
  "dashmap",
@@ -6614,7 +6645,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_embedding"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6635,7 +6666,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6643,6 +6674,7 @@ dependencies = [
  "chrono",
  "comrak",
  "csv",
+ "docx-rs",
  "futures",
  "keyphrases",
  "lazy_static",
@@ -6668,7 +6700,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -6693,7 +6725,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "chrono",
  "serde",
@@ -6707,7 +6739,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -6735,14 +6767,14 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mini_libs"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "base64 0.22.1",
 ]
 
 [[package]]
 name = "shinkai_node"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -6814,7 +6846,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "anyhow",
  "image 0.25.5",
@@ -6829,7 +6861,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sheet"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "async-channel 1.9.0",
  "chrono",
@@ -6843,7 +6875,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "bincode",
  "blake3",
@@ -6874,7 +6906,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -6893,9 +6925,10 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "0.9.6"
+version = "0.9.8"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "regex",
  "reqwest 0.11.27",
  "serde",
@@ -6907,9 +6940,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.9.6"
+version = "0.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed2fe0b6aa10cd6dcfafd165c2691d494ef14bb1243ed2881ddd2d2dd1b7f787"
+checksum = "dcfe9137a151740050dbe77d23f3a9f61f0b00e21f4e7b57a7fac18f58c0c421"
 dependencies = [
  "anyhow",
  "base64-simd",
@@ -8810,6 +8843,12 @@ name = "xdg"
 version = "2.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
+
+[[package]]
+name = "xml-rs"
+version = "0.8.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5b940ebc25896e71dd073bad2dbaa2abfe97b0a391415e22ad1326d9c54e3c4"
 
 [[package]]
 name = "yaml-rust"

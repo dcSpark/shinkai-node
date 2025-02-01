@@ -70,8 +70,9 @@ impl fmt::Display for InvoiceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InvoiceError::InvalidToolKeyFormat => write!(f, "Invalid tool_key_name format"),
-            InvoiceError::NodeNameMismatch { expected, found } => 
-                write!(f, "Node name mismatch: expected {}, found {}", expected, found),
+            InvoiceError::NodeNameMismatch { expected, found } => {
+                write!(f, "Node name mismatch: expected {}, found {}", expected, found)
+            }
             InvoiceError::OperationFailed(msg) => write!(f, "Operation failed: {}", msg),
         }
     }
@@ -101,7 +102,7 @@ impl InvoiceRequest {
         }
 
         let node_name_part = parts[0];
-        let toolkit_name = parts[1];
+        let author = parts[1];
         let tool_name = parts[2];
 
         // Validate that the node name part matches our node_name
@@ -112,7 +113,7 @@ impl InvoiceRequest {
         }
 
         // Convert the tool_key_name to the actual tool_key_name
-        let actual_tool_key_name = format!("local:::{}:::{}", toolkit_name, tool_name);
+        let actual_tool_key_name = format!("local:::{}:::{}", author, tool_name);
 
         Ok(actual_tool_key_name)
     }

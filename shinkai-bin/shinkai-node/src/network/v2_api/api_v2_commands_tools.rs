@@ -1,52 +1,33 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 
 use async_channel::Sender;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
 
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-    },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
+    }, shinkai_message::shinkai_message_schemas::JobMessage
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    python_tools::PythonTool,
-    shinkai_tool::ShinkaiTool,
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::ToolPlayground,
+    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
 };
 
-use std::{fs::File, io::Read, io::Write, path::Path, sync::Arc, time::Instant};
+use std::{
+    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
+};
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -59,7 +40,8 @@ use std::path::PathBuf;
 use tokio::fs;
 
 impl Node {
-    /// Searches for Shinkai tools using both vector and full-text search (FTS) methods.
+    /// Searches for Shinkai tools using both vector and full-text search (FTS)
+    /// methods.
     ///
     /// The function returns a total of 10 results based on the following logic:
     /// 1. All FTS results are added first.
@@ -315,7 +297,8 @@ impl Node {
     pub async fn v2_api_add_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
-        new_tool: ShinkaiTool,
+        node_env: NodeEnvironment,
+        new_tool_with_assets: ShinkaiToolWithAssets,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -323,12 +306,63 @@ impl Node {
             return Ok(());
         }
 
-        // Save the new tool to the LanceShinkaiDb
+        let new_tool = new_tool_with_assets.tool;
+        let dependencies = new_tool.get_tools();
+        for dependency in dependencies {
+            let tool = db.get_tool_by_key(&dependency.to_string_without_version());
+            if tool.is_err() {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Tool not found: {}", dependency.to_string_without_version()),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
         let save_result = db.add_tool(new_tool).await;
 
         match save_result {
             Ok(tool) => {
                 let tool_key = tool.tool_router_key();
+
+                if let Some(assets) = new_tool_with_assets.assets {
+                    if !assets.is_empty() {
+                        let file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
+                            .join(".tools_storage")
+                            .join("tools")
+                            .join(tool.tool_router_key().convert_to_path());
+                        if !file_path.exists() {
+                            let s = std::fs::create_dir_all(&file_path);
+                            if s.is_err() {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Failed to create directory".to_string(),
+                                    message: format!("Failed to create directory: {}", s.err().unwrap()),
+                                };
+                                res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                        // Create the assets
+                        for asset in assets {
+                            let asset_path = file_path.join(asset.file_name);
+                            let asset_content = base64::decode(asset.data).unwrap();
+                            let status = fs::write(asset_path, asset_content).await;
+                            if status.is_err() {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Failed to create directory".to_string(),
+                                    message: format!("Failed to create directory: {}", status.err().unwrap()),
+                                };
+                                res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+
                 let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key.to_string_without_version()) });
                 let _ = res.send(Ok(response)).await;
                 Ok(())
@@ -420,37 +454,25 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-
-        // TODO Is this correct. There should be a builder.
-        let toolkit_name = {
-            let name = format!(
-                "{}_{}",
-                payload
-                    .metadata
-                    .name
-                    .to_lowercase()
-                    .replace(" ", "_")
-                    .replace("-", "_")
-                    .replace(":", "_"),
-                payload
-                    .metadata
-                    .author
-                    .to_lowercase()
-                    .replace(" ", "_")
-                    .replace("-", "_")
-                    .replace(":", "_")
-            );
-            // Use a regex to filter out unwanted characters
-            let re = regex::Regex::new(r"[^a-z0-9_]").unwrap();
-            re.replace_all(&name, "").to_string()
-        };
-
         let mut updated_payload = payload.clone();
+
+        let dependencies = updated_payload.metadata.tools.clone().unwrap_or_default();
+        for dependency in dependencies {
+            let tool = db.get_tool_by_key(&dependency.to_string_without_version());
+            if tool.is_err() {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Tool not found: {}", dependency.to_string_without_version()),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
 
         let shinkai_tool = match payload.language {
             CodeLanguage::Typescript => {
                 let tool = DenoTool {
-                    toolkit_name,
                     name: payload.metadata.name.clone(),
                     homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
@@ -475,7 +497,6 @@ impl Node {
             }
             CodeLanguage::Python => {
                 let tool = PythonTool {
-                    toolkit_name,
                     name: payload.metadata.name.clone(),
                     homepage: payload.metadata.homepage.clone(),
                     version: payload.metadata.version.clone(),
@@ -524,7 +545,8 @@ impl Node {
             }
         }
 
-        // Copy asset to permanent tool_storage folder {storage}/tool_storage/{tool_key}.assets/
+        // Copy asset to permanent tool_storage folder
+        // {storage}/tool_storage/{tool_key}.assets/
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
@@ -943,6 +965,7 @@ impl Node {
         language: CodeLanguage,
         tools: Vec<ToolRouterKey>,
         code: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -963,9 +986,9 @@ impl Node {
             }
         };
 
-        let is_memory_required = tools
-            .iter()
-            .any(|tool| tool.to_string_without_version() == "local:::rust_toolkit:::shinkai_sqlite_query_executor");
+        let is_memory_required = tools.iter().any(|tool| {
+            tool.to_string_without_version() == "local:::__official_shinkai:::shinkai_sqlite_query_executor"
+        });
         let code_prompt =
             match generate_code_prompt(language.clone(), is_memory_required, "".to_string(), tool_definitions).await {
                 Ok(prompt) => prompt,
@@ -980,19 +1003,25 @@ impl Node {
                 }
             };
 
-        let metadata_prompt =
-            match tool_metadata_implementation_prompt(language.clone(), code.clone(), tools.clone()).await {
-                Ok(prompt) => prompt,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to generate tool definitions: {:?}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
+        let metadata_prompt = match tool_metadata_implementation_prompt(
+            language.clone(),
+            code.clone(),
+            tools.clone(),
+            identity_manager.clone(),
+        )
+        .await
+        {
+            Ok(prompt) => prompt,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate tool definitions: {:?}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         let library_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), false).await {
             Ok(code) => code,
@@ -1069,12 +1098,12 @@ impl Node {
         };
 
         let prompt = job_message.content.clone();
-        let is_memory_required = tools
-            .clone()
-            .iter()
-            .any(|tool| tool.to_string_without_version() == "local:::rust_toolkit:::shinkai_sqlite_query_executor");
+        let is_memory_required = tools.clone().iter().any(|tool| {
+            tool.to_string_without_version() == "local:::__official_shinkai:::shinkai_sqlite_query_executor"
+        });
 
-        // Determine the code generation prompt so we can update the message with the custom prompt if required
+        // Determine the code generation prompt so we can update the message with the
+        // custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
             false => match generate_code_prompt(language.clone(), is_memory_required, prompt, tool_definitions).await {
@@ -1122,6 +1151,7 @@ impl Node {
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
+            Some(true),
             res,
         )
         .await
@@ -1134,7 +1164,7 @@ impl Node {
         tools: Vec<ToolRouterKey>,
         db: Arc<SqliteManager>,
         node_name_clone: ShinkaiName,
-        identity_manager_clone: Arc<Mutex<IdentityManager>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager_clone: Arc<Mutex<JobManager>>,
         encryption_secret_key_clone: EncryptionStaticKey,
         encryption_public_key_clone: EncryptionPublicKey,
@@ -1145,7 +1175,8 @@ impl Node {
             return Ok(());
         }
 
-        // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
+        // We can automatically extract the code (last message from the AI in the job
+        // inbox) using the job_id
         let job = match db.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
@@ -1223,7 +1254,8 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata = match tool_metadata_implementation_prompt(language, code, tools).await {
+        let metadata = match tool_metadata_implementation_prompt(language, code, tools, identity_manager.clone()).await
+        {
             Ok(metadata) => metadata,
             Err(err) => {
                 let _ = res.send(Err(err)).await;
@@ -1245,7 +1277,7 @@ impl Node {
             metadata,
             db,
             node_name_clone,
-            identity_manager_clone,
+            identity_manager,
             job_manager_clone,
             encryption_secret_key_clone,
             encryption_public_key_clone,
@@ -1294,7 +1326,8 @@ impl Node {
             }
         };
 
-        // Determine if it's an AI or user message, if it's a user message then we need to return an error
+        // Determine if it's an AI or user message, if it's a user message then we need
+        // to return an error
         if message.is_receiver_subidentity_agent() {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
@@ -1306,7 +1339,8 @@ impl Node {
         }
 
         let mut new_message = message.clone();
-        // Update the scheduled time to now so the messages are content wise the same but produce a different hash
+        // Update the scheduled time to now so the messages are content wise the same
+        // but produce a different hash
         new_message.external_metadata.scheduled_time = Utc::now().to_rfc3339();
 
         let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
@@ -1543,6 +1577,50 @@ impl Node {
         Ok(())
     }
 
+    async fn get_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
+        let mut tool = tool;
+        tool.sanitize_config();
+
+        let tool_bytes = serde_json::to_vec(&tool).unwrap();
+
+        let name = format!(
+            "{}.zip",
+            tool.tool_router_key().to_string_without_version().replace(':', "_")
+        );
+        let path = std::env::temp_dir().join(&name);
+        let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
+
+        let mut zip = ZipWriter::new(file);
+
+        let assets = PathBuf::from(&node_env.node_storage_path.unwrap_or_default())
+            .join(".tools_storage")
+            .join("tools")
+            .join(tool.tool_router_key().convert_to_path());
+
+        if assets.exists() {
+            for entry in std::fs::read_dir(assets).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_file() {
+                    zip.start_file::<_, ()>(path.file_name().unwrap().to_str().unwrap(), FileOptions::default())
+                        .unwrap();
+                    zip.write_all(&fs::read(path).await.unwrap()).unwrap();
+                }
+            }
+        }
+
+        zip.start_file::<_, ()>("__tool.json", FileOptions::default())
+            .map_err(|e| NodeError::from(e.to_string()))?;
+        zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
+        zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
+
+        println!("Zip file created successfully!");
+        let file_bytes = fs::read(&path).await?;
+        // Delete the zip file after reading it
+        fs::remove_file(&path).await?;
+        Ok(file_bytes)
+    }
+
     pub async fn v2_api_export_tool(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -1558,51 +1636,20 @@ impl Node {
         let sqlite_manager_read = db;
         match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
             Ok(tool) => {
-                let mut tool = tool.clone();
-                tool.sanitize_config();
-
-                let tool_bytes = serde_json::to_vec(&tool).unwrap();
-
-                let name = format!(
-                    "{}.zip",
-                    tool.tool_router_key().to_string_without_version().replace(':', "_")
-                );
-                let path = std::env::temp_dir().join(&name);
-                let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
-
-                let mut zip = ZipWriter::new(file);
-
-                let assets = PathBuf::from(&node_env.node_storage_path.unwrap_or_default())
-                    .join(".tools_storage")
-                    .join("tools")
-                    .join(tool.tool_router_key().convert_to_path());
-                if assets.exists() {
-                    for entry in std::fs::read_dir(assets).unwrap() {
-                        let entry = entry.unwrap();
-                        let path = entry.path();
-                        if path.is_file() {
-                            zip.start_file::<_, ()>(
-                                path.file_name().unwrap().to_str().unwrap(),
-                                FileOptions::default(),
-                            )
-                            .unwrap();
-                            zip.write_all(&fs::read(path).await.unwrap()).unwrap();
-                        }
+                let file_bytes = Self::get_tool_zip(tool, node_env).await;
+                match file_bytes {
+                    Ok(file_bytes) => {
+                        let _ = res.send(Ok(file_bytes)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to generate tool zip: {}", err.message),
+                        };
+                        let _ = res.send(Err(api_error)).await;
                     }
                 }
-
-                zip.start_file::<_, ()>("__tool.json", FileOptions::default())
-                    .map_err(|e| NodeError::from(e.to_string()))?;
-                zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
-                zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
-
-                println!("Zip file created successfully!");
-                let file_bytes = fs::read(&path).await?;
-                // Delete the zip file after reading it
-                fs::remove_file(&path)
-                    .await
-                    .map_err(|e| NodeError::from(e.to_string()))?;
-                let _ = res.send(Ok(file_bytes)).await;
             }
             Err(err) => {
                 let api_error = APIError {
@@ -1614,6 +1661,136 @@ impl Node {
             }
         }
         Ok(())
+    }
+
+    pub async fn v2_api_publish_tool(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_env: NodeEnvironment,
+        tool_key_path: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        signing_secret_key: SigningKey,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let response = Self::publish_tool(db, node_env, tool_key_path, identity_manager, signing_secret_key).await;
+
+        match response {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let _ = res.send(Err(err)).await;
+            }
+        }
+        Ok(())
+    }
+
+    async fn publish_tool(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        tool_key_path: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        signing_secret_key: SigningKey,
+    ) -> Result<Value, APIError> {
+        // Generate zip file.
+        let tool = db.get_tool_by_key(&tool_key_path.clone()).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to get tool: {}", e),
+        })?;
+
+        let file_bytes: Vec<u8> = Self::get_tool_zip(tool, node_env).await.map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to get tool zip: {}", e),
+        })?;
+
+        let identity_manager = identity_manager.lock().await;
+        let local_node_name = identity_manager.local_node_name.clone();
+        let identity_name = local_node_name.to_string();
+        drop(identity_manager);
+
+        // Hash
+        let hash_raw = blake3::hash(&file_bytes.clone());
+        let hash_hex = hash_raw.to_hex();
+        let hash = hash_hex.to_string();
+
+        // Signature
+        let signature = signing_secret_key
+            .clone()
+            .try_sign(hash_hex.as_bytes())
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to sign tool: {}", e),
+            })?;
+
+        let signature_bytes = signature.to_bytes();
+        let signature_hex = hex::encode(signature_bytes);
+
+        // Publish the tool to the store.
+        let client = reqwest::Client::new();
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(file_bytes)
+                    .file_name(format!("{}.zip", tool_key_path.replace(':', "_"))),
+            )
+            .text("type", "Tool")
+            .text("routerKey", tool_key_path.clone())
+            .text("hash", hash.clone())
+            .text("signature", signature_hex.clone())
+            .text("identity", identity_name.clone());
+
+        println!("[Publish Tool] Type: {}", "tool");
+        println!("[Publish Tool] Router Key: {}", tool_key_path.clone());
+        println!("[Publish Tool] Hash: {}", hash.clone());
+        println!("[Publish Tool] Signature: {}", signature_hex.clone());
+        println!("[Publish Tool] Identity: {}", identity_name.clone());
+
+        let store_url = env::var("SHINKAI_STORE_URL")
+            .unwrap_or("https://shinkai-store-302883622007.us-central1.run.app".to_string());
+        let response = client
+            .post(format!("{}/store/revisions", store_url))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to publish tool: {}", e),
+            })?;
+
+        let status = response.status();
+        let response_text = response.text().await.unwrap_or_default().clone();
+        println!("Response: {:?}", response_text);
+        if status.is_success() {
+            let r = json!({
+                "status": "success",
+                "message": "Tool published successfully",
+                "tool_key": tool_key_path.clone(),
+            });
+            let r: Value = match r {
+                Value::Object(mut map) => {
+                    let response_json = serde_json::from_str(&response_text).unwrap_or_default();
+                    map.insert("response".to_string(), response_json);
+                    Value::Object(map)
+                }
+                o => o,
+            };
+            return Ok(r);
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Store Upload Error".to_string(),
+                message: format!("Failed to upload to store: {}: {}", status, response_text),
+            };
+            return Err(api_error);
+        }
     }
 
     pub async fn v2_api_import_tool(
@@ -1670,7 +1847,6 @@ impl Node {
                 let archive_clone = zip_contents.archive.clone();
                 let files = archive_clone.file_names();
                 for file in files {
-                    println!("File: {:?}", file);
                     if file == "__tool.json" {
                         continue;
                     }
@@ -1740,9 +1916,10 @@ impl Node {
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
     ///
-    /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
-    /// This function validates the protocol format, constructs the actual file path in the node's storage,
-    /// and returns the file contents as bytes.
+    /// The Shinkai file protocol follows the format:
+    /// `shinkai://file/{node_name}/{app-id}/{full-path}` This function
+    /// validates the protocol format, constructs the actual file path in the
+    /// node's storage, and returns the file contents as bytes.
     ///
     /// # Arguments
     /// * `bearer` - Bearer token for authentication
@@ -2120,6 +2297,142 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn process_tool_zip(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        zip_data: Vec<u8>,
+    ) -> Result<Value, APIError> {
+        // Create a cursor from the zip data
+        let cursor = std::io::Cursor::new(zip_data);
+        let mut archive = match zip::ZipArchive::new(cursor) {
+            Ok(archive) => archive,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Zip File".to_string(),
+                    message: format!("Failed to read zip archive: {}", err),
+                });
+            }
+        };
+
+        // Extract and parse tool.json
+        let mut buffer = Vec::new();
+        {
+            let mut file = match archive.by_name("__tool.json") {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Zip File".to_string(),
+                        message: "Archive does not contain __tool.json".to_string(),
+                    });
+                }
+            };
+
+            if let Err(err) = file.read_to_end(&mut buffer) {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool JSON".to_string(),
+                    message: format!("Failed to read tool.json: {}", err),
+                });
+            }
+        }
+
+        // Parse the JSON into a ShinkaiTool
+        let tool: ShinkaiTool = match serde_json::from_slice(&buffer) {
+            Ok(tool) => tool,
+            Err(err) => {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool JSON".to_string(),
+                    message: format!("Failed to parse tool.json: {}", err),
+                });
+            }
+        };
+
+        // Save the tool to the database
+        match db.add_tool(tool).await {
+            Ok(tool) => {
+                // Process all files except __tool.json
+                let mut files_to_process = Vec::new();
+                for i in 0..archive.len() {
+                    if let Ok(mut file) = archive.by_index(i) {
+                        let name = file.name().to_string();
+                        if name != "__tool.json" {
+                            // Read the file data into memory
+                            let mut buffer = Vec::new();
+                            if let Err(err) = file.read_to_end(&mut buffer) {
+                                return Err(APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Read Error".to_string(),
+                                    message: format!("Failed to read file {}: {}", name, err),
+                                });
+                            }
+                            files_to_process.push((name, buffer));
+                        }
+                    }
+                }
+
+                // Process the files after reading them all into memory
+                for (name, buffer) in files_to_process {
+                    // Create the directory structure if it doesn't exist
+                    let file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
+                        .join(".tools_storage")
+                        .join("tools")
+                        .join(tool.tool_router_key().convert_to_path());
+                    if !file_path.exists() {
+                        if let Err(err) = std::fs::create_dir_all(&file_path) {
+                            return Err(APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Failed to create directory".to_string(),
+                                message: format!("Failed to create directory: {}", err),
+                            });
+                        }
+                    }
+
+                    // Write the file
+                    let asset_path = file_path.join(&name);
+                    if let Err(err) = std::fs::write(asset_path, buffer) {
+                        return Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Failed to write file".to_string(),
+                            message: format!("Failed to write file {}: {}", name, err),
+                        });
+                    }
+                }
+
+                Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool_key": tool.tool_router_key().to_string_without_version(),
+                    "tool": tool
+                }))
+            }
+            Err(err) => Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save tool to database: {}", err),
+            }),
+        }
+    }
+
+    pub async fn v2_api_import_tool_zip(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_env: NodeEnvironment,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let result = Self::process_tool_zip(db, node_env, file_data).await;
+        let _ = res.send(result).await;
+        Ok(())
     }
 }
 

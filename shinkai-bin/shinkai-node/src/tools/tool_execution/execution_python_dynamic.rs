@@ -31,11 +31,10 @@ pub async fn execute_python_tool(
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
     let tool = PythonTool {
-        toolkit_name: "python".to_string(),
         name: "python_runtime".to_string(),
         homepage: None,
         version: "1.0.0".to_string(),
-        author: "system".to_string(),
+        author: "@@official.shinkai".to_string(),
         py_code: code,
         tools: vec![],
         config: extra_config.clone(),
@@ -99,21 +98,25 @@ pub async fn execute_python_tool(
         }
     }
 
-    match tool.run_on_demand(
-        env,
-        node_env.api_listen_address.ip().to_string(),
-        node_env.api_listen_address.port(),
-        support_files,
-        parameters,
-        extra_config,
-        node_storage_path,
-        app_id.clone(),
-        tool_id.clone(),
-        node_name,
-        false,
-        assets_files,
-        mounts,
-    ).await {
+    match tool
+        .run_on_demand(
+            env,
+            node_env.api_listen_address.ip().to_string(),
+            node_env.api_listen_address.port(),
+            support_files,
+            parameters,
+            extra_config,
+            node_storage_path,
+            app_id.clone(),
+            tool_id.clone(),
+            node_name,
+            false,
+            assets_files,
+            mounts,
+            true,
+        )
+        .await
+    {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }

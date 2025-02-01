@@ -27,7 +27,7 @@ mod tests {
             },
             ToolOutputArg::empty(),
             None,
-            "local:::rust_toolkit:::concat_strings".to_string(),
+            "local:::__official_shinkai:::concat_strings".to_string(),
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
@@ -90,7 +90,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::__official_shinkai:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({
@@ -149,7 +149,7 @@ mod tests {
             },
             ToolOutputArg::empty(),
             None,
-            "local:::rust_toolkit:::concat_strings".to_string(),
+            "local:::__official_shinkai:::concat_strings".to_string(),
         );
         let shinkai_tool = ShinkaiTool::Rust(tool, true);
 
@@ -205,7 +205,7 @@ mod tests {
                 functions: Some(vec![FunctionDetails {
                     name: "concat_strings".to_string(),
                     description: "Concatenates 2 to 4 strings.".to_string(),
-                    tool_router_key: Some("local:::rust_toolkit:::concat_strings".to_string()),
+                    tool_router_key: Some("local:::__official_shinkai:::concat_strings".to_string()),
                     parameters: FunctionParameters {
                         type_: "object".to_string(),
                         properties: serde_json::json!({

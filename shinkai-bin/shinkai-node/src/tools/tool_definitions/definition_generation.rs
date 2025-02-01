@@ -1,10 +1,8 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
-use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_tools_primitives::tools::tool_playground::ToolPlayground;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -17,6 +15,9 @@ use crate::tools::tool_implementation;
 // TODO keep in sync with execution_custom.rs
 pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     let mut custom_tools = Vec::new();
+    custom_tools.push(
+        tool_implementation::native_tools::typescript_unsafe_processor::TypescriptUnsafeProcessorTool::new().tool,
+    );
     custom_tools.push(tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);
@@ -72,20 +73,34 @@ pub async fn generate_tool_definitions(
             );
         }
     };
-    // Filter tools
+    // Filter tools and prevent duplicates
+    let mut seen_keys = HashSet::new();
     let all_tools: Vec<ShinkaiToolHeader> = get_all_deno_tools(sqlite_manager.clone())
         .await
         .into_iter()
         .filter(|tool| {
-            tools.iter().any(|t| {
+            if seen_keys.contains(&tool.tool_router_key) {
+                eprintln!("Skipping duplicate tool with key: {}", tool.tool_router_key);
+                return false;
+            }
+            let matches = tools.iter().any(|t| {
                 let version = t.version.clone();
                 match version {
                     Some(v) => t.to_string_without_version() == tool.tool_router_key && v == tool.version,
                     None => t.to_string_without_version() == tool.tool_router_key,
                 }
-            })
+            });
+            if matches {
+                seen_keys.insert(tool.tool_router_key.clone());
+            }
+            matches
         })
         .collect();
+
+    eprintln!("Found tools:");
+    for tool in &all_tools {
+        eprintln!("- Name: {}, Key: {}, Version: {}", tool.name, tool.tool_router_key, tool.version);
+    }
 
     if all_tools.is_empty() {
         return Ok(support_files);

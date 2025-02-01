@@ -29,9 +29,20 @@ pub enum ShinkaiTool {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Assets {
+    pub file_name: String,
+    pub data: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ShinkaiToolWithAssets {
+    pub tool: ShinkaiTool,
+    pub assets: Option<Vec<Assets>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShinkaiToolHeader {
     pub name: String,
-    pub toolkit_name: String,
     pub description: String,
     pub tool_router_key: String,
     pub tool_type: String,
@@ -61,7 +72,6 @@ impl ShinkaiTool {
     pub fn to_header(&self) -> ShinkaiToolHeader {
         ShinkaiToolHeader {
             name: self.name(),
-            toolkit_name: self.toolkit_name(),
             description: self.description(),
             tool_router_key: self.tool_router_key().to_string_without_version(),
             tool_type: self.tool_type().to_string(),
@@ -79,27 +89,14 @@ impl ShinkaiTool {
 
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> ToolRouterKey {
-        match self {
-            ShinkaiTool::Network(n, _) => ToolRouterKey::new(
-                n.provider.to_string(),
-                n.toolkit_name.clone(),
-                n.name.clone(),
-                Some(n.version.clone()),
-            ),
-            _ => {
-                let (name, toolkit_name) = (
-                    self.name(),
-                    match self {
-                        ShinkaiTool::Rust(r, _) => r.toolkit_name(),
-                        ShinkaiTool::Deno(j, _) => j.toolkit_name.to_string(),
-                        ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
-                        ShinkaiTool::Python(p, _) => p.toolkit_name.clone(),
-                        _ => unreachable!(), // This case is already handled above
-                    },
-                );
-                ToolRouterKey::new("local".to_string(), toolkit_name, name, None)
-            }
-        }
+        let (provider, author, name) = match self {
+            ShinkaiTool::Rust(r, _) => ("local".to_string(), r.author(), r.name.clone()),
+            ShinkaiTool::Network(n, _) => (n.provider.to_string(), n.author.to_string(), n.name.clone()),
+            ShinkaiTool::Deno(d, _) => ("local".to_string(), d.author.clone(), d.name.clone()),
+            ShinkaiTool::Python(p, _) => ("local".to_string(), p.author.clone(), p.name.clone()),
+            _ => unreachable!(),
+        };
+        ToolRouterKey::new(provider, author, name, None)
     }
 
     /// Sanitize the config by removing key-values from BasicConfig
@@ -116,8 +113,8 @@ impl ShinkaiTool {
     }
 
     /// Generate the key that this tool will be stored under in the tool router
-    pub fn gen_router_key(source: String, toolkit_name: String, name: String) -> String {
-        let tool_router_key = ToolRouterKey::new(source, toolkit_name, name, None);
+    pub fn gen_router_key(source: String, author: String, name: String) -> String {
+        let tool_router_key = ToolRouterKey::new(source, author, name, None);
         tool_router_key.to_string_without_version()
     }
 
@@ -137,16 +134,6 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.description.clone(),
             ShinkaiTool::Deno(d, _) => d.description.clone(),
             ShinkaiTool::Python(p, _) => p.description.clone(),
-        }
-    }
-
-    /// Toolkit name the tool is from
-    pub fn toolkit_name(&self) -> String {
-        match self {
-            ShinkaiTool::Rust(r, _) => r.toolkit_name(),
-            ShinkaiTool::Network(n, _) => n.toolkit_name.clone(),
-            ShinkaiTool::Deno(d, _) => d.toolkit_name(),
-            ShinkaiTool::Python(p, _) => p.toolkit_name(),
         }
     }
 
@@ -233,9 +220,9 @@ impl ShinkaiTool {
     /// Returns a formatted summary of the tool
     pub fn formatted_tool_summary_for_ui(&self) -> String {
         format!(
-            "Tool Name: {}\nToolkit Name: {}\nDescription: {}",
+            "Tool Name: {}\nAuthor: {}\nDescription: {}",
             self.name(),
-            self.toolkit_name(),
+            self.author(),
             self.description(),
         )
     }
@@ -312,8 +299,8 @@ impl ShinkaiTool {
     /// Returns the author of the tool
     pub fn author(&self) -> String {
         match self {
-            ShinkaiTool::Rust(_r, _) => "@@official.shinkai".to_string(),
-            ShinkaiTool::Network(n, _) => n.provider.clone().to_string(),
+            ShinkaiTool::Rust(r, _) => r.author(),
+            ShinkaiTool::Network(n, _) => n.author.clone(),
             ShinkaiTool::Deno(d, _) => d.author.clone(),
             ShinkaiTool::Python(p, _) => p.author.clone(),
         }
@@ -437,10 +424,12 @@ impl ShinkaiTool {
     pub fn internal_sanitized_name(&self) -> String {
         self.name()
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { 
-                c.to_ascii_lowercase() 
-            } else { 
-                '_' 
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' || c == '-' {
+                    c.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
             })
             .collect::<String>()
     }
@@ -477,12 +466,11 @@ mod tests {
         let deno_tool = DenoTool {
             name: "Shinkai: Download Pages".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            toolkit_name: "deno-toolkit".to_string(),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
             input_args: Parameters::new(),
             output_arg: ToolOutputArg { json: "".to_string() },
             config: vec![],
-            author: "1.0".to_string(),
+            author: "@@official.shinkai".to_string(),
             version: "1.0.0".to_string(),
             js_code: "".to_string(),
             tools: vec![],
@@ -510,7 +498,7 @@ mod tests {
         let router_key = shinkai_tool.tool_router_key();
 
         // Expected pattern: [^a-z0-9_]+ (plus the :::)
-        let expected_key = "local:::deno_toolkit:::shinkai__download_pages";
+        let expected_key = "local:::__official_shinkai:::shinkai__download_pages";
 
         // Assert that the generated key matches the expected pattern
         assert_eq!(router_key.to_string_without_version(), expected_key);
@@ -555,7 +543,6 @@ mod tests {
         let input_args = Parameters::with_single_property("url", "string", "The URL to fetch", true);
 
         let deno_tool = DenoTool {
-            toolkit_name: "deno_toolkit".to_string(),
             name: "shinkai__download_website".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),

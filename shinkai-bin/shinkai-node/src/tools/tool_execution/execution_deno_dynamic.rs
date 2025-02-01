@@ -30,10 +30,9 @@ pub async fn execute_deno_tool(
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
     let tool = DenoTool {
-        toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
         homepage: None,
-        author: "system".to_string(),
+        author: "@@system.shinkai".to_string(),
         version: "1.0.0".to_string(),
         js_code: code,
         tools: vec![],
@@ -127,10 +126,9 @@ pub async fn check_deno_tool(
 ) -> Result<Vec<String>, ToolError> {
     // Create a minimal DenoTool instance
     let tool = DenoTool {
-        toolkit_name: "deno".to_string(),
         name: "deno_runtime".to_string(),
         homepage: None,
-        author: "system".to_string(),
+        author: "@@system.shinkai".to_string(),
         version: "1.0".to_string(),
         js_code: code,
         tools: vec![],

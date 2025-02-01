@@ -65,7 +65,7 @@ impl SqliteManager {
             ])?;
         }
 
-        self.create_empty_inbox(job_inbox_name)?;
+        self.create_empty_inbox(job_inbox_name, Some(is_hidden))?;
 
         Ok(())
     }
@@ -399,13 +399,6 @@ impl SqliteManager {
             InboxName::new(inbox_name).map_err(|e| SqliteManagerError::SomeError(e.to_string()))?;
         let associated_ui_text: Option<String> = row.get(7)?;
         let config_text: Option<String> = row.get(8)?;
-
-        if let Some(ref text) = config_text {
-            match serde_json::from_str::<JobConfig>(text) {
-                Ok(config) => eprintln!("Deserialized config: {:?}", config),
-                Err(e) => eprintln!("Failed to deserialize config: {:?}", e),
-            }
-        }
 
         let scope: MinimalJobScope = serde_json::from_str(&scope_text)?;
         let associated_ui = associated_ui_text
@@ -1056,7 +1049,7 @@ mod tests {
         .unwrap();
 
         let smart_inboxes = db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false))
             .unwrap();
         assert_eq!(smart_inboxes.len(), 2);
 
@@ -1071,7 +1064,7 @@ mod tests {
 
         // Check if the smart_inbox is removed
         let smart_inboxes = db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone())
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false))
             .unwrap();
         assert_eq!(smart_inboxes.len(), 1);
         assert!(smart_inboxes[0].inbox_id != inbox1_name.to_string());

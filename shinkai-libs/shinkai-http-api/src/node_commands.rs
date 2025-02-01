@@ -36,7 +36,7 @@ use shinkai_message_primitives::{
 };
 
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets},
     tool_config::OAuth,
     tool_playground::ToolPlayground,
 };
@@ -512,6 +512,9 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    InternalCheckRustToolsInstallation {
+        res: Sender<Result<bool, String>>,
+    },
     // V2 API
     V2ApiGetPublicKeys {
         res: Sender<Result<GetPublicKeysResponse, APIError>>,
@@ -526,7 +529,17 @@ pub enum NodeCommand {
     },
     V2ApiGetAllSmartInboxes {
         bearer: String,
+        limit: Option<usize>,
+        offset: Option<String>,
+        show_hidden: Option<bool>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
+    },
+    V2ApiGetAllSmartInboxesPaginated {
+        bearer: String,
+        limit: Option<usize>,
+        offset: Option<String>,
+        show_hidden: Option<bool>,
+        res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiUpdateSmartInboxName {
         bearer: String,
@@ -691,7 +704,7 @@ pub enum NodeCommand {
     },
     V2ApiAddShinkaiTool {
         bearer: String,
-        shinkai_tool: ShinkaiTool,
+        shinkai_tool: ShinkaiToolWithAssets,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetShinkaiTool {
@@ -1029,9 +1042,19 @@ pub enum NodeCommand {
         tool_key_path: String,
         res: Sender<Result<Vec<u8>, APIError>>,
     },
+    V2ApiPublishTool {
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiImportTool {
         bearer: String,
         url: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiImportToolZip {
+        bearer: String,
+        file_data: Vec<u8>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiRemoveTool {
@@ -1187,5 +1210,14 @@ pub enum NodeCommand {
     V2ApiDisableAllTools {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiAddRegexPattern {
+        bearer: String,
+        provider_name: String,
+        pattern: String,
+        response: String,
+        description: Option<String>,
+        priority: i32,
+        res: Sender<Result<i64, APIError>>,
     },
 }

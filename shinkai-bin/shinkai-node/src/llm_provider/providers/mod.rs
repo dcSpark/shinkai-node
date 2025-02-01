@@ -11,12 +11,14 @@ use shinkai_message_primitives::schemas::{
     inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::LLMProviderInterface,
     prompts::Prompt,
 };
+use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 
 pub mod claude;
 pub mod exo;
 pub mod gemini;
 pub mod groq;
+pub mod local_regex;
 pub mod ollama;
 pub mod openai;
 pub mod openrouter;
@@ -41,5 +43,6 @@ pub trait LLMService {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
+        db: Arc<SqliteManager>,
     ) -> Result<LLMInferenceResponse, LLMProviderError>;
 }

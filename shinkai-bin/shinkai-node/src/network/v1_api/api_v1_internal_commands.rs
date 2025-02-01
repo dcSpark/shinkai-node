@@ -1,5 +1,6 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
 use crate::network::node::ProxyConnectionInfo;
@@ -129,7 +130,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_inboxes_for_profile(standard_identity) {
+        let result = match db.get_inboxes_for_profile(standard_identity, Some(true)) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -216,7 +217,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_all_smart_inboxes_for_profile(standard_identity) {
+        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true)) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -352,7 +353,7 @@ impl Node {
         sender: Identity,
     ) -> Result<String, NodeError> {
         let mut job_manager = job_manager.lock().await;
-        match job_manager.process_job_message(shinkai_message).await {
+        match job_manager.process_job_message(shinkai_message, false).await {
             Ok(job_id) => {
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
                 let sender_standard = match sender {
@@ -401,9 +402,10 @@ impl Node {
     pub async fn internal_job_message(
         job_manager: Arc<Mutex<JobManager>>,
         shinkai_message: ShinkaiMessage,
+        high_priority: bool,
     ) -> Result<(), NodeError> {
         let mut job_manager = job_manager.lock().await;
-        match job_manager.process_job_message(shinkai_message).await {
+        match job_manager.process_job_message(shinkai_message, high_priority).await {
             Ok(_) => Ok(()),
             Err(err) => Err(NodeError {
                 message: format!("Error with process job message: {}", err),
@@ -751,6 +753,15 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn internal_check_rust_tools_installation(
+        db: Arc<SqliteManager>,
+        res: Sender<Result<bool, String>>,
+    ) -> Result<(), Error> {
+        let result = db.has_rust_tools().map_err(|e| e.to_string());
+        res.send(result).await.unwrap();
         Ok(())
     }
 }

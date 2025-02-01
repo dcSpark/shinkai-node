@@ -8,7 +8,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
-use crate::tools::tool_execution::execution_custom::execute_custom_tool;
+use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,7 @@ use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
@@ -100,21 +100,21 @@ impl ToolRouter {
         }
 
         if is_empty {
-            if let Err(e) = self.add_testing_network_tools().await {
-                eprintln!("Error adding testing network tools: {}", e);
-            }
             if let Err(e) = self.add_rust_tools().await {
                 eprintln!("Error adding rust tools: {}", e);
             }
             if let Err(e) = self.add_static_prompts(&generator).await {
                 eprintln!("Error adding static prompts: {}", e);
             }
-        } else if !has_any_js_tools {
             if let Err(e) = self.add_testing_network_tools().await {
                 eprintln!("Error adding testing network tools: {}", e);
             }
+        } else if !has_any_js_tools {
             if let Err(e) = self.add_rust_tools().await {
                 eprintln!("Error adding rust tools: {}", e);
+            }
+            if let Err(e) = self.add_testing_network_tools().await {
+                eprintln!("Error adding testing network tools: {}", e);
             }
         }
 
@@ -122,9 +122,6 @@ impl ToolRouter {
     }
 
     pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
-        if let Err(e) = self.add_testing_network_tools().await {
-            eprintln!("Error adding testing network tools: {}", e);
-        }
         if let Err(e) = self.add_rust_tools().await {
             eprintln!("Error adding rust tools: {}", e);
         }
@@ -134,9 +131,21 @@ impl ToolRouter {
         if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
+        if let Err(e) = self.add_testing_network_tools().await {
+            eprintln!("Error adding testing network tools: {}", e);
+        }
         Ok(())
     }
 
+    pub async fn sync_tools_from_directory(&self) -> Result<(), ToolError> {
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+            eprintln!("Error importing tools from directory: {}", e);
+        }
+        Ok(())
+    }
+
+    /// Attempts to import each tool from a remote directory JSON.
+    /// Now also checks if a tool is installed with an older version, and if so, calls `upgrade_tool`.
     async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
@@ -146,14 +155,19 @@ impl ToolRouter {
             return Ok(());
         }
 
-        // Start timing before the HTTP request
         let start_time = Instant::now();
+        let node_env = fetch_node_environment();
 
-        let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-            .unwrap_or_else(|_| "https://download.shinkai.com/tools/directory.json".to_string());
+        let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL").unwrap_or_else(|_| {
+            format!(
+                "https://download.shinkai.com/tools-{}/directory.json",
+                env!("CARGO_PKG_VERSION")
+            )
+        });
 
-        let response = reqwest::get(url).await.map_err(|e| ToolError::RequestError(e))?;
+        eprintln!("Importing tools from: {}", url);
 
+        let response = reqwest::get(url).await.map_err(ToolError::RequestError)?;
         if response.status() != 200 {
             return Err(ToolError::ExecutionError(format!(
                 "Import tools request returned a non OK status: {}",
@@ -166,53 +180,131 @@ impl ToolRouter {
             .await
             .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
 
-        let tool_urls = tools
+        // Each entry must have "name", "file", and "routerKey" at minimum, plus optional "version".
+        // E.g. { "name": "xyz", "file": "...", "routerKey": "...", "version": "2.1.0" }
+        let tool_infos = tools
             .iter()
-            .map(|tool| (tool["name"].as_str(), tool["file"].as_str(), tool["routerKey"].as_str()))
-            .collect::<Vec<_>>()
-            .into_iter()
-            .filter(|(name, url, router_key)| url.is_some() && name.is_some() && router_key.is_some())
-            .map(|(name, url, router_key)| (name.unwrap(), url.unwrap(), router_key.unwrap()))
+            .filter_map(|tool| {
+                let name = tool["name"].as_str()?;
+                let file = tool["file"].as_str()?;
+                let router_key = tool["routerKey"].as_str()?;
+                // It's OK if no version is specified in the JSON; default to 1.0.0
+                let version = tool["version"].as_str().unwrap_or("1.0.0").to_owned();
+                Some((name.to_owned(), file.to_owned(), router_key.to_owned(), version))
+            })
             .collect::<Vec<_>>();
 
-        let futures = tool_urls.into_iter().map(|(tool_name, tool_url, router_key)| {
-            let db = db.clone();
-            let node_env = fetch_node_environment();
-            let tool_url = tool_url.to_string();
-            async move {
-                let tool = db.get_tool_by_key(router_key);
-                let _ = match tool {
-                    Ok(_) => {
-                        println!("Tool already exists: {}", router_key);
-                        return Ok::<(), ToolError>(());
-                    }
-                    Err(SqliteManagerError::ToolNotFound(_)) => {
-                        ();
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to get tool: {:#?}", e);
-                        return Ok::<(), ToolError>(());
-                    }
-                };
+        let chunk_size = 5;
+        for chunk in tool_infos.chunks(chunk_size) {
+            let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
+                let db = db.clone();
+                let node_env = node_env.clone();
+                async move {
+                    // Try to see if a tool with the same routerKey is already installed.
+                    match db.get_tool_by_key(router_key) {
+                        Ok(existing_tool) => {
+                            // Compare version numbers:
+                            // The local version is existing_tool.version(),
+                            // the remote version is new_version (string from the JSON).
+                            // We parse them into IndexableVersion and compare.
+                            let local_ver = match existing_tool.version_indexable() {
+                                Ok(iv) => iv,
+                                Err(e) => {
+                                    eprintln!("Failed to parse local version: {}", e);
+                                    return Ok::<(), ToolError>(());
+                                }
+                            };
+                            let remote_ver = match IndexableVersion::from_string(new_version) {
+                                Ok(iv) => iv,
+                                Err(e) => {
+                                    eprintln!("Failed to parse remote version: {}", e);
+                                    return Ok::<(), ToolError>(());
+                                }
+                            };
 
-                match Node::v2_api_import_tool_internal(db, node_env, tool_url).await {
-                    Ok(_) => {
-                        println!("Successfully imported tool {}", tool_name);
-                        return Ok::<(), ToolError>(());
+                            if remote_ver > local_ver {
+                                eprintln!(
+                                    "A newer version is available for tool {} (local: {}, remote: {}). Upgrading...",
+                                    router_key,
+                                    local_ver.to_string(),
+                                    remote_ver.to_string()
+                                );
+
+                                // Node::v2_api_import_tool_internal fetches the new tool code,
+                                // builds a new ShinkaiTool, and returns it.
+                                match Node::v2_api_import_tool_internal(
+                                    db.clone(),
+                                    node_env.clone(),
+                                    tool_url.to_string(),
+                                )
+                                .await
+                                {
+                                    Ok(val) => {
+                                        // We stored the tool under val["tool"] in the JSON response
+                                        let new_tool: ShinkaiTool =
+                                            match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
+                                                Ok(tool) => tool,
+                                                Err(err) => {
+                                                    eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
+                                                    return Ok(());
+                                                }
+                                            };
+
+                                        match db.upgrade_tool(new_tool).await {
+                                            Ok(_) => {
+                                                println!("Upgraded tool {} to version {}", router_key, new_version);
+                                            }
+                                            Err(e) => {
+                                                eprintln!("Failed to upgrade tool {}: {:?}", router_key, e);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Failed to download tool {} for upgrade: {:?}", router_key, e);
+                                    }
+                                }
+                            } else {
+                                // Versions are the same or the local one is newer:
+                                println!("Tool already up-to-date: {} (version: {})", router_key, local_ver);
+                            }
+                        }
+                        Err(SqliteManagerError::ToolNotFound(_)) => {
+                            // If the tool isn't found locally, import it anew
+                            match Node::v2_api_import_tool_internal(db.clone(), node_env.clone(), tool_url.to_string())
+                                .await
+                            {
+                                Ok(val) => {
+                                    // We stored the tool under val["tool"] in the JSON response
+                                    match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
+                                        Ok(_tool) => {
+                                            println!(
+                                                "Successfully imported tool {} (version: {})",
+                                                tool_name, new_version
+                                            );
+                                        }
+                                        Err(err) => {
+                                            eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to import tool {}: {:?}", tool_name, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            // Some DB error or other
+                            eprintln!("Failed to get tool {}: {:?}", router_key, e);
+                        }
                     }
-                    Err(e) => {
-                        eprintln!("Failed to import tool {}: {:#?}", tool_name, e);
-                        return Ok::<(), ToolError>(()); // Continue on error
-                    }
+                    Ok::<(), ToolError>(())
                 }
-            }
-        });
+            });
+            futures::future::join_all(futures).await;
+        }
 
-        futures::future::join_all(futures).await;
-
-        // Calculate and print the duration
         let duration = start_time.elapsed();
-        println!("Total time taken to import tools: {:?}", duration);
+        println!("Total time taken to import/upgrade tools: {:?}", duration);
 
         Ok(())
     }
@@ -261,7 +353,7 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
-    async fn add_rust_tools(&self) -> Result<(), ToolError> {
+    pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
         let rust_tools = get_rust_tools();
         for tool in rust_tools {
             let rust_tool = RustTool::new(
@@ -296,10 +388,10 @@ impl ToolRouter {
             // Manually create NetworkTool
             let network_tool = NetworkTool {
                 name: "network__echo".to_string(),
-                toolkit_name: "shinkai-tool-echo".to_string(),
                 description: "Echoes the input message".to_string(),
                 version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
@@ -329,10 +421,10 @@ impl ToolRouter {
             // Manually create another NetworkTool
             let youtube_tool = NetworkTool {
                 name: "youtube_transcript_with_timestamps".to_string(),
-                toolkit_name: "shinkai-tool-youtube-transcript".to_string(),
                 description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
                 version: "0.1".to_string(),
                 provider: ShinkaiName::new("@@agent_provider.arb-sep-shinkai".to_string()).unwrap(),
+                author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
@@ -531,7 +623,7 @@ impl ToolRouter {
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
                 let tools = python_tool.tools.clone();
                 let support_files =
-                    generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                    generate_tool_definitions(tools, CodeLanguage::Python, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
 
@@ -554,21 +646,23 @@ impl ToolRouter {
                     &python_tool.oauth,
                 )?;
 
-                let result = python_tool.run(
-                    envs,
-                    node_env.api_listen_address.ip().to_string(),
-                    node_env.api_listen_address.port(),
-                    support_files,
-                    function_args,
-                    function_config_vec,
-                    node_storage_path,
-                    app_id.clone(),
-                    tool_id.clone(),
-                    node_name,
-                    false,
-                    None,
-                    Some(all_files),
-                ).await?;
+                let result = python_tool
+                    .run(
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        support_files,
+                        function_args,
+                        function_config_vec,
+                        node_storage_path,
+                        app_id.clone(),
+                        tool_id.clone(),
+                        node_name,
+                        false,
+                        Some(tool_id),
+                        Some(all_files),
+                    )
+                    .await?;
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
                 return Ok(ToolCallFunctionResponse {
@@ -612,7 +706,7 @@ impl ToolRouter {
                     &None,
                 )?;
 
-                let result = execute_custom_tool(
+                let result = try_to_execute_rust_tool(
                     &shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     function_args,
                     tool_id,
@@ -679,21 +773,23 @@ impl ToolRouter {
                     &deno_tool.oauth,
                 )?;
 
-                let result = deno_tool.run(
-                    envs,
-                    node_env.api_listen_address.ip().to_string(),
-                    node_env.api_listen_address.port(),
-                    support_files,
-                    function_args,
-                    function_config_vec,
-                    node_storage_path,
-                    app_id,
-                    tool_id.clone(),
-                    node_name,
-                    false,
-                    Some(tool_id),
-                    Some(all_files),
-                ).await?;
+                let result = deno_tool
+                    .run(
+                        envs,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        support_files,
+                        function_args,
+                        function_config_vec,
+                        node_storage_path,
+                        app_id,
+                        tool_id.clone(),
+                        node_name,
+                        false,
+                        Some(tool_id),
+                        Some(all_files),
+                    )
+                    .await?;
 
                 let result_str = serde_json::to_string(&result)
                     .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
@@ -1034,22 +1130,24 @@ impl ToolRouter {
             &oauth,
         )?;
 
-        let result = js_tool.run(
-            env,
-            node_env.api_listen_address.ip().to_string(),
-            node_env.api_listen_address.port(),
-            support_files,
-            function_args,
-            function_config_vec,
-            node_storage_path,
-            app_id,
-            tool_id.clone(),
-            // TODO Is this correct?
-            requester_node_name,
-            true,
-            Some(tool_id),
-            None,
-        ).await?;
+        let result = js_tool
+            .run(
+                env,
+                node_env.api_listen_address.ip().to_string(),
+                node_env.api_listen_address.port(),
+                support_files,
+                function_args,
+                function_config_vec,
+                node_storage_path,
+                app_id,
+                tool_id.clone(),
+                // TODO Is this correct?
+                requester_node_name,
+                true,
+                Some(tool_id),
+                None,
+            )
+            .await?;
         let result_str =
             serde_json::to_string(&result).map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 

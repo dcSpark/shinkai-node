@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{schemas::{job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey}, shinkai_utils::job_scope::MinimalJobScope};
+use crate::{
+    schemas::{job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey},
+    shinkai_utils::job_scope::MinimalJobScope,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -13,8 +16,10 @@ pub struct Agent {
     pub ui_description: String,
     pub knowledge: Vec<String>,
     pub storage_path: String,
-    #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys",
-            deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
+    #[serde(
+        serialize_with = "ToolRouterKey::serialize_tool_router_keys",
+        deserialize_with = "ToolRouterKey::deserialize_tool_router_keys"
+    )]
     pub tools: Vec<ToolRouterKey>,
     pub debug_mode: bool,
     pub config: Option<JobConfig>,
@@ -38,8 +43,8 @@ mod tests {
             "knowledge": ["test knowledge"],
             "storage_path": "/test/path",
             "tools": [
-                "local:::toolkit:::tool1",
-                "local:::toolkit:::tool2:::1.0"
+                "local:::__some_name:::tool1",
+                "local:::__some_name:::tool2:::1.0"
             ],
             "debug_mode": false,
             "config": null
@@ -48,7 +53,7 @@ mod tests {
         let agent: Agent = serde_json::from_value(json_data).unwrap();
         assert_eq!(agent.tools.len(), 2);
         assert_eq!(agent.tools[0].source, "local");
-        assert_eq!(agent.tools[0].toolkit_name, "toolkit");
+        assert_eq!(agent.tools[0].author, "__some_name");
         assert_eq!(agent.tools[0].name, "tool1");
         assert_eq!(agent.tools[0].version, None);
         assert_eq!(agent.tools[1].version, Some("1.0".to_string()));
