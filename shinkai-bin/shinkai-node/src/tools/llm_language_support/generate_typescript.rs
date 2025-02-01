@@ -201,6 +201,7 @@ pub fn generate_typescript_definition(
     }};
     try {{
         const response = await axios.post(_url, data, {{
+            timeout: 1000 * 60 * 6, // 6 minutes timeout
             headers: {{
                 'Authorization': `Bearer ${{Deno.env.get('BEARER')}}`,
                 'x-shinkai-tool-id': `${{Deno.env.get('X_SHINKAI_TOOL_ID')}}`,
