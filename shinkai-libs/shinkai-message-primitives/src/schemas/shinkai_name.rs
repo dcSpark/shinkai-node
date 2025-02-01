@@ -37,8 +37,8 @@ impl fmt::Display for ShinkaiSubidentityType {
 // @@alice.shinkai/profileName
 // @@alice.shinkai/profileName/agent/myChatGPTAgent
 // @@alice.shinkai/profileName/device/myPhone
-// @@alice.arb-sep-shinkai
-// @@alice.arb-sep-shinkai/profileName
+// @@alice.sep-shinkai
+// @@alice.sep-shinkai/profileName
 
 // Not valid examples
 // @@alice.shinkai/profileName/myPhone
@@ -471,7 +471,7 @@ impl ShinkaiName {
     }
 
     pub fn default_testnet_localhost() -> Self {
-        ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string())
+        ShinkaiName::new("@@localhost.sep-shinkai/main".to_string())
             .expect("Failed to create default testnet localhost ShinkaiName")
     }
 }

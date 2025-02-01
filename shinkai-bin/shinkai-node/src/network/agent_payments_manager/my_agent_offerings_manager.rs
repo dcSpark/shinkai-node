@@ -671,7 +671,7 @@ mod tests {
             let (_, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
             let dummy_standard_identity = Identity::Standard(StandardIdentity {
-                full_identity_name: ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap(),
+                full_identity_name: ShinkaiName::new("@@localhost.sep-shinkai/main".to_string()).unwrap(),
                 addr: None,
                 node_encryption_public_key: node1_encryption_pk,
                 node_signature_public_key: node1_identity_pk,
@@ -690,7 +690,7 @@ mod tests {
     #[async_trait]
     impl IdentityManagerTrait for MockIdentityManager {
         fn find_by_identity_name(&self, _full_profile_name: ShinkaiName) -> Option<&Identity> {
-            if _full_profile_name.to_string() == "@@localhost.arb-sep-shinkai/main" {
+            if _full_profile_name.to_string() == "@@localhost.sep-shinkai/main" {
                 Some(&self.dummy_standard_identity)
             } else {
                 None
@@ -698,7 +698,7 @@ mod tests {
         }
 
         async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
-            if full_identity_name == "@@localhost.arb-sep-shinkai/main" {
+            if full_identity_name == "@@localhost.sep-shinkai/main" {
                 Some(self.dummy_standard_identity.clone())
             } else {
                 None
@@ -713,7 +713,7 @@ mod tests {
             &self,
             full_profile_name: &str,
         ) -> Result<StandardIdentity, String> {
-            if full_profile_name == "@@localhost.arb-sep-shinkai" {
+            if full_profile_name == "@@localhost.sep-shinkai" {
                 if let Identity::Standard(identity) = &self.dummy_standard_identity {
                     Ok(identity.clone())
                 } else {
@@ -734,11 +734,11 @@ mod tests {
     }
 
     fn default_test_profile() -> ShinkaiName {
-        ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap()
+        ShinkaiName::new("@@localhost.sep-shinkai/main".to_string()).unwrap()
     }
 
     fn node_name() -> ShinkaiName {
-        ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap()
+        ShinkaiName::new("@@localhost.sep-shinkai".to_string()).unwrap()
     }
 
     // async fn setup_default_vector_fs() -> VectorFS {
@@ -777,7 +777,7 @@ mod tests {
     //     ));
 
     //     let tool_router = Arc::new(ToolRouter::new(lance_db.clone()));
-    //     let node_name = ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap();
+    //     let node_name = ShinkaiName::new("@@localhost.sep-shinkai/main".to_string()).unwrap();
 
     //     let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
     //     let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
@@ -808,7 +808,7 @@ mod tests {
     //         "shinkai_toolkit".to_string(),
     //         "A tool for testing".to_string(),
     //         "1.0".to_string(),
-    //         ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap(),
+    //         ShinkaiName::new("@@localhost.sep-shinkai".to_string()).unwrap(),
     //         UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
     //         true,
     //         vec![],

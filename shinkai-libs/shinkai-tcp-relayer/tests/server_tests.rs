@@ -25,7 +25,7 @@ use tokio::time::sleep;
 use tokio::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-const RELAYER_IDENTITY: &str = "@@tcp_tests_proxy.arb-sep-shinkai";
+const RELAYER_IDENTITY: &str = "@@tcp_tests_proxy.sep-shinkai";
 const RELAYER_ENCRYPTION_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
 const RELAYER_SIGNATURE_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
 
@@ -132,7 +132,7 @@ async fn test_handle_client_identity() {
     // Connect to the listener
     let mut socket = tokio::net::TcpStream::connect(addr).await.unwrap();
 
-    let identity = "@@node1_test_with_proxy.arb-sep-shinkai";
+    let identity = "@@node1_test_with_proxy.sep-shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, _encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
@@ -176,7 +176,7 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
     let addr = listener.local_addr().unwrap();
 
     // Localhost
-    // let localhost_identity = "localhost.arb-sep-shinkai";
+    // let localhost_identity = "localhost.sep-shinkai";
     let mut localhost_socket = tokio::net::TcpStream::connect(addr).await.unwrap();
 
     // Create a TCPProxy instance
@@ -244,8 +244,8 @@ async fn test_message_from_localhost_to_external_identity_testing_tcp_relay() {
 
     // Create the payload using create_shinkai_message_for_shared_files
     let payload = create_shinkai_message_for_shared_files(
-        "@@localhost.arb-sep-shinkai",
-        "@@external_identity_testing_tcp_relay.arb-sep-shinkai",
+        "@@localhost.sep-shinkai",
+        "@@external_identity_testing_tcp_relay.sep-shinkai",
         "main",
     )
     .await;
@@ -347,7 +347,7 @@ async fn test_message_from_node1_to_external_identity_testing_tcp_relay() {
     });
 
     // Connect to the listener
-    let node1_identity = "@@node1_test_with_proxy.arb-sep-shinkai";
+    let node1_identity = "@@node1_test_with_proxy.sep-shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (_encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     eprintln!(
@@ -406,8 +406,8 @@ async fn test_message_from_node1_to_external_identity_testing_tcp_relay() {
 
     // Create the payload using create_shinkai_message_for_shared_files
     let payload = create_shinkai_message_for_shared_files(
-        "@@node1_test_with_proxy.arb-sep-shinkai",
-        "@@external_identity_testing_tcp_relay.arb-sep-shinkai",
+        "@@node1_test_with_proxy.sep-shinkai",
+        "@@external_identity_testing_tcp_relay.sep-shinkai",
         "main",
     )
     .await;
@@ -563,9 +563,9 @@ async fn create_shinkai_message_for_shared_files(
 }
 
 async fn get_onchain_identity(node_name: &str) -> (VerifyingKey, EncryptionPublicKey) {
-    let rpc_url = env::var("RPC_URL").unwrap_or("https://arbitrum-sepolia.blockpi.network/v1/rpc/public".to_string());
+    let rpc_url = env::var("RPC_URL").unwrap_or("https://sepolia.base.org".to_string());
     let contract_address =
-        env::var("CONTRACT_ADDRESS").unwrap_or("0x1d2D57F78Bc3B878aF68c411a03AcF327c85e0D6".to_string());
+        env::var("CONTRACT_ADDRESS").unwrap_or("0x425fb20ba3874e887336aaa7f3fab32d08135ba9".to_string());
 
     let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 
