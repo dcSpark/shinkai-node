@@ -552,16 +552,21 @@ impl Node {
         let check_peers_interval_secs = 5;
         let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
+        // Add 6-hour interval for periodic tasks
+        let six_hours_in_secs = 6 * 60 * 60; // 6 hours in seconds
+        let mut six_hour_interval = async_std::stream::interval(Duration::from_secs(six_hours_in_secs));
+
         // TODO: implement a TCP connection here with a proxy if it's set
 
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
             let retry_future = retry_interval.next().fuse();
+            let six_hour_future = six_hour_interval.next().fuse();
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future, retry_future);
+            pin_mut!(ping_future, commands_future, retry_future, six_hour_future);
 
             select! {
                     _retry = retry_future => {
@@ -580,6 +585,21 @@ impl Node {
                                 identity_manager_clone,
                                 proxy_connection_info,
                                 ws_manager_trait,
+                            ).await;
+                        });
+                    },
+                    _six_hour = six_hour_future => {
+                        // Clone necessary variables for periodic tasks
+                        let db_clone = self.db.clone();
+                        let node_name_clone = self.node_name.clone();
+                        let identity_manager_clone = self.identity_manager.clone();
+
+                        // Spawn a new task to handle periodic maintenance
+                        tokio::spawn(async move {
+                            let _ = Self::handle_periodic_maintenance(
+                                db_clone,
+                                node_name_clone,
+                                identity_manager_clone,
                             ).await;
                         });
                     },
