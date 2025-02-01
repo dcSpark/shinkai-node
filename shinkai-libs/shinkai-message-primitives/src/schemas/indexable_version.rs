@@ -1,6 +1,27 @@
 // Define the IndexableVersion struct
+#[derive(Debug, Eq, PartialEq)]
 pub struct IndexableVersion {
     version_number: u64,
+}
+
+// Implement comparison traits
+impl PartialOrd for IndexableVersion {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for IndexableVersion {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.version_number.cmp(&other.version_number)
+    }
+}
+
+// Implement Display trait for string formatting
+impl std::fmt::Display for IndexableVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_version_string())
+    }
 }
 
 impl IndexableVersion {
@@ -13,8 +34,10 @@ impl IndexableVersion {
 
         let mut version_number = 0;
         for (i, part) in parts.iter().enumerate() {
-            let num: u64 = part.parse().map_err(|_| "Invalid number in version string".to_string())?;
-            
+            let num: u64 = part
+                .parse()
+                .map_err(|_| "Invalid number in version string".to_string())?;
+
             // Check if the number is above 999 and not in the first position
             if i > 0 && num > 999 {
                 return Err("Numbers above 999 are only allowed in the first position".to_string());
@@ -122,4 +145,3 @@ mod tests {
         assert!(IndexableVersion::from_string("1000.2.3").is_ok());
     }
 }
-
