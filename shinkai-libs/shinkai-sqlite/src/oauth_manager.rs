@@ -792,6 +792,8 @@ mod tests {
                 .map(String::from)
                 .collect(),
             refresh_token: retrieved_token.refresh_token,
+            request_token_auth_header: retrieved_token.request_token_auth_header,
+            request_token_content_type: retrieved_token.request_token_content_type,
         };
 
         // Verify the restored OAuth matches the original
@@ -914,6 +916,8 @@ mod tests {
             response_type: retrieved_token.response_type,
             scopes: scopes,
             refresh_token: retrieved_token.refresh_token,
+            request_token_auth_header: retrieved_token.request_token_auth_header,
+            request_token_content_type: retrieved_token.request_token_content_type,
         };
 
         // Verify the restored OAuth matches the original
