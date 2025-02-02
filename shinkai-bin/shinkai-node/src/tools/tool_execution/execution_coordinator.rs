@@ -222,12 +222,12 @@ pub async fn handle_oauth(
             // Add PKCE parameters if enabled
             if let Some(pkce_type) = &o.pkce_type {
                 if let Some(pkce_uuid) = pkce_uuid.clone() {
-                    match pkce_type.to_string().as_str() {
+                    match pkce_type.to_lowercase().as_str() {
                         "plain" => {
                             query_params.push(("code_challenge", pkce_uuid));
                             query_params.push(("code_challenge_method", "plain".to_string()));
                         }
-                        "S256" => {
+                        "s256" => {
                             // Generate SHA256 hash of the verifier
                             let mut hasher = Sha256::new();
                             hasher.update(pkce_uuid.as_bytes());
