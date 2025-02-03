@@ -530,7 +530,7 @@ mod tests {
                 "properties": {},
                 "required": []
             }),
-            author: "@@my_local_ai.arb-sep-shinkai".to_string(),
+            author: "@@my_local_ai.sep-shinkai".to_string(),
             keywords: vec![
                 "Deno".to_string(),
                 "Markdown".to_string(),

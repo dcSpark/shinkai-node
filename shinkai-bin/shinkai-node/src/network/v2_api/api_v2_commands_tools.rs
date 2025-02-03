@@ -1,7 +1,14 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::IdentityManager,
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 
 use async_channel::Sender;
@@ -12,21 +19,36 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
+    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
-    }, shinkai_message::shinkai_message_schemas::JobMessage
+        shinkai_name::ShinkaiName,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+    },
+    shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
+    deno_tools::DenoTool,
+    error::ToolError,
+    python_tools::PythonTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::ToolPlayground,
 };
 
 use std::{
-    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
+    env,
+    fs::File,
+    io::{Read, Write},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
@@ -45,11 +67,9 @@ impl Node {
     ///
     /// The function returns a total of 10 results based on the following logic:
     /// 1. All FTS results are added first.
-    /// 2. If there is a vector search result with a score under 0.2, it is
-    ///    added as the second result.
+    /// 2. If there is a vector search result with a score under 0.2, it is added as the second result.
     /// 3. Remaining FTS results are added.
-    /// 4. If there are remaining slots after adding FTS results, they are
-    ///    filled with additional vector search results.
+    /// 4. If there are remaining slots after adding FTS results, they are filled with additional vector search results.
     ///
     /// # Arguments
     ///
@@ -343,7 +363,7 @@ impl Node {
                                     error: "Failed to create directory".to_string(),
                                     message: format!("Failed to create directory: {}", s.err().unwrap()),
                                 };
-                                res.send(Err(api_error)).await;
+                                let _ = res.send(Err(api_error)).await;
                                 return Ok(());
                             }
                         }
@@ -358,7 +378,7 @@ impl Node {
                                     error: "Failed to create directory".to_string(),
                                     message: format!("Failed to create directory: {}", status.err().unwrap()),
                                 };
-                                res.send(Err(api_error)).await;
+                                let _ = res.send(Err(api_error)).await;
                                 return Ok(());
                             }
                         }
@@ -450,26 +470,39 @@ impl Node {
         node_env: NodeEnvironment,
         _tool_id: String,
         app_id: String,
+        original_tool_key_path: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-        let mut updated_payload = payload.clone();
 
+        let result = Self::set_playground_tool(db, payload, node_env, app_id, original_tool_key_path).await;
+        let _ = match result {
+            Ok(result) => res.send(Ok(result)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+        return Ok(());
+    }
+
+    async fn set_playground_tool(
+        db: Arc<SqliteManager>,
+        payload: ToolPlayground,
+        node_env: NodeEnvironment,
+        app_id: String,
+        original_tool_key_path: Option<String>,
+    ) -> Result<Value, APIError> {
+        let mut updated_payload = payload.clone();
         let dependencies = updated_payload.metadata.tools.clone().unwrap_or_default();
         for dependency in dependencies {
-            let tool = db.get_tool_by_key(&dependency.to_string_without_version());
-            if tool.is_err() {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Tool not found: {}", dependency.to_string_without_version()),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
+            let _ = db
+                .get_tool_by_key(&dependency.to_string_without_version())
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get tool: {}", e),
+                })?;
         }
 
         let shinkai_tool = match payload.language {
@@ -525,6 +558,16 @@ impl Node {
 
         updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key().to_string_without_version());
 
+        let mut delete_old_tool = false;
+        if let Some(original_tool_key_path) = original_tool_key_path.clone() {
+            let original_tool_key = ToolRouterKey::from_string(&original_tool_key_path)?;
+            println!("old tool_key: {:?}", original_tool_key);
+            delete_old_tool = original_tool_key.to_string_without_version()
+                != shinkai_tool.tool_router_key().to_string_without_version();
+        }
+        println!("new tool_key: {:?}", updated_payload.tool_router_key);
+        println!("delete_old_tool: {:?}", delete_old_tool);
+
         let storage_path = node_env.node_storage_path.unwrap_or_default();
         // Check all asset files exist in the {storage}/tool_storage/assets/{app_id}/
         let mut origin_path: PathBuf = PathBuf::from(storage_path.clone());
@@ -536,13 +579,11 @@ impl Node {
                 let mut asset_path: PathBuf = origin_path.clone();
                 asset_path.push(file_name.clone());
                 if !asset_path.exists() {
-                    let api_error = APIError {
+                    return Err(APIError {
                         code: StatusCode::BAD_REQUEST.as_u16(),
                         error: "Bad Request".to_string(),
                         message: format!("Asset file {} does not exist", file_name.clone()),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    });
                 }
             }
         }
@@ -553,15 +594,11 @@ impl Node {
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
         perm_file_path.push(shinkai_tool.tool_router_key().convert_to_path());
-        if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to create permanent storage directory: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
+        std::fs::create_dir_all(&perm_file_path).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to create permanent storage directory: {}", e),
+        })?;
         if let Some(assets) = payload.assets.clone() {
             for file_name in assets {
                 let mut tool_path = origin_path.clone();
@@ -573,117 +610,72 @@ impl Node {
                     tool_path.to_string_lossy(),
                     perm_path.to_string_lossy()
                 );
-                let copy_res = std::fs::copy(tool_path, perm_path);
-                if copy_res.is_err() {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!(
-                            "Failed to copy asset file {} to permanent storage: {}",
-                            file_name.clone(),
-                            copy_res.err().unwrap()
-                        ),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        }
-
-        // Function to handle saving metadata and sending response
-        async fn save_metadata_and_respond(
-            db: Arc<SqliteManager>,
-            res: &Sender<Result<Value, APIError>>,
-            updated_payload: ToolPlayground,
-            tool: ShinkaiTool,
-        ) -> Result<(), NodeError> {
-            // Acquire a write lock on the db
-            let db_write = db;
-
-            if let Err(err) = db_write.set_tool_playground(&updated_payload) {
-                let api_error = APIError {
+                let _ = std::fs::copy(tool_path, perm_path).map_err(|e| APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to save playground tool: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                    message: format!(
+                        "Failed to copy asset file {} to permanent storage: {}",
+                        file_name.clone(),
+                        e
+                    ),
+                })?;
             }
-
-            match serde_json::to_value(&tool) {
-                Ok(tool_json) => {
-                    let response = json!({
-                        "shinkai_tool": tool_json,
-                        "metadata": updated_payload
-                    });
-                    let _ = res.send(Ok(response)).await;
-                }
-                Err(_) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: "Failed to serialize tool to JSON".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                }
-            }
-
-            Ok(())
         }
 
         // Create a longer-lived binding for the db clone
-        let version = shinkai_tool.version_indexable();
-        if version.is_err() {
-            let api_error = APIError {
+        let version = shinkai_tool.version_indexable()?;
+        let version = Some(version);
+        let exists = db
+            .tool_exists(&shinkai_tool.tool_router_key().to_string_without_version(), version)
+            .map_err(|e| APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
-                message: format!("Failed to get version: {}", version.err().unwrap()),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
+                message: format!("Failed to check if tool exists: {}", e),
+            })?;
+
+        let tool = match exists {
+            // Tool already exists, update it
+            true => db.update_tool(shinkai_tool).await,
+            // Add the tool to the LanceShinkaiDb
+            false => db.add_tool(shinkai_tool.clone()).await,
         }
-        let version = Some(version.unwrap());
-        match db.tool_exists(&shinkai_tool.tool_router_key().to_string_without_version(), version) {
-            Ok(true) => {
-                // Tool already exists, update it
-                match db.update_tool(shinkai_tool).await {
-                    Ok(tool) => save_metadata_and_respond(db, &res, updated_payload, tool).await,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to update tool in SqliteManager: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        Ok(())
-                    }
-                }
-            }
-            Ok(false) => {
-                // Add the tool to the LanceShinkaiDb
-                match db.add_tool(shinkai_tool.clone()).await {
-                    Ok(tool) => save_metadata_and_respond(db, &res, updated_payload, tool).await,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to add tool to SqliteManager: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        Ok(())
-                    }
-                }
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to check if tool exists: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to add tool to SqliteManager: {}", e),
+        })?;
+
+        db.set_tool_playground(&updated_payload).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to save playground tool: {}", e),
+        })?;
+
+        // Let's delete the old tool if it exists
+        if delete_old_tool {
+            if let Some(original_tool_key_path) = original_tool_key_path {
+                let original_tool_key = ToolRouterKey::from_string(&original_tool_key_path)?;
+                println!(
+                    "removing tool with key: {:?}",
+                    original_tool_key.to_string_without_version()
+                );
+                let delete_tool_playground = db.remove_tool_playground(&original_tool_key.to_string_without_version());
+                let delete_tool = db.remove_tool(&original_tool_key.to_string_without_version(), None);
+                println!("remove tool playground: {:?}", delete_tool_playground);
+                println!("remove tool: {:?}", delete_tool);
             }
         }
+        // Return playground as Value
+        let tool_json = serde_json::to_value(&tool).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to serialize tool to JSON: {}", e),
+        })?;
+
+        return Ok(json!({
+            "shinkai_tool": tool_json,
+            "metadata": updated_payload
+        }));
     }
 
     pub async fn v2_api_list_playground_tools(
@@ -1277,6 +1269,7 @@ impl Node {
             job_creation_info,
             job.parent_agent_or_llm_provider_id.clone(),
             metadata,
+            None,
             db,
             node_name_clone,
             identity_manager,
@@ -1504,6 +1497,7 @@ impl Node {
             tool_key: None,
             fs_files_paths: vec![],
             job_filenames: vec![],
+            tools: None,
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(
@@ -2301,7 +2295,7 @@ impl Node {
         }
     }
 
-    async fn process_tool_zip(
+    pub async fn process_tool_zip(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
@@ -2442,6 +2436,11 @@ impl Node {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    use shinkai_embedding::model_type::EmbeddingModelType;
+    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
 
     // TODO: update to not use workflow
     #[test]

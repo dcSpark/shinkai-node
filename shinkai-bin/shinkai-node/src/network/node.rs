@@ -18,7 +18,6 @@ use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use core::panic;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -36,22 +35,23 @@ use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tcp_relayer::NetworkMessage;
 use std::convert::TryInto;
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-use std::fs;
-use std::path::Path;
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
@@ -195,7 +195,8 @@ impl Node {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
-            // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
+            // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update
+            // the keys
         }
 
         // Setup Identity Manager
@@ -359,7 +360,8 @@ impl Node {
         .await;
         let sheet_manager = sheet_manager_result.unwrap();
 
-        // It reads the api_v2_key from env, if not from db and if not, then it generates a new one that gets saved in the db
+        // It reads the api_v2_key from env, if not from db and if not, then it generates a new one that gets saved in
+        // the db
         let api_v2_key = if let Some(key) = api_v2_key {
             db_arc
                 .set_api_v2_key(&key)
@@ -430,7 +432,11 @@ impl Node {
             // Check if the directory exists, and create it if it doesn't
             if !Path::new(&vr_path.as_path()).exists() {
                 fs::create_dir_all(&vr_path.as_path()).map_err(|e| {
-                    NodeError::from(format!("Failed to create directory {}: {}", vr_path.as_path().display(), e))
+                    NodeError::from(format!(
+                        "Failed to create directory {}: {}",
+                        vr_path.as_path().display(),
+                        e
+                    ))
                 })?;
             }
         }
@@ -552,16 +558,21 @@ impl Node {
         let check_peers_interval_secs = 5;
         let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
+        // Add 6-hour interval for periodic tasks
+        let six_hours_in_secs = 6 * 60 * 60; // 6 hours in seconds
+        let mut six_hour_interval = async_std::stream::interval(Duration::from_secs(six_hours_in_secs));
+
         // TODO: implement a TCP connection here with a proxy if it's set
 
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
             let retry_future = retry_interval.next().fuse();
+            let six_hour_future = six_hour_interval.next().fuse();
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future, retry_future);
+            pin_mut!(ping_future, commands_future, retry_future, six_hour_future);
 
             select! {
                     _retry = retry_future => {
@@ -580,6 +591,23 @@ impl Node {
                                 identity_manager_clone,
                                 proxy_connection_info,
                                 ws_manager_trait,
+                            ).await;
+                        });
+                    },
+                    _six_hour = six_hour_future => {
+                        // Clone necessary variables for periodic tasks
+                        let db_clone = self.db.clone();
+                        let node_name_clone = self.node_name.clone();
+                        let identity_manager_clone = self.identity_manager.clone();
+                        let tool_router_clone = self.tool_router.clone();
+
+                        // Spawn a new task to handle periodic maintenance
+                        tokio::spawn(async move {
+                            let _ = Self::handle_periodic_maintenance(
+                                db_clone,
+                                node_name_clone,
+                                identity_manager_clone,
+                                tool_router_clone,
                             ).await;
                         });
                     },
@@ -1096,9 +1124,10 @@ impl Node {
     }
 
     // TODO: Add a new send that schedules messages to be sent at a later time.
-    // It may be more complex than what it sounds because there could be a big backlog of messages to send which were already generated
-    // and the time associated with the message may be too old to be recognized by the other node.
-    // so most likely we need a way to update the messages (they are signed by this node after all) so it can update the time to the current time
+    // It may be more complex than what it sounds because there could be a big backlog of messages to send which were
+    // already generated and the time associated with the message may be too old to be recognized by the other node.
+    // so most likely we need a way to update the messages (they are signed by this node after all) so it can update the
+    // time to the current time
 
     // Send a message to a peer.
     #[allow(clippy::too_many_arguments)]

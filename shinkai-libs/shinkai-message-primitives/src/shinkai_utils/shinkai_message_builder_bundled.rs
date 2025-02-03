@@ -22,7 +22,10 @@ use crate::{
 };
 
 use super::{
-    encryption::unsafe_deterministic_encryption_keypair, job_scope::MinimalJobScope, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}, shinkai_path::ShinkaiPath
+    encryption::unsafe_deterministic_encryption_keypair,
+    job_scope::MinimalJobScope,
+    shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
+    shinkai_path::ShinkaiPath,
 };
 
 impl ShinkaiMessageBuilder {
@@ -151,6 +154,7 @@ impl ShinkaiMessageBuilder {
             metadata: None,
             tool_key: None,
             job_filenames: vec![],
+            tools: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -197,6 +201,7 @@ impl ShinkaiMessageBuilder {
             metadata: None,
             tool_key: None,
             job_filenames: vec![],
+            tools: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
@@ -246,6 +251,7 @@ impl ShinkaiMessageBuilder {
             tool_key: None,
             fs_files_paths: files,
             job_filenames: vec![],
+            tools: None,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 

@@ -156,7 +156,7 @@ impl JobManager {
         );
 
         let node_name = user_profile
-            .unwrap_or_else(|| ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap())
+            .unwrap_or_else(|| ShinkaiName::new("@@localhost.sep-shinkai".to_string()).unwrap())
             .node_name;
 
         let error_json = error.to_error_message();

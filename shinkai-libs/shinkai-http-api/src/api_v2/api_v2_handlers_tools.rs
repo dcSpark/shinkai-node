@@ -99,6 +99,7 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::header::<String>("x-shinkai-tool-id"))
         .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::header::optional::<String>("x-shinkai-original-tool-router-key"))
         .and(warp::body::json())
         .and_then(set_playground_tool_handler);
 
@@ -788,9 +789,15 @@ pub async fn set_playground_tool_handler(
     authorization: String,
     tool_id: String,
     app_id: String,
+    original_tool_key_path: Option<String>,
     payload: ToolPlayground,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    if let Some(original_tool_key_path) = original_tool_key_path.clone() {
+        if original_tool_key_path.split(":::").collect::<Vec<&str>>().len() != 4 {
+            println!("Invalid original_tool_key_path: {}", original_tool_key_path);
+        }
+    }
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSetPlaygroundTool {
@@ -798,6 +805,7 @@ pub async fn set_playground_tool_handler(
             payload, 
             tool_id: safe_folder_name(&tool_id),
             app_id: safe_folder_name(&app_id),
+            original_tool_key_path,
             res: res_sender,
         })
         .await

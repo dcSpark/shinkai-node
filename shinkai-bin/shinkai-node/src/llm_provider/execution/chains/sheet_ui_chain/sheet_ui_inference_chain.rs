@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
 };
 use crate::llm_provider::execution::chains::sheet_ui_chain::sheet_rust_functions::SheetRustFunctions;
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
@@ -102,8 +102,8 @@ impl SheetUIInferenceChain {
         }
     }
 
-    // Note: this code is very similar to the one from Generic, maybe we could inject
-    // the tool code handling in the future so we can reuse the code
+    // Note: this code is very similar to the one from Generic, maybe we could
+    // inject the tool code handling in the future so we can reuse the code
     #[allow(clippy::too_many_arguments)]
     pub async fn start_chain(
         db: Arc<SqliteManager>,
@@ -390,6 +390,7 @@ impl SheetUIInferenceChain {
                             full_job.clone(),
                             parsed_message,
                             None, // TODO: hook this up
+                            None, // TODO: tools scope
                             fs_files_paths.clone(),
                             job_filenames.clone(),
                             message_hash_id.clone(),

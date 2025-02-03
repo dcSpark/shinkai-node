@@ -4,14 +4,17 @@ use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueMan
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    unsafe_deterministic_encryption_keypair, EncryptionMethod
+    unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName, shinkai_message::{
-        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{JobMessage, MessageSchemaType}
-    }, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
+    schemas::shinkai_name::ShinkaiName,
+    shinkai_message::{
+        shinkai_message::ShinkaiMessage,
+        shinkai_message_schemas::{JobMessage, MessageSchemaType},
+    },
+    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
@@ -196,6 +199,7 @@ async fn test_process_job_queue_concurrency() {
                 tool_key: None,
                 fs_files_paths: vec![],
                 job_filenames: vec![],
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -343,6 +347,7 @@ async fn test_sequential_process_for_same_job_id() {
                 tool_key: None,
                 fs_files_paths: vec![],
                 job_filenames: vec![],
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,

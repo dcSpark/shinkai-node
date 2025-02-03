@@ -156,6 +156,7 @@ mod tests {
             tool_key: Some("tool_key".to_string()),
             fs_files_paths: vec![],
             job_filenames: vec![],
+            tools: None,
         };
 
         // Serialize the JobMessage to a JSON string
@@ -181,6 +182,7 @@ mod tests {
             tool_key: Some("tool_key".to_string()),
             fs_files_paths: vec![ShinkaiPath::new("/path/to/file")],
             job_filenames: vec!["file1.txt".to_string()],
+            tools: None,
         };
 
         // Serialize the JobMessage to a JSON string

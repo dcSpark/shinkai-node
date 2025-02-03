@@ -61,10 +61,7 @@ pub enum SqliteManagerError {
     #[error("Failed fetching value")]
     FailedFetchingValue,
     #[error("Query error: {query}, source: {source}")]
-    QueryError {
-        query: String,
-        source: rusqlite::Error,
-    },
+    QueryError { query: String, source: rusqlite::Error },
     #[error("Directory not empty")]
     DirectoryNotEmpty,
     #[error("Directory not found")]
@@ -91,6 +88,8 @@ pub enum SqliteManagerError {
     RegexPatternValidationError(String),
     #[error("Validation error: {0}")]
     ValidationError(String),
+    #[error("Tool type mismatch")]
+    ToolTypeMismatch,
     // Add other error variants as needed
 }
 
