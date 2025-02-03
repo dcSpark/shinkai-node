@@ -165,18 +165,21 @@ impl ToolRouter {
         }
 
         let start_time = Instant::now();
-        let node_env = fetch_node_environment();
 
-        let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL").unwrap_or_else(|_| {
-            format!(
-                "https://download.shinkai.com/tools-{}/directory.json",
-                env!("CARGO_PKG_VERSION")
-            )
-        });
+        let base_url: String = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
+            .unwrap_or_else(|_| format!("https://shinkai-store-302883622007.us-central1.run.app"));
 
+        let url = format!("{}/store/defaults", base_url);
         eprintln!("Importing tools from: {}", url);
 
-        let response = reqwest::get(url).await.map_err(ToolError::RequestError)?;
+        let client = reqwest::Client::new();
+        let response = client
+            .get(url)
+            .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+            .send()
+            .await
+            .map_err(|e| ToolError::RequestError(e))?;
+
         if response.status() != 200 {
             return Err(ToolError::ExecutionError(format!(
                 "Import tools request returned a non OK status: {}",
@@ -318,25 +321,6 @@ impl ToolRouter {
                             return Ok::<(), ToolError>(());
                         }
                     };
-
-                    match Node::v2_api_import_tool_internal(
-                        db,
-                        node_env.clone(),
-                        tool_url,
-                        node_name.clone(),
-                        signing_secret_key.clone(),
-                    )
-                    .await
-                    {
-                        Ok(_) => {
-                            println!("Successfully imported tool {}", tool_name);
-                            return Ok::<(), ToolError>(());
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to import tool {}: {:#?}", tool_name, e);
-                            return Ok::<(), ToolError>(()); // Continue on error
-                        }
-                    }
                     Ok::<(), ToolError>(())
                 }
             });

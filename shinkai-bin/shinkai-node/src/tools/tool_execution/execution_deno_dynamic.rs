@@ -98,21 +98,24 @@ pub async fn execute_deno_tool(
         }
     }
 
-    match tool.run_on_demand(
-        env,
-        node_env.api_listen_address.ip().to_string(),
-        node_env.api_listen_address.port(),
-        support_files,
-        parameters,
-        extra_config,
-        node_storage_path,
-        app_id.clone(),
-        tool_id.clone(),
-        node_name,
-        false,
-        assets_files,
-        mounts,
-    ).await {
+    match tool
+        .run_on_demand(
+            env,
+            node_env.api_listen_address.ip().to_string(),
+            node_env.api_listen_address.port(),
+            support_files,
+            parameters,
+            extra_config,
+            node_storage_path,
+            app_id.clone(),
+            tool_id.clone(),
+            node_name,
+            false,
+            assets_files,
+            mounts,
+        )
+        .await
+    {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }
@@ -160,5 +163,6 @@ pub async fn check_deno_tool(
         node_storage_path,
         app_id.clone(),
         tool_id.clone(),
-    ).await
+    )
+    .await
 }

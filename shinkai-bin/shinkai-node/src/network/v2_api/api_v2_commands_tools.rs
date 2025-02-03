@@ -1815,19 +1815,50 @@ impl Node {
         Ok(())
     }
 
+    async fn _fetch_store_metadata(tool_key: String) -> Result<(Value, String), APIError> {
+        // Try to get tool metadata from the store
+        let base_url: String = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
+            .unwrap_or_else(|_| format!("https://shinkai-store-302883622007.us-central1.run.app"));
+        let metadata_url = format!("{}/store/products/{}", base_url, tool_key);
+        let client = reqwest::Client::new();
+        let metadata_response = client
+            .get(&metadata_url)
+            .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+            .send()
+            .await
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to fetch tool metadata: {}", e),
+            })?;
+
+        if !metadata_response.status().is_success() {
+            eprintln!(
+                "Metadata request returned non-200 status: {}",
+                metadata_response.status()
+            );
+            Ok((Value::Null, "".to_string()))
+        } else if let Ok(metadata) = metadata_response.json::<Value>().await {
+            Ok((metadata, "".to_string()))
+        } else {
+            Ok((Value::Null, "".to_string()))
+        }
+    }
+
     pub async fn v2_api_import_tool_internal(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
-        url: String,
+        file_url: String,
         node_name: String,
         signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
-        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
-            Ok(contents) => contents,
-            Err(err) => {
-                return Err(err);
-            }
-        };
+        let mut zip_contents =
+            match download_zip_file(file_url, "__tool.json".to_string(), node_name, signing_secret_key).await {
+                Ok(contents) => contents,
+                Err(err) => {
+                    return Err(err);
+                }
+            };
 
         // Parse the JSON into a ShinkaiTool
         let tool: ShinkaiTool = match serde_json::from_slice(&zip_contents.buffer) {
