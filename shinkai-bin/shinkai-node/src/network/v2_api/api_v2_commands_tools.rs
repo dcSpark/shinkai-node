@@ -2434,6 +2434,80 @@ impl Node {
         let _ = res.send(result).await;
         Ok(())
     }
+
+    pub async fn v2_api_store_proxy(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let store_url = env::var("SHINKAI_STORE_URL")
+            .unwrap_or("https://shinkai-store-302883622007.us-central1.run.app".to_string());
+
+        let client = reqwest::Client::new();
+
+        // Make parallel requests using tokio::try_join!
+        let assets_future = client
+            .get(format!("{}/store/products/{}/assets", store_url, tool_router_key))
+            .send();
+        let product_future = client
+            .get(format!("{}/store/products/{}", store_url, tool_router_key))
+            .send();
+
+        let (assets_response, product_response) = match tokio::try_join!(assets_future, product_future) {
+            Ok((assets, product)) => (assets, product),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Store Request Failed".to_string(),
+                    message: format!("Failed to fetch from store: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Process responses
+        let assets_json = match assets_response.json::<Value>().await {
+            Ok(json) => json,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Invalid Assets Response".to_string(),
+                    message: format!("Failed to parse assets response: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let product_json = match product_response.json::<Value>().await {
+            Ok(json) => json,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Invalid Product Response".to_string(),
+                    message: format!("Failed to parse product response: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Combine responses
+        let response = json!({
+            "assets": assets_json,
+            "product": product_json
+        });
+
+        let _ = res.send(Ok(response)).await;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

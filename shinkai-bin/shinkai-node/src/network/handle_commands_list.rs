@@ -2551,7 +2551,9 @@ impl Node {
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, node_name, signing_secret_key, res).await;
+                    let _ =
+                        Node::v2_api_import_tool(db_clone, bearer, node_env, url, node_name, signing_secret_key, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiImportToolZip { bearer, file_data, res } => {
@@ -2687,7 +2689,8 @@ impl Node {
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_cron_task(db_clone, bearer, url, node_name, signing_secret_key, res).await;
+                    let _ =
+                        Node::v2_api_import_cron_task(db_clone, bearer, url, node_name, signing_secret_key, res).await;
                 });
             }
             NodeCommand::V2ApiExportCronTask {
@@ -2896,6 +2899,16 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiStoreProxy {
+                bearer,
+                tool_router_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_store_proxy(db_clone, bearer, tool_router_key, res).await;
                 });
             }
             _ => (),

@@ -1221,4 +1221,9 @@ pub enum NodeCommand {
         priority: i32,
         res: Sender<Result<i64, APIError>>,
     },
+    V2ApiStoreProxy {
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
