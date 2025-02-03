@@ -466,6 +466,7 @@ impl CronManager {
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
+            None,
             res_tx,
         )
         .await
@@ -533,16 +534,20 @@ impl CronManager {
         Ok(())
     }
 
-    /// Returns a schedule of when each active cron task is approximately going to be executed next.
+    /// Returns a schedule of when each active cron task is approximately going
+    /// to be executed next.
     ///
     /// We do this by:
     /// 1. Fetching all active (non-paused) cron tasks from the DB.
-    /// 2. For each task, parse the cron expression to find the next scheduled time after "now".
-    /// 3. We then find the iteration interval in which this next scheduled time falls.
-    ///    If a task is scheduled to run within the next `cron_interval_time` seconds from some iteration,
-    ///    it will actually be executed at the start of that iteration (due to how we batch checks).
+    /// 2. For each task, parse the cron expression to find the next scheduled
+    ///    time after "now".
+    /// 3. We then find the iteration interval in which this next scheduled time
+    ///    falls. If a task is scheduled to run within the next
+    ///    `cron_interval_time` seconds from some iteration, it will actually be
+    ///    executed at the start of that iteration (due to how we batch checks).
     ///
-    /// Note: This will only approximate when tasks are executed since they only run at discrete intervals.
+    /// Note: This will only approximate when tasks are executed since they only
+    /// run at discrete intervals.
     pub async fn get_cron_schedule(&self) -> Result<Vec<(CronTask, chrono::DateTime<Local>)>, CronManagerError> {
         let cron_time_interval = Self::cron_interval_time();
         let now = Local::now();
@@ -576,10 +581,11 @@ impl CronManager {
             // in the future, we need to find the iteration window in which it falls.
             // Our iteration runs every `cron_time_interval` seconds.
             //
-            // Essentially, on each iteration (starting at `now`), we check tasks that are due
-            // within the next `cron_time_interval` seconds. If `next_time` is within that
-            // window, the task will run at the start of that iteration. If not, we check
-            // subsequent intervals until we find the one that includes `next_time`.
+            // Essentially, on each iteration (starting at `now`), we check tasks that are
+            // due within the next `cron_time_interval` seconds. If `next_time`
+            // is within that window, the task will run at the start of that
+            // iteration. If not, we check subsequent intervals until we find
+            // the one that includes `next_time`.
 
             // We'll find the first iteration `k` where:
             // iteration_start = now + k * cron_time_interval
@@ -592,7 +598,8 @@ impl CronManager {
                 let iteration_end = iteration_start + chrono::Duration::seconds(cron_time_interval as i64);
 
                 if next_time >= iteration_start && next_time <= iteration_end {
-                    // The task will run at iteration_start, since we only run tasks at iteration boundaries.
+                    // The task will run at iteration_start, since we only run tasks at iteration
+                    // boundaries.
                     break iteration_start;
                 }
 
@@ -628,6 +635,7 @@ mod tests {
             tool_key: None,
             fs_files_paths: vec![],
             job_filenames: vec![],
+            tools: None,
         };
 
         CronTask {
@@ -678,8 +686,9 @@ mod tests {
         // Using an invalid cron expression with only 4 fields instead of 5
         let task = create_test_cron_task("* * * *");
 
-        // The should_execute_cron_task function should return false for invalid expressions
-        // as it already handles the error case in its implementation
+        // The should_execute_cron_task function should return false for invalid
+        // expressions as it already handles the error case in its
+        // implementation
         assert!(!CronManager::should_execute_cron_task(&task, 60));
 
         // We can also test another invalid expression

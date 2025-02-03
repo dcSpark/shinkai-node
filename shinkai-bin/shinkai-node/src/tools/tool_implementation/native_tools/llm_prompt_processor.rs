@@ -1,6 +1,6 @@
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::parameters::Parameters;
+use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
 use shinkai_tools_primitives::tools::{
     error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
 };
@@ -50,6 +50,14 @@ This can be used to process complex requests, text analysis, text matching, text
                     let mut params = Parameters::new();
                     params.add_property("format".to_string(), "string".to_string(), "The format of the prompt".to_string(), true);
                     params.add_property("prompt".to_string(), "string".to_string(), "The prompt to process".to_string(), true);
+                    
+                    // Add the optional tools array parameter
+                    let tools_property = Property::with_array_items(
+                        "List of tools names or tool router keys to be used with the prompt".to_string(),
+                        Property::new("string".to_string(), "Tool".to_string())
+                    );
+                    params.properties.insert("tools".to_string(), tools_property);
+                    
                     params
                 },
                 output_arg: ToolOutputArg {
@@ -85,6 +93,12 @@ impl ToolExecutor for LlmPromptProcessorTool {
             .unwrap_or("")
             .to_string();
 
+        let tools = if let Some(tools_array) = parameters.get("tools").and_then(|v| v.as_array()) {
+            Some(tools_array.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<String>>())
+        } else {
+            None
+        };
+
         let response = v2_create_and_send_job_message(
             bearer.clone(),
             JobCreationInfo {
@@ -94,6 +108,7 @@ impl ToolExecutor for LlmPromptProcessorTool {
             },
             llm_provider,
             content,
+            tools,
             db_clone.clone(),
             node_name_clone,
             identity_manager_clone,
@@ -110,7 +125,7 @@ impl ToolExecutor for LlmPromptProcessorTool {
             .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
         let start_time = std::time::Instant::now();
-        let timeout = Duration::from_secs(180); // 3 minutes timeout
+        let timeout = Duration::from_secs(60 * 5); // 5 minutes timeout
         let delay = Duration::from_secs(1); // 1 second delay between polls
 
         let x = loop {

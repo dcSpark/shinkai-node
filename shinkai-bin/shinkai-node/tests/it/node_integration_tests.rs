@@ -1,19 +1,17 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use core::panic;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
-    EncryptionMethod,
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
 };
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -25,7 +23,7 @@ use tokio::runtime::Runtime;
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use super::utils::node_test_api::{
-    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
+    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node
 };
 use super::utils::node_test_local::local_registration_profile_node;
 
@@ -41,8 +39,8 @@ fn subidentity_registration() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
-        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
+        let node1_identity_name = "@@node1_test.sep-shinkai";
+        let node2_identity_name = "@@node2_test.sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main_profile_node2";
@@ -98,7 +96,6 @@ fn subidentity_registration() {
             None,
             true,
             vec![],
-            
             None,
             None,
             default_embedding_model(),
@@ -122,7 +119,6 @@ fn subidentity_registration() {
             None,
             true,
             vec![],
-            
             None,
             None,
             default_embedding_model(),
