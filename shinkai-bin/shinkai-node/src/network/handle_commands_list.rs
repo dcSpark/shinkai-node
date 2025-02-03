@@ -2892,6 +2892,36 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiStandAlonePlayground {
+                bearer,
+                code,
+                metadata,
+                assets,
+                language,
+                tool_id,
+                app_id,
+                llm_provider,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_standalone_playground(
+                        db_clone,
+                        bearer,
+                        node_env,
+                        code,
+                        metadata,
+                        assets,
+                        language,
+                        tool_id,
+                        app_id,
+                        llm_provider,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }

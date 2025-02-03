@@ -1221,4 +1221,15 @@ pub enum NodeCommand {
         priority: i32,
         res: Sender<Result<i64, APIError>>,
     },
+    V2ApiStandAlonePlayground {
+        bearer: String,
+        code: String,
+        metadata: Value,
+        assets: Option<Vec<String>>,
+        language: CodeLanguage,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
