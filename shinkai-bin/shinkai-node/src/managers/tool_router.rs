@@ -138,7 +138,7 @@ impl ToolRouter {
     }
 
     pub async fn sync_tools_from_directory(&self) -> Result<(), ToolError> {
-        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
         Ok(())
