@@ -165,6 +165,7 @@ impl ToolRouter {
         }
 
         let start_time = Instant::now();
+        let node_env = fetch_node_environment();
 
         let base_url: String = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
             .unwrap_or_else(|_| format!("https://shinkai-store-302883622007.us-central1.run.app"));
@@ -215,6 +216,7 @@ impl ToolRouter {
                 let tool_name = tool_name.to_string();
                 let node_name = node_env.global_identity_name.clone();
                 let signing_secret_key = signing_secret_key.clone();
+
                 async move {
                     // Try to see if a tool with the same routerKey is already installed.
                     match db.get_tool_by_key(router_key) {
