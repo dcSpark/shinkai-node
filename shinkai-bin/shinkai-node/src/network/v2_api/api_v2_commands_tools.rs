@@ -1,14 +1,7 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 
 use async_channel::Sender;
@@ -19,36 +12,21 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-    },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
+    }, shinkai_message::shinkai_message_schemas::JobMessage
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    python_tools::PythonTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::ToolPlayground,
+    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
 };
 
 use std::{
-    env,
-    fs::File,
-    io::{Read, Write},
-    sync::Arc,
-    time::Instant,
+    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
 };
 use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
@@ -2434,98 +2412,13 @@ impl Node {
 
 #[cfg(test)]
 mod tests {
-    // use crate::utils::environment::fetch_node_environment;
-
     use super::*;
     use serde_json::json;
 
     use shinkai_embedding::model_type::EmbeddingModelType;
     use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
-    // use shinkai_http_api::api_v2::api_v2_handlers_tools::ToolMetadata;
-    // use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    // use shinkai_message_primitives::schemas::shinkai_tool_offering::AssetPayment;
-    // use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
-    // use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
-    // use shinkai_message_primitives::schemas::wallet_mixed::Asset;
-    // use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
-    // use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-    // use shinkai_tools_primitives::tools::deno_tools::ToolResult;
-    // use shinkai_tools_primitives::tools::network_tool::NetworkTool;
-    // use shinkai_tools_primitives::tools::parameters::Parameters;
-    // use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-    // use shinkai_tools_primitives::tools::tool_playground::ToolPlaygroundMetadata;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
-
-    // async fn setup_test_db() -> SqliteManager {
-    //     let temp_file = NamedTempFile::new().unwrap();
-    //     let db_path = PathBuf::from(temp_file.path());
-    //     let api_url = String::new();
-    //     let model_type =
-    //         EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
-
-    //     SqliteManager::new(db_path, api_url, model_type).unwrap()
-    // }
-
-    // #[test]
-    // fn test_add_deno_tool() {
-    //     let manager = setup_test_db().await;
-
-    //     // Create a DenoTool instance
-    //     let deno_tool = DenoTool {
-    //         name: "Deno Test Tool".to_string(),
-    //         homepage: Some("http://127.0.0.1/index.html".to_string()),
-    //         author: "Deno Author".to_string(),
-    //         version: "1.0.0".to_string(),
-    //         js_code: "console.log('Hello, Deno!');".to_string(),
-    //         tools: vec![],
-    //         config: vec![],
-    //         oauth: None,
-    //         description: "A Deno tool for testing".to_string(),
-    //         keywords: vec!["deno".to_string(), "test".to_string()],
-    //         input_args: Parameters::new(),
-    //         output_arg: ToolOutputArg::empty(),
-    //         activated: true,
-    //         embedding: None,
-    //         result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-    //         sql_tables: Some(vec![]),
-    //         sql_queries: Some(vec![]),
-    //         file_inbox: None,
-    //         assets: None,
-    //     };
-    //     let shinkai_tool = ShinkaiTool::Deno(deno_tool.clone(), true);
-    //     let result = Node::set_playground_tool(
-    //         Arc::new(manager),
-    //         ToolPlayground {
-    //             language: CodeLanguage::Typescript,
-    //             code: deno_tool.js_code.clone(),
-    //             metadata: ToolPlaygroundMetadata {
-    //                 name: deno_tool.name.clone(),
-    //                 version: deno_tool.version.clone(),
-    //                 homepage: deno_tool.homepage.clone(),
-    //                 description: deno_tool.description.clone(),
-    //                 author: deno_tool.author.clone(),
-    //                 keywords: deno_tool.keywords.clone(),
-    //                 configurations: deno_tool.config.clone(),
-    //                 parameters: deno_tool.input_args.clone(),
-    //                 result: deno_tool.result.clone(),
-    //                 sql_tables: deno_tool.sql_tables.unwrap().clone(),
-    //                 sql_queries: deno_tool.sql_queries.unwrap().clone(),
-    //                 tools: Some(deno_tool.tools.clone()),
-    //                 oauth: deno_tool.oauth.clone(),
-    //             },
-    //             assets: None,
-    //             tool_router_key: Some(shinkai_tool.tool_router_key().to_string_without_version()),
-    //             job_id: "test_job_id".to_string(),
-    //             job_id_history: vec![],
-    //         },
-    //         fetch_node_environment(),
-    //         "test_app".to_string(),
-    //         None,
-    //     );
-
-    //     assert!(result.is_ok());
-    // }
 
     // TODO: update to not use workflow
     #[test]
