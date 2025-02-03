@@ -1899,6 +1899,10 @@ pub struct StandAlonePlaygroundRequest {
     pub metadata: Value,
     pub assets: Option<Vec<String>>,
     pub language: CodeLanguage,
+    pub tools: Vec<ToolRouterKey>,
+    pub parameters: Value,
+    pub config: Value,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 #[utoipa::path(
@@ -1929,6 +1933,10 @@ pub async fn standalone_playground_handler(
             metadata: payload.metadata,
             assets: payload.assets,
             language: payload.language,
+            tools: payload.tools,
+            parameters: payload.parameters,
+            config: payload.config,
+            oauth: payload.oauth,
             tool_id: safe_folder_name(&tool_id),
             app_id: safe_folder_name(&app_id),
             llm_provider: llm_provider,

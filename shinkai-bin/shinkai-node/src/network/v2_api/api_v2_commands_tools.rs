@@ -2441,6 +2441,10 @@ impl Node {
         metadata: Value,
         assets: Option<Vec<String>>,
         language: CodeLanguage,
+        tools: Vec<ToolRouterKey>,
+        parameters: Value,
+        config: Value,
+        oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
         llm_provider: String,
@@ -2456,6 +2460,10 @@ impl Node {
             metadata,
             assets,
             language,
+            tools,
+            parameters,
+            config,
+            oauth,
             tool_id,
             app_id,
             llm_provider,
@@ -2477,7 +2485,11 @@ impl Node {
         metadata: Value,
         assets: Option<Vec<String>>,
         language: CodeLanguage,
-        tool_id: String,
+        tools: Vec<ToolRouterKey>,
+        parameters: Value,
+        config: Value,
+        oauth: Option<Vec<OAuth>>,
+        _tool_id: String,
         app_id: String,
         llm_provider: String,
         bearer: String,
@@ -2619,6 +2631,7 @@ const CODE_CONTENT = fs.readFileSync('./tool.ts', 'utf8');
 const TOOLS_CONTENT = JSON.parse(fs.readFileSync('./tools.json', 'utf8'));
 const CONFIG_CONTENT = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 const PARAMETERS_CONTENT = JSON.parse(fs.readFileSync('./parameters.json', 'utf8'));
+const OAUTH_CONTENT = JSON.parse(fs.readFileSync('./oauth.json', 'utf8'));
 
 // Make the API call
 async function makeApiCall() {{
@@ -2628,7 +2641,8 @@ async function makeApiCall() {{
         tool_type: TOOL_TYPE,
         llm_provider: LLM_PROVIDER,
         extra_config: CONFIG_CONTENT,
-        parameters: PARAMETERS_CONTENT
+        parameters: PARAMETERS_CONTENT,
+        oauth: OAUTH_CONTENT
     }};
     console.log(body);
     try {{
@@ -2751,27 +2765,151 @@ start().then(() => {{
                 message: e.to_string(),
             })?;
 
+        // First try to open with cursor
+        let cursor_open = Command::new("code").arg(temp_dir.clone()).spawn();
+        if cursor_open.is_err() {
+            // If cursor fails, try with open
+            // Ignore error if any.
+            let _ = open::that(temp_dir.clone());
+        }
+
+        // Create parameters.json
+        let mut parameters_file = temp_dir.clone();
+        parameters_file.push("parameters.json");
+        let parameters_content = serde_json::to_string_pretty(&parameters).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize parameters".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(parameters_file.clone(), parameters_content.clone());
+        fs::write(&parameters_file, parameters_content)
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write parameters.json".to_string(),
+                message: e.to_string(),
+            })?;
+
+        // Create tools.json
+        let mut tools_file = temp_dir.clone();
+        tools_file.push("tools.json");
+        let tools_content = serde_json::to_string_pretty(
+            &tools
+                .iter()
+                .map(|tool| tool.to_string_without_version())
+                .collect::<Vec<String>>(),
+        )
+        .map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize tools".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(tools_file.clone(), tools_content.clone());
+        fs::write(&tools_file, tools_content).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to write tools.json".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Create config.json
+        let mut config_file = temp_dir.clone();
+        config_file.push("config.json");
+        let config_content = serde_json::to_string_pretty(&config).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize config".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(config_file.clone(), config_content.clone());
+        fs::write(&config_file, config_content).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to write config.json".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Create oauth.json if OAuth data is provided
+        let oauth_content = if let Some(oauth_data) = oauth {
+            serde_json::to_string_pretty(&oauth_data).map_err(|e| APIError {
+                code: 500,
+                error: "Failed to serialize OAuth data".to_string(),
+                message: e.to_string(),
+            })?
+        } else {
+            "[]".to_string()
+        };
+        let mut oauth_file: PathBuf = temp_dir.clone();
+        oauth_file.push("oauth.json");
+        files_created.insert(oauth_file.clone(), oauth_content.clone());
+        fs::write(&oauth_file, oauth_content).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to write oauth.json".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Let's copy assets if any
+        let node_storage_path = node_env.node_storage_path.clone().unwrap_or_else(|| "".to_string());
+        let assets_path = PathBuf::from(&node_storage_path)
+            .join(".tools_storage")
+            .join("playground")
+            .join(app_id.clone());
+
+        let mut asset_folder = temp_dir.clone();
+        asset_folder.push("assets");
+        fs::create_dir_all(&asset_folder).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to create assets directory".to_string(),
+            message: e.to_string(),
+        })?;
+
+        if assets_path.exists() {
+            for entry in std::fs::read_dir(assets_path).map_err(|e| APIError {
+                code: 500,
+                error: "Failed to read assets directory".to_string(),
+                message: e.to_string(),
+            })? {
+                let entry = entry.map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to read directory entry".to_string(),
+                    message: e.to_string(),
+                })?;
+                let path = entry.path();
+                if path.is_file() {
+                    let mut asset_file = asset_folder.clone();
+                    asset_file.push(path.file_name().unwrap().to_string_lossy().to_string());
+                    files_created.insert(asset_file.clone(), path.to_string_lossy().to_string());
+                    fs::copy(path, asset_file).await.map_err(|e| APIError {
+                        code: 500,
+                        error: "Failed to copy asset".to_string(),
+                        message: e.to_string(),
+                    })?;
+                }
+            }
+        }
+
         // Create README.md
         let readme_content = format!(
             r#"# Shinkai Tool Playground
 
 This is a standalone playground for testing your Shinkai tool.
 
-
 ## Structure
 - `{}`: The main tool implementation
+- `*.ts` or `*.py`: Tool definition files for dependencies
 - `metadata.json`: Tool metadata and configuration
 - `parameters.json`: Runtime parameters passed to your tool (modify this to test different inputs)
 - `tools.json`: Array of tool keys that your tool depends on
 - `config.json`: Additional configuration options for tool execution
+- `oauth.json`: OAuth credentials configuration
 - `assets/`: Directory containing tool assets
 - `launch.js`: Script to execute the tool
 - `.vscode/`: VS Code configuration for easy execution
+- `README.md`: This file
 
 ## Configuration Files
 - `parameters.json`: Contains the input parameters that will be passed to your tool during execution. Modify this file to test how your tool behaves with different inputs.
 - `tools.json`: Lists the tool dependencies required by your implementation. Add tool keys here if your code needs to call other tools.
 - `config.json`: Holds additional configuration options that affect tool execution. Use this for environment-specific settings.
+- `oauth.json`: Contains OAuth configuration if your tool requires authentication.
+- `metadata.json`: Defines your tool's metadata like name, description, version etc.
 
 ## Running the Tool
 1. Make sure you have Shinkai running locally
@@ -2779,13 +2917,13 @@ This is a standalone playground for testing your Shinkai tool.
    - Update input parameters in `parameters.json`
    - Add required tool dependencies to `tools.json`
    - Modify execution settings in `config.json`
+   - Configure OAuth settings in `oauth.json` if needed
 3. Run the tool using either:
    - VS Code's debug launcher
    - Execute `node launch.js` from the terminal
 
 ## Dependencies
 You will need node.js to run the tool. If you don't have it, you can install it from [here](https://nodejs.org/en/download/).
-
 
 Happy coding!"#,
             tool_filename
@@ -2800,84 +2938,6 @@ Happy coding!"#,
                 error: "Failed to write README file".to_string(),
                 message: e.to_string(),
             })?;
-
-        // First try to open with cursor
-        let cursor_open = Command::new("code").arg(temp_dir.clone()).spawn();
-        if cursor_open.is_err() {
-            // If cursor fails, try with open
-            // Ignore error if any.
-            let _ = open::that(temp_dir.clone());
-        }
-
-        // Create parameters.json
-        let mut parameters_file = temp_dir.clone();
-        parameters_file.push("parameters.json");
-        let parameters_content = "{}";
-        files_created.insert(parameters_file.clone(), parameters_content.to_string());
-        fs::write(&parameters_file, parameters_content)
-            .await
-            .map_err(|e| APIError {
-                code: 500,
-                error: "Failed to write parameters.json".to_string(),
-                message: e.to_string(),
-            })?;
-
-        // Create tools.json
-        let mut tools_file = temp_dir.clone();
-        tools_file.push("tools.json");
-        let tools_content = "[]";
-        files_created.insert(tools_file.clone(), tools_content.to_string());
-        fs::write(&tools_file, tools_content).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to write tools.json".to_string(),
-            message: e.to_string(),
-        })?;
-
-        // Create config.json
-        let mut config_file = temp_dir.clone();
-        config_file.push("config.json");
-        let config_content = "{}";
-        files_created.insert(config_file.clone(), config_content.to_string());
-        fs::write(&config_file, config_content).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to write config.json".to_string(),
-            message: e.to_string(),
-        })?;
-
-        // Update the README content with new file descriptions
-        let readme_content = format!(
-            r#"# Shinkai Tool Playground
-
-This is a standalone playground for testing your Shinkai tool.
-
-## Structure
-- `{}`: The main tool implementation
-- `metadata.json`: Tool metadata and configuration
-- `parameters.json`: Runtime parameters passed to your tool (modify this to test different inputs)
-- `tools.json`: Array of tool keys that your tool depends on
-- `config.json`: Additional configuration options for tool execution
-- `assets/`: Directory containing tool assets
-- `launch.js`: Script to execute the tool
-- `.vscode/`: VS Code configuration for easy execution
-
-## Configuration Files
-- `parameters.json`: Contains the input parameters that will be passed to your tool during execution. Modify this file to test how your tool behaves with different inputs.
-- `tools.json`: Lists the tool dependencies required by your implementation. Add tool keys here if your code needs to call other tools.
-- `config.json`: Holds additional configuration options that affect tool execution. Use this for environment-specific settings.
-
-## Running the Tool
-1. Make sure you have Shinkai running locally
-2. Configure your test setup:
-   - Update input parameters in `parameters.json`
-   - Add required tool dependencies to `tools.json`
-   - Modify execution settings in `config.json`
-3. Run the tool using either:
-   - VS Code's debug launcher
-   - Execute `node launch.js` from the terminal
-
-Happy coding!"#,
-            tool_filename
-        );
 
         Ok(json!({
             "status": "success",
