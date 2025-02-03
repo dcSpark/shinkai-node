@@ -75,6 +75,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
             self.context.user_tool_selected.clone(),
+            self.context.force_tools_scope.clone(),
             self.context.fs_files_paths.clone(),
             self.context.job_filenames.clone(),
             self.context.message_hash_id.clone(),
@@ -200,6 +201,7 @@ impl GenericInferenceChain {
         full_job: Job,
         user_message: String,
         user_tool_selected: Option<String>,
+        force_tools_scope: Option<Vec<String>>,
         fs_files_paths: Vec<ShinkaiPath>,
         job_filenames: Vec<String>,
         message_hash_id: Option<String>,
@@ -328,9 +330,31 @@ impl GenericInferenceChain {
                     }
                 }
             }
+        } else if let Some(forced_tools) = force_tools_scope.clone() {
+            // CASE 2: No specific tool selected but force_tools_scope is provided
+            if let Some(tool_router) = &tool_router {
+                for tool_name in forced_tools {
+                    match tool_router.get_tool_by_name(&tool_name).await {
+                        Ok(Some(tool)) => tools.push(tool),
+                        Ok(None) => {
+                            return Err(LLMProviderError::ToolNotFound(format!(
+                                "Forced tool not found: {}",
+                                tool_name
+                            )));
+                        }
+                        Err(e) => {
+                            return Err(LLMProviderError::ToolRetrievalError(format!(
+                                "Error retrieving forced tool: {:?}",
+                                e
+                            )));
+                        }
+                    }
+                }
+            }
         } else {
-            // CASE 2: No specific tool selected - use automatic tool selection
-            // Check various conditions to determine if and which tools should be available
+            // CASE 3: No specific tool selected and no force_tools_scope - use automatic
+            // tool selection Check various conditions to determine if and which
+            // tools should be available
 
             // 2a. Check if streaming is enabled in job config
             let stream = job_config.as_ref().and_then(|config| config.stream);
@@ -525,6 +549,7 @@ impl GenericInferenceChain {
                         full_job.clone(),
                         parsed_message,
                         None,
+                        force_tools_scope.clone(),
                         fs_files_paths.clone(),
                         job_filenames.clone(),
                         message_hash_id.clone(),
