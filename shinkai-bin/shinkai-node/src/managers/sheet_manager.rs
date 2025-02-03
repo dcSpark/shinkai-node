@@ -231,6 +231,7 @@ impl SheetManager {
                 tool_key: None,
                 fs_files_paths: vec![],
                 job_filenames: vec![],
+                tools: None,
             };
 
             job_messages.push((job_message, job_data));

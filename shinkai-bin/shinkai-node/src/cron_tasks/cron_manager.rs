@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap, fmt, pin::Pin, sync::{Arc, Weak}
+    collections::HashMap,
+    fmt,
+    pin::Pin,
+    sync::{Arc, Weak},
 };
 
 use chrono::{Local, Utc};
@@ -7,17 +10,25 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
     schemas::{
-        crontab::{CronTask, CronTaskAction}, inbox_name::InboxNameError, shinkai_name::ShinkaiName, ws_types::WSUpdateHandler
-    }, shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage}, shinkai_utils::{
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::clone_signature_secret_key
-    }
+        crontab::{CronTask, CronTaskAction},
+        inbox_name::InboxNameError,
+        shinkai_name::ShinkaiName,
+        ws_types::WSUpdateHandler,
+    },
+    shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage},
+    shinkai_utils::{
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    llm_provider::{error::LLMProviderError, job_manager::JobManager}, managers::IdentityManager, network::{node_error::NodeError, Node}
+    llm_provider::{error::LLMProviderError, job_manager::JobManager},
+    managers::IdentityManager,
+    network::{node_error::NodeError, Node},
 };
 
 #[derive(Debug)]
@@ -624,6 +635,7 @@ mod tests {
             tool_key: None,
             fs_files_paths: vec![],
             job_filenames: vec![],
+            tools: None,
         };
 
         CronTask {

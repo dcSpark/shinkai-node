@@ -317,7 +317,7 @@ mod tests {
                         "response": null,
                         "tool_router_key": null
                     },
-                    "response": "{\"data\":{\"__created_files__\":[\"shinkai://file/@@my_local_ai.arb-sep-shinkai/main/jobid_c93837a6-358b-4648-9617-1d6e93d0bb59/logs/log_jobid_c93837a6-358b-4648-9617-1d6e93d0bb59_localduckduckgo_searchduckduckgo_search.log\"],\"message\":\"[{\\\"title\\\":\\\"Movie Tickets &amp; Movie Times | Fandango\\\",\\\"description\\\":\\\"Honoring the Best <b>movies</b> &amp; TV. Check out the winners from this year&#x27;s 26th annual Rotten Tomatoes Awards. LEARN MORE. Collectors, assemble! image link. Collectors, assemble! Suit up and get the Captain America Collector Pack, featuring an exclusive Collector&#x27;s Coin, Limited-Edition Poster, and one <b>movie</b> ticket!\\\",\\\"url\\\":\\\"https://www.fandango.com/\\\"}]\"}}",
+                    "response": "{\"data\":{\"__created_files__\":[\"shinkai://file/@@my_local_ai.sep-shinkai/main/jobid_c93837a6-358b-4648-9617-1d6e93d0bb59/logs/log_jobid_c93837a6-358b-4648-9617-1d6e93d0bb59_localduckduckgo_searchduckduckgo_search.log\"],\"message\":\"[{\\\"title\\\":\\\"Movie Tickets &amp; Movie Times | Fandango\\\",\\\"description\\\":\\\"Honoring the Best <b>movies</b> &amp; TV. Check out the winners from this year&#x27;s 26th annual Rotten Tomatoes Awards. LEARN MORE. Collectors, assemble! image link. Collectors, assemble! Suit up and get the Captain America Collector Pack, featuring an exclusive Collector&#x27;s Coin, Limited-Edition Poster, and one <b>movie</b> ticket!\\\",\\\"url\\\":\\\"https://www.fandango.com/\\\"}]\"}}",
                 }),
                 100,
             ),

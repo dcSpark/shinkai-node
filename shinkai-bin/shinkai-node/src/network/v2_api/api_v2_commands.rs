@@ -13,44 +13,29 @@ use reqwest::StatusCode;
 
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
-    node_api_router::{APIError, GetPublicKeysResponse},
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler,
-    shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
+    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
 };
 use shinkai_message_primitives::{
     schemas::{
-        identity::{Identity, IdentityType, RegistrationCode},
-        inbox_name::InboxName,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
-        shinkai_name::ShinkaiName,
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{
-            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod},
-        shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::signature_public_key_to_string,
-    },
+        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::signature_public_key_to_string
+    }
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
+use crate::managers::tool_router::ToolRouter;
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
-    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::tool_generation,
-    utils::update_global_identity::update_global_identity_name,
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 
 use std::time::Instant;
@@ -1336,6 +1321,7 @@ impl Node {
                     },
                     provider.id.clone(),
                     "Repeat back the following message: dogcat. Just the word, no other words.".to_string(),
+                    None,
                     db.clone(),
                     profile.extract_node().clone(),
                     identity_manager.clone(),
@@ -1600,6 +1586,8 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         url: String,
+        node_name: String,
+        signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1607,7 +1595,7 @@ impl Node {
             return Ok(());
         }
 
-        let zip_contents = match download_zip_file(url, "__agent.json".to_string()).await {
+        let zip_contents = match download_zip_file(url, "__agent.json".to_string(), node_name, signing_secret_key).await {
             Ok(contents) => contents,
             Err(err) => {
                 let api_error = APIError {
@@ -1691,6 +1679,21 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn handle_periodic_maintenance(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        tool_router: Option<Arc<ToolRouter>>,
+    ) -> Result<(), NodeError> {
+        // Import tools from directory if tool_router is available
+        if let Some(tool_router) = tool_router {
+            if let Err(e) = tool_router.sync_tools_from_directory().await {
+                eprintln!("Error during periodic tool import: {}", e);
+            }
+        }
         Ok(())
     }
 }
