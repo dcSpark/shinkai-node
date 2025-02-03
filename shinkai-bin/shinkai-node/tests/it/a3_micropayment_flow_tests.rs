@@ -48,8 +48,8 @@ fn micropayment_flow_test() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
-        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
+        let node1_identity_name = "@@node1_test.sep-shinkai";
+        let node2_identity_name = "@@node2_test.sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main_profile_node2";
@@ -296,7 +296,7 @@ fn micropayment_flow_test() {
             // node2 receives the result and stores it
             // done
 
-            let test_network_tool_name = "@@node1_test.arb-sep-shinkai:::shinkai-tool-echo:::network__echo";
+            let test_network_tool_name = "@@node1_test.sep-shinkai:::shinkai-tool-echo:::network__echo";
             let test_local_tool_key_name = "local:::shinkai-tool-echo:::network__echo";
 
             let shinkai_tool_offering = ShinkaiToolOffering {

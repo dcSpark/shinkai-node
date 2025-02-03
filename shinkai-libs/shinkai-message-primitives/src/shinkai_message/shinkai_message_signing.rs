@@ -268,8 +268,7 @@ impl ShinkaiMessage {
 #[cfg(test)]
 mod tests {
     use crate::{
-        shinkai_message::shinkai_message::{EncryptedShinkaiBody, ExternalMetadata, ShinkaiVersion},
-        shinkai_utils::{encryption::EncryptionMethod, signatures::unsafe_deterministic_signature_keypair},
+        shinkai_message::shinkai_message::{EncryptedShinkaiBody, ExternalMetadata, ShinkaiVersion}, shinkai_utils::{encryption::EncryptionMethod, signatures::unsafe_deterministic_signature_keypair}
     };
 
     use super::*;
@@ -333,8 +332,8 @@ mod tests {
                 content: "encrypted:64b11fe63d2b7c3197f04466522b9b54242d8482fb3d14b1837936920968130433b00abb7f8404eca5b759a5a477658fbf8ccadc6a34895d1c42e446ea113cb2d325ec5b9eeba6c37ba21c55caa13e0d628ab188adf98b08c18768195c9e8c7ff3793992333cb729b3216542a6d1628e06a4b4ce61de62be3a3881bf1e0cf9ecb569c6e5e0672018560fb585496b8ab562efb96a4515e05567550843b251401b0bdce54b847c88ca751e67c20cc59f3a262c951649bfe45d7ab38c76aeba5a9c6dbb009d1726e08735f149b9bdfafa21de0fa429cd57b50d3844192667d307a57a97a9ca7f5b783bdd5e0afbb1d3cd6c3771a250b6791e4021359aef5372c9bc2bbbb2b94ae620412107b3887c7455275fc5cafc32e0290ed713fbde8e5017f77957e0f063e04f36b8d6beebe5d945e362199aadd95c2c530634c0ef124fb058c312d11a7f8d0214270e944d95ab796cdab89a91241fe83128f06bceb5c03f6ee2310142ee748f124b39f2367b8ff13fc52564b4fd4318c268c9a8b899fadf56f9887afe1aa2c99951095b470dd1b17262db6dc6d144307498778c8e900d2ccb8bad0f1589629305352a6f3e496d28eead210b9a3da65be0ab149ec58074f8c5b0fa3201e374de7fc31c207818038d5b897a4a172505475d5a2cb632260bf11af45c1d352d045f2fe63da50aa8d65870bebff890f079348975b57e89a92f493f66121b82f07323789837e0ea3638d69e4af5a19645b28c9ac4362eb4a4c26f84479c942f66dc0eb27c5fe7dbfc45c001ce345d873784547eac26cd25731f4acef76cbe346440c616afe48c7244c5cff1ab7d2af7430f".to_string(),
             }),
             external_metadata: ExternalMetadata {
-                sender: "@@my_local_ai.arb-sep-shinkai".to_string(),
-                recipient: "@@my_local_ai.arb-sep-shinkai".to_string(),
+                sender: "@@my_local_ai.sep-shinkai".to_string(),
+                recipient: "@@my_local_ai.sep-shinkai".to_string(),
                 scheduled_time: "2024-09-20T04:53:36.773Z".to_string(),
                 signature: "".to_string(),
                 intra_sender: "main".to_string(),
@@ -348,7 +347,7 @@ mod tests {
         let calculated_hash = message.calculate_message_hash_with_empty_outer_signature();
 
         // Expected hash
-        let expected_hash = "271820710f6653e3aa53b1071d82ebb6073685bce44246c5bad48fa92faa998b";
+        let expected_hash = "66dce7c91f78164b611327b310211ad6ec5d08a9861b9c1689a51c514d990fce";
 
         // Check that the calculated hash matches the expected hash
         assert_eq!(calculated_hash, expected_hash);

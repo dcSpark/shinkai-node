@@ -241,7 +241,8 @@ pub fn generate_python_definition(
                 'x-shinkai-tool-id': os.environ.get('X_SHINKAI_TOOL_ID', ''),
                 'x-shinkai-app-id': os.environ.get('X_SHINKAI_APP_ID', ''),
                 'x-shinkai-llm-provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', '')
-            }
+            },
+            timeout=360
         )
         response.raise_for_status()
         return response.json()

@@ -63,14 +63,6 @@ http://{NODE_IP}:{NODE_API_PORT}/v2/swagger-ui/
 
 Note: You must run these tests from the root directory of this repo.
 
-### Testing All Sub-projects Locally
-
-Simply run the following command to run tests for all projects:
-
-```
-sh scripts/test_all_subprojects.sh
-```
-
 ### Test Shinkai Rust Node Only
 
 Simply use the following to run all rust node tests:
