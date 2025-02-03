@@ -67,11 +67,9 @@ impl Node {
     ///
     /// The function returns a total of 10 results based on the following logic:
     /// 1. All FTS results are added first.
-    /// 2. If there is a vector search result with a score under 0.2, it is
-    ///    added as the second result.
+    /// 2. If there is a vector search result with a score under 0.2, it is added as the second result.
     /// 3. Remaining FTS results are added.
-    /// 4. If there are remaining slots after adding FTS results, they are
-    ///    filled with additional vector search results.
+    /// 4. If there are remaining slots after adding FTS results, they are filled with additional vector search results.
     ///
     /// # Arguments
     ///
@@ -2325,7 +2323,7 @@ impl Node {
         }
     }
 
-    async fn process_tool_zip(
+    pub async fn process_tool_zip(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,

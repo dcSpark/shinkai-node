@@ -38,6 +38,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
@@ -607,6 +608,7 @@ impl Node {
         let urls = vec!["http://localhost:11434/api/tags", "http://localhost:11435/api/tags"];
         let client = reqwest::Client::new();
         let mut all_models = Vec::new();
+        let mut seen_models = std::collections::HashSet::new();
 
         for url in urls {
             let res = client.get(url).send().await;
@@ -620,13 +622,18 @@ impl Node {
 
                         let models_with_port: Vec<serde_json::Value> = models
                             .iter()
-                            .map(|model| {
-                                let mut model_clone = model.clone();
-                                if let Some(obj) = model_clone.as_object_mut() {
-                                    let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
-                                    obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
+                            .filter_map(|model| {
+                                let model_name = model["name"].as_str()?;
+                                if seen_models.insert(model_name.to_string()) {
+                                    let mut model_clone = model.clone();
+                                    if let Some(obj) = model_clone.as_object_mut() {
+                                        let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
+                                        obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
+                                    }
+                                    Some(model_clone)
+                                } else {
+                                    None
                                 }
-                                model_clone
                             })
                             .collect();
 
@@ -677,8 +684,10 @@ impl Node {
         let llm_providers: Vec<SerializedLLMProvider> = input_models
             .iter()
             .map(|model| {
-                // Replace non-alphanumeric characters with underscores for full_identity_name
-                let sanitized_model = Regex::new(r"[^a-zA-Z0-9]").unwrap().replace_all(model, "_").to_string();
+                // Replace any non-alphanumeric character with underscore
+                let sanitized_model = model.chars()
+                    .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                    .collect::<String>();
 
                 // Determine which URL to use based on the availability of the models
                 let model_data = available_models
@@ -706,20 +715,42 @@ impl Node {
             })
             .collect();
 
+        // Deduplicate providers based on id
+        let mut seen_ids = std::collections::HashSet::new();
+        let llm_providers: Vec<SerializedLLMProvider> = llm_providers
+            .into_iter()
+            .filter(|provider| seen_ids.insert(provider.id.clone()))
+            .collect();
+
         // Iterate over each agent and add it using internal_add_agent
         for agent in llm_providers {
-            let profile_name = agent.full_identity_name.clone(); // Assuming the profile name is the full identity name of the agent
-            Self::internal_add_llm_provider(
-                db.clone(),
-                identity_manager.clone(),
-                job_manager.clone(),
-                identity_secret_key.clone(),
-                agent,
-                &profile_name,
-                ws_manager.clone(),
-            )
-            .await
-            .map_err(|e| format!("Failed to add agent: {}", e))?;
+            let profile_name = agent.full_identity_name.clone();
+            
+            // Check if the provider already exists in the database
+            match db.get_llm_provider(&agent.id, &profile_name) {
+                Ok(_) => {
+                    // Provider already exists, skip it
+                    continue;
+                }
+                Err(SqliteManagerError::DataNotFound) => {
+                    // Provider doesn't exist, add it
+                    Self::internal_add_llm_provider(
+                        db.clone(),
+                        identity_manager.clone(),
+                        job_manager.clone(),
+                        identity_secret_key.clone(),
+                        agent,
+                        &profile_name,
+                        ws_manager.clone(),
+                    )
+                    .await
+                    .map_err(|e| format!("Failed to add agent: {}", e))?;
+                }
+                Err(e) => {
+                    // Some other error occurred
+                    return Err(format!("Error checking for existing provider: {}", e));
+                }
+            }
         }
 
         Ok(())

@@ -30,6 +30,7 @@ enum SupportedFileType {
     Pdf,
     Xlsx,
     Xls,
+    Docx,
 }
 
 impl SupportedFileType {
@@ -43,6 +44,7 @@ impl SupportedFileType {
             "pdf" => Some(SupportedFileType::Pdf),
             "xlsx" => Some(SupportedFileType::Xlsx),
             "xls" => Some(SupportedFileType::Xls),
+            "docx" => Some(SupportedFileType::Docx),
             _ => None,
         }
     }
@@ -59,6 +61,7 @@ impl fmt::Display for SupportedFileType {
             SupportedFileType::Pdf => "pdf",
             SupportedFileType::Xlsx => "xlsx",
             SupportedFileType::Xls => "xls",
+            SupportedFileType::Docx => "docx",
         };
         write!(f, "{}", file_type_str)
     }
@@ -103,8 +106,10 @@ impl SimpleParser {
             SupportedFileType::Html => LocalFileParser::process_html_file(file_buffer, "filename", max_node_text_size),
             SupportedFileType::Md => LocalFileParser::process_md_file(file_buffer, max_node_text_size),
             SupportedFileType::Pdf => LocalFileParser::process_pdf_file(file_buffer, max_node_text_size),
+            SupportedFileType::Docx => LocalFileParser::process_docx_file(file_buffer, max_node_text_size),
             _ => Err(ShinkaiFsError::UnsupportedFileType(file_type.to_string())),
-            // SupportedFileType::Xlsx | SupportedFileType::Xls => LocalFileParser::process_xlsx_file(file_buffer, max_node_text_size),
+            // SupportedFileType::Xlsx | SupportedFileType::Xls => LocalFileParser::process_xlsx_file(file_buffer,
+            // max_node_text_size),
         }
     }
 }

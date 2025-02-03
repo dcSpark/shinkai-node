@@ -9,6 +9,8 @@ match_arm_blocks = true
 
 trailing_comma = "Vertical"
 
+comment_width = 140
 wrap_comments = true
+format_code_in_doc_comments = true
 
 edition = "2021"

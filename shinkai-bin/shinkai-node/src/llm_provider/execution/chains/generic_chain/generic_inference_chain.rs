@@ -12,11 +12,11 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+use shinkai_fs::shinkai_file_manager::{FileInfo, ShinkaiFileManager};
 
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
@@ -258,12 +258,21 @@ impl GenericInferenceChain {
             merged_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
         }
 
+        // We always automatically add the job folder to the scope
+        if let Ok(file_infos) = ShinkaiFileManager::get_all_files_and_folders_for_job(&full_job.job_id, &db) {
+            for file_info in file_infos {
+                let path = ShinkaiPath::from_string(file_info.path);
+                if file_info.is_directory {
+                    merged_fs_folder_paths.push(path);
+                } else {
+                    merged_fs_files_paths.push(path);
+                }
+            }
+        }
+
         // Process image files from merged paths, folders and scope
-        let additional_image_files = Self::process_image_files(
-            &merged_fs_files_paths, 
-            &merged_fs_folder_paths,
-            full_job.scope(),
-        );
+        let additional_image_files =
+            Self::process_image_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
         image_files.extend(additional_image_files);
 
         if !scope_is_empty
@@ -287,7 +296,8 @@ impl GenericInferenceChain {
             ret_nodes = ret;
         }
 
-        // 2) Vector search for tooling / workflows if the workflow / tooling scope isn't empty
+        // 2) Vector search for tooling / workflows if the workflow / tooling scope
+        //    isn't empty
         let job_config = full_job.config();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -298,7 +308,8 @@ impl GenericInferenceChain {
 
         // Decision Process for Tool Selection:
         // 1. Check if a specific tool was requested by the user
-        // 2. If not, fall back to automatic tool selection based on capabilities and context
+        // 2. If not, fall back to automatic tool selection based on capabilities and
+        //    context
         if let Some(selected_tool_name) = user_tool_selected {
             // CASE 1: User explicitly selected a tool
             // This takes precedence over all other tool selection methods
@@ -348,7 +359,8 @@ impl GenericInferenceChain {
             // 2a. Check if streaming is enabled in job config
             let stream = job_config.as_ref().and_then(|config| config.stream);
 
-            // 2b. Check if tools are allowed by job config (defaults to true if not specified)
+            // 2b. Check if tools are allowed by job config (defaults to true if not
+            // specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
 
             // 2c. Check if the LLM provider is an agent
@@ -441,7 +453,8 @@ impl GenericInferenceChain {
 
         // 3) Generate Prompt
         // First, attempt to use the custom_prompt from the job's config.
-        // If it doesn't exist, fall back to the agent's custom_prompt if the llm_provider is an Agent.
+        // If it doesn't exist, fall back to the agent's custom_prompt if the
+        // llm_provider is an Agent.
         let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone()).or_else(|| {
             if let ProviderOrAgent::Agent(agent) = &llm_provider {
                 agent.config.as_ref().and_then(|config| config.custom_prompt.clone())
@@ -484,7 +497,8 @@ impl GenericInferenceChain {
             None,
             full_job.job_id.clone(),
             additional_files.clone(),
-        ).await;
+        )
+        .await;
 
         let mut iteration_count = 0;
         let mut tool_calls_history = Vec::new();
@@ -583,8 +597,9 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("Invalid function arguments") =>
                                 {
-                                    // For invalid arguments, we'll retry with the LLM by including the error message
-                                    // in the next prompt to help it fix the parameters
+                                    // For invalid arguments, we'll retry with the LLM by including the error
+                                    // message in the next prompt to help it fix
+                                    // the parameters
                                     let mut function_call_with_error = function_call.clone();
                                     function_call_with_error.response = Some(error_msg.clone());
                                     tool_calls_history.push(function_call_with_error);
@@ -606,7 +621,8 @@ impl GenericInferenceChain {
                                         }),
                                         full_job.job_id.clone(),
                                         additional_files.clone(),
-                                    ).await;
+                                    )
+                                    .await;
 
                                     // Set flag to retry and break out of the function calls loop
                                     iteration_count += 1;
@@ -675,7 +691,8 @@ impl GenericInferenceChain {
                     last_function_response,
                     full_job.job_id.clone(),
                     additional_files,
-                ).await;
+                )
+                .await;
             } else {
                 // No more function calls required, return the final response
                 let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
