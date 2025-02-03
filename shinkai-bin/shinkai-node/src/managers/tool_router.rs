@@ -170,8 +170,6 @@ impl ToolRouter {
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
             .unwrap_or_else(|_| format!("https://shinkai-store-302883622007.us-central1.run.app/store/defaults"));
 
-        eprintln!("Importing tools from: {}", url);
-
         let client = reqwest::Client::new();
         let response = client
             .get(url)
