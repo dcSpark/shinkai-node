@@ -1247,15 +1247,41 @@ impl Node {
             }
         };
 
-        // Generate the implementation
-        let metadata = match tool_metadata_implementation_prompt(language, code, tools, identity_manager.clone()).await
-        {
-            Ok(metadata) => metadata,
-            Err(err) => {
-                let _ = res.send(Err(err)).await;
-                return Ok(());
-            }
+        let language_str = match language.clone() {
+            CodeLanguage::Typescript => "typescript",
+            CodeLanguage::Python => "python",
         };
+        let start_pattern = &format!("```{}", language_str);
+        let end_pattern = "```";
+        // Extract code from triple backticks if present
+        let code = if code.contains(start_pattern) {
+            let start = code.find(start_pattern).unwrap_or(0);
+            let end = code[(start + start_pattern.len())..]
+                .find(end_pattern)
+                .map(|i| i + start + start_pattern.len())
+                .unwrap_or(code.len());
+
+            // Skip language identifier if present
+            let content_start = if code[start..].starts_with(start_pattern) {
+                start + start_pattern.len()
+            } else {
+                start
+            };
+
+            code[content_start..end].trim().to_string()
+        } else {
+            code
+        };
+
+        // Generate the implementation
+        let metadata =
+            match tool_metadata_implementation_prompt(language.clone(), code, tools, identity_manager.clone()).await {
+                Ok(metadata) => metadata,
+                Err(err) => {
+                    let _ = res.send(Err(err)).await;
+                    return Ok(());
+                }
+            };
 
         // We auto create a new job with the same configuration as the one from job_id
         let job_creation_info = JobCreationInfo {
@@ -1822,12 +1848,13 @@ impl Node {
         node_name: String,
         signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
-        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
-            Ok(contents) => contents,
-            Err(err) => {
-                return Err(err);
-            }
-        };
+        let mut zip_contents =
+            match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
+                Ok(contents) => contents,
+                Err(err) => {
+                    return Err(err);
+                }
+            };
 
         // Parse the JSON into a ShinkaiTool
         let tool: ShinkaiTool = match serde_json::from_slice(&zip_contents.buffer) {
