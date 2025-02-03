@@ -95,7 +95,7 @@ impl ToolRouter {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
-        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
 
@@ -128,7 +128,7 @@ impl ToolRouter {
         if let Err(e) = self.add_static_prompts(generator).await {
             eprintln!("Error adding static prompts: {}", e);
         }
-        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
         if let Err(e) = self.add_testing_network_tools().await {
@@ -138,7 +138,7 @@ impl ToolRouter {
     }
 
     pub async fn sync_tools_from_directory(&self) -> Result<(), ToolError> {
-        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone()).await {
+        if let Err(e) = Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await {
             eprintln!("Error importing tools from directory: {}", e);
         }
         Ok(())
@@ -146,7 +146,7 @@ impl ToolRouter {
 
     /// Attempts to import each tool from a remote directory JSON.
     /// Now also checks if a tool is installed with an older version, and if so, calls `upgrade_tool`.
-    async fn import_tools_from_directory(db: Arc<SqliteManager>) -> Result<(), ToolError> {
+    async fn import_tools_from_directory(db: Arc<SqliteManager>, signing_secret_key: SigningKey) -> Result<(), ToolError> {
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
             .to_lowercase()
@@ -199,6 +199,8 @@ impl ToolRouter {
             let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
                 let db = db.clone();
                 let node_env = node_env.clone();
+                let node_name = node_env.global_identity_name.clone();
+                let signing_secret_key = signing_secret_key.clone();                
                 async move {
                     // Try to see if a tool with the same routerKey is already installed.
                     match db.get_tool_by_key(router_key) {
@@ -236,6 +238,8 @@ impl ToolRouter {
                                     db.clone(),
                                     node_env.clone(),
                                     tool_url.to_string(),
+                                    node_name,
+                                    signing_secret_key,
                                 )
                                 .await
                                 {
@@ -270,7 +274,7 @@ impl ToolRouter {
                         }
                         Err(SqliteManagerError::ToolNotFound(_)) => {
                             // If the tool isn't found locally, import it anew
-                            match Node::v2_api_import_tool_internal(db.clone(), node_env.clone(), tool_url.to_string())
+                            match Node::v2_api_import_tool_internal(db.clone(), node_env.clone(), tool_url.to_string(), node_name, signing_secret_key)
                                 .await
                             {
                                 Ok(val) => {
