@@ -83,10 +83,10 @@ pub async fn initialize_node() -> Result<
     let global_identity_name = secrets
         .get("GLOBAL_IDENTITY_NAME")
         .cloned()
-        .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.arb-sep-shinkai".to_string()));
+        .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.sep-shinkai".to_string()));
 
     let global_identity_name = if global_identity_name.is_empty() {
-        "@@localhost.arb-sep-shinkai".to_string()
+        "@@localhost.sep-shinkai".to_string()
     } else {
         global_identity_name
     };

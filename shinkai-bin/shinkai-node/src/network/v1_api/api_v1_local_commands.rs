@@ -286,7 +286,7 @@ impl Node {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     ) {
-        match Self::internal_job_message(job_manager, shinkai_message).await {
+        match Self::internal_job_message(job_manager, shinkai_message, false).await {
             Ok(_) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send((String::new(), String::new())).await;

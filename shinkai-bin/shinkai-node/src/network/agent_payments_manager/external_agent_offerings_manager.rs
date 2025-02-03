@@ -946,11 +946,11 @@ mod tests {
     }
 
     fn default_test_profile() -> ShinkaiName {
-        ShinkaiName::new("@@localhost.arb-sep-shinkai/main".to_string()).unwrap()
+        ShinkaiName::new("@@localhost.sep-shinkai/main".to_string()).unwrap()
     }
 
     fn node_name() -> ShinkaiName {
-        ShinkaiName::new("@@localhost.arb-sep-shinkai".to_string()).unwrap()
+        ShinkaiName::new("@@localhost.sep-shinkai".to_string()).unwrap()
     }
 
     // async fn setup_default_vector_fs() -> VectorFS {

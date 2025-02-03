@@ -2,6 +2,7 @@ use ed25519_dalek::SigningKey;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
@@ -19,6 +20,9 @@ use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::llm_stopper::LLMStopper;
 use shinkai_node::managers::sheet_manager::SheetManager;
+use shinkai_node::managers::tool_router::ToolRouter;
+use shinkai_node::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
+use shinkai_node::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_sqlite::SqliteManager;
 
 use std::result::Result::Ok;
@@ -132,6 +136,7 @@ async fn test_process_job_queue_concurrency() {
         .await
         .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
+    let job_queue_manager_immediate = Arc::new(Mutex::new(job_queue.clone()));
 
     let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
     let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
@@ -141,6 +146,7 @@ async fn test_process_job_queue_concurrency() {
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager.clone(),
+        job_queue_manager_immediate.clone(),
         db_weak.clone(),
         node_name.clone(),
         num_threads,
@@ -152,22 +158,20 @@ async fn test_process_job_queue_concurrency() {
         callback_manager.clone(),
         None,
         None,
-        // None,
         llm_stopper.clone(),
-        move |job,
-              _db,
-              node_name,
-              identity_sk,
-              generator,
-              _ws_manager,
-              _tool_router,
-              _sheet_manager,
-              _callback_manager,
-              _job_queue_manager,
-              _my_agent_payments_manager,
-              _ext_agent_payments_manager,
-              //   _sqlite_logger,
-              _llm_stopper| {
+        move |job: JobForProcessing,
+              _db: Weak<SqliteManager>,
+              node_name: ShinkaiName,
+              identity_sk: SigningKey,
+              generator: RemoteEmbeddingGenerator,
+              _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+              _tool_router: Option<Arc<ToolRouter>>,
+              _sheet_manager: Arc<Mutex<SheetManager>>,
+              _callback_manager: Arc<Mutex<JobCallbackManager>>,
+              _job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+              _my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+              _ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+              _llm_stopper: Arc<LLMStopper>| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -195,6 +199,7 @@ async fn test_process_job_queue_concurrency() {
                 tool_key: None,
                 fs_files_paths: vec![],
                 job_filenames: vec![],
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -280,6 +285,7 @@ async fn test_sequential_process_for_same_job_id() {
         .await
         .unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
+    let job_queue_manager_immediate = Arc::new(Mutex::new(job_queue.clone()));
 
     let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
     let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
@@ -289,6 +295,7 @@ async fn test_sequential_process_for_same_job_id() {
     // Start processing the queue with concurrency
     let job_queue_handler = JobManager::process_job_queue(
         job_queue_manager.clone(),
+        job_queue_manager_immediate.clone(),
         db_weak.clone(),
         node_name.clone(),
         num_threads,
@@ -301,19 +308,19 @@ async fn test_sequential_process_for_same_job_id() {
         None,
         None,
         llm_stopper.clone(),
-        move |job,
-              _db,
-              node_name,
-              identity_sk,
-              generator,
-              _ws_manager,
-              _tool_router,
-              _sheet_manager,
-              _callback_manager,
-              _job_queue_manager,
-              _my_agent_payments_manager,
-              _ext_agent_payments_manager,
-              _llm_stopper| {
+        move |job: JobForProcessing,
+              _db: Weak<SqliteManager>,
+              node_name: ShinkaiName,
+              identity_sk: SigningKey,
+              generator: RemoteEmbeddingGenerator,
+              _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+              _tool_router: Option<Arc<ToolRouter>>,
+              _sheet_manager: Arc<Mutex<SheetManager>>,
+              _callback_manager: Arc<Mutex<JobCallbackManager>>,
+              _job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+              _my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
+              _ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
+              _llm_stopper: Arc<LLMStopper>| {
             mock_processing_fn(
                 job,
                 db_weak.clone(),
@@ -340,6 +347,7 @@ async fn test_sequential_process_for_same_job_id() {
                 tool_key: None,
                 fs_files_paths: vec![],
                 job_filenames: vec![],
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -361,7 +369,6 @@ async fn test_sequential_process_for_same_job_id() {
     let job_queue_handler_result = tokio::time::timeout(timeout_duration, job_queue_handler).await;
     let long_running_task_result = tokio::time::timeout(timeout_duration, long_running_task).await;
 
-    // Check the results of the tasks
     // Check the results of the tasks
     if job_queue_handler_result.is_err() {
         // Handle the error case if necessary

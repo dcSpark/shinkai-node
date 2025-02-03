@@ -28,7 +28,7 @@ fn node_retrying_test() {
 
     rt.block_on(async {
         // Node 1
-        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
+        let node1_identity_name = "@@node1_test.sep-shinkai";
 
         let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -62,7 +62,7 @@ fn node_retrying_test() {
         let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         // Node 2
-        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
+        let node2_identity_name = "@@node2_test.sep-shinkai";
         let _node2_profile_name = "main_profile_node2";
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
