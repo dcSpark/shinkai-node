@@ -22,9 +22,10 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 impl JobManager {
-    /// Chooses an inference chain based on the job message (using the agent's LLM)
-    /// and then starts using the chosen chain.
-    /// Returns the final String result from the inferencing, and a new execution context.
+    /// Chooses an inference chain based on the job message (using the agent's
+    /// LLM) and then starts using the chosen chain.
+    /// Returns the final String result from the inferencing, and a new
+    /// execution context.
     #[allow(clippy::too_many_arguments)]
     pub async fn inference_chain_router(
         db: Arc<SqliteManager>,
@@ -68,6 +69,7 @@ impl JobManager {
             full_job.clone(),
             parsed_user_message,
             job_message.tool_key,
+            job_message.tools,
             job_message.fs_files_paths,
             job_message.job_filenames,
             message_hash_id,

@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
 };
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -33,11 +33,11 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
 use std::fmt;
+use std::path::PathBuf;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -75,6 +75,7 @@ impl InferenceChain for GenericInferenceChain {
             self.context.full_job.clone(),
             self.context.user_message.original_user_message_string.to_string(),
             self.context.user_tool_selected.clone(),
+            self.context.force_tools_scope.clone(),
             self.context.fs_files_paths.clone(),
             self.context.job_filenames.clone(),
             self.context.message_hash_id.clone(),
@@ -102,12 +103,12 @@ impl InferenceChain for GenericInferenceChain {
 impl GenericInferenceChain {
     /// Process image files from file paths, folder paths, and job scope
     fn process_image_files(
-        paths: &[ShinkaiPath], 
+        paths: &[ShinkaiPath],
         folder_paths: &[ShinkaiPath],
         scope: &MinimalJobScope,
     ) -> HashMap<String, String> {
         let mut image_files = HashMap::new();
-        
+
         // Process individual files
         for file_path in paths {
             if let Some(file_name) = file_path.path.file_name() {
@@ -152,8 +153,10 @@ impl GenericInferenceChain {
         // Process all folders (including scope folders)
         let mut all_folders = folder_paths.to_vec();
         all_folders.extend(scope.vector_fs_folders.clone());
-        
-        if let Ok(additional_files) = ShinkaiFileManager::get_absolute_path_for_additional_files(Vec::new(), all_folders) {
+
+        if let Ok(additional_files) =
+            ShinkaiFileManager::get_absolute_path_for_additional_files(Vec::new(), all_folders)
+        {
             for file_path in additional_files {
                 let path = PathBuf::from(file_path);
                 if path.is_file() {
@@ -178,7 +181,7 @@ impl GenericInferenceChain {
                 }
             }
         }
-        
+
         image_files
     }
 
@@ -198,6 +201,7 @@ impl GenericInferenceChain {
         full_job: Job,
         user_message: String,
         user_tool_selected: Option<String>,
+        force_tools_scope: Option<Vec<String>>,
         fs_files_paths: Vec<ShinkaiPath>,
         job_filenames: Vec<String>,
         message_hash_id: Option<String>,
@@ -315,9 +319,31 @@ impl GenericInferenceChain {
                     }
                 }
             }
+        } else if let Some(forced_tools) = force_tools_scope.clone() {
+            // CASE 2: No specific tool selected but force_tools_scope is provided
+            if let Some(tool_router) = &tool_router {
+                for tool_name in forced_tools {
+                    match tool_router.get_tool_by_name(&tool_name).await {
+                        Ok(Some(tool)) => tools.push(tool),
+                        Ok(None) => {
+                            return Err(LLMProviderError::ToolNotFound(format!(
+                                "Forced tool not found: {}",
+                                tool_name
+                            )));
+                        }
+                        Err(e) => {
+                            return Err(LLMProviderError::ToolRetrievalError(format!(
+                                "Error retrieving forced tool: {:?}",
+                                e
+                            )));
+                        }
+                    }
+                }
+            }
         } else {
-            // CASE 2: No specific tool selected - use automatic tool selection
-            // Check various conditions to determine if and which tools should be available
+            // CASE 3: No specific tool selected and no force_tools_scope - use automatic
+            // tool selection Check various conditions to determine if and which
+            // tools should be available
 
             // 2a. Check if streaming is enabled in job config
             let stream = job_config.as_ref().and_then(|config| config.stream);
@@ -509,6 +535,7 @@ impl GenericInferenceChain {
                         full_job.clone(),
                         parsed_message,
                         None,
+                        force_tools_scope.clone(),
                         fs_files_paths.clone(),
                         job_filenames.clone(),
                         message_hash_id.clone(),

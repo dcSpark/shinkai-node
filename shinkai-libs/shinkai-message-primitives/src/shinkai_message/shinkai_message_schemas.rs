@@ -322,6 +322,7 @@ pub struct JobMessage {
     pub content: String,
     pub parent: Option<String>,
     pub sheet_job_data: Option<String>,
+    // This is added to force specific tools to be used in the LLM scope
     pub tools: Option<Vec<String>>,
     // Whenever we need to chain actions, we can use this
     pub callback: Option<Box<CallbackAction>>,
@@ -426,8 +427,8 @@ impl FileDestinationCredentials {
 
 /// Represents the response for a subscription request, providing details
 /// about the subscription status and any errors encountered.
-/// Note(Nico): I know things will be much simpler if we added SubscriptionId here
-/// but can't trust other nodes, we need to generate those on your side.
+/// Note(Nico): I know things will be much simpler if we added SubscriptionId
+/// here but can't trust other nodes, we need to generate those on your side.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SubscriptionGenericResponse {
     // Explanation of what is taking place with this generic response
@@ -970,5 +971,28 @@ mod tests {
             serde_json::from_str(&serialized).expect("Failed to deserialize JobMessage with sheet callback");
 
         assert_eq!(message_with_sheet_callback, deserialized);
+    }
+
+    #[test]
+    fn test_job_message_specific_json_backward_compatibility() {
+        let json_str = r#"{"job_id":"minimal_job","content":"minimal content","parent":null,"sheet_job_data":null,"callback":null,"metadata":null,"tool_key":null,"fs_files_paths":[],"job_filenames":[]}"#;
+
+        let expected = JobMessage {
+            job_id: "minimal_job".to_string(),
+            content: "minimal content".to_string(),
+            parent: None,
+            sheet_job_data: None,
+            tools: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+            fs_files_paths: vec![],
+            job_filenames: vec![],
+        };
+
+        let deserialized: JobMessage =
+            serde_json::from_str(json_str).expect("Failed to deserialize specific JSON string");
+
+        assert_eq!(expected, deserialized);
     }
 }
