@@ -26,7 +26,7 @@ use shinkai_tools_primitives::tools::{
 };
 
 use std::{
-    collections::HashMap, env, fs::{File, Permissions}, io::{Read, Write}, os::unix::fs::PermissionsExt, sync::Arc, time::Instant
+    collections::HashMap, env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
 };
 use tokio::{process::Command, sync::Mutex};
 use zip::{write::FileOptions, ZipWriter};
@@ -2805,12 +2805,24 @@ start().then(() => {{
                 error: "Failed to write launch.sh".to_string(),
                 message: e.to_string(),
             })?;
-        let perm = Permissions::from_mode(0o755);
-        fs::set_permissions(&launch_file, perm).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to set permissions".to_string(),
-            message: e.to_string(),
-        })?;
+
+        // Set file permissions in a cross-platform way
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perm = std::fs::Permissions::from_mode(0o755);
+            fs::set_permissions(&launch_file, perm).await.map_err(|e| APIError {
+                code: 500,
+                error: "Failed to set permissions".to_string(),
+                message: e.to_string(),
+            })?;
+        }
+
+        // On Windows, executable permissions don't exist in the same way
+        #[cfg(windows)]
+        {
+            // Windows doesn't need special executable permissions for .js files
+        }
 
         // Create .vscode/launch.json
         let mut vscode_dir = temp_dir.clone();
