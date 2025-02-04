@@ -3,6 +3,7 @@ use crate::{
     network::{node_error::NodeError, Node, node_shareable_logic::download_zip_file},
 };
 use async_channel::Sender;
+use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
@@ -11,7 +12,6 @@ use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use chrono::Local;
-use std::path::Path;
 use std::fs::File;
 use std::io::Write;
 use tokio::fs;
@@ -316,6 +316,8 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         url: String,
+        node_name: String,
+        signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -324,7 +326,7 @@ impl Node {
         }
 
         // Download and validate the zip file
-        let zip_contents = match download_zip_file(url, "__cron_task.json".to_string()).await {
+        let zip_contents = match download_zip_file(url, "__cron_task.json".to_string(), node_name, signing_secret_key).await {
             Ok(contents) => contents,
             Err(err) => {
                 let _ = res.send(Err(err)).await;

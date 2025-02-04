@@ -87,6 +87,7 @@ async-std = { version = "1.5.0", features = ["unstable"] }
 env_logger = { workspace = true }
 zip = "2.2.1"
 open = "5.3.2"
+sha2 = "0.10" 
 
 [dev-dependencies]
 mockito = "1.0.2"

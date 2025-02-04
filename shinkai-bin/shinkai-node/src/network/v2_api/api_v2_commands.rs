@@ -1586,6 +1586,8 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         url: String,
+        node_name: String,
+        signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1593,7 +1595,7 @@ impl Node {
             return Ok(());
         }
 
-        let zip_contents = match download_zip_file(url, "__agent.json".to_string()).await {
+        let zip_contents = match download_zip_file(url, "__agent.json".to_string(), node_name, signing_secret_key).await {
             Ok(contents) => contents,
             Err(err) => {
                 let api_error = APIError {

@@ -1796,6 +1796,8 @@ impl Node {
         bearer: String,
         node_env: NodeEnvironment,
         url: String,
+        node_name: String,
+        signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1803,7 +1805,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::v2_api_import_tool_internal(db, node_env, url).await;
+        let result = Self::v2_api_import_tool_internal(db, node_env, url, node_name, signing_secret_key).await;
         match result {
             Ok(response) => {
                 let _ = res.send(Ok(response)).await;
@@ -1819,8 +1821,10 @@ impl Node {
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         url: String,
+        node_name: String,
+        signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
-        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string()).await {
+        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
             Ok(contents) => contents,
             Err(err) => {
                 return Err(err);
