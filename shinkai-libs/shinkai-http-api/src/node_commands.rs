@@ -6,39 +6,16 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig,
-        crontab::{CronTask, CronTaskAction},
-        custom_prompt::CustomPrompt,
-        identity::{Identity, StandardIdentity},
-        job_config::JobConfig,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
-        shinkai_name::ShinkaiName,
-        shinkai_subscription::ShinkaiSubscription,
-        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-        tool_router_key::ToolRouterKey,
-        wallet_complementary::{WalletRole, WalletSource},
-        wallet_mixed::NetworkIdentifier,
-    },
-    shinkai_message::{
-        shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIExportSheetPayload,
-            APIImportSheetPayload, APISetSheetUploadedFilesPayload, APIVecFsCopyFolder, APIVecFsCopyItem,
-            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
-            ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::job_scope::MinimalJobScope,
+        coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::{SmartInbox, V2SmartInbox}, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
+    }, shinkai_message::{
+        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIExportSheetPayload, APIImportSheetPayload, APISetSheetUploadedFilesPayload, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+        }
+    }, shinkai_utils::job_scope::MinimalJobScope
 };
 
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets},
-    tool_config::OAuth,
-    tool_playground::ToolPlayground,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground
 };
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
@@ -50,9 +27,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::node_api_router::SendResponseBody;
 
 use super::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
-    node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData}
 };
 
 pub enum NodeCommand {
@@ -69,7 +44,8 @@ pub enum NodeCommand {
     GetNodeName {
         res: Sender<String>,
     },
-    // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
+    // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of
+    // addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
     // Command to make the node create a registration code through the API. The sender will receive the code.
     APICreateRegistrationCode {
@@ -82,7 +58,8 @@ pub enum NodeCommand {
         code_type: RegistrationCodeType,
         res: Sender<String>,
     },
-    // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
+    // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive
+    // the result.
     APIUseRegistrationCode {
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
@@ -1224,6 +1201,21 @@ pub enum NodeCommand {
     V2ApiStoreProxy {
         bearer: String,
         tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiStandAlonePlayground {
+        bearer: String,
+        code: String,
+        metadata: Value,
+        assets: Option<Vec<String>>,
+        language: CodeLanguage,
+        tools: Vec<ToolRouterKey>,
+        parameters: Value,
+        config: Value,
+        oauth: Option<Vec<OAuth>>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

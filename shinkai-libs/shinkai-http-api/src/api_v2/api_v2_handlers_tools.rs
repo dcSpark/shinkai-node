@@ -229,6 +229,16 @@ pub fn tool_routes(
         .and(warp::path::param::<String>())
         .and_then(tool_store_proxy_handler);
 
+    let standalone_playground_route = warp::path("tools_standalone_playground")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::header::<String>("x-shinkai-llm-provider"))
+        .and(warp::body::json())
+        .and_then(standalone_playground_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -258,6 +268,7 @@ pub fn tool_routes(
         .or(enable_all_tools_route)
         .or(disable_all_tools_route)
         .or(tool_store_proxy_route)
+        .or(standalone_playground_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -1889,6 +1900,19 @@ pub async fn disable_all_tools_handler(
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct StandAlonePlaygroundRequest {
+    pub code: String,
+    pub metadata: Value,
+    pub assets: Option<Vec<String>>,
+    pub language: CodeLanguage,
+    pub tools: Vec<ToolRouterKey>,
+    pub parameters: Value,
+    pub config: Value,
+    pub oauth: Option<Vec<OAuth>>,
+}
+
+
 #[utoipa::path(
     get,
     path = "/v2/tool_store_proxy/{tool_router_key}",
@@ -1901,6 +1925,7 @@ pub async fn disable_all_tools_handler(
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
+
 pub async fn tool_store_proxy_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
@@ -1913,6 +1938,57 @@ pub async fn tool_store_proxy_handler(
         .send(NodeCommand::V2ApiStoreProxy {
             bearer,
             tool_router_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/tools_standalone_playground",
+    request_body = StandAlonePlaygroundRequest,
+    responses(
+        (status = 200, description = "Successfully created standalone playground", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn standalone_playground_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    tool_id: String,
+    app_id: String,
+    llm_provider: String,
+    payload: StandAlonePlaygroundRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiStandAlonePlayground {
+            bearer,
+            code: payload.code,
+            metadata: payload.metadata,
+            assets: payload.assets,
+            language: payload.language,
+            tools: payload.tools,
+            parameters: payload.parameters,
+            config: payload.config,
+            oauth: payload.oauth,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
+            llm_provider: llm_provider,
             res: res_sender,
         })
         .await
@@ -1962,6 +2038,7 @@ pub async fn tool_store_proxy_handler(
         enable_all_tools_handler,
         disable_all_tools_handler,
         tool_store_proxy_handler,
+        standalone_playground_handler,
     ),
     components(
         schemas(

@@ -23,9 +23,11 @@ use tokio::sync::Mutex;
 use crate::managers::IdentityManager;
 use ed25519_dalek::SigningKey;
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
 use regex::Regex;
 use reqwest::Client;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -145,7 +147,12 @@ pub async fn handle_oauth(
             } else {
                 let state_uuid = uuid::Uuid::new_v4().to_string();
                 let pkce_uuid = if let Some(_) = o.pkce_type.clone() {
-                    Some(uuid::Uuid::new_v4().to_string())
+                    let mut pkce_uuid = uuid::Uuid::new_v4().to_string();
+                    // Left pad with zeros to ensure at least 64 characters
+                    while pkce_uuid.len() < 64 {
+                        pkce_uuid = format!("0{}", pkce_uuid);
+                    }
+                    Some(pkce_uuid)
                 } else {
                     None
                 };
@@ -184,7 +191,9 @@ pub async fn handle_oauth(
                     refresh_token_enabled: has_refresh_token,
                     refresh_token_expires_at: None, //Fetched from oauth refresh
                     pkce_type: o.pkce_type.clone(),
-                    pkce_code_verifier: pkce_uuid.clone(), // Created on instance call
+                    pkce_code_verifier: pkce_uuid.clone(),
+                    request_token_auth_header: o.request_token_auth_header.clone(),
+                    request_token_content_type: o.request_token_content_type.clone(),
                 };
 
                 db.add_oauth_token(&oauth_token)
@@ -212,11 +221,27 @@ pub async fn handle_oauth(
 
             // Add PKCE parameters if enabled
             if let Some(pkce_type) = &o.pkce_type {
-                if let Some(pkce_uuid) = pkce_uuid {
-                    // For now we only support plain PKCE
-                    if pkce_type == "plain" {
-                        query_params.push(("code_challenge", pkce_uuid));
-                        query_params.push(("code_challenge_method", "plain".to_string()));
+                if let Some(pkce_uuid) = pkce_uuid.clone() {
+                    match pkce_type.to_lowercase().as_str() {
+                        "plain" => {
+                            query_params.push(("code_challenge", pkce_uuid));
+                            query_params.push(("code_challenge_method", "plain".to_string()));
+                        }
+                        "s256" => {
+                            // Generate SHA256 hash of the verifier
+                            let mut hasher = Sha256::new();
+                            hasher.update(pkce_uuid.as_bytes());
+                            let challenge = hasher.finalize();
+
+                            // Base64url encode the challenge
+                            let encoded_challenge = URL_SAFE_NO_PAD.encode(challenge);
+
+                            query_params.push(("code_challenge", encoded_challenge));
+                            query_params.push(("code_challenge_method", "S256".to_string()));
+                        }
+                        _ => {
+                            println!("Unsupported PKCE type: {}", pkce_type);
+                        }
                     }
                 }
             }

@@ -163,6 +163,10 @@ pub struct OAuth {
     pub pkce_type: Option<String>,
     #[serde(rename = "refreshToken")]
     pub refresh_token: Option<String>,
+    #[serde(rename = "requestTokenAuthHeader")]
+    pub request_token_auth_header: Option<String>,
+    #[serde(rename = "requestTokenContentType")]
+    pub request_token_content_type: Option<String>,
 }
 
 impl OAuth {
@@ -222,6 +226,14 @@ impl OAuth {
                         None
                     }
                 }),
+                request_token_auth_header: oauth_obj
+                    .get("requestTokenAuthHeader")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
+                request_token_content_type: oauth_obj
+                    .get("requestTokenContentType")
+                    .and_then(|v| v.as_str())
+                    .map(String::from),
             })
         } else {
             None
