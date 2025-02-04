@@ -1,14 +1,7 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 
 use async_channel::Sender;
@@ -19,38 +12,21 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-    },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
+    }, shinkai_message::shinkai_message_schemas::JobMessage
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    python_tools::PythonTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::ToolPlayground,
+    deno_tools::DenoTool, error::ToolError, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::ToolPlayground
 };
 
 use std::{
-    collections::HashMap,
-    env,
-    fs::{File, Permissions},
-    io::{Read, Write},
-    os::unix::fs::PermissionsExt,
-    sync::Arc,
-    time::Instant,
+    collections::HashMap, env, fs::{File, Permissions}, io::{Read, Write}, os::unix::fs::PermissionsExt, sync::Arc, time::Instant
 };
 use tokio::{process::Command, sync::Mutex};
 use zip::{write::FileOptions, ZipWriter};
@@ -1776,8 +1752,8 @@ impl Node {
         println!("[Publish Tool] Signature: {}", signature_hex.clone());
         println!("[Publish Tool] Identity: {}", identity_name.clone());
 
-        let store_url = env::var("SHINKAI_STORE_URL")
-            .unwrap_or("https://shinkai-store-302883622007.us-central1.run.app".to_string());
+        let store_url =
+            env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com/store/defaults".to_string());
         let response = client
             .post(format!("{}/store/revisions", store_url))
             .multipart(form)
@@ -2461,6 +2437,80 @@ impl Node {
 
         let result = Self::process_tool_zip(db, node_env, file_data).await;
         let _ = res.send(result).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_store_proxy(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let store_url =
+            env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com/store/defaults".to_string());
+
+        let client = reqwest::Client::new();
+
+        // Make parallel requests using tokio::try_join!
+        let assets_future = client
+            .get(format!("{}/store/products/{}/assets", store_url, tool_router_key))
+            .send();
+        let product_future = client
+            .get(format!("{}/store/products/{}", store_url, tool_router_key))
+            .send();
+
+        let (assets_response, product_response) = match tokio::try_join!(assets_future, product_future) {
+            Ok((assets, product)) => (assets, product),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Store Request Failed".to_string(),
+                    message: format!("Failed to fetch from store: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Process responses
+        let assets_json = match assets_response.json::<Value>().await {
+            Ok(json) => json,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Invalid Assets Response".to_string(),
+                    message: format!("Failed to parse assets response: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let product_json = match product_response.json::<Value>().await {
+            Ok(json) => json,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Invalid Product Response".to_string(),
+                    message: format!("Failed to parse product response: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Combine responses
+        let response = json!({
+            "assets": assets_json,
+            "product": product_json
+        });
+
+        let _ = res.send(Ok(response)).await;
         Ok(())
     }
 

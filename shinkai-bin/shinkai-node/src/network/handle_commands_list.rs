@@ -10,9 +10,9 @@ impl Node {
             // Spawn a new task for each command to handle it concurrently
 
             // NodeCommand::Shutdown => {
-            //     shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
-            //     // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to create a temporary database")));
-            // },
+            //     shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the
+            // node.");     // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to
+            // create a temporary database"))); },
             NodeCommand::PingAll => {
                 let peers_clone = self.peers.clone();
                 let identity_manager_clone = Arc::clone(&self.identity_manager);
@@ -413,7 +413,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIGetAllInboxesForProfile { msg, res } => self.api_get_all_inboxes_for_profile(msg, res).await,
+            // NodeCommand::APIGetAllInboxesForProfile { msg, res } => self.api_get_all_inboxes_for_profile(msg,
+            // res).await,
             NodeCommand::APIGetAllInboxesForProfile { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
@@ -546,7 +547,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } => self.api_get_all_smart_inboxes_for_profile(msg, res).await,
+            // NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } =>
+            // self.api_get_all_smart_inboxes_for_profile(msg, res).await,
             NodeCommand::APIGetAllSmartInboxesForProfile { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let identity_manager_clone = self.identity_manager.clone();
@@ -937,7 +939,8 @@ impl Node {
                     let _ = res.send(node_name.node_name).await;
                 });
             }
-            // NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } => self.api_get_last_messages_from_inbox_with_branches(msg, res).await,
+            // NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } =>
+            // self.api_get_last_messages_from_inbox_with_branches(msg, res).await,
             NodeCommand::APIGetLastMessagesFromInboxWithBranches { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -955,7 +958,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res } => self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
+            // NodeCommand::GetLastMessagesFromInboxWithBranches { inbox_name, limit, offset_key, res } =>
+            // self.local_get_last_messages_from_inbox_with_branches(inbox_name, limit, offset_key, res).await,
             NodeCommand::GetLastMessagesFromInboxWithBranches {
                 inbox_name,
                 limit,
@@ -970,7 +974,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_path_simplified_json(msg, res).await,
+            // NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } =>
+            // self.api_vec_fs_retrieve_path_simplified_json(msg, res).await,
             NodeCommand::APIVecFSRetrievePathSimplifiedJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -988,7 +993,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => self.api_vec_fs_retrieve_path_minimal_json(msg, res).await,
+            // NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } =>
+            // self.api_vec_fs_retrieve_path_minimal_json(msg, res).await,
             NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -1006,7 +1012,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await,
+            // NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } =>
+            // self.api_vec_fs_retrieve_vector_search_simplified_json(msg, res).await,
             NodeCommand::APIVecFSRetrieveVectorSearchSimplifiedJson { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -1132,7 +1139,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => self.api_vec_fs_retrieve_vector_resource(msg, res).await,
+            // NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => self.api_vec_fs_retrieve_vector_resource(msg,
+            // res).await,
             NodeCommand::APIVecFSRetrieveVectorResource { msg, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
@@ -1244,7 +1252,8 @@ impl Node {
                     .await;
                 });
             }
-            // NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => self.api_update_default_embedding_model(msg, res).await,
+            // NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => self.api_update_default_embedding_model(msg,
+            // res).await,
             NodeCommand::APIUpdateDefaultEmbeddingModel { msg, res } => {
                 let db = self.db.clone();
                 let node_name_clone = self.node_name.clone();
@@ -1270,7 +1279,6 @@ impl Node {
             }
             //
             // V2 API
-            //
             NodeCommand::V2ApiGetPublicKeys { res: sender } => {
                 let identity_public_key = self.identity_public_key;
                 let encryption_public_key = self.encryption_public_key;
@@ -2287,8 +2295,8 @@ impl Node {
             //     let db_clone = Arc::clone(&self.db);
             //     let sqlite_logger_clone = Arc::clone(&self.sqlite_logger);
             //     tokio::spawn(async move {
-            //         let _ = Node::v2_api_get_tooling_logs(db_clone, sqlite_logger_clone, bearer, message_id, res).await;
-            //     });
+            //         let _ = Node::v2_api_get_tooling_logs(db_clone, sqlite_logger_clone, bearer, message_id,
+            // res).await;     });
             // }
             NodeCommand::V2ApiImportSheet { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2551,7 +2559,9 @@ impl Node {
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_tool(db_clone, bearer, node_env, url, node_name, signing_secret_key, res).await;
+                    let _ =
+                        Node::v2_api_import_tool(db_clone, bearer, node_env, url, node_name, signing_secret_key, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiImportToolZip { bearer, file_data, res } => {
@@ -2687,7 +2697,8 @@ impl Node {
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_cron_task(db_clone, bearer, url, node_name, signing_secret_key, res).await;
+                    let _ =
+                        Node::v2_api_import_cron_task(db_clone, bearer, url, node_name, signing_secret_key, res).await;
                 });
             }
             NodeCommand::V2ApiExportCronTask {
@@ -2896,6 +2907,16 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiStoreProxy {
+                bearer,
+                tool_router_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_store_proxy(db_clone, bearer, tool_router_key, res).await;
                 });
             }
             NodeCommand::V2ApiStandAlonePlayground {
