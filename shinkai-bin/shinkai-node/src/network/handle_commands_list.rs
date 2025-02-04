@@ -2384,6 +2384,8 @@ impl Node {
                 app_id,
                 llm_provider,
                 mounts,
+                runner,
+                operating_system,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -2403,6 +2405,8 @@ impl Node {
                         llm_provider,
                         node_name,
                         mounts,
+                        runner,
+                        operating_system,
                         res,
                     )
                     .await;

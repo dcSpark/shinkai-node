@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use std::fs::create_dir_all;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::{env, thread};
-
+use super::parameters::Parameters;
+use super::shared_execution::update_result_with_modified_files;
+use super::tool_config::{OAuth, ToolConfig};
+use super::tool_output_arg::ToolOutputArg;
+use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use crate::tools::error::ToolError;
 use crate::tools::shared_execution::get_files_after_with_protocol;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -15,14 +15,11 @@ use shinkai_tools_runner::tools::python_runner::PythonRunner;
 use shinkai_tools_runner::tools::python_runner_options::PythonRunnerOptions;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
-use tokio::runtime::Runtime;
-
-use super::deno_tools::ToolResult;
-use super::parameters::Parameters;
-use super::shared_execution::update_result_with_modified_files;
-use super::tool_config::{OAuth, ToolConfig};
-use super::tool_output_arg::ToolOutputArg;
-use super::tool_playground::{SqlQuery, SqlTable};
+use std::collections::HashMap;
+use std::env;
+use std::fs::create_dir_all;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PythonTool {
@@ -48,6 +45,9 @@ pub struct PythonTool {
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
     pub assets: Option<Vec<String>>,
+    pub runner: RunnerType,
+    pub operating_system: Vec<OperatingSystem>,
+    pub tool_set: Option<String>,
 }
 
 impl PythonTool {
@@ -329,5 +329,137 @@ impl PythonTool {
                 )))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_python_tool_with_runner_type() {
+        let tool = PythonTool {
+            version: "1.0".to_string(),
+            name: "test_tool".to_string(),
+            homepage: None,
+            author: "test_author".to_string(),
+            py_code: "print('hello')".to_string(),
+            tools: vec![],
+            config: vec![],
+            description: "test description".to_string(),
+            keywords: vec!["test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
+        };
+
+        assert_eq!(tool.runner, RunnerType::OnlyHost);
+    }
+
+    #[test]
+    fn test_python_tool_with_operating_systems() {
+        let tool = PythonTool {
+            version: "1.0".to_string(),
+            name: "test_tool".to_string(),
+            homepage: None,
+            author: "test_author".to_string(),
+            py_code: "print('hello')".to_string(),
+            tools: vec![],
+            config: vec![],
+            description: "test description".to_string(),
+            keywords: vec!["test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Linux, OperatingSystem::Windows],
+            tool_set: None,
+        };
+
+        assert_eq!(tool.operating_system.len(), 2);
+        assert!(tool.operating_system.contains(&OperatingSystem::Linux));
+        assert!(tool.operating_system.contains(&OperatingSystem::Windows));
+    }
+
+    #[test]
+    fn test_python_tool_with_tool_set() {
+        let tool = PythonTool {
+            version: "1.0".to_string(),
+            name: "test_tool".to_string(),
+            homepage: None,
+            author: "test_author".to_string(),
+            py_code: "print('hello')".to_string(),
+            tools: vec![],
+            config: vec![],
+            description: "test description".to_string(),
+            keywords: vec!["test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: Some("test_set".to_string()),
+        };
+
+        assert_eq!(tool.tool_set, Some("test_set".to_string()));
+    }
+
+    #[test]
+    fn test_python_tool_serialization() {
+        let tool = PythonTool {
+            version: "1.0".to_string(),
+            name: "test_tool".to_string(),
+            homepage: None,
+            author: "test_author".to_string(),
+            py_code: "print('hello')".to_string(),
+            tools: vec![],
+            config: vec![],
+            description: "test description".to_string(),
+            keywords: vec!["test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: Some("test_set".to_string()),
+        };
+
+        let json = tool.to_json().unwrap();
+        let deserialized = PythonTool::from_json(&json).unwrap();
+
+        assert_eq!(tool.runner, deserialized.runner);
+        assert_eq!(tool.operating_system, deserialized.operating_system);
+        assert_eq!(tool.tool_set, deserialized.tool_set);
     }
 }

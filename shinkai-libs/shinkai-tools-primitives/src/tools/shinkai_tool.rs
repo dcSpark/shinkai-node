@@ -12,6 +12,7 @@ use shinkai_message_primitives::schemas::{
 
 use super::tool_config::OAuth;
 use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
     tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
@@ -225,6 +226,30 @@ impl ShinkaiTool {
             self.author(),
             self.description(),
         )
+    }
+
+    pub fn get_runner(&self) -> RunnerType {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.runner.clone(),
+            ShinkaiTool::Python(p, _) => p.runner.clone(),
+            _ => RunnerType::Any,
+        }
+    }
+
+    pub fn get_operating_system(&self) -> Vec<OperatingSystem> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.operating_system.clone(),
+            ShinkaiTool::Python(p, _) => p.operating_system.clone(),
+            _ => vec![OperatingSystem::Linux, OperatingSystem::MacOS, OperatingSystem::Windows],
+        }
+    }
+
+    pub fn get_tool_set(&self) -> Option<String> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.tool_set.clone(),
+            ShinkaiTool::Python(p, _) => p.tool_set.clone(),
+            _ => None,
+        }
     }
 
     /// Sets the embedding for the tool
@@ -456,7 +481,8 @@ impl From<NetworkTool> for ShinkaiTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::deno_tools::{DenoTool, ToolResult};
+    use crate::tools::deno_tools::DenoTool;
+    use crate::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use serde_json::json;
     use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
@@ -489,6 +515,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
         };
 
         // Create a ShinkaiTool instance
@@ -568,6 +597,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
