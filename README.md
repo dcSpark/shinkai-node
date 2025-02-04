@@ -89,29 +89,6 @@ docker build -t testing_image -f .github/Dockerfile .
 docker run --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image
 ```
 
-#### WASM tests
-
-```
-# Build testing image - shinkai-message-wasm
-docker build -t testing_image_wasm -f .github/Dockerfile.wasm .
-
-# Run tests shinkai-message-wasm cargo tests
-docker run --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm
-
-# Run tests shinkai-message-wasm wasm-pack tests
-docker run --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm
-```
-
-### Shinkai App tests
-
-You need to compile the wasm library from `shinkai-message-wasm` and copy the resulting `pkg` to `shinkai-app/src/pkg` (if a folder already exists you should delete first). Then you will be able to run the tests inside `shinkai-app`
-
-```
-npm run test.unit
-```
-
-### Shinkai PYO3 Tests
-
 ### Further CI Development
 
 Use `act -j test-wasm -P self-hosted=nektos/act-environments-ubuntu:18.04 --container-architecture linux/amd64` to run the tests locally in a docker container. This is useful for debugging CI issues.
