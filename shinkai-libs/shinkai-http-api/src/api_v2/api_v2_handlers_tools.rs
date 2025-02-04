@@ -222,6 +222,13 @@ pub fn tool_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(remove_tool_handler);
 
+    let tool_store_proxy_route = warp::path("tool_store_proxy")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::path::param::<String>())
+        .and_then(tool_store_proxy_handler);
+
     let standalone_playground_route = warp::path("tools_standalone_playground")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -260,6 +267,7 @@ pub fn tool_routes(
         .or(remove_tool_route)
         .or(enable_all_tools_route)
         .or(disable_all_tools_route)
+        .or(tool_store_proxy_route)
         .or(standalone_playground_route)
 }
 
@@ -1892,7 +1900,6 @@ pub async fn disable_all_tools_handler(
     }
 }
 
-
 #[derive(Deserialize, ToSchema)]
 pub struct StandAlonePlaygroundRequest {
     pub code: String,
@@ -1903,6 +1910,48 @@ pub struct StandAlonePlaygroundRequest {
     pub parameters: Value,
     pub config: Value,
     pub oauth: Option<Vec<OAuth>>,
+}
+
+
+#[utoipa::path(
+    get,
+    path = "/v2/tool_store_proxy/{tool_router_key}",
+    params(
+        ("tool_router_key" = String, Path, description = "Tool router key")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved store data", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+
+pub async fn tool_store_proxy_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    tool_router_key: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiStoreProxy {
+            bearer,
+            tool_router_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
 }
 
 #[utoipa::path(
@@ -1948,14 +1997,16 @@ pub async fn standalone_playground_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
 }
-
 
 #[derive(OpenApi)]
 #[openapi(
@@ -1986,6 +2037,8 @@ pub async fn standalone_playground_handler(
         delete_tool_asset_handler,
         enable_all_tools_handler,
         disable_all_tools_handler,
+        tool_store_proxy_handler,
+        standalone_playground_handler,
     ),
     components(
         schemas(
