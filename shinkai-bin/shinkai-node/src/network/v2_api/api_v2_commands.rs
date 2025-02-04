@@ -433,16 +433,23 @@ impl Node {
         .await
         {
             Ok(_) => {
-                // If everything went well, send the success message
                 let _ = res.send(Ok("Agent added successfully".to_string())).await;
                 Ok(())
             }
             Err(err) => {
-                // If there was an error, send the error message
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("{}", err),
+                // Check if the error message indicates a unique constraint violation
+                let api_error = if err.to_string().contains("UNIQUE constraint failed") {
+                    APIError {
+                        code: StatusCode::CONFLICT.as_u16(),
+                        error: "Conflict".to_string(),
+                        message: "An LLM provider with this ID already exists".to_string(),
+                    }
+                } else {
+                    APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
@@ -1595,7 +1602,8 @@ impl Node {
             return Ok(());
         }
 
-        let zip_contents = match download_zip_file(url, "__agent.json".to_string(), node_name, signing_secret_key).await {
+        let zip_contents = match download_zip_file(url, "__agent.json".to_string(), node_name, signing_secret_key).await
+        {
             Ok(contents) => contents,
             Err(err) => {
                 let api_error = APIError {
