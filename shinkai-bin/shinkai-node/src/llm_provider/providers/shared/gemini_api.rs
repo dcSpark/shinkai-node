@@ -4,10 +4,13 @@ use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::managers::model_capabilities_manager::PromptResult;
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 use serde_json::{self};
+use shinkai_message_primitives::schemas::llm_message::FunctionParameters;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 
 pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
+    eprintln!("Preparing messages for Gemini... {:?}", prompt);
+
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
@@ -85,19 +88,27 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             let role = if msg.get("role") == Some(&serde_json::Value::String("function".to_string())) {
                 serde_json::Value::String("user".to_string())
             } else {
-                msg.get("role").cloned().unwrap_or(serde_json::Value::String("".to_string()))
+                msg.get("role")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::String("".to_string()))
             };
-            let content = msg.get("content").cloned().unwrap_or(serde_json::Value::String("".to_string()));
+            let content = msg
+                .get("content")
+                .cloned()
+                .unwrap_or(serde_json::Value::String("".to_string()));
 
             // Check if this is a "function_response" field (the older logic)
             if let Some(function_response) = msg.get("function_response") {
-                let response = function_response.get("response").and_then(|v| {
-                    if let serde_json::Value::String(s) = v {
-                        serde_json::from_str(s).ok()
-                    } else {
-                        Some(v.clone())
-                    }
-                }).unwrap_or(serde_json::json!({}));
+                let response = function_response
+                    .get("response")
+                    .and_then(|v| {
+                        if let serde_json::Value::String(s) = v {
+                            serde_json::from_str(s).ok()
+                        } else {
+                            Some(v.clone())
+                        }
+                    })
+                    .unwrap_or(serde_json::json!({}));
 
                 serde_json::json!({
                     "role": "user",
@@ -201,7 +212,57 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         .into_iter()
         .filter_map(|tool| tool.functions)
         .flatten()
-        .map(|function| {
+        .map(|mut function| {
+            // Fix up the parameters
+            fix_function_parameters(&mut function.parameters);
+
+            // Special handling for typescript processor parameters
+            if function.name == "shinkai_typescript_unsafe_processor" {
+                if let Some(props) = function.parameters.properties.as_object_mut() {
+                    // Fix the config parameter
+                    if let Some(config) = props.get_mut("config") {
+                        if let Some(config_obj) = config.as_object_mut() {
+                            config_obj.insert(
+                                "properties".to_string(),
+                                serde_json::json!({
+                                    "options": {
+                                        "type": "object",
+                                        "description": "Configuration options",
+                                        "properties": {
+                                            "timeout": {
+                                                "type": "number",
+                                                "description": "Execution timeout in milliseconds"
+                                            }
+                                        }
+                                    }
+                                }),
+                            );
+                        }
+                    }
+
+                    // Fix the parameters parameter
+                    if let Some(params) = props.get_mut("parameters") {
+                        if let Some(params_obj) = params.as_object_mut() {
+                            params_obj.insert(
+                                "properties".to_string(),
+                                serde_json::json!({
+                                    "args": {
+                                        "type": "object",
+                                        "description": "Function arguments",
+                                        "properties": {
+                                            "input": {
+                                                "type": "string",
+                                                "description": "Input data"
+                                            }
+                                        }
+                                    }
+                                }),
+                            );
+                        }
+                    }
+                }
+            }
+
             serde_json::json!({
                 "name": function.name.chars()
                     .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' })
@@ -242,14 +303,20 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     // Add tools and tool_config if there are function declarations
     if !function_declarations.is_empty() {
         if let Some(obj) = result_json.as_object_mut() {
-            obj.insert("tools".to_string(), serde_json::json!([{
-                "function_declarations": function_declarations
-            }]));
-            obj.insert("tool_config".to_string(), serde_json::json!({
-                "function_calling_config": {
-                    "mode": "AUTO"
-                }
-            }));
+            obj.insert(
+                "tools".to_string(),
+                serde_json::json!([{
+                    "function_declarations": function_declarations
+                }]),
+            );
+            obj.insert(
+                "tool_config".to_string(),
+                serde_json::json!({
+                    "function_calling_config": {
+                        "mode": "AUTO"
+                    }
+                }),
+            );
         }
     }
 
@@ -261,6 +328,107 @@ pub fn gemini_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     })
 }
 
+fn fix_function_parameters(params: &mut FunctionParameters) {
+    // If this parameter is declared as an object...
+    if params.type_ == "object" {
+        // Safely get a mutable reference to its properties object.
+        if let Some(props_obj) = params.properties.as_object_mut() {
+            // If there are zero declared properties...
+            if props_obj.is_empty() {
+                // Insert a dummy property so Gemini doesn't reject the schema.
+                props_obj.insert(
+                    "dummy".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Dummy property to satisfy Gemini's requirement for non-empty object schemas"
+                    }),
+                );
+            } else {
+                // If there *are* properties, fix them recursively in case any sub-property is also an empty object
+                for (_prop_name, prop_value) in props_obj.iter_mut() {
+                    if let Some(sub_obj) = prop_value.as_object_mut() {
+                        // If sub_obj has "type":"object", do the same check
+                        let is_object = sub_obj
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .map_or(false, |s| s == "object");
+
+                        if is_object {
+                            // Ensure it has a properties field
+                            if !sub_obj.contains_key("properties") {
+                                sub_obj.insert(
+                                    "properties".to_string(),
+                                    serde_json::json!({
+                                        "dummy": {
+                                            "type": "string",
+                                            "description": "Dummy property to satisfy Gemini's requirement for non-empty object schemas"
+                                        }
+                                    }),
+                                );
+                            } else if let Some(props) = sub_obj.get_mut("properties") {
+                                if let Some(nested_props) = props.as_object_mut() {
+                                    if nested_props.is_empty() {
+                                        nested_props.insert(
+                                            "dummy".to_string(),
+                                            serde_json::json!({
+                                                "type": "string",
+                                                "description": "Dummy property to satisfy Gemini's requirement for non-empty object schemas"
+                                            }),
+                                        );
+                                    } else {
+                                        // Recursively fix any nested object properties
+                                        for nested in nested_props.values_mut() {
+                                            if let Some(nested_obj) = nested.as_object_mut() {
+                                                let nested_is_object = nested_obj
+                                                    .get("type")
+                                                    .and_then(|v| v.as_str())
+                                                    .map_or(false, |s| s == "object");
+                                                if nested_is_object {
+                                                    fix_object_in_place(nested_obj);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Helper for fixing deeply nested objects
+fn fix_object_in_place(obj: &mut serde_json::Map<String, serde_json::Value>) {
+    let props_opt = obj.get_mut("properties");
+    if let Some(props_val) = props_opt {
+        if let Some(nested_props) = props_val.as_object_mut() {
+            if nested_props.is_empty() {
+                nested_props.insert(
+                    "dummy".to_string(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": "Deep nested dummy property"
+                    }),
+                );
+            } else {
+                for nested in nested_props.values_mut() {
+                    if let Some(nested_obj) = nested.as_object_mut() {
+                        let nested_is_object = nested_obj
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .map_or(false, |s| s == "object");
+                        if nested_is_object {
+                            fix_object_in_place(nested_obj);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,7 +436,10 @@ mod tests {
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptAssetType, SubPromptType};
 
-    fn generate_test_payload(prompt: Prompt, model: &LLMProviderInterface) -> Result<serde_json::Value, LLMProviderError> {
+    fn generate_test_payload(
+        prompt: Prompt,
+        model: &LLMProviderInterface,
+    ) -> Result<serde_json::Value, LLMProviderError> {
         let result = gemini_prepare_messages(model, prompt)?;
         let contents = match result.messages {
             PromptResultEnum::Value(v) => v,
@@ -599,13 +770,167 @@ mod tests {
             }
         });
 
-             // Generate and print the final payload
+        // Generate and print the final payload
         let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
         println!("Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
 
         assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
         assert!(result.remaining_output_tokens > 0);
+    }
 
-   
+    #[test]
+    fn test_gemini_with_typescript_processor() {
+        let sub_prompts = vec![
+            SubPrompt::Content(
+                SubPromptType::System,
+                "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string(),
+                98,
+            ),
+            SubPrompt::ToolAvailable(
+                SubPromptType::AvailableTool,
+                serde_json::json!({
+                    "function": {
+                        "description": "Tool for executing Node.js code. This is unsafe and should be used with extreme caution.",
+                        "name": "shinkai_typescript_unsafe_processor",
+                        "parameters": {
+                            "properties": {
+                                "code": {
+                                    "description": "The TypeScript code to execute",
+                                    "type": "string"
+                                },
+                                "config": {
+                                    "description": "Configuration for the code execution",
+                                    "type": "object",
+                                    "properties": {
+                                        "options": {
+                                            "type": "object",
+                                            "description": "Configuration options",
+                                            "properties": {
+                                                "timeout": {
+                                                    "type": "number",
+                                                    "description": "Execution timeout in milliseconds"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "package": {
+                                    "description": "The package.json contents",
+                                    "type": "string"
+                                },
+                                "parameters": {
+                                    "description": "Parameters to pass to the code",
+                                    "type": "object",
+                                    "properties": {
+                                        "args": {
+                                            "type": "object",
+                                            "description": "Function arguments",
+                                            "properties": {
+                                                "input": {
+                                                    "type": "string",
+                                                    "description": "Input data"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "required": ["code", "package", "parameters", "config"],
+                            "type": "object"
+                        }
+                    },
+                    "type": "function"
+                }),
+                98,
+            ),
+            SubPrompt::Omni(
+                SubPromptType::UserLastMessage,
+                "Run some TypeScript code".to_string(),
+                vec![],
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        let model = SerializedLLMProvider::mock_provider().model;
+        let result = gemini_prepare_messages(&model, prompt.clone()).expect("Failed to prepare messages");
+
+        let expected_messages = json!({
+            "system_instruction": {
+                "parts": { "text": "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses." }
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{ "text": "Run some TypeScript code" }]
+                }
+            ],
+            "tools": [{
+                "function_declarations": [{
+                    "name": "shinkai_typescript_unsafe_processor",
+                    "description": "Tool for executing Node.js code. This is unsafe and should be used with extreme caution.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "description": "The TypeScript code to execute",
+                                "type": "string"
+                            },
+                            "config": {
+                                "description": "Configuration for the code execution",
+                                "type": "object",
+                                "properties": {
+                                    "options": {
+                                        "type": "object",
+                                        "description": "Configuration options",
+                                        "properties": {
+                                            "timeout": {
+                                                "type": "number",
+                                                "description": "Execution timeout in milliseconds"
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "package": {
+                                "description": "The package.json contents",
+                                "type": "string"
+                            },
+                            "parameters": {
+                                "description": "Parameters to pass to the code",
+                                "type": "object",
+                                "properties": {
+                                    "args": {
+                                        "type": "object",
+                                        "description": "Function arguments",
+                                        "properties": {
+                                            "input": {
+                                                "type": "string",
+                                                "description": "Input data"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "required": ["code", "package", "parameters", "config"]
+                    }
+                }]
+            }],
+            "tool_config": {
+                "function_calling_config": {
+                    "mode": "AUTO"
+                }
+            }
+        });
+
+        assert_eq!(result.messages, PromptResultEnum::Value(expected_messages));
+        assert!(result.remaining_output_tokens > 0);
+
+        // Generate and print the final payload
+        let payload = generate_test_payload(prompt, &model).expect("Failed to generate payload");
+        println!("Final Payload: {}", serde_json::to_string_pretty(&payload).unwrap());
     }
 }

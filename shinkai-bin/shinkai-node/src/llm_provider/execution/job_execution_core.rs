@@ -21,9 +21,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{Callb
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName,
-    shinkai_message::shinkai_message_schemas::JobMessage,
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+    schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_sqlite::SqliteManager;
 use std::result::Result::Ok;
@@ -55,8 +53,8 @@ impl JobManager {
         let job_id = job_message.job_message.job_id.clone();
         shinkai_log(
             ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            &format!("Processing job: {}", job_id),
+            ShinkaiLogLevel::Info,
+            &format!("Processing job: {} with JobMessage: {:?}", job_id, job_message),
         );
 
         // Fetch data we need to execute job step
