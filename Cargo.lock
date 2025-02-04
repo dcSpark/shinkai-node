@@ -6819,6 +6819,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "sha2 0.10.8",
  "shinkai_crypto_identities",
  "shinkai_embedding",
  "shinkai_fs",
