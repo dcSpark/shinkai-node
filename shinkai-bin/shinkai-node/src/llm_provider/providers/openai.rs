@@ -354,8 +354,9 @@ pub async fn parse_openai_stream_chunk(
         // If we extracted arguments and we're accumulating a function call, append them
         if let Some(args) = maybe_args {
             if partial_fc.is_accumulating {
-                // If this is the start of a new argument object, clear any previous arguments
-                if args.starts_with('{') {
+                // Only clear if we truly are at the first chunk of a new function call
+                // i.e., partial_fc.arguments is empty and the chunk starts with '{'
+                if partial_fc.arguments.is_empty() && args.starts_with('{') {
                     partial_fc.arguments.clear();
                 }
                 partial_fc.arguments.push_str(&args);
@@ -1717,5 +1718,186 @@ mod tests {
         assert!(function_calls.is_empty());
         // Verify no response text was generated
         assert!(response_text.is_empty());
+    }
+
+    #[test]
+    fn test_extraction_stagehand_runner() {
+        // Test case 1: Complete response with function call
+        let json_str = r#"{"id":"chatcmpl-Ax05Fkkh2XHGZ12je3BW7hxtCEl7n","object":"chat.completion","created":1738625037,"model":"gpt-4o-mini-2024-07-18","choices":[{"index":0,"message":{"role":"assistant","content":null,"function_call":{"name":"stagehand_runner","arguments":"{\"commands\":[{\"action\":\"goto\",\"payload\":\"https://shinkai.com\"},{\"action\":\"extract\",\"payload\":\"titles and subtitles\"}]}"},"refusal":null},"logprobs":null,"finish_reason":"function_call"}],"usage":{"prompt_tokens":331,"completion_tokens":39,"total_tokens":370,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}},"service_tier":"default","system_fingerprint":"fp_72ed7ab54c"}"#;
+
+        eprintln!("\nTesting case 1 - Complete response with function call");
+        let (maybe_args, cleaned) = extract_and_remove_arguments(json_str);
+
+        // We don't expect any arguments to be extracted since this is a complete response
+        eprintln!("Extracted arguments: {:?}", maybe_args);
+        assert_eq!(maybe_args, None);
+
+        // The complete response should remain unchanged
+        assert_eq!(cleaned, json_str);
+
+        // Verify the complete response is valid JSON and has expected structure
+        eprintln!("Verifying complete response JSON structure...");
+        match serde_json::from_str::<serde_json::Value>(&cleaned) {
+            Ok(parsed) => {
+                eprintln!("Successfully parsed complete response JSON");
+                // Check key fields are present and have expected values
+                assert_eq!(parsed["object"].as_str().unwrap(), "chat.completion");
+                assert_eq!(parsed["model"].as_str().unwrap(), "gpt-4o-mini-2024-07-18");
+                let function_call = &parsed["choices"][0]["message"]["function_call"];
+                assert_eq!(function_call["name"].as_str().unwrap(), "stagehand_runner");
+                assert!(function_call["arguments"].as_str().unwrap().contains("commands"));
+            }
+            Err(e) => {
+                eprintln!("Failed to parse complete response JSON: {}", e);
+                eprintln!("JSON was: {}", cleaned);
+                panic!("Complete response JSON parsing failed: {}", e);
+            }
+        }
+
+        // Test case 2: Function call part only
+        eprintln!("\nTesting case 2 - Function call part only");
+        let function_call_json = r#"{"function_call":{"arguments":"{\"commands\":[{\"action\":\"goto\",\"payload\":\"https://shinkai.com\"},{\"action\":\"extract\",\"payload\":\"titles and subtitles\"}]}"}}"#;
+
+        let (maybe_args, cleaned) = extract_and_remove_arguments(function_call_json);
+
+        // Check we extracted the arguments correctly
+        eprintln!("Extracted arguments: {:?}", maybe_args);
+        let extracted_args = maybe_args.expect("Should have extracted arguments");
+
+        // Parse and verify the extracted arguments JSON structure
+        eprintln!("Verifying extracted arguments JSON structure...");
+        match serde_json::from_str::<serde_json::Value>(&extracted_args) {
+            Ok(parsed_args) => {
+                eprintln!("Successfully parsed extracted arguments");
+                let commands = parsed_args["commands"].as_array().expect("Should have commands array");
+                assert_eq!(commands.len(), 2);
+
+                // Verify first command
+                assert_eq!(commands[0]["action"].as_str().unwrap(), "goto");
+                assert_eq!(commands[0]["payload"].as_str().unwrap(), "https://shinkai.com");
+
+                // Verify second command
+                assert_eq!(commands[1]["action"].as_str().unwrap(), "extract");
+                assert_eq!(commands[1]["payload"].as_str().unwrap(), "titles and subtitles");
+            }
+            Err(e) => {
+                eprintln!("Failed to parse extracted arguments: {}", e);
+                eprintln!("Arguments were: {}", extracted_args);
+                panic!("Arguments JSON parsing failed: {}", e);
+            }
+        }
+
+        // The cleaned JSON should have empty arguments but maintain structure
+        eprintln!("Checking cleaned JSON structure...");
+        assert!(cleaned.contains(r#""function_call""#));
+        assert!(cleaned.contains(r#""arguments""#));
+        assert!(cleaned.contains(r#""""#)); // Empty string
+
+        // Verify the cleaned JSON is valid and has the expected structure
+        eprintln!("Verifying cleaned JSON structure...");
+        match serde_json::from_str::<serde_json::Value>(&cleaned) {
+            Ok(parsed) => {
+                eprintln!("Successfully parsed cleaned JSON");
+                let args = parsed["function_call"]["arguments"]
+                    .as_str()
+                    .expect("Should have arguments as string");
+                assert!(args.is_empty(), "Arguments should be empty string");
+            }
+            Err(e) => {
+                eprintln!("Failed to parse cleaned JSON: {}", e);
+                eprintln!("Cleaned JSON was: {}", cleaned);
+                panic!("Cleaned JSON parsing failed: {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_stagehand_runner() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+        };
+        let tools = Some(vec![serde_json::json!({
+            "name": "stagehand_runner",
+            "tool_router_key": "test_router"
+        })]);
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        // Test each chunk exactly as they appeared in the logs
+        let chunks = vec![
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"role":"assistant","content":null,"function_call":{"name":"stagehand_runner","arguments":""},"refusal":null},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"commands"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":["}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"{\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"action"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"goto"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\",\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"payload"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"https"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"://"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"sh"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"ink"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"ai"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":".com"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\"},{\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"action"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"extract"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\",\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"payload"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\":\""}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"titles"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":" and"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":" subtitles"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"\"}"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{"function_call":{"arguments":"]}"}},"logprobs":null,"finish_reason":null}]}"#,
+            r#"data: {"id":"chatcmpl-Ax0G9tSO1igQQTzurNfZr1djkABpr","object":"chat.completion.chunk","created":1738625713,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_72ed7ab54c","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"function_call"}]}"#,
+            "data: [DONE]\n",
+        ];
+
+        for chunk in chunks {
+            buffer.push_str(chunk);
+            buffer.push('\n');
+            let result = parse_openai_stream_chunk(
+                &mut buffer,
+                &mut response_text,
+                &mut function_calls,
+                &mut partial_fc,
+                &tools,
+                &ws_manager,
+                None,
+                "session_id",
+            )
+            .await;
+            assert!(result.is_ok());
+        }
+
+        // Verify the function call
+        assert_eq!(function_calls.len(), 1);
+        let fc = &function_calls[0];
+        assert_eq!(fc.name, "stagehand_runner");
+        assert_eq!(fc.tool_router_key, Some("test_router".to_string()));
+
+        // Verify the arguments
+        let expected_args = serde_json::json!({
+            "commands": [
+                {
+                    "action": "goto",
+                    "payload": "https://shinkai.com"
+                },
+                {
+                    "action": "extract",
+                    "payload": "titles and subtitles"
+                }
+            ]
+        });
+        assert_eq!(serde_json::to_value(&fc.arguments).unwrap(), expected_args);
     }
 }
