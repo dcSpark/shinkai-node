@@ -112,6 +112,9 @@ pub async fn handle_oauth(
                                                             Some(Utc::now() + chrono::Duration::seconds(expires_in));
                                                     }
                                                 }
+                                                if let Some(refresh_token) = response_json["refresh_token"].as_str() {
+                                                    updated_token.refresh_token = Some(refresh_token.to_string());
+                                                }
 
                                                 // Update token in database
                                                 let _ = db.update_oauth_token(&updated_token);
