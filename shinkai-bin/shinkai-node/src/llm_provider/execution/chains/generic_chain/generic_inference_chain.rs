@@ -338,10 +338,64 @@ impl GenericInferenceChain {
                     match tool_router.get_tool_by_name(&tool_name).await {
                         Ok(Some(tool)) => tools.push(tool),
                         Ok(None) => {
-                            return Err(LLMProviderError::ToolNotFound(format!(
-                                "Forced tool not found: {}",
-                                tool_name
-                            )));
+                            // If tool not found directly, try FTS and vector search
+                            let sanitized_query = tool_name.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+
+                            // Perform FTS search
+                            let fts_results = tool_router.sqlite_manager.search_tools_fts(&sanitized_query);
+
+                            // Perform vector search
+                            let vector_results = tool_router
+                                .sqlite_manager
+                                .tool_vector_search(&sanitized_query, 5, false, true)
+                                .await;
+
+                            match (fts_results, vector_results) {
+                                (Ok(fts_tools), Ok(vector_tools)) => {
+                                    let mut combined_tools = Vec::new();
+                                    let mut seen_ids = std::collections::HashSet::new();
+
+                                    // Add FTS results first (exact matches)
+                                    for fts_tool in fts_tools {
+                                        if seen_ids.insert(fts_tool.tool_router_key.clone()) {
+                                            combined_tools.push(fts_tool);
+                                        }
+                                    }
+
+                                    // Add vector search results with high confidence (score < 0.2)
+                                    for (tool, score) in vector_tools {
+                                        if score < 0.2 && seen_ids.insert(tool.tool_router_key.clone()) {
+                                            combined_tools.push(tool);
+                                        }
+                                    }
+
+                                    if combined_tools.is_empty() {
+                                        return Err(LLMProviderError::ToolNotFound(format!(
+                                            "Forced tool not found: {} (no matches found in search)",
+                                            tool_name
+                                        )));
+                                    }
+
+                                    // Add the best matching tool
+                                    if let Some(best_tool) = combined_tools.first() {
+                                        match tool_router.get_tool_by_name(&best_tool.name).await {
+                                            Ok(Some(tool)) => tools.push(tool),
+                                            _ => {
+                                                return Err(LLMProviderError::ToolNotFound(format!(
+                                                    "Best matching tool could not be retrieved: {}",
+                                                    best_tool.name
+                                                )));
+                                            }
+                                        }
+                                    }
+                                }
+                                (Err(e), _) | (_, Err(e)) => {
+                                    return Err(LLMProviderError::ToolRetrievalError(format!(
+                                        "Error searching for tool alternatives: {:?}",
+                                        e
+                                    )));
+                                }
+                            }
                         }
                         Err(e) => {
                             return Err(LLMProviderError::ToolRetrievalError(format!(
