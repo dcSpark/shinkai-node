@@ -274,7 +274,6 @@ impl InferenceChainContext {
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
-        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         Self {

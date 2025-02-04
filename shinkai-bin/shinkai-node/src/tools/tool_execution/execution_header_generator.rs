@@ -385,6 +385,8 @@ mod tests {
             scopes: vec![],
             pkce_type: None,
             refresh_token: None,
+            request_token_auth_header: None,
+            request_token_content_type: None,
         }]);
 
         let result = check_tool(tool_router_key, tool_config, value, parameters, &oauth);
@@ -419,6 +421,8 @@ mod tests {
             scopes: vec![],
             pkce_type: None,
             refresh_token: None,
+            request_token_auth_header: None,
+            request_token_content_type: None,
         }]);
 
         let result = check_tool(tool_router_key, tool_config, value, parameters, &oauth);
@@ -648,6 +652,8 @@ mod tests {
             scopes: vec!["read".to_string(), "write".to_string()],
             pkce_type: Some("S256".to_string()),
             refresh_token: Some("refresh123".to_string()),
+            request_token_auth_header: None,
+            request_token_content_type: None,
         }]);
 
         let result = check_oauth(&oauth);
@@ -668,6 +674,8 @@ mod tests {
             scopes: vec![],
             pkce_type: None,
             refresh_token: None,
+            request_token_auth_header: None,
+            request_token_content_type: None,
         }]);
 
         let result = check_oauth(&oauth);
@@ -695,6 +703,8 @@ mod tests {
                 scopes: vec![],
                 pkce_type: None,
                 refresh_token: None,
+                request_token_auth_header: None,
+                request_token_content_type: None,
             },
             OAuth {
                 name: "oauth2".to_string(),
@@ -708,6 +718,8 @@ mod tests {
                 scopes: vec![],
                 pkce_type: None,
                 refresh_token: None,
+                request_token_auth_header: None,
+                request_token_content_type: None,
             },
         ]);
 
@@ -729,6 +741,8 @@ mod tests {
             scopes: vec![],
             pkce_type: None,
             refresh_token: None,
+            request_token_auth_header: None,
+            request_token_content_type: None,
         }]);
 
         let result = check_oauth(&oauth);
@@ -775,6 +789,8 @@ mod tests {
                 scopes: vec![],
                 pkce_type: None,
                 refresh_token: None,
+                request_token_auth_header: None,
+                request_token_content_type: None,
             },
             OAuth {
                 name: "invalid_oauth".to_string(),
@@ -788,6 +804,8 @@ mod tests {
                 scopes: vec![],
                 pkce_type: None,
                 refresh_token: None,
+                request_token_auth_header: None,
+                request_token_content_type: None,
             },
         ]);
 
