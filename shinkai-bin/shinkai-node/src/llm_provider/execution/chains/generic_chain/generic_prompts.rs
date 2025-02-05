@@ -71,6 +71,11 @@ impl JobPromptGenerator {
                                     }
                                 }
                             }
+                            // Skip adding TypeScript unsafe processor tool
+                            // This tool is not supported in Gemini due to undefined function parameters Object
+                            if tool_router_key == "local:::__official_shinkai:::shinkai_typescript_unsafe_processor" {
+                                continue;
+                            }
                         }
                         None => {}
                     }

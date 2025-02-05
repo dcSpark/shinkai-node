@@ -27,6 +27,7 @@ impl EmbeddingFunction {
         let model_str = match &self.model_type {
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
             _ => {
+                println!("Unsupported embedding model type: {:?}", self.model_type);
                 return Err(rusqlite::Error::InvalidQuery);
             }
         };
@@ -55,11 +56,17 @@ impl EmbeddingFunction {
             .json(&request_body)
             .send()
             .await
-            .map_err(|_e| rusqlite::Error::InvalidQuery)?
+            .map_err(|e| {
+                println!("Failed to send request to embedding API: {}", e);
+                rusqlite::Error::InvalidQuery
+            })?
             .json::<OllamaResponse>()
             .await
-            .map_err(|_e| rusqlite::Error::InvalidQuery)?;
+            .map_err(|e| {
+                println!("Failed to parse embedding API response: {}", e);
+                rusqlite::Error::InvalidQuery
+            })?;
 
         Ok(response.embedding)
     }
-} 
+}
