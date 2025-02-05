@@ -177,9 +177,9 @@ fn native_tool_test_knowledge() {
             {
                 // Check that Rust tools are installed, retry up to 10 times
                 let mut retry_count = 0;
-                let max_retries = 20;
+                let max_retries = 40;
                 let retry_delay = Duration::from_millis(500);
-                
+
                 loop {
                     tokio::time::sleep(retry_delay).await;
 
@@ -188,7 +188,7 @@ fn native_tool_test_knowledge() {
                         .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
                         .await
                         .unwrap();
-                    
+
                     match res_receiver.recv().await {
                         Ok(result) => {
                             match result {
