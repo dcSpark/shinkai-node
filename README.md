@@ -68,13 +68,13 @@ Note: You must run these tests from the root directory of this repo.
 Simply use the following to run all rust node tests:
 
 ```
-cargo test -- --test-threads=1
+IS_TESTING=1 cargo test -- --test-threads=1
 ```
 
 For running a specific test (useful for debugging) you can use:
 
 ```
-cargo test tcp_node_test -- --nocapture --test-threads=1
+IS_TESTING=1 cargo test tcp_node_test -- --nocapture --test-threads=1
 ```
 
 ### Running Dockerized Tests
