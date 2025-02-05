@@ -14,6 +14,7 @@ mod it {
     mod job_concurrency_in_seq_tests;
     mod job_image_analysis_tests;
     mod job_manager_concurrency_tests;
+    mod job_tree_usage_tests;
     mod model_capabilities_manager_tests;
     mod node_integration_tests;
     mod node_retrying_tests;
@@ -21,7 +22,6 @@ mod it {
     mod performance_tests;
     mod planner_integration_tests;
     mod utils;
-    mod vector_fs_api_tests;
     mod websocket_tests;
 
     mod change_nodes_name_tests;
