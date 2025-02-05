@@ -1780,8 +1780,7 @@ impl Node {
         println!("[Publish Tool] Signature: {}", signature_hex.clone());
         println!("[Publish Tool] Identity: {}", identity_name.clone());
 
-        let store_url =
-            env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com/store/defaults".to_string());
+        let store_url = env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com".to_string());
         let response = client
             .post(format!("{}/store/revisions", store_url))
             .multipart(form)
@@ -2485,8 +2484,7 @@ impl Node {
             return Ok(());
         }
 
-        let store_url =
-            env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com/store/defaults".to_string());
+        let store_url = env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com".to_string());
 
         let client = reqwest::Client::new();
 
