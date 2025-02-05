@@ -576,13 +576,15 @@ mod tests {
     fn test_deserialize_deno_tool() {
         let json_data = r#"{
             "author": "Shinkai",
+            "homepage": "http://example.com",
             "config": [
                 {
                     "BasicConfig": {
                         "description": "",
                         "key_name": "name",
                         "key_value": null,
-                        "required": true
+                        "required": true,
+                        "type_name": null
                     }
                 },
                 {
@@ -590,7 +592,8 @@ mod tests {
                         "description": "",
                         "key_name": "privateKey",
                         "key_value": null,
-                        "required": true
+                        "required": true,
+                        "type_name": null
                     }
                 },
                 {
@@ -598,7 +601,8 @@ mod tests {
                         "description": "",
                         "key_name": "useServerSigner",
                         "key_value": null,
-                        "required": false
+                        "required": false,
+                        "type_name": null
                     }
                 }
             ],
@@ -616,6 +620,10 @@ mod tests {
             "js_code": "",
             "keywords": [],
             "activated": false,
+            "tools": [],
+            "runner": "any",
+            "tool_set": null,
+            "operating_system": [],
             "result": {
                 "type": "object",
                 "properties": {},
@@ -629,6 +637,9 @@ mod tests {
         assert_eq!(deserialized.name, "Coinbase Wallet Creator");
         assert_eq!(deserialized.version, "1.0.0");
         assert_eq!(deserialized.description, "Tool for creating a Coinbase wallet");
+        assert_eq!(deserialized.homepage, Some("http://example.com".to_string()));
+        assert_eq!(deserialized.runner, RunnerType::Any);
+        assert_eq!(deserialized.tool_set, None);
 
         // Verify config entries
         assert_eq!(deserialized.config.len(), 3);
