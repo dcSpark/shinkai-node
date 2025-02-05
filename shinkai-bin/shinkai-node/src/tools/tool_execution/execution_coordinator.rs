@@ -1,13 +1,19 @@
 use crate::llm_provider::job_manager::JobManager;
+use crate::managers::IdentityManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
-
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use chrono::Utc;
+use ed25519_dalek::SigningKey;
+use regex::Regex;
+use reqwest::Client;
 use serde_json::json;
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
@@ -15,21 +21,12 @@ use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_sqlite::oauth_manager::OAuthToken;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
-
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
-use tokio::sync::Mutex;
-
-use crate::managers::IdentityManager;
-use ed25519_dalek::SigningKey;
-
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use chrono::Utc;
-use regex::Regex;
-use reqwest::Client;
-use sha2::{Digest, Sha256};
+use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -418,6 +415,8 @@ pub async fn execute_code(
     bearer: String,
     node_name: ShinkaiName,
     mounts: Option<Vec<String>>,
+    runner: Option<RunnerType>,
+    operating_system: Option<Vec<OperatingSystem>>,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
     // Route based on the prefix
@@ -439,6 +438,8 @@ pub async fn execute_code(
                 support_files,
                 code,
                 mounts,
+                runner,
+                operating_system,
             )
             .await
         }
@@ -459,6 +460,8 @@ pub async fn execute_code(
                 support_files,
                 code,
                 mounts,
+                runner,
+                operating_system,
             )
             .await
         }

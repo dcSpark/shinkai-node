@@ -310,8 +310,8 @@ mod tests {
     use super::*;
 
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-    use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::tool_config::BasicConfig;
+    use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use shinkai_tools_primitives::tools::{deno_tools::DenoTool, shinkai_tool::ShinkaiTool};
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -339,7 +339,6 @@ mod tests {
     fn create_deno_tool() -> ShinkaiTool {
         let mut initial_tool = ShinkaiTool::Deno(
             DenoTool {
-
                 name: "Test Tool".to_string(),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),
@@ -374,6 +373,9 @@ mod tests {
                 sql_queries: None,
                 file_inbox: None,
                 assets: None,
+                runner: RunnerType::Any,
+                operating_system: vec![OperatingSystem::Windows],
+                tool_set: None,
             },
             true,
         );

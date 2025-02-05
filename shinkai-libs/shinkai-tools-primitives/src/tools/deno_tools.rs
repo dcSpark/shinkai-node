@@ -1,18 +1,11 @@
-use std::collections::HashMap;
-use std::env;
-use std::fs::create_dir_all;
-use std::hash::RandomState;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use super::parameters::Parameters;
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use crate::tools::error::ToolError;
 use crate::tools::shared_execution::{get_files_after_with_protocol, update_result_with_modified_files};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{Map, Value as JsonValue};
+use serde_json::Map;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::code_files::CodeFiles;
@@ -22,6 +15,12 @@ use shinkai_tools_runner::tools::execution_context::ExecutionContext;
 use shinkai_tools_runner::tools::execution_error::ExecutionError;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
+use std::collections::HashMap;
+use std::env;
+use std::fs::create_dir_all;
+use std::hash::RandomState;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DenoTool {
@@ -47,6 +46,9 @@ pub struct DenoTool {
     pub file_inbox: Option<String>,
     pub oauth: Option<Vec<OAuth>>,
     pub assets: Option<Vec<String>>,
+    pub runner: RunnerType,
+    pub operating_system: Vec<OperatingSystem>,
+    pub tool_set: Option<String>,
 }
 
 impl DenoTool {
@@ -521,61 +523,6 @@ impl DenoTool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ToolResult {
-    pub r#type: String,
-    pub properties: serde_json::Value,
-    pub required: Vec<String>,
-}
-
-impl Serialize for ToolResult {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let helper = Helper {
-            result_type: self.r#type.clone(),
-            properties: self.properties.clone(),
-            required: self.required.clone(),
-        };
-
-        helper.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ToolResult {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let helper = Helper::deserialize(deserializer)?;
-
-        Ok(ToolResult {
-            r#type: helper.result_type,
-            properties: helper.properties,
-            required: helper.required,
-        })
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Helper {
-    #[serde(rename = "type", alias = "result_type")]
-    result_type: String,
-    properties: JsonValue,
-    required: Vec<String>,
-}
-
-impl ToolResult {
-    pub fn new(result_type: String, properties: serde_json::Value, required: Vec<String>) -> Self {
-        ToolResult {
-            r#type: result_type,
-            properties,
-            required,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::tools::tool_config::BasicConfig;
@@ -629,13 +576,15 @@ mod tests {
     fn test_deserialize_deno_tool() {
         let json_data = r#"{
             "author": "Shinkai",
+            "homepage": "http://example.com",
             "config": [
                 {
                     "BasicConfig": {
                         "description": "",
                         "key_name": "name",
                         "key_value": null,
-                        "required": true
+                        "required": true,
+                        "type_name": null
                     }
                 },
                 {
@@ -643,7 +592,8 @@ mod tests {
                         "description": "",
                         "key_name": "privateKey",
                         "key_value": null,
-                        "required": true
+                        "required": true,
+                        "type_name": null
                     }
                 },
                 {
@@ -651,7 +601,8 @@ mod tests {
                         "description": "",
                         "key_name": "useServerSigner",
                         "key_value": null,
-                        "required": false
+                        "required": false,
+                        "type_name": null
                     }
                 }
             ],
@@ -669,6 +620,10 @@ mod tests {
             "js_code": "",
             "keywords": [],
             "activated": false,
+            "tools": [],
+            "runner": "any",
+            "tool_set": null,
+            "operating_system": [],
             "result": {
                 "type": "object",
                 "properties": {},
@@ -682,6 +637,9 @@ mod tests {
         assert_eq!(deserialized.name, "Coinbase Wallet Creator");
         assert_eq!(deserialized.version, "1.0.0");
         assert_eq!(deserialized.description, "Tool for creating a Coinbase wallet");
+        assert_eq!(deserialized.homepage, Some("http://example.com".to_string()));
+        assert_eq!(deserialized.runner, RunnerType::Any);
+        assert_eq!(deserialized.tool_set, None);
 
         // Verify config entries
         assert_eq!(deserialized.config.len(), 3);
@@ -756,6 +714,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
         };
 
         // Test check_required_config_fields with no values set
@@ -846,5 +807,123 @@ mod tests {
         assert_eq!(config.type_name, Some("integer".to_string()));
         assert!(!config.required);
         assert_eq!(config.key_value, None);
+    }
+
+    #[test]
+    fn test_deno_tool_runner_types() {
+        let tool = DenoTool {
+            name: "Test Tool".to_string(),
+            homepage: None,
+            author: "Test Author".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "".to_string(),
+            tools: vec![],
+            config: vec![],
+            description: "Test description".to_string(),
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: false,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), json!({}), vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+            runner: RunnerType::OnlyDocker,
+            operating_system: vec![],
+            tool_set: None,
+        };
+
+        // Test serialization/deserialization with RunnerType
+        let serialized = serde_json::to_string(&tool).expect("Failed to serialize DenoTool");
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
+
+        assert_eq!(deserialized.runner, RunnerType::OnlyDocker);
+
+        // Test different runner types
+        let mut tool_any = tool.clone();
+        tool_any.runner = RunnerType::Any;
+        let serialized = serde_json::to_string(&tool_any).expect("Failed to serialize DenoTool");
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
+        assert_eq!(deserialized.runner, RunnerType::Any);
+    }
+
+    #[test]
+    fn test_deno_tool_operating_systems() {
+        let tool = DenoTool {
+            name: "Test Tool".to_string(),
+            homepage: None,
+            author: "Test Author".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "".to_string(),
+            tools: vec![],
+            config: vec![],
+            description: "Test description".to_string(),
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: false,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), json!({}), vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Linux, OperatingSystem::Windows],
+            tool_set: None,
+        };
+
+        // Test serialization/deserialization with operating systems
+        let serialized = serde_json::to_string(&tool).expect("Failed to serialize DenoTool");
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
+
+        assert_eq!(deserialized.operating_system.len(), 2);
+        assert!(deserialized.operating_system.contains(&OperatingSystem::Linux));
+        assert!(deserialized.operating_system.contains(&OperatingSystem::Windows));
+    }
+
+    #[test]
+    fn test_deno_tool_tool_set() {
+        let tool = DenoTool {
+            name: "Test Tool".to_string(),
+            homepage: None,
+            author: "Test Author".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "".to_string(),
+            tools: vec![],
+            config: vec![],
+            description: "Test description".to_string(),
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg { json: "".to_string() },
+            activated: false,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), json!({}), vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            oauth: None,
+            assets: None,
+            runner: RunnerType::Any,
+            operating_system: vec![],
+            tool_set: Some("test-tool-set".to_string()),
+        };
+
+        // Test serialization/deserialization with tool_set
+        let serialized = serde_json::to_string(&tool).expect("Failed to serialize DenoTool");
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
+
+        assert_eq!(deserialized.tool_set, Some("test-tool-set".to_string()));
+
+        // Test with None tool_set
+        let mut tool_no_set = tool.clone();
+        tool_no_set.tool_set = None;
+        let serialized = serde_json::to_string(&tool_no_set).expect("Failed to serialize DenoTool");
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
+        assert_eq!(deserialized.tool_set, None);
     }
 }

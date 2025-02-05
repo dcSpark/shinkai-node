@@ -2,7 +2,7 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{schemas::{shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey}, shinkai_message::shinkai_message_schemas::JobMessage};
-use shinkai_tools_primitives::tools::{shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground};
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolWithAssets, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
@@ -1060,6 +1060,8 @@ pub struct CodeExecutionRequest {
     #[serde(deserialize_with = "deserialize_tool_router_keys")]
     pub tools: Vec<ToolRouterKey>,
     pub mounts: Option<Vec<String>>,
+    pub runner: Option<RunnerType>,
+    pub operating_system: Option<Vec<OperatingSystem>>,
 }
 
 // Define a custom default function for oauth
@@ -1119,6 +1121,8 @@ pub async fn code_execution_handler(
             app_id: safe_folder_name(&app_id),
             llm_provider: payload.llm_provider,
             mounts: payload.mounts,
+            runner: payload.runner,
+            operating_system: payload.operating_system,
             res: res_sender,
         })
         .await

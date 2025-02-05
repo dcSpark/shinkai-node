@@ -1,7 +1,7 @@
 use super::{
-    deno_tools::ToolResult,
     parameters::Parameters,
     tool_config::{BasicConfig, OAuth, ToolConfig},
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value as JsonValue;
@@ -46,7 +46,6 @@ pub struct ToolPlaygroundMetadata {
     pub configurations: Vec<ToolConfig>,
     pub parameters: Parameters,
     pub result: ToolResult,
-
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_sql_tables")]
     #[serde(serialize_with = "serialize_sql_tables")]
@@ -61,6 +60,9 @@ pub struct ToolPlaygroundMetadata {
     #[serde(deserialize_with = "deserialize_tools", serialize_with = "serialize_tools")]
     pub tools: Option<Vec<ToolRouterKey>>,
     pub oauth: Option<Vec<OAuth>>,
+    pub runner: RunnerType,
+    pub operating_system: Vec<OperatingSystem>,
+    pub tool_set: Option<String>,
 }
 
 fn deserialize_configurations<'de, D>(deserializer: D) -> Result<Vec<ToolConfig>, D::Error>
@@ -267,7 +269,10 @@ mod tests {
                     "type": "string",
                     "properties": "{}",
                     "required": []
-                }
+                },
+                "runner": "any",
+                "operating_system": ["windows"],
+                "tool_set": null
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
@@ -345,7 +350,10 @@ mod tests {
                         }
                     },
                     "required": []
-                }
+                },
+                "runner": "any",
+                "operating_system": ["windows"],
+                "tool_set": null
             },
             "job_id": "123",
             "job_id_history": [],
@@ -398,7 +406,10 @@ mod tests {
                         "query": "SELECT markdown FROM website_data WHERE url = :url"
                     }
                 ],
-                "sql_database_path": "test.db"
+                "sql_database_path": "test.db",
+                "runner": "any",
+                "operating_system": ["windows"],
+                "tool_set": null
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
@@ -437,7 +448,10 @@ mod tests {
                 "tools": [
                     "local:::toolkit1:::tool1",
                     "local:::toolkit2:::tool2:::1.0"
-                ]
+                ],
+                "runner": "any",
+                "operating_system": ["windows"],
+                "tool_set": null
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
@@ -488,7 +502,10 @@ mod tests {
                     "not::enough::colons",
                     "local:::toolkit1:::tool1:::version:::extra",
                     "local:::toolkit2:::tool2"
-                ]
+                ],
+                "runner": "any",
+                "operating_system": ["macos"],
+                "tool_set": null
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
@@ -528,7 +545,10 @@ mod tests {
                     "properties": "{}",
                     "required": []
                 },
-                "tools": []
+                "tools": [],
+                "runner": "any",
+                "operating_system": ["linux"],
+                "tool_set": null
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
@@ -561,7 +581,10 @@ mod tests {
                     "properties": "{}",
                     "required": []
                 },
-                "tools": [123, true, null, {"key": "value"}]
+                "tools": [123, true, null, {"key": "value"}],
+                "runner": "any",
+                "operating_system": ["linux"],
+                "tool_set": null
             },
             "tool_router_key": "example_key",
             "job_id": "job_123",
@@ -627,6 +650,9 @@ mod tests {
             sql_queries: vec![],
             tools: None,
             oauth: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
         };
 
         let serialized = serde_json::to_value(&metadata).unwrap();
@@ -664,7 +690,10 @@ mod tests {
             "sqlTables": [],
             "sqlQueries": [],
             "tools": null,
-            "oauth": null
+            "oauth": null,
+            "runner": "only_host",
+            "operating_system": ["linux"],
+            "tool_set": null
         });
 
         assert_eq!(serialized, expected);
@@ -760,6 +789,9 @@ mod tests {
                 ),
             ]),
             oauth: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let serialized = serde_json::to_value(&metadata).unwrap();
@@ -791,7 +823,10 @@ mod tests {
                 "local:::toolkit1:::tool1",
                 "local:::toolkit2:::tool2:::1.0"
             ],
-            "oauth": null
+            "oauth": null,
+            "runner": "any",
+            "operating_system": ["windows"],
+            "tool_set": null
         });
 
         assert_eq!(serialized, expected);
@@ -839,6 +874,9 @@ mod tests {
             ],
             tools: None,
             oauth: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Linux, OperatingSystem::MacOS],
+            tool_set: Some("some cool set".to_string()),
         };
 
         let serialized = serde_json::to_value(&metadata).unwrap();
@@ -885,7 +923,10 @@ mod tests {
                 }
             ],
             "tools": null,
-            "oauth": null
+            "oauth": null,
+            "runner": "any",
+            "operating_system": ["linux", "macos"],
+            "tool_set": "some cool set"
         });
 
         assert_eq!(serialized, expected);

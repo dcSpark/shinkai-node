@@ -922,13 +922,15 @@ mod tests {
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
-    use shinkai_tools_primitives::tools::deno_tools::ToolResult;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
     use shinkai_tools_primitives::tools::python_tools::PythonTool;
     use shinkai_tools_primitives::tools::tool_config::BasicConfig;
     use shinkai_tools_primitives::tools::tool_config::ToolConfig;
     use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
+    use shinkai_tools_primitives::tools::tool_types::OperatingSystem;
+    use shinkai_tools_primitives::tools::tool_types::RunnerType;
+    use shinkai_tools_primitives::tools::tool_types::ToolResult;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -967,6 +969,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -1039,6 +1044,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let deno_tool_2 = DenoTool {
@@ -1061,6 +1069,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let deno_tool_3 = DenoTool {
@@ -1083,6 +1094,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let shinkai_tool_1 = ShinkaiTool::Deno(deno_tool_1, true);
@@ -1142,6 +1156,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let deno_tool_2 = DenoTool {
@@ -1164,6 +1181,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let deno_tool_3 = DenoTool {
@@ -1186,6 +1206,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -1275,6 +1298,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         // Wrap the DenoTool in a ShinkaiTool::Deno variant
@@ -1321,6 +1347,9 @@ mod tests {
                 sql_queries: None,
                 file_inbox: None,
                 assets: None,
+                runner: RunnerType::OnlyHost,
+                operating_system: vec![OperatingSystem::Windows],
+                tool_set: None,
             },
             DenoTool {
                 name: "Text Analysis Helper".to_string(),
@@ -1342,6 +1371,9 @@ mod tests {
                 sql_queries: None,
                 file_inbox: None,
                 assets: None,
+                runner: RunnerType::OnlyHost,
+                operating_system: vec![OperatingSystem::Windows],
+                tool_set: None,
             },
             DenoTool {
                 name: "Data Visualization Tool".to_string(),
@@ -1363,6 +1395,9 @@ mod tests {
                 sql_queries: None,
                 file_inbox: None,
                 assets: None,
+                runner: RunnerType::OnlyHost,
+                operating_system: vec![OperatingSystem::Windows],
+                tool_set: None,
             },
         ];
 
@@ -1427,6 +1462,9 @@ mod tests {
             file_inbox: None,
             assets: None,
             oauth: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let disabled_tool = DenoTool {
@@ -1449,6 +1487,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         // Add both tools to the database
@@ -1538,6 +1579,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let disabled_non_network_tool = DenoTool {
@@ -1560,6 +1604,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
@@ -1690,6 +1737,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let tool2 = DenoTool {
@@ -1712,6 +1762,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let tool3 = DenoTool {
@@ -1734,6 +1787,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         // Add tools to database with specific vectors
@@ -1816,6 +1872,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let deno_tool_v2 = DenoTool {
@@ -1838,6 +1897,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         // Wrap the DenoTools in ShinkaiTool::Deno variants
@@ -1932,6 +1994,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
         let shinkai_tool_v1 = ShinkaiTool::Deno(deno_tool_v1.clone(), true);
         let vector_v1 = SqliteManager::generate_vector_for_testing(0.1);
@@ -1966,6 +2031,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
         let shinkai_tool_v2 = ShinkaiTool::Deno(deno_tool_v2.clone(), true);
 
@@ -2029,6 +2097,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
         let shinkai_tool_v1 = ShinkaiTool::Python(python_tool_v1, true);
         manager
@@ -2061,6 +2132,9 @@ mod tests {
             sql_queries: Some(vec![]),
             file_inbox: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
         let shinkai_tool_v2 = ShinkaiTool::Python(python_tool_v2, true);
         let upgraded = manager
