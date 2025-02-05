@@ -101,10 +101,11 @@ impl ToolRouter {
             eprintln!("Error importing tools from directory: {}", e);
         }
 
+        if let Err(e) = self.add_rust_tools().await {
+            eprintln!("Error adding rust tools: {}", e);
+        }
+
         if is_empty {
-            if let Err(e) = self.add_rust_tools().await {
-                eprintln!("Error adding rust tools: {}", e);
-            }
             if let Err(e) = self.add_static_prompts(&generator).await {
                 eprintln!("Error adding static prompts: {}", e);
             }
@@ -112,9 +113,6 @@ impl ToolRouter {
                 eprintln!("Error adding testing network tools: {}", e);
             }
         } else if !has_any_js_tools {
-            if let Err(e) = self.add_rust_tools().await {
-                eprintln!("Error adding rust tools: {}", e);
-            }
             if let Err(e) = self.add_testing_network_tools().await {
                 eprintln!("Error adding testing network tools: {}", e);
             }
@@ -384,10 +382,9 @@ impl ToolRouter {
                 None,
                 tool.tool_router_key,
             );
-            self.sqlite_manager
-                .add_tool(ShinkaiTool::Rust(rust_tool, true))
-                .await
-                .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            if let Err(e) = self.sqlite_manager.add_tool(ShinkaiTool::Rust(rust_tool, true)).await {
+                eprintln!("Error adding rust tool: {}", e);
+            }
         }
         Ok(())
     }
