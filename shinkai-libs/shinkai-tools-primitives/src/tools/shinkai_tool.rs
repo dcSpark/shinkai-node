@@ -565,7 +565,7 @@ mod tests {
                 "Markdown".to_string(),
                 "HTML to Markdown".to_string(),
             ],
-            code: Some("import { getHomePath } from './shinkai-local-support.ts';\n\n...".to_string()), // Truncated for brevity
+            code: Some("import { getHomePath } from './shinkai-local-support.ts';\n\n...".to_string()), /* Truncated for brevity */
             embedding_metadata: None,
         };
 
@@ -668,7 +668,11 @@ mod tests {
                         "json": ""
                     },
                     "name": "Shinkai: Coinbase My Address Getter",
-                    "js_code": "import { Coinbase, CoinbaseOptions } from 'npm:@coinbase/coinbase-sdk@0.0.16';\\n\\ntype Configurations = {\\n name: string;\\n privateKey: string;\\n walletId?: string;\\n useServerSigner?: string;\\n};\\ntype Parameters = {\\n walletId?: string;\\n};\\ntype Result = {\\n address: string;\\n};\\nexport type Run<C extends Record<string, any>, I extends Record<string, any>, R extends Record<string, any>> = (config: C, inputs: I) => Promise<R>;\\n\\nexport const run: Run<Configurations, Parameters, Result> = async (\\n configurations: Configurations,\\n params: Parameters,\\n): Promise<Result> => {\\n const coinbaseOptions: CoinbaseOptions = {\\n apiKeyName: configurations.name,\\n privateKey: configurations.privateKey,\\n useServerSigner: configurations.useServerSigner === 'true',\\n };\\n const coinbase = new Coinbase(coinbaseOptions);\\n const user = await coinbase.getDefaultUser();\\n\\n // Prioritize walletId from Params over Config\\n const walletId = params.walletId || configurations.walletId;\\n\\n // Throw an error if walletId is not defined\\n if (!walletId) {\\n throw new Error('walletId must be defined in either params or config');\\n }\\n\\n const wallet = await user.getWallet(walletId);\\n console.log(`Wallet retrieved: `, wallet.toString());\\n\\n // Retrieve the list of balances for the wallet\\n const address = await wallet.getDefaultAddress();\\n console.log(`Default Address: `, address);\\n\\n return {\\n address: address?.getId() || '',\\n };\\n};"
+                    "js_code": "import { Coinbase, CoinbaseOptions } from 'npm:@coinbase/coinbase-sdk@0.0.16';\\n\\ntype Configurations = {\\n name: string;\\n privateKey: string;\\n walletId?: string;\\n useServerSigner?: string;\\n};\\ntype Parameters = {\\n walletId?: string;\\n};\\ntype Result = {\\n address: string;\\n};\\nexport type Run<C extends Record<string, any>, I extends Record<string, any>, R extends Record<string, any>> = (config: C, inputs: I) => Promise<R>;\\n\\nexport const run: Run<Configurations, Parameters, Result> = async (\\n configurations: Configurations,\\n params: Parameters,\\n): Promise<Result> => {\\n const coinbaseOptions: CoinbaseOptions = {\\n apiKeyName: configurations.name,\\n privateKey: configurations.privateKey,\\n useServerSigner: configurations.useServerSigner === 'true',\\n };\\n const coinbase = new Coinbase(coinbaseOptions);\\n const user = await coinbase.getDefaultUser();\\n\\n // Prioritize walletId from Params over Config\\n const walletId = params.walletId || configurations.walletId;\\n\\n // Throw an error if walletId is not defined\\n if (!walletId) {\\n throw new Error('walletId must be defined in either params or config');\\n }\\n\\n const wallet = await user.getWallet(walletId);\\n console.log(`Wallet retrieved: `, wallet.toString());\\n\\n // Retrieve the list of balances for the wallet\\n const address = await wallet.getDefaultAddress();\\n console.log(`Default Address: `, address);\\n\\n return {\\n address: address?.getId() || '',\\n };\\n};",
+                    "homepage": null,
+                    "runner": "any",
+                    "operating_system": ["linux"],
+                    "tool_set": null
                 },
                 false
             ]
@@ -679,5 +683,15 @@ mod tests {
         eprintln!("deserialized_tool: {:?}", deserialized_tool);
 
         assert!(deserialized_tool.is_ok(), "Failed to deserialize ShinkaiTool");
+
+        if let Ok(ShinkaiTool::Deno(deno_tool, _)) = deserialized_tool {
+            assert_eq!(deno_tool.name, "Shinkai: Coinbase My Address Getter");
+            assert_eq!(deno_tool.author, "Shinkai");
+            assert_eq!(deno_tool.version, "1.0.0");
+            assert_eq!(deno_tool.runner, RunnerType::Any);
+            assert_eq!(deno_tool.operating_system, vec![OperatingSystem::Linux]);
+        } else {
+            panic!("Expected Deno tool variant");
+        }
     }
 }
