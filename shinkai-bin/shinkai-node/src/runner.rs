@@ -12,12 +12,11 @@ use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
 use shinkai_http_api::node_api_router;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string,
+    encryption_public_key_to_string, encryption_secret_key_to_string
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
-    signature_secret_key_to_string,
+    clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string, signature_secret_key_to_string
 };
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -326,7 +325,17 @@ fn parse_secrets_file(secrets_file_path: &str) -> HashMap<String, String> {
 
     for line in contents.lines() {
         if let Some((key, value)) = line.split_once('=') {
-            map.insert(key.to_string(), value.to_string());
+            // Handle migration of old identity format for GLOBAL_IDENTITY_NAME
+            if key == "GLOBAL_IDENTITY_NAME" {
+                let updated_value = if value.contains(".arb-sep-shinkai") {
+                    value.replace(".arb-sep-shinkai", ".sep-shinkai")
+                } else {
+                    value.to_string()
+                };
+                map.insert(key.to_string(), updated_value);
+            } else {
+                map.insert(key.to_string(), value.to_string());
+            }
         }
     }
 

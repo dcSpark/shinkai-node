@@ -1874,6 +1874,12 @@ impl Node {
             }
         };
 
+        // Check if the tool can be enabled and enable it if possible
+        let mut tool = tool.clone();
+        if !tool.is_enabled() && tool.can_be_enabled() {
+            tool.enable();
+        }
+
         // Save the tool to the database
         match db.add_tool(tool).await {
             Ok(tool) => {
