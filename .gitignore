@@ -111,3 +111,4 @@ storage_testing_debug_my_local_ai/
 output.txt
 file_aggregator.sh
 shinkai-libs/shinkai-sqlite/dumped_prompts.rs
+storage_debug_localhost
