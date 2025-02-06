@@ -2563,6 +2563,7 @@ impl Node {
         let response = json!({
             "tool_router_key": new_tool.tool_router_key().to_string_without_version(),
             "version": new_tool.version(),
+            "job_id": new_playground.job_id,
         });
         Ok(response)
     }
