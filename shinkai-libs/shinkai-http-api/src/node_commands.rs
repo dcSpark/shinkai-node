@@ -1217,6 +1217,11 @@ pub enum NodeCommand {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiDuplicateTool {
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiAddRegexPattern {
         bearer: String,
         provider_name: String,
