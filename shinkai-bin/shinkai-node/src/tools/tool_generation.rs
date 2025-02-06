@@ -21,6 +21,7 @@ pub async fn v2_create_and_send_job_message(
     job_creation_info: JobCreationInfo,
     llm_provider: String,
     content: String,
+    tools: Option<Vec<String>>,
     db_clone: Arc<SqliteManager>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -55,13 +56,7 @@ pub async fn v2_create_and_send_job_message(
     // Get the current job config
     let (config_res_sender, config_res_receiver) = async_channel::bounded(1);
 
-    let _ = Node::v2_api_get_job_config(
-        db_clone.clone(),
-        bearer.clone(),
-        job_id.clone(),
-        config_res_sender,
-    )
-    .await;
+    let _ = Node::v2_api_get_job_config(db_clone.clone(), bearer.clone(), job_id.clone(), config_res_sender).await;
 
     let current_config = config_res_receiver
         .recv()
@@ -95,6 +90,7 @@ pub async fn v2_create_and_send_job_message(
         bearer,
         job_id.clone(),
         content,
+        tools,
         db_clone,
         node_name_clone,
         identity_manager_clone,
@@ -112,6 +108,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     bearer: String,
     job_id: String,
     content: String,
+    tools: Option<Vec<String>>,
     db_clone: Arc<SqliteManager>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -121,16 +118,21 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     signing_secret_key_clone: SigningKey,
 ) -> Result<(), APIError> {
     // Send message
+    println!("Sending message to job: {}", job_id);
+    if let Some(tools) = tools.clone() {
+        println!("With tools: {:?}", tools);
+    }
     let job_message = JobMessage {
         job_id: job_id.clone(),
         content,
         parent: None,
         sheet_job_data: None,
         callback: None,
+        tools: tools.clone(),
         metadata: None,
         tool_key: None,
         fs_files_paths: vec![],
-                job_filenames: vec![],
+        job_filenames: vec![],
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
@@ -145,6 +147,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         encryption_secret_key_clone,
         encryption_public_key_clone,
         signing_secret_key_clone,
+        Some(true),
         res_sender,
     )
     .await;

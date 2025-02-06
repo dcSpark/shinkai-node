@@ -10,12 +10,11 @@ use crate::{
     },
     utils::environment::NodeEnvironment,
 };
-
 use async_channel::Sender;
+use chrono::Utc;
 use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
-
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
@@ -36,8 +35,9 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
+use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use shinkai_tools_primitives::tools::{
-    deno_tools::{DenoTool, ToolResult},
+    deno_tools::DenoTool,
     error::ToolError,
     python_tools::PythonTool,
     shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
@@ -45,8 +45,9 @@ use shinkai_tools_primitives::tools::{
     tool_output_arg::ToolOutputArg,
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
 };
-
+use std::path::PathBuf;
 use std::{
+    collections::HashMap,
     env,
     fs::File,
     io::{Read, Write},
@@ -54,19 +55,15 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tokio::sync::Mutex;
-use zip::{write::FileOptions, ZipWriter};
-
+use tokio::fs;
+use tokio::{process::Command, sync::Mutex};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-
-use chrono::Utc;
-
-use std::path::PathBuf;
-use tokio::fs;
+use zip::{write::FileOptions, ZipWriter};
 
 impl Node {
-    /// Searches for Shinkai tools using both vector and full-text search (FTS) methods.
+    /// Searches for Shinkai tools using both vector and full-text search (FTS)
+    /// methods.
     ///
     /// The function returns a total of 10 results based on the following logic:
     /// 1. All FTS results are added first.
@@ -366,7 +363,7 @@ impl Node {
                                     error: "Failed to create directory".to_string(),
                                     message: format!("Failed to create directory: {}", s.err().unwrap()),
                                 };
-                                res.send(Err(api_error)).await;
+                                let _ = res.send(Err(api_error)).await;
                                 return Ok(());
                             }
                         }
@@ -381,7 +378,7 @@ impl Node {
                                     error: "Failed to create directory".to_string(),
                                     message: format!("Failed to create directory: {}", status.err().unwrap()),
                                 };
-                                res.send(Err(api_error)).await;
+                                let _ = res.send(Err(api_error)).await;
                                 return Ok(());
                             }
                         }
@@ -473,26 +470,39 @@ impl Node {
         node_env: NodeEnvironment,
         _tool_id: String,
         app_id: String,
+        original_tool_key_path: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-        let mut updated_payload = payload.clone();
 
+        let result = Self::set_playground_tool(db, payload, node_env, app_id, original_tool_key_path).await;
+        let _ = match result {
+            Ok(result) => res.send(Ok(result)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+        return Ok(());
+    }
+
+    async fn set_playground_tool(
+        db: Arc<SqliteManager>,
+        payload: ToolPlayground,
+        node_env: NodeEnvironment,
+        app_id: String,
+        original_tool_key_path: Option<String>,
+    ) -> Result<Value, APIError> {
+        let mut updated_payload = payload.clone();
         let dependencies = updated_payload.metadata.tools.clone().unwrap_or_default();
         for dependency in dependencies {
-            let tool = db.get_tool_by_key(&dependency.to_string_without_version());
-            if tool.is_err() {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Tool not found: {}", dependency.to_string_without_version()),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
+            let _ = db
+                .get_tool_by_key(&dependency.to_string_without_version())
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get tool: {}", e),
+                })?;
         }
 
         let shinkai_tool = match payload.language {
@@ -517,6 +527,9 @@ impl Node {
                     sql_queries: Some(payload.metadata.sql_queries),
                     file_inbox: None,
                     assets: payload.assets.clone(),
+                    runner: payload.metadata.runner,
+                    operating_system: payload.metadata.operating_system,
+                    tool_set: payload.metadata.tool_set,
                 };
                 ShinkaiTool::Deno(tool, false)
             }
@@ -541,12 +554,25 @@ impl Node {
                     sql_queries: Some(payload.metadata.sql_queries),
                     file_inbox: None,
                     assets: payload.assets.clone(),
+                    runner: payload.metadata.runner,
+                    operating_system: payload.metadata.operating_system,
+                    tool_set: payload.metadata.tool_set,
                 };
                 ShinkaiTool::Python(tool, false)
             }
         };
 
         updated_payload.tool_router_key = Some(shinkai_tool.tool_router_key().to_string_without_version());
+
+        let mut delete_old_tool = false;
+        if let Some(original_tool_key_path) = original_tool_key_path.clone() {
+            let original_tool_key = ToolRouterKey::from_string(&original_tool_key_path)?;
+            println!("old tool_key: {:?}", original_tool_key);
+            delete_old_tool = original_tool_key.to_string_without_version()
+                != shinkai_tool.tool_router_key().to_string_without_version();
+        }
+        println!("new tool_key: {:?}", updated_payload.tool_router_key);
+        println!("delete_old_tool: {:?}", delete_old_tool);
 
         let storage_path = node_env.node_storage_path.unwrap_or_default();
         // Check all asset files exist in the {storage}/tool_storage/assets/{app_id}/
@@ -559,31 +585,26 @@ impl Node {
                 let mut asset_path: PathBuf = origin_path.clone();
                 asset_path.push(file_name.clone());
                 if !asset_path.exists() {
-                    let api_error = APIError {
+                    return Err(APIError {
                         code: StatusCode::BAD_REQUEST.as_u16(),
                         error: "Bad Request".to_string(),
                         message: format!("Asset file {} does not exist", file_name.clone()),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    });
                 }
             }
         }
 
-        // Copy asset to permanent tool_storage folder {storage}/tool_storage/{tool_key}.assets/
+        // Copy asset to permanent tool_storage folder
+        // {storage}/tool_storage/{tool_key}.assets/
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
         perm_file_path.push(shinkai_tool.tool_router_key().convert_to_path());
-        if let Err(err) = std::fs::create_dir_all(&perm_file_path) {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to create permanent storage directory: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
+        std::fs::create_dir_all(&perm_file_path).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to create permanent storage directory: {}", e),
+        })?;
         if let Some(assets) = payload.assets.clone() {
             for file_name in assets {
                 let mut tool_path = origin_path.clone();
@@ -595,117 +616,72 @@ impl Node {
                     tool_path.to_string_lossy(),
                     perm_path.to_string_lossy()
                 );
-                let copy_res = std::fs::copy(tool_path, perm_path);
-                if copy_res.is_err() {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!(
-                            "Failed to copy asset file {} to permanent storage: {}",
-                            file_name.clone(),
-                            copy_res.err().unwrap()
-                        ),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        }
-
-        // Function to handle saving metadata and sending response
-        async fn save_metadata_and_respond(
-            db: Arc<SqliteManager>,
-            res: &Sender<Result<Value, APIError>>,
-            updated_payload: ToolPlayground,
-            tool: ShinkaiTool,
-        ) -> Result<(), NodeError> {
-            // Acquire a write lock on the db
-            let db_write = db;
-
-            if let Err(err) = db_write.set_tool_playground(&updated_payload) {
-                let api_error = APIError {
+                let _ = std::fs::copy(tool_path, perm_path).map_err(|e| APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to save playground tool: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                    message: format!(
+                        "Failed to copy asset file {} to permanent storage: {}",
+                        file_name.clone(),
+                        e
+                    ),
+                })?;
             }
-
-            match serde_json::to_value(&tool) {
-                Ok(tool_json) => {
-                    let response = json!({
-                        "shinkai_tool": tool_json,
-                        "metadata": updated_payload
-                    });
-                    let _ = res.send(Ok(response)).await;
-                }
-                Err(_) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: "Failed to serialize tool to JSON".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                }
-            }
-
-            Ok(())
         }
 
         // Create a longer-lived binding for the db clone
-        let version = shinkai_tool.version_indexable();
-        if version.is_err() {
-            let api_error = APIError {
+        let version = shinkai_tool.version_indexable()?;
+        let version = Some(version);
+        let exists = db
+            .tool_exists(&shinkai_tool.tool_router_key().to_string_without_version(), version)
+            .map_err(|e| APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
-                message: format!("Failed to get version: {}", version.err().unwrap()),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
+                message: format!("Failed to check if tool exists: {}", e),
+            })?;
+
+        let tool = match exists {
+            // Tool already exists, update it
+            true => db.update_tool(shinkai_tool).await,
+            // Add the tool to the LanceShinkaiDb
+            false => db.add_tool(shinkai_tool.clone()).await,
         }
-        let version = Some(version.unwrap());
-        match db.tool_exists(&shinkai_tool.tool_router_key().to_string_without_version(), version) {
-            Ok(true) => {
-                // Tool already exists, update it
-                match db.update_tool(shinkai_tool).await {
-                    Ok(tool) => save_metadata_and_respond(db, &res, updated_payload, tool).await,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to update tool in SqliteManager: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        Ok(())
-                    }
-                }
-            }
-            Ok(false) => {
-                // Add the tool to the LanceShinkaiDb
-                match db.add_tool(shinkai_tool.clone()).await {
-                    Ok(tool) => save_metadata_and_respond(db, &res, updated_payload, tool).await,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to add tool to SqliteManager: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        Ok(())
-                    }
-                }
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to check if tool exists: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                Ok(())
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to add tool to SqliteManager: {}", e),
+        })?;
+
+        db.set_tool_playground(&updated_payload).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to save playground tool: {}", e),
+        })?;
+
+        // Let's delete the old tool if it exists
+        if delete_old_tool {
+            if let Some(original_tool_key_path) = original_tool_key_path {
+                let original_tool_key = ToolRouterKey::from_string(&original_tool_key_path)?;
+                println!(
+                    "removing tool with key: {:?}",
+                    original_tool_key.to_string_without_version()
+                );
+                let delete_tool_playground = db.remove_tool_playground(&original_tool_key.to_string_without_version());
+                let delete_tool = db.remove_tool(&original_tool_key.to_string_without_version(), None);
+                println!("remove tool playground: {:?}", delete_tool_playground);
+                println!("remove tool: {:?}", delete_tool);
             }
         }
+        // Return playground as Value
+        let tool_json = serde_json::to_value(&tool).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to serialize tool to JSON: {}", e),
+        })?;
+
+        return Ok(json!({
+            "shinkai_tool": tool_json,
+            "metadata": updated_payload
+        }));
     }
 
     pub async fn v2_api_list_playground_tools(
@@ -934,6 +910,8 @@ impl Node {
         llm_provider: String,
         node_name: ShinkaiName,
         mounts: Option<Vec<String>>,
+        runner: Option<RunnerType>,
+        operating_system: Option<Vec<OperatingSystem>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -961,6 +939,8 @@ impl Node {
             bearer,
             node_name,
             mounts,
+            runner,
+            operating_system,
         )
         .await;
 
@@ -1126,7 +1106,8 @@ impl Node {
             tool.to_string_without_version() == "local:::__official_shinkai:::shinkai_sqlite_query_executor"
         });
 
-        // Determine the code generation prompt so we can update the message with the custom prompt if required
+        // Determine the code generation prompt so we can update the message with the
+        // custom prompt if required
         let generate_code_prompt = match raw {
             true => prompt,
             false => match generate_code_prompt(language.clone(), is_memory_required, prompt, tool_definitions).await {
@@ -1174,6 +1155,7 @@ impl Node {
             encryption_secret_key_clone,
             encryption_public_key_clone,
             signing_secret_key_clone,
+            Some(true),
             res,
         )
         .await
@@ -1197,7 +1179,8 @@ impl Node {
             return Ok(());
         }
 
-        // We can automatically extract the code (last message from the AI in the job inbox) using the job_id
+        // We can automatically extract the code (last message from the AI in the job
+        // inbox) using the job_id
         let job = match db.get_job_with_options(&job_id, true) {
             Ok(job) => job,
             Err(err) => {
@@ -1274,15 +1257,41 @@ impl Node {
             }
         };
 
-        // Generate the implementation
-        let metadata = match tool_metadata_implementation_prompt(language, code, tools, identity_manager.clone()).await
-        {
-            Ok(metadata) => metadata,
-            Err(err) => {
-                let _ = res.send(Err(err)).await;
-                return Ok(());
-            }
+        let language_str = match language.clone() {
+            CodeLanguage::Typescript => "typescript",
+            CodeLanguage::Python => "python",
         };
+        let start_pattern = &format!("```{}", language_str);
+        let end_pattern = "```";
+        // Extract code from triple backticks if present
+        let code = if code.contains(start_pattern) {
+            let start = code.find(start_pattern).unwrap_or(0);
+            let end = code[(start + start_pattern.len())..]
+                .find(end_pattern)
+                .map(|i| i + start + start_pattern.len())
+                .unwrap_or(code.len());
+
+            // Skip language identifier if present
+            let content_start = if code[start..].starts_with(start_pattern) {
+                start + start_pattern.len()
+            } else {
+                start
+            };
+
+            code[content_start..end].trim().to_string()
+        } else {
+            code
+        };
+
+        // Generate the implementation
+        let metadata =
+            match tool_metadata_implementation_prompt(language.clone(), code, tools, identity_manager.clone()).await {
+                Ok(metadata) => metadata,
+                Err(err) => {
+                    let _ = res.send(Err(err)).await;
+                    return Ok(());
+                }
+            };
 
         // We auto create a new job with the same configuration as the one from job_id
         let job_creation_info = JobCreationInfo {
@@ -1296,6 +1305,7 @@ impl Node {
             job_creation_info,
             job.parent_agent_or_llm_provider_id.clone(),
             metadata,
+            None,
             db,
             node_name_clone,
             identity_manager,
@@ -1347,7 +1357,8 @@ impl Node {
             }
         };
 
-        // Determine if it's an AI or user message, if it's a user message then we need to return an error
+        // Determine if it's an AI or user message, if it's a user message then we need
+        // to return an error
         if message.is_receiver_subidentity_agent() {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
@@ -1359,7 +1370,8 @@ impl Node {
         }
 
         let mut new_message = message.clone();
-        // Update the scheduled time to now so the messages are content wise the same but produce a different hash
+        // Update the scheduled time to now so the messages are content wise the same
+        // but produce a different hash
         new_message.external_metadata.scheduled_time = Utc::now().to_rfc3339();
 
         let inbox_name = match InboxName::get_job_inbox_name_from_params(job_id.clone()) {
@@ -1521,6 +1533,7 @@ impl Node {
             tool_key: None,
             fs_files_paths: vec![],
             job_filenames: vec![],
+            tools: None,
         };
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(
@@ -1771,8 +1784,7 @@ impl Node {
         println!("[Publish Tool] Signature: {}", signature_hex.clone());
         println!("[Publish Tool] Identity: {}", identity_name.clone());
 
-        let store_url = env::var("SHINKAI_STORE_URL")
-            .unwrap_or("https://shinkai-store-302883622007.us-central1.run.app".to_string());
+        let store_url = env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com".to_string());
         let response = client
             .post(format!("{}/store/revisions", store_url))
             .multipart(form)
@@ -1817,6 +1829,8 @@ impl Node {
         bearer: String,
         node_env: NodeEnvironment,
         url: String,
+        node_name: String,
+        signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1824,7 +1838,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::v2_api_import_tool_internal(db, node_env, url).await;
+        let result = Self::v2_api_import_tool_internal(db, node_env, url, node_name, signing_secret_key).await;
         match result {
             Ok(response) => {
                 let _ = res.send(Ok(response)).await;
@@ -1840,13 +1854,16 @@ impl Node {
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         url: String,
+        node_name: String,
+        signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
-        let mut zip_contents = match download_zip_file(url, "__tool.json".to_string()).await {
-            Ok(contents) => contents,
-            Err(err) => {
-                return Err(err);
-            }
-        };
+        let mut zip_contents =
+            match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
+                Ok(contents) => contents,
+                Err(err) => {
+                    return Err(err);
+                }
+            };
 
         // Parse the JSON into a ShinkaiTool
         let tool: ShinkaiTool = match serde_json::from_slice(&zip_contents.buffer) {
@@ -1859,6 +1876,12 @@ impl Node {
                 });
             }
         };
+
+        // Check if the tool can be enabled and enable it if possible
+        let mut tool = tool.clone();
+        if !tool.is_enabled() && tool.can_be_enabled() {
+            tool.enable();
+        }
 
         // Save the tool to the database
         match db.add_tool(tool).await {
@@ -1935,9 +1958,10 @@ impl Node {
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
     ///
-    /// The Shinkai file protocol follows the format: `shinkai://file/{node_name}/{app-id}/{full-path}`
-    /// This function validates the protocol format, constructs the actual file path in the node's storage,
-    /// and returns the file contents as bytes.
+    /// The Shinkai file protocol follows the format:
+    /// `shinkai://file/{node_name}/{app-id}/{full-path}` This function
+    /// validates the protocol format, constructs the actual file path in the
+    /// node's storage, and returns the file contents as bytes.
     ///
     /// # Arguments
     /// * `bearer` - Bearer token for authentication
@@ -2497,6 +2521,9 @@ impl Node {
                         sql_queries: new_tool.sql_queries(),
                         tools: Some(new_tool.get_tools()),
                         oauth: new_tool.get_oauth(),
+                        runner: new_tool.get_runner(),
+                        operating_system: new_tool.get_operating_system(),
+                        tool_set: new_tool.get_tool_set(),
                     },
                     tool_router_key: Some(new_tool.tool_router_key().to_string_without_version()),
                     job_id: Self::create_job_for_duplicate_tool(
@@ -2540,7 +2567,7 @@ impl Node {
         Ok(response)
     }
 
-    async fn process_tool_zip(
+    pub async fn process_tool_zip(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
@@ -2675,12 +2702,615 @@ impl Node {
         let _ = res.send(result).await;
         Ok(())
     }
+
+    pub async fn v2_api_store_proxy(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let store_url = env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com".to_string());
+
+        let client = reqwest::Client::new();
+
+        // Make parallel requests using tokio::try_join!
+        let assets_future = client
+            .get(format!("{}/store/products/{}/assets", store_url, tool_router_key))
+            .send();
+        let product_future = client
+            .get(format!("{}/store/products/{}", store_url, tool_router_key))
+            .send();
+
+        let (assets_response, product_response) = match tokio::try_join!(assets_future, product_future) {
+            Ok((assets, product)) => (assets, product),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Store Request Failed".to_string(),
+                    message: format!("Failed to fetch from store: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Process responses
+        let assets_json = match assets_response.json::<Value>().await {
+            Ok(json) => json,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Invalid Assets Response".to_string(),
+                    message: format!("Failed to parse assets response: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let product_json = match product_response.json::<Value>().await {
+            Ok(json) => json,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Invalid Product Response".to_string(),
+                    message: format!("Failed to parse product response: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Combine responses
+        let response = json!({
+            "assets": assets_json,
+            "product": product_json
+        });
+
+        let _ = res.send(Ok(response)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_standalone_playground(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_env: NodeEnvironment,
+        code: String,
+        metadata: Value,
+        assets: Option<Vec<String>>,
+        language: CodeLanguage,
+        tools: Vec<ToolRouterKey>,
+        parameters: Value,
+        config: Value,
+        oauth: Option<Vec<OAuth>>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let result = Self::create_standalone_playground(
+            code,
+            metadata,
+            assets,
+            language,
+            tools,
+            parameters,
+            config,
+            oauth,
+            tool_id,
+            app_id,
+            llm_provider,
+            bearer,
+            node_env,
+            db.clone(),
+        )
+        .await;
+
+        let _ = match result {
+            Ok(result) => res.send(Ok(result)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+        Ok(())
+    }
+
+    async fn create_standalone_playground(
+        code: String,
+        metadata: Value,
+        assets: Option<Vec<String>>,
+        language: CodeLanguage,
+        tools: Vec<ToolRouterKey>,
+        parameters: Value,
+        config: Value,
+        oauth: Option<Vec<OAuth>>,
+        _tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        bearer: String,
+        node_env: NodeEnvironment,
+        db: Arc<SqliteManager>,
+    ) -> Result<Value, APIError> {
+        // Create temporal directory
+        let mut temp_dir = std::env::temp_dir();
+        temp_dir.push(format!("shinkai_playground_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to create temporary directory".to_string(),
+            message: e.to_string(),
+        })?;
+        let mut files_created = HashMap::new();
+        let tool_list: Vec<ToolRouterKey> = db
+            .get_all_tool_headers()
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to get tool headers".to_string(),
+                message: e.to_string(),
+            })?
+            .into_iter()
+            .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
+            .filter(|tool| tool.is_ok())
+            .map(|tool| tool.unwrap())
+            .collect::<Vec<ToolRouterKey>>();
+        let tool_definitions = generate_tool_definitions(tool_list, language.clone(), db, false).await?;
+        for (tool_key, tool_definition) in tool_definitions {
+            let mut tool_file = temp_dir.clone();
+            match language.clone() {
+                CodeLanguage::Typescript => {
+                    tool_file.push(format!("{}.ts", tool_key));
+                }
+                CodeLanguage::Python => {
+                    tool_file.push(format!("{}.py", tool_key));
+                }
+            }
+            files_created.insert(tool_file.clone(), tool_definition.clone());
+            fs::write(&tool_file, tool_definition.clone())
+                .await
+                .map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to write tool file".to_string(),
+                    message: e.to_string(),
+                })?;
+        }
+
+        // Create tool file
+        let tool_filename = match language.clone() {
+            CodeLanguage::Typescript => "tool.ts",
+            CodeLanguage::Python => "tool.py",
+            _ => {
+                return Err(APIError {
+                    code: 400,
+                    error: "Unsupported Language".to_string(),
+                    message: "Only TypeScript and Python are supported".to_string(),
+                })
+            }
+        };
+        let mut tool_file = temp_dir.clone();
+        tool_file.push(tool_filename);
+        files_created.insert(tool_file.clone(), code.clone());
+        fs::write(&tool_file, code.clone()).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to write tool file".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Create metadata.json
+        let mut metadata_file = temp_dir.clone();
+        metadata_file.push("metadata.json");
+        let metadata_string = serde_json::to_string_pretty(&metadata).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize metadata".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(metadata_file.clone(), metadata_string.clone());
+        fs::write(&metadata_file, metadata_string.clone())
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write metadata file".to_string(),
+                message: e.to_string(),
+            })?;
+
+        // Copy assets if any
+        if let Some(asset_files) = assets {
+            let mut assets_dir = temp_dir.clone();
+            assets_dir.push("assets");
+            fs::create_dir_all(&assets_dir).await.map_err(|e| APIError {
+                code: 500,
+                error: "Failed to create assets directory".to_string(),
+                message: e.to_string(),
+            })?;
+
+            for asset in asset_files {
+                let mut source_path = PathBuf::from(".temporal_store");
+                source_path.push(&app_id);
+                source_path.push(&asset);
+
+                let mut dest_path = assets_dir.clone();
+                dest_path.push(&asset);
+
+                fs::copy(source_path, dest_path).await.map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to copy asset".to_string(),
+                    message: e.to_string(),
+                })?;
+            }
+        }
+
+        let api_url = format!(
+            "http://{}:{}",
+            node_env.api_listen_address.ip(),
+            node_env.api_listen_address.port()
+        );
+        let tool_type = match language.clone() {
+            CodeLanguage::Typescript => "denodynamic",
+            CodeLanguage::Python => "denopython",
+            _ => unreachable!(),
+        };
+
+        // Create launch.js
+        let launch_script = format!(
+            r#"
+// Import required modules
+const fs = require('fs');
+
+// Configuration variables
+const API_URL = "{api_url}";
+const AUTH_TOKEN = "{bearer}";
+const APP_ID = "{app_id}";
+const LLM_PROVIDER = "{llm_provider}";
+const TOOL_TYPE = "{tool_type}";
+
+// Read file contents
+const CODE_CONTENT = fs.readFileSync('./tool.ts', 'utf8');
+const TOOLS_CONTENT = JSON.parse(fs.readFileSync('./tools.json', 'utf8'));
+const CONFIG_CONTENT = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+const PARAMETERS_CONTENT = JSON.parse(fs.readFileSync('./parameters.json', 'utf8'));
+const OAUTH_CONTENT = JSON.parse(fs.readFileSync('./oauth.json', 'utf8'));
+
+// Make the API call
+async function makeApiCall() {{
+    const body = {{
+        code: CODE_CONTENT,
+        tools: TOOLS_CONTENT,
+        tool_type: TOOL_TYPE,
+        llm_provider: LLM_PROVIDER,
+        extra_config: CONFIG_CONTENT,
+        parameters: PARAMETERS_CONTENT,
+        oauth: OAUTH_CONTENT
+    }};
+    console.log(body);
+    try {{
+        const response = await fetch(`${{API_URL}}/v2/code_execution`, {{
+            method: 'POST',
+            headers: {{
+                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
+                'x-shinkai-tool-id': 'run',
+                'x-shinkai-app-id': APP_ID,
+                'x-shinkai-llm-provider': LLM_PROVIDER,
+                'Content-Type': 'application/json; charset=utf-8'
+            }},
+            body: JSON.stringify(body)
+        }});
+
+        const data = await response.json();
+        return data;
+    }} catch (error) {{
+        return error;
+    }}
+}}
+
+
+// Add new function to fetch log file
+async function fetchLogFile(filePath) {{
+    const encodedPath = encodeURIComponent(filePath);
+    try {{
+        const response = await fetch(`${{API_URL}}/v2/resolve_shinkai_file_protocol?file=${{encodedPath}}`, {{
+            headers: {{
+                'Authorization': `Bearer ${{AUTH_TOKEN}}`
+            }}
+        }});
+        const data = await response.text();
+        return data;
+    }} catch (error) {{
+        console.error('Error fetching log:', error);
+        return null;
+    }}
+}}
+
+// Execute the API call
+async function start() {{
+    try {{
+        console.log('Tool Execution Started at ', new Date().toISOString());
+        let data = await makeApiCall();
+        // Check for log files in the response
+        if (data.__created_files__) {{
+            for (const filePath of data.__created_files__) {{
+                if (filePath.endsWith('.log')) {{
+                    console.log('--------------------------------');
+                    console.log('Fetching log file:', filePath);
+                    const logContent = await fetchLogFile(filePath);
+                    console.log('Log content:', logContent);
+                    console.log('--------------------------------');
+                }}
+            }}
+        }}
+        console.log('Tool Execution Completed at ', new Date().toISOString());
+        console.log('Response:\n', JSON.stringify(data, null, 2));
+    }} catch(error) {{
+        console.error('Error:', error);
+    }}
+}}
+
+start().then(() => {{
+    console.log('All operations completed');
+}});
+
+
+"#
+        );
+        let mut launch_file = temp_dir.clone();
+        launch_file.push("launch.js");
+        files_created.insert(launch_file.clone(), launch_script.clone());
+        fs::write(&launch_file, launch_script.clone())
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write launch.sh".to_string(),
+                message: e.to_string(),
+            })?;
+
+        // Set file permissions in a cross-platform way
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perm = std::fs::Permissions::from_mode(0o755);
+            fs::set_permissions(&launch_file, perm).await.map_err(|e| APIError {
+                code: 500,
+                error: "Failed to set permissions".to_string(),
+                message: e.to_string(),
+            })?;
+        }
+
+        // On Windows, executable permissions don't exist in the same way
+        #[cfg(windows)]
+        {
+            // Windows doesn't need special executable permissions for .js files
+        }
+
+        // Create .vscode/launch.json
+        let mut vscode_dir = temp_dir.clone();
+        vscode_dir.push(".vscode");
+        fs::create_dir_all(&vscode_dir).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to create .vscode directory".to_string(),
+            message: e.to_string(),
+        })?;
+
+        let launch_json = json!({
+            "version": "2.0.0",
+            "configurations": [{
+                "name": "Launch Tool",
+                "program": "${workspaceFolder}/launch.js",
+                "request": "launch",
+                "type": "node"
+            }]
+        });
+        let mut launch_json_file = vscode_dir.clone();
+        launch_json_file.push("launch.json");
+        let launch_json_string = serde_json::to_string_pretty(&launch_json).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize launch.json".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(launch_json_file.clone(), launch_json_string.clone());
+        fs::write(&launch_json_file, launch_json_string.clone())
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write launch.json".to_string(),
+                message: e.to_string(),
+            })?;
+
+        // First try to open with cursor
+        let cursor_open = Command::new("code").arg(temp_dir.clone()).spawn();
+        if cursor_open.is_err() {
+            // If cursor fails, try with open
+            // Ignore error if any.
+            let _ = open::that(temp_dir.clone());
+        }
+
+        // Create parameters.json
+        let mut parameters_file = temp_dir.clone();
+        parameters_file.push("parameters.json");
+        let parameters_content = serde_json::to_string_pretty(&parameters).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize parameters".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(parameters_file.clone(), parameters_content.clone());
+        fs::write(&parameters_file, parameters_content)
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write parameters.json".to_string(),
+                message: e.to_string(),
+            })?;
+
+        // Create tools.json
+        let mut tools_file = temp_dir.clone();
+        tools_file.push("tools.json");
+        let tools_content = serde_json::to_string_pretty(
+            &tools
+                .iter()
+                .map(|tool| tool.to_string_without_version())
+                .collect::<Vec<String>>(),
+        )
+        .map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize tools".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(tools_file.clone(), tools_content.clone());
+        fs::write(&tools_file, tools_content).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to write tools.json".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Create config.json
+        let mut config_file = temp_dir.clone();
+        config_file.push("config.json");
+        let config_content = serde_json::to_string_pretty(&config).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to serialize config".to_string(),
+            message: e.to_string(),
+        })?;
+        files_created.insert(config_file.clone(), config_content.clone());
+        fs::write(&config_file, config_content).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to write config.json".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Create oauth.json if OAuth data is provided
+        let oauth_content = if let Some(oauth_data) = oauth {
+            serde_json::to_string_pretty(&oauth_data).map_err(|e| APIError {
+                code: 500,
+                error: "Failed to serialize OAuth data".to_string(),
+                message: e.to_string(),
+            })?
+        } else {
+            "[]".to_string()
+        };
+        let mut oauth_file: PathBuf = temp_dir.clone();
+        oauth_file.push("oauth.json");
+        files_created.insert(oauth_file.clone(), oauth_content.clone());
+        fs::write(&oauth_file, oauth_content).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to write oauth.json".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Let's copy assets if any
+        let node_storage_path = node_env.node_storage_path.clone().unwrap_or_else(|| "".to_string());
+        let assets_path = PathBuf::from(&node_storage_path)
+            .join(".tools_storage")
+            .join("playground")
+            .join(app_id.clone());
+
+        let mut asset_folder = temp_dir.clone();
+        asset_folder.push("assets");
+        fs::create_dir_all(&asset_folder).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to create assets directory".to_string(),
+            message: e.to_string(),
+        })?;
+
+        if assets_path.exists() {
+            for entry in std::fs::read_dir(assets_path).map_err(|e| APIError {
+                code: 500,
+                error: "Failed to read assets directory".to_string(),
+                message: e.to_string(),
+            })? {
+                let entry = entry.map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to read directory entry".to_string(),
+                    message: e.to_string(),
+                })?;
+                let path = entry.path();
+                if path.is_file() {
+                    let mut asset_file = asset_folder.clone();
+                    asset_file.push(path.file_name().unwrap().to_string_lossy().to_string());
+                    files_created.insert(asset_file.clone(), path.to_string_lossy().to_string());
+                    fs::copy(path, asset_file).await.map_err(|e| APIError {
+                        code: 500,
+                        error: "Failed to copy asset".to_string(),
+                        message: e.to_string(),
+                    })?;
+                }
+            }
+        }
+
+        // Create README.md
+        let readme_content = format!(
+            r#"# Shinkai Tool Playground
+
+This is a standalone playground for testing your Shinkai tool.
+
+## Structure
+- `{}`: The main tool implementation
+- `*.ts` or `*.py`: Tool definition files for dependencies
+- `metadata.json`: Tool metadata and configuration
+- `parameters.json`: Runtime parameters passed to your tool (modify this to test different inputs)
+- `tools.json`: Array of tool keys that your tool depends on
+- `config.json`: Additional configuration options for tool execution
+- `oauth.json`: OAuth credentials configuration
+- `assets/`: Directory containing tool assets
+- `launch.js`: Script to execute the tool
+- `.vscode/`: VS Code configuration for easy execution
+- `README.md`: This file
+
+## Configuration Files
+- `parameters.json`: Contains the input parameters that will be passed to your tool during execution. Modify this file to test how your tool behaves with different inputs.
+- `tools.json`: Lists the tool dependencies required by your implementation. Add tool keys here if your code needs to call other tools.
+- `config.json`: Holds additional configuration options that affect tool execution. Use this for environment-specific settings.
+- `oauth.json`: Contains OAuth configuration if your tool requires authentication.
+- `metadata.json`: Defines your tool's metadata like name, description, version etc.
+
+## Running the Tool
+1. Make sure you have Shinkai running locally
+2. Configure your test setup:
+   - Update input parameters in `parameters.json`
+   - Add required tool dependencies to `tools.json`
+   - Modify execution settings in `config.json`
+   - Configure OAuth settings in `oauth.json` if needed
+3. Run the tool using either:
+   - VS Code's debug launcher
+   - Execute `node launch.js` from the terminal
+
+## Dependencies
+You will need node.js to run the tool. If you don't have it, you can install it from [here](https://nodejs.org/en/download/).
+
+Happy coding!"#,
+            tool_filename
+        );
+        let mut readme_file = temp_dir.clone();
+        readme_file.push("README.md");
+        files_created.insert(readme_file.clone(), readme_content.clone());
+        fs::write(&readme_file, readme_content.clone())
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write README file".to_string(),
+                message: e.to_string(),
+            })?;
+
+        Ok(json!({
+            "status": "success",
+            "playground_path": temp_dir.to_string_lossy().to_string(),
+            "files": files_created
+        }))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    use shinkai_embedding::model_type::EmbeddingModelType;
+    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
 
     // TODO: update to not use workflow
     #[test]

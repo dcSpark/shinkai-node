@@ -12,6 +12,8 @@ use std::sync::Arc;
 use reqwest::Client;
 use shinkai_http_api::node_api_router::APIError;
 
+use base64;
+
 impl Node {
     pub async fn v2_api_get_oauth_token(
         db: Arc<SqliteManager>,
@@ -102,32 +104,106 @@ impl Node {
         }
         let mut oauth_data = oauth_data.unwrap();
 
+        let mut body = "application/json";
+        if let Some(request_token_content_type) = oauth_data.request_token_content_type.clone() {
+            if request_token_content_type == "application/x-www-form-urlencoded" {
+                body = "application/x-www-form-urlencoded";
+            }
+        }
+
         let client = Client::new();
+
         let mut request_body = serde_json::json!({
             "client_id": oauth_data.client_id.as_deref().unwrap_or_default(),
-            // "client_secret": oauth_data.client_secret.as_deref().unwrap_or_default(),
+            "client_secret": oauth_data.client_secret.as_deref().unwrap_or_default(),
             "code": code,
             "redirect_uri": oauth_data.redirect_url.as_deref().unwrap_or_default(),
             "grant_type": "authorization_code"
         });
 
         // Add code_verifier if PKCE is enabled
-        if oauth_data.pkce_type.is_some() {
-            // TODO For now we only support plain.
-            if let Some(verifier) = &oauth_data.pkce_code_verifier {
-                request_body["code_verifier"] = serde_json::Value::String(verifier.clone());
+        match oauth_data.pkce_type.clone() {
+            Some(pkce_type) => {
+                match pkce_type.to_lowercase().as_str() {
+                    "plain" => {
+                        // TODO For now we only support plain.
+                        if let Some(verifier) = &oauth_data.pkce_code_verifier {
+                            request_body["code_verifier"] = serde_json::Value::String(verifier.clone());
+                        }
+                    }
+                    "s256" => {
+                        // TODO For now we only support S256.
+                        if let Some(verifier) = &oauth_data.pkce_code_verifier {
+                            request_body["code_verifier"] = serde_json::Value::String(verifier.clone());
+                        }
+                        // TODO Verify the challange/code sent.
+                        //     let mut hasher = Sha256::new();
+                        //     hasher.update(pkce_uuid.as_bytes());
+                        //     let challenge = hasher.finalize();
+
+                        //     // Base64url encode the challenge
+                        //     let encoded_challenge = URL_SAFE_NO_PAD.encode(challenge);
+
+                        //     query_params.push(("code_challenge", encoded_challenge));
+                        //     query_params.push(("code_challenge_method", "S256".to_string()));
+                        // }
+                    }
+                    _ => {}
+                }
             }
+            None => {}
         }
         let url = &oauth_data.clone().token_url.unwrap_or_default();
 
         println!("[OAuth] Calling {} with params {:?}", url, request_body);
-        let response = client
-            .post(url)
-            .header("Accept", "application/json")
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await;
+        let response = if body == "application/x-www-form-urlencoded" {
+            // Convert the JSON object to URL encoded form data
+            let form_data: Vec<(String, String)> = request_body
+                .as_object()
+                .unwrap()
+                .iter()
+                .filter_map(|(k, v)| v.as_str().map(|v_str| (k.clone(), v_str.to_string())))
+                .collect();
+
+            let mut request = client
+                .post(url)
+                .header("Accept", "application/json")
+                .header("Content-Type", body);
+
+            // Add Basic auth header if specified
+            if let Some(auth_header) = &oauth_data.request_token_auth_header {
+                if auth_header.to_lowercase() == "basic" {
+                    if let (Some(client_id), Some(client_secret)) =
+                        (oauth_data.client_id.clone(), oauth_data.client_secret.clone())
+                    {
+                        let auth = base64::encode(format!("{}:{}", client_id, client_secret));
+                        request = request.header("Authorization", format!("Basic {}", auth));
+                    }
+                }
+            }
+
+            request.form(&form_data).send().await
+        } else {
+            let mut request = client
+                .post(url)
+                .header("Accept", "application/json")
+                .header("Content-Type", "application/json");
+
+            // Add Basic auth header if specified
+            if let Some(auth_header) = &oauth_data.request_token_auth_header {
+                if auth_header.to_lowercase() == "basic" {
+                    if let (Some(client_id), Some(client_secret)) =
+                        (oauth_data.client_id.clone(), oauth_data.client_secret.clone())
+                    {
+                        let auth = base64::encode(format!("{}:{}", client_id, client_secret));
+                        request = request.header("Authorization", format!("Basic {}", auth));
+                    }
+                }
+            }
+
+            request.json(&request_body).send().await
+        };
+
         if response.is_err() {
             return Err(APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -136,6 +212,14 @@ impl Node {
             });
         }
         let response = response.unwrap();
+        println!("[OAuth] Response status {}", response.status());
+        if !response.status().is_success() {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to get OAuth token: {}", response.status()),
+            });
+        }
         let response = response.json::<serde_json::Value>().await;
         if response.is_err() {
             return Err(APIError {
@@ -156,6 +240,15 @@ impl Node {
         //   "token_type":"bearer"
         // }
         // Update the token with the new code and OAuth response data
+        if let Some(error) = response["error"].as_str() {
+            if !error.is_empty() {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get OAuth token: {:?}", response),
+                });
+            }
+        }
         oauth_data.code = Some(code);
         if let Some(access_token) = response["access_token"].as_str() {
             oauth_data.access_token = Some(access_token.to_string());

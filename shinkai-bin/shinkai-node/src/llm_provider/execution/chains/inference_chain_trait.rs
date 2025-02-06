@@ -24,8 +24,8 @@ use std::fmt;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-/// Trait that abstracts top level functionality between the inference chains. This allows
-/// the inference chain router to work with them all easily.
+/// Trait that abstracts top level functionality between the inference chains.
+/// This allows the inference chain router to work with them all easily.
 #[async_trait]
 pub trait InferenceChain: Send + Sync {
     /// Returns a hardcoded String that uniquely identifies the chain
@@ -36,8 +36,10 @@ pub trait InferenceChain: Send + Sync {
     /// Starts the inference chain
     async fn run_chain(&mut self) -> Result<InferenceChainResult, LLMProviderError>;
 
-    /// Attempts to recursively call the chain, increasing the iteration count. If the maximum number of iterations is reached,
-    /// it will return `backup_result` instead of iterating again. Returns error if something errors inside of the chain.
+    /// Attempts to recursively call the chain, increasing the iteration count.
+    /// If the maximum number of iterations is reached, it will return
+    /// `backup_result` instead of iterating again. Returns error if something
+    /// errors inside of the chain.
     async fn recurse_chain(
         &mut self,
         backup_result: InferenceChainResult,
@@ -63,6 +65,8 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn db(&self) -> Arc<SqliteManager>;
     fn full_job(&self) -> &Job;
     fn user_message(&self) -> &ParsedUserMessage;
+    fn user_tool_selected(&self) -> Option<String>;
+    fn force_tools_scope(&self) -> Option<Vec<String>>;
     fn message_hash_id(&self) -> Option<String>;
     fn image_files(&self) -> &HashMap<String, String>;
     fn agent(&self) -> &ProviderOrAgent;
@@ -119,6 +123,14 @@ impl InferenceChainContextTrait for InferenceChainContext {
 
     fn user_message(&self) -> &ParsedUserMessage {
         &self.user_message
+    }
+
+    fn user_tool_selected(&self) -> Option<String> {
+        self.user_tool_selected.clone()
+    }
+
+    fn force_tools_scope(&self) -> Option<Vec<String>> {
+        self.force_tools_scope.clone()
     }
 
     fn message_hash_id(&self) -> Option<String> {
@@ -206,20 +218,23 @@ impl InferenceChainContextTrait for InferenceChainContext {
     }
 }
 
-/// Struct that represents the generalized context available to all chains as input. Note not all chains require
-/// using all fields in this struct, but they are available nonetheless.
+/// Struct that represents the generalized context available to all chains as
+/// input. Note not all chains require using all fields in this struct, but they
+/// are available nonetheless.
 #[derive(Clone)]
 pub struct InferenceChainContext {
     pub db: Arc<SqliteManager>,
     pub full_job: Job,
     pub user_message: ParsedUserMessage,
     pub user_tool_selected: Option<String>,
+    pub force_tools_scope: Option<Vec<String>>,
     pub fs_files_paths: Vec<ShinkaiPath>,
     pub job_filenames: Vec<String>,
     pub message_hash_id: Option<String>,
     pub image_files: HashMap<String, String>,
     pub llm_provider: ProviderOrAgent,
-    /// Job's execution context, used to store potentially relevant data across job steps.
+    /// Job's execution context, used to store potentially relevant data across
+    /// job steps.
     pub generator: RemoteEmbeddingGenerator,
     pub user_profile: ShinkaiName,
     pub max_iterations: u64,
@@ -243,6 +258,7 @@ impl InferenceChainContext {
         full_job: Job,
         user_message: ParsedUserMessage,
         user_tool_selected: Option<String>,
+        force_tools_scope: Option<Vec<String>>,
         fs_files_paths: Vec<ShinkaiPath>,
         job_filenames: Vec<String>,
         message_hash_id: Option<String>,
@@ -258,7 +274,6 @@ impl InferenceChainContext {
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
-        // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
     ) -> Self {
         Self {
@@ -266,6 +281,7 @@ impl InferenceChainContext {
             full_job,
             user_message,
             user_tool_selected,
+            force_tools_scope,
             fs_files_paths,
             job_filenames,
             message_hash_id,
@@ -306,6 +322,7 @@ impl fmt::Debug for InferenceChainContext {
             .field("full_job", &self.full_job)
             .field("user_message", &self.user_message)
             .field("user_tool_selected", &self.user_tool_selected)
+            .field("force_tools_scope", &self.force_tools_scope)
             .field("fs_files_paths", &self.fs_files_paths)
             .field("job_filenames", &self.job_filenames)
             .field("message_hash_id", &self.message_hash_id)
@@ -440,6 +457,14 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
         (**self).user_message()
     }
 
+    fn user_tool_selected(&self) -> Option<String> {
+        (**self).user_tool_selected()
+    }
+
+    fn force_tools_scope(&self) -> Option<Vec<String>> {
+        (**self).force_tools_scope()
+    }
+
     fn message_hash_id(&self) -> Option<String> {
         (**self).message_hash_id()
     }
@@ -525,7 +550,8 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
     }
 }
 
-/// A Mock implementation of the InferenceChainContextTrait for testing purposes.
+/// A Mock implementation of the InferenceChainContextTrait for testing
+/// purposes.
 pub struct MockInferenceChainContext {
     pub user_message: ParsedUserMessage,
     pub image_files: HashMap<String, String>,
@@ -633,6 +659,14 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
 
     fn user_message(&self) -> &ParsedUserMessage {
         &self.user_message
+    }
+
+    fn user_tool_selected(&self) -> Option<String> {
+        None
+    }
+
+    fn force_tools_scope(&self) -> Option<Vec<String>> {
+        None
     }
 
     fn message_hash_id(&self) -> Option<String> {

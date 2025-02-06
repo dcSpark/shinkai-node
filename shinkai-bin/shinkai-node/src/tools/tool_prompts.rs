@@ -326,6 +326,9 @@ pub async fn tool_metadata_implementation_prompt(
       "author": "{identity_name}",
       "version": "1.0.0",
       "keywords": [],
+      "runner": "any",
+      "operatingSystem": ["linux", "macos", "windows"],
+      "tool_set": "",
       "configurations": {{
         "type": "object",
         "properties": {{}},
@@ -386,6 +389,23 @@ pub async fn tool_metadata_implementation_prompt(
           "items": {{
             "type": "string"
           }}
+        }},
+        "runner": {{
+          "type": "string",
+          "enum": ["any", "only_host", "only_docker"],
+          "description": "The type of runner required for this tool"
+        }},
+        "operatingSystem": {{
+          "type": "array",
+          "description": "List of supported operating systems",
+          "items": {{
+            "type": "string",
+            "enum": ["linux", "macos", "windows"]
+          }}
+        }},
+        "tool_set": {{
+          "type": "string",
+          "description": "Optional Tool Set identifier"
         }},
         "configurations": {{
           "$ref": "#/$defs/root_type",
@@ -512,6 +532,8 @@ pub async fn tool_metadata_implementation_prompt(
         "description",
         "author",
         "keywords",
+        "runner",
+        "operatingSystem",
         "configurations",
         "parameters",
         "result",
@@ -623,6 +645,9 @@ pub async fn tool_metadata_implementation_prompt(
       "creator",
       "shinkai"
     ],
+    "runner": "any",
+    "operatingSystem": ["linux", "macos", "windows"],
+    "tool_set": "",
     "configurations": {{
       "type": "object",
       "properties": {{
@@ -665,7 +690,10 @@ pub async fn tool_metadata_implementation_prompt(
       "local:::__official_shinkai:::shinkai_sqlite_query_executor",
       "local:::shinkai_tool_echo:::shinkai_echo"
     ],
-    "oauth": {oauth_example}
+    "oauth": {oauth_example},
+    "runner": "any",
+    "operatingSystem": ["linux", "macos", "windows"],
+    "tool_set": ""
   }};
   ```
 
@@ -683,6 +711,9 @@ pub async fn tool_metadata_implementation_prompt(
       "content conversion",
       "URL to Markdown",
     ],
+    "runner": "any",
+    "operatingSystem": ["linux", "macos", "windows"],
+    "tool_set": "",
     "configurations": {{
       "type": "object",
       "properties": {{}},
@@ -721,7 +752,10 @@ pub async fn tool_metadata_implementation_prompt(
       }}
     ],
     "tools": [],
-    "oauth": {oauth_example}
+    "oauth": {oauth_example},
+    "runner": "any",
+    "operatingSystem": ["linux", "macos", "windows"],
+    "tool_set": ""
   }};
   ```
 </agent_metadata_examples>

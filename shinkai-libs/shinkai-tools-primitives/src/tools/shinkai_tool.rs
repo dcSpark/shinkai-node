@@ -12,6 +12,7 @@ use shinkai_message_primitives::schemas::{
 
 use super::tool_config::OAuth;
 use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
     tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
@@ -248,6 +249,30 @@ impl ShinkaiTool {
             ShinkaiTool::Deno(d, _) => d.author = author,
             ShinkaiTool::Python(p, _) => p.author = author,
             _ => unreachable!(),
+        }
+    }
+
+    pub fn get_runner(&self) -> RunnerType {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.runner.clone(),
+            ShinkaiTool::Python(p, _) => p.runner.clone(),
+            _ => RunnerType::Any,
+        }
+    }
+
+    pub fn get_operating_system(&self) -> Vec<OperatingSystem> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.operating_system.clone(),
+            ShinkaiTool::Python(p, _) => p.operating_system.clone(),
+            _ => vec![OperatingSystem::Linux, OperatingSystem::MacOS, OperatingSystem::Windows],
+        }
+    }
+
+    pub fn get_tool_set(&self) -> Option<String> {
+        match self {
+            ShinkaiTool::Deno(d, _) => d.tool_set.clone(),
+            ShinkaiTool::Python(p, _) => p.tool_set.clone(),
+            _ => None,
         }
     }
 
@@ -489,7 +514,8 @@ impl From<NetworkTool> for ShinkaiTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::deno_tools::{DenoTool, ToolResult};
+    use crate::tools::deno_tools::DenoTool;
+    use crate::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use serde_json::json;
     use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
@@ -522,6 +548,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
         };
 
         // Create a ShinkaiTool instance
@@ -563,13 +592,13 @@ mod tests {
                 "properties": {},
                 "required": []
             }),
-            author: "@@my_local_ai.arb-sep-shinkai".to_string(),
+            author: "@@my_local_ai.sep-shinkai".to_string(),
             keywords: vec![
                 "Deno".to_string(),
                 "Markdown".to_string(),
                 "HTML to Markdown".to_string(),
             ],
-            code: Some("import { getHomePath } from './shinkai-local-support.ts';\n\n...".to_string()), // Truncated for brevity
+            code: Some("import { getHomePath } from './shinkai-local-support.ts';\n\n...".to_string()), /* Truncated for brevity */
             embedding_metadata: None,
         };
 
@@ -601,6 +630,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -669,7 +701,11 @@ mod tests {
                         "json": ""
                     },
                     "name": "Shinkai: Coinbase My Address Getter",
-                    "js_code": "import { Coinbase, CoinbaseOptions } from 'npm:@coinbase/coinbase-sdk@0.0.16';\\n\\ntype Configurations = {\\n name: string;\\n privateKey: string;\\n walletId?: string;\\n useServerSigner?: string;\\n};\\ntype Parameters = {\\n walletId?: string;\\n};\\ntype Result = {\\n address: string;\\n};\\nexport type Run<C extends Record<string, any>, I extends Record<string, any>, R extends Record<string, any>> = (config: C, inputs: I) => Promise<R>;\\n\\nexport const run: Run<Configurations, Parameters, Result> = async (\\n configurations: Configurations,\\n params: Parameters,\\n): Promise<Result> => {\\n const coinbaseOptions: CoinbaseOptions = {\\n apiKeyName: configurations.name,\\n privateKey: configurations.privateKey,\\n useServerSigner: configurations.useServerSigner === 'true',\\n };\\n const coinbase = new Coinbase(coinbaseOptions);\\n const user = await coinbase.getDefaultUser();\\n\\n // Prioritize walletId from Params over Config\\n const walletId = params.walletId || configurations.walletId;\\n\\n // Throw an error if walletId is not defined\\n if (!walletId) {\\n throw new Error('walletId must be defined in either params or config');\\n }\\n\\n const wallet = await user.getWallet(walletId);\\n console.log(`Wallet retrieved: `, wallet.toString());\\n\\n // Retrieve the list of balances for the wallet\\n const address = await wallet.getDefaultAddress();\\n console.log(`Default Address: `, address);\\n\\n return {\\n address: address?.getId() || '',\\n };\\n};"
+                    "js_code": "import { Coinbase, CoinbaseOptions } from 'npm:@coinbase/coinbase-sdk@0.0.16';\\n\\ntype Configurations = {\\n name: string;\\n privateKey: string;\\n walletId?: string;\\n useServerSigner?: string;\\n};\\ntype Parameters = {\\n walletId?: string;\\n};\\ntype Result = {\\n address: string;\\n};\\nexport type Run<C extends Record<string, any>, I extends Record<string, any>, R extends Record<string, any>> = (config: C, inputs: I) => Promise<R>;\\n\\nexport const run: Run<Configurations, Parameters, Result> = async (\\n configurations: Configurations,\\n params: Parameters,\\n): Promise<Result> => {\\n const coinbaseOptions: CoinbaseOptions = {\\n apiKeyName: configurations.name,\\n privateKey: configurations.privateKey,\\n useServerSigner: configurations.useServerSigner === 'true',\\n };\\n const coinbase = new Coinbase(coinbaseOptions);\\n const user = await coinbase.getDefaultUser();\\n\\n // Prioritize walletId from Params over Config\\n const walletId = params.walletId || configurations.walletId;\\n\\n // Throw an error if walletId is not defined\\n if (!walletId) {\\n throw new Error('walletId must be defined in either params or config');\\n }\\n\\n const wallet = await user.getWallet(walletId);\\n console.log(`Wallet retrieved: `, wallet.toString());\\n\\n // Retrieve the list of balances for the wallet\\n const address = await wallet.getDefaultAddress();\\n console.log(`Default Address: `, address);\\n\\n return {\\n address: address?.getId() || '',\\n };\\n};",
+                    "homepage": null,
+                    "runner": "any",
+                    "operating_system": ["linux"],
+                    "tool_set": null
                 },
                 false
             ]
@@ -680,5 +716,15 @@ mod tests {
         eprintln!("deserialized_tool: {:?}", deserialized_tool);
 
         assert!(deserialized_tool.is_ok(), "Failed to deserialize ShinkaiTool");
+
+        if let Ok(ShinkaiTool::Deno(deno_tool, _)) = deserialized_tool {
+            assert_eq!(deno_tool.name, "Shinkai: Coinbase My Address Getter");
+            assert_eq!(deno_tool.author, "Shinkai");
+            assert_eq!(deno_tool.version, "1.0.0");
+            assert_eq!(deno_tool.runner, RunnerType::Any);
+            assert_eq!(deno_tool.operating_system, vec![OperatingSystem::Linux]);
+        } else {
+            panic!("Expected Deno tool variant");
+        }
     }
 }

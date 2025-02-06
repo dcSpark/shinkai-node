@@ -2,7 +2,7 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{schemas::{shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey}, shinkai_message::shinkai_message_schemas::JobMessage};
-use shinkai_tools_primitives::tools::{shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground};
+use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolWithAssets, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 use reqwest::StatusCode;
@@ -106,6 +106,7 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::header::<String>("x-shinkai-tool-id"))
         .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::header::optional::<String>("x-shinkai-original-tool-router-key"))
         .and(warp::body::json())
         .and_then(set_playground_tool_handler);
 
@@ -228,6 +229,23 @@ pub fn tool_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(remove_tool_handler);
 
+    let tool_store_proxy_route = warp::path("tool_store_proxy")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::path::param::<String>())
+        .and_then(tool_store_proxy_handler);
+
+    let standalone_playground_route = warp::path("tools_standalone_playground")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::header::<String>("x-shinkai-tool-id"))
+        .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::header::<String>("x-shinkai-llm-provider"))
+        .and(warp::body::json())
+        .and_then(standalone_playground_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -257,6 +275,8 @@ pub fn tool_routes(
         .or(remove_tool_route)
         .or(enable_all_tools_route)
         .or(disable_all_tools_route)
+        .or(tool_store_proxy_route)
+        .or(standalone_playground_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -796,9 +816,15 @@ pub async fn set_playground_tool_handler(
     authorization: String,
     tool_id: String,
     app_id: String,
+    original_tool_key_path: Option<String>,
     payload: ToolPlayground,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    if let Some(original_tool_key_path) = original_tool_key_path.clone() {
+        if original_tool_key_path.split(":::").collect::<Vec<&str>>().len() != 4 {
+            println!("Invalid original_tool_key_path: {}", original_tool_key_path);
+        }
+    }
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiSetPlaygroundTool {
@@ -806,6 +832,7 @@ pub async fn set_playground_tool_handler(
             payload, 
             tool_id: safe_folder_name(&tool_id),
             app_id: safe_folder_name(&app_id),
+            original_tool_key_path,
             res: res_sender,
         })
         .await
@@ -1041,6 +1068,8 @@ pub struct CodeExecutionRequest {
     #[serde(deserialize_with = "deserialize_tool_router_keys")]
     pub tools: Vec<ToolRouterKey>,
     pub mounts: Option<Vec<String>>,
+    pub runner: Option<RunnerType>,
+    pub operating_system: Option<Vec<OperatingSystem>>,
 }
 
 // Define a custom default function for oauth
@@ -1100,6 +1129,8 @@ pub async fn code_execution_handler(
             app_id: safe_folder_name(&app_id),
             llm_provider: payload.llm_provider,
             mounts: payload.mounts,
+            runner: payload.runner,
+            operating_system: payload.operating_system,
             res: res_sender,
         })
         .await
@@ -1890,6 +1921,7 @@ pub async fn disable_all_tools_handler(
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
+
 pub async fn duplicate_tool_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
@@ -1912,6 +1944,116 @@ pub async fn duplicate_tool_handler(
         .send(NodeCommand::V2ApiDuplicateTool { bearer, tool_key_path, res: res_sender })
         .await
         .map_err(|_| warp::reject::reject())?;
+
+        let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+        match result {
+            Ok(response) => {
+                let response = create_success_response(response);
+                Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+            }
+            Err(error) => Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap(),
+            )),
+        }
+    }
+
+
+#[utoipa::path(
+    get,
+    path = "/v2/tool_store_proxy/{tool_router_key}",
+    params(
+        ("tool_router_key" = String, Path, description = "Tool router key")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved store data", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+
+pub async fn tool_store_proxy_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    tool_router_key: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiStoreProxy {
+            bearer,
+            tool_router_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct StandAlonePlaygroundRequest {
+    pub code: String,
+    pub metadata: Value,
+    pub assets: Option<Vec<String>>,
+    pub language: CodeLanguage,
+    pub tools: Vec<ToolRouterKey>,
+    pub parameters: Value,
+    pub config: Value,
+    pub oauth: Option<Vec<OAuth>>,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/tools_standalone_playground",
+    request_body = StandAlonePlaygroundRequest,
+    responses(
+        (status = 200, description = "Successfully created standalone playground", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+
+pub async fn standalone_playground_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    tool_id: String,
+    app_id: String,
+    llm_provider: String,
+    payload: StandAlonePlaygroundRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiStandAlonePlayground {
+            bearer,
+            code: payload.code,
+            metadata: payload.metadata,
+            assets: payload.assets,
+            language: payload.language,
+            tools: payload.tools,
+            parameters: payload.parameters,
+            config: payload.config,
+            oauth: payload.oauth,
+            tool_id: safe_folder_name(&tool_id),
+            app_id: safe_folder_name(&app_id),
+            llm_provider: llm_provider,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
@@ -1955,6 +2097,8 @@ pub async fn duplicate_tool_handler(
         delete_tool_asset_handler,
         enable_all_tools_handler,
         disable_all_tools_handler,
+        tool_store_proxy_handler,
+        standalone_playground_handler,
     ),
     components(
         schemas(

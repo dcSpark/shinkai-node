@@ -2,7 +2,10 @@ use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
 use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage};
-use shinkai_tools_primitives::tools::tool_playground::{ToolPlayground, ToolPlaygroundMetadata};
+use shinkai_tools_primitives::tools::{
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    tool_types::{OperatingSystem, RunnerType},
+};
 
 impl SqliteManager {
     // Adds or updates a ToolPlayground entry in the tool_playground table
@@ -210,6 +213,10 @@ impl SqliteManager {
                 let mut oauth = None;
                 let mut assets = None;
                 let mut homepage: Option<String> = None;
+                let mut operating_system =
+                    vec![OperatingSystem::Linux, OperatingSystem::MacOS, OperatingSystem::Windows];
+                let mut runner = RunnerType::Any;
+                let mut tool_set = None;
                 if let Ok(tool_data) = self.get_tool_by_key(tool_router_key) {
                     // found data
                     sql_queries = tool_data.sql_queries();
@@ -218,6 +225,9 @@ impl SqliteManager {
                     oauth = tool_data.get_oauth();
                     assets = tool_data.get_assets();
                     homepage = tool_data.get_homepage();
+                    operating_system = tool_data.get_operating_system();
+                    runner = tool_data.get_runner();
+                    tool_set = tool_data.get_tool_set();
                 }
 
                 Ok(ToolPlayground {
@@ -236,6 +246,9 @@ impl SqliteManager {
                         sql_queries,
                         tools,
                         oauth,
+                        operating_system,
+                        runner,
+                        tool_set,
                     },
                     tool_router_key: row.get(7)?,
                     job_id: row.get(8)?,
@@ -306,6 +319,9 @@ impl SqliteManager {
                     sql_queries: vec![],
                     tools: None,
                     oauth: None,
+                    operating_system: vec![OperatingSystem::Linux, OperatingSystem::MacOS, OperatingSystem::Windows],
+                    runner: RunnerType::Any,
+                    tool_set: None,
                 },
                 tool_router_key: row.get(7)?,
                 job_id: row.get(8)?,
@@ -365,10 +381,11 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_tools_primitives::tools::{
-        deno_tools::{DenoTool, ToolResult},
+        deno_tools::DenoTool,
         parameters::Parameters,
         shinkai_tool::ShinkaiTool,
         tool_output_arg::ToolOutputArg,
+        tool_types::{OperatingSystem, RunnerType, ToolResult},
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -404,6 +421,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -433,6 +453,9 @@ mod tests {
                 sql_queries: vec![],
                 tools: None,
                 oauth: None,
+                operating_system: vec![OperatingSystem::Linux],
+                runner: RunnerType::Any,
+                tool_set: None,
             },
             tool_router_key: Some(tool_router_key),
             job_id: "job_123".to_string(),
@@ -532,6 +555,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);
@@ -605,6 +631,9 @@ mod tests {
             file_inbox: None,
             oauth: None,
             assets: None,
+            runner: RunnerType::Any,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
         };
 
         let shinkai_tool = ShinkaiTool::Deno(deno_tool, true);

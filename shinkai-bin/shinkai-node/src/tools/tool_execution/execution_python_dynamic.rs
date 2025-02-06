@@ -6,12 +6,12 @@ use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    deno_tools::ToolResult,
     error::ToolError,
     parameters::Parameters,
     python_tools::PythonTool,
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::sync::Arc;
 
@@ -28,6 +28,8 @@ pub async fn execute_python_tool(
     support_files: HashMap<String, String>,
     code: String,
     mounts: Option<Vec<String>>,
+    runner: Option<RunnerType>,
+    operating_system: Option<Vec<OperatingSystem>>,
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
     let tool = PythonTool {
@@ -50,6 +52,13 @@ pub async fn execute_python_tool(
         file_inbox: None,
         oauth: oauth.clone(),
         assets: None,
+        runner: runner.unwrap_or_default(),
+        operating_system: operating_system.unwrap_or(vec![
+            OperatingSystem::Linux,
+            OperatingSystem::MacOS,
+            OperatingSystem::Windows,
+        ]),
+        tool_set: None,
     };
 
     let env = generate_execution_environment(

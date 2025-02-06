@@ -252,6 +252,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let name = "Test Task";
@@ -282,6 +283,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let name = "Test Task";
@@ -310,6 +312,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let action2 = CronTaskAction::SendMessageToJob {
@@ -324,6 +327,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let name1 = "Task 1";
@@ -357,6 +361,7 @@ mod tests {
                 sheet_job_data: None,
                 callback: None,
                 metadata: None,
+                tools: None,
                 tool_key: None,
             },
         };
@@ -381,6 +386,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let updated_paused = true;
@@ -419,6 +425,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let name = "Test Task";
@@ -458,6 +465,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let name = "Test Task";
@@ -499,6 +507,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
         };
         let name = "Test Task";

@@ -39,6 +39,7 @@ use shinkai_tools_primitives::tools::{
     shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets},
     tool_config::OAuth,
     tool_playground::ToolPlayground,
+    tool_types::{OperatingSystem, RunnerType},
 };
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
@@ -69,7 +70,8 @@ pub enum NodeCommand {
     GetNodeName {
         res: Sender<String>,
     },
-    // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
+    // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of
+    // addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
     // Command to make the node create a registration code through the API. The sender will receive the code.
     APICreateRegistrationCode {
@@ -82,7 +84,8 @@ pub enum NodeCommand {
         code_type: RegistrationCodeType,
         res: Sender<String>,
     },
-    // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
+    // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive
+    // the result.
     APIUseRegistrationCode {
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
@@ -967,6 +970,8 @@ pub enum NodeCommand {
         app_id: String,
         llm_provider: String,
         mounts: Option<Vec<String>>,
+        runner: Option<RunnerType>,
+        operating_system: Option<Vec<OperatingSystem>>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGenerateToolDefinitions {
@@ -1009,6 +1014,7 @@ pub enum NodeCommand {
         payload: ToolPlayground,
         tool_id: String,
         app_id: String,
+        original_tool_key_path: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListPlaygroundTools {
@@ -1224,5 +1230,25 @@ pub enum NodeCommand {
         description: Option<String>,
         priority: i32,
         res: Sender<Result<i64, APIError>>,
+    },
+    V2ApiStoreProxy {
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiStandAlonePlayground {
+        bearer: String,
+        code: String,
+        metadata: Value,
+        assets: Option<Vec<String>>,
+        language: CodeLanguage,
+        tools: Vec<ToolRouterKey>,
+        parameters: Value,
+        config: Value,
+        oauth: Option<Vec<OAuth>>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        res: Sender<Result<Value, APIError>>,
     },
 }

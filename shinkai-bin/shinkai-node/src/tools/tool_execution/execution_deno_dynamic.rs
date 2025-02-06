@@ -3,11 +3,12 @@ use std::path::PathBuf;
 
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_tools_primitives::tools::deno_tools::{DenoTool, ToolResult};
+use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
+use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
 
 use super::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
@@ -27,6 +28,8 @@ pub async fn execute_deno_tool(
     support_files: HashMap<String, String>,
     code: String,
     mounts: Option<Vec<String>>,
+    runner: Option<RunnerType>,
+    operating_system: Option<Vec<OperatingSystem>>,
 ) -> Result<Value, ToolError> {
     // Create a minimal DenoTool instance
     let tool = DenoTool {
@@ -49,6 +52,13 @@ pub async fn execute_deno_tool(
         sql_queries: None,
         file_inbox: None,
         assets: None,
+        runner: runner.unwrap_or_default(),
+        operating_system: operating_system.unwrap_or(vec![
+            OperatingSystem::Linux,
+            OperatingSystem::MacOS,
+            OperatingSystem::Windows,
+        ]),
+        tool_set: None,
     };
 
     let env = generate_execution_environment(
@@ -98,21 +108,24 @@ pub async fn execute_deno_tool(
         }
     }
 
-    match tool.run_on_demand(
-        env,
-        node_env.api_listen_address.ip().to_string(),
-        node_env.api_listen_address.port(),
-        support_files,
-        parameters,
-        extra_config,
-        node_storage_path,
-        app_id.clone(),
-        tool_id.clone(),
-        node_name,
-        false,
-        assets_files,
-        mounts,
-    ).await {
+    match tool
+        .run_on_demand(
+            env,
+            node_env.api_listen_address.ip().to_string(),
+            node_env.api_listen_address.port(),
+            support_files,
+            parameters,
+            extra_config,
+            node_storage_path,
+            app_id.clone(),
+            tool_id.clone(),
+            node_name,
+            false,
+            assets_files,
+            mounts,
+        )
+        .await
+    {
         Ok(run_result) => Ok(run_result.data),
         Err(e) => Err(e),
     }
@@ -145,6 +158,9 @@ pub async fn check_deno_tool(
         sql_queries: None,
         file_inbox: None,
         assets: None,
+        runner: RunnerType::Any,
+        operating_system: vec![OperatingSystem::Linux, OperatingSystem::MacOS, OperatingSystem::Windows],
+        tool_set: None,
     };
 
     let node_env = fetch_node_environment();
@@ -160,5 +176,6 @@ pub async fn check_deno_tool(
         node_storage_path,
         app_id.clone(),
         tool_id.clone(),
-    ).await
+    )
+    .await
 }

@@ -257,11 +257,11 @@ impl<T: Clone + Send + 'static + Debug> Clone for JobQueueManager<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
         shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
     };
-    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -323,6 +323,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -356,6 +357,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -371,6 +373,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -471,6 +474,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -486,6 +490,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -501,6 +506,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -517,6 +523,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -533,6 +540,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,
@@ -549,6 +557,7 @@ mod tests {
                 callback: None,
                 metadata: None,
                 tool_key: None,
+                tools: None,
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
             None,

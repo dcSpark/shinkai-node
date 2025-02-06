@@ -3,16 +3,15 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
+    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
 use shinkai_message_primitives::schemas::wallet_complementary::{WalletRole, WalletSource};
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair
 };
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -48,8 +47,8 @@ fn micropayment_flow_test() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
-        let node2_identity_name = "@@node2_test.arb-sep-shinkai";
+        let node1_identity_name = "@@node1_test.sep-shinkai";
+        let node2_identity_name = "@@node2_test.sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main_profile_node2";
@@ -296,7 +295,7 @@ fn micropayment_flow_test() {
             // node2 receives the result and stores it
             // done
 
-            let test_network_tool_name = "@@node1_test.arb-sep-shinkai:::shinkai-tool-echo:::network__echo";
+            let test_network_tool_name = "@@node1_test.sep-shinkai:::shinkai-tool-echo:::network__echo";
             let test_local_tool_key_name = "local:::shinkai-tool-echo:::network__echo";
 
             let shinkai_tool_offering = ShinkaiToolOffering {
@@ -351,7 +350,7 @@ fn micropayment_flow_test() {
                     })
                     .await
                     .unwrap();
-                let resp = receiver.recv().await.unwrap();
+                // let resp = receiver.recv().await.unwrap();
                 // eprintln!("resp list all shinkai tools: {:?}", resp);
 
                 // Retrieve the shinkai_tool from node1

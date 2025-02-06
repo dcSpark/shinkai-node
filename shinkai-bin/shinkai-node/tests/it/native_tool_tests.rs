@@ -2,18 +2,18 @@ use async_channel::{bounded, Receiver, Sender};
 use serde_json::{json, Map};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider,
+    LLMProviderInterface, OpenAI, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, unsafe_deterministic_encryption_keypair,
+    clone_static_secret_key, unsafe_deterministic_encryption_keypair
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::search_mode::VectorSearchMode;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -50,7 +50,7 @@ fn native_tool_test_knowledge() {
     let mut server = Server::new();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1_test.arb-sep-shinkai";
+        let node1_identity_name = "@@node1_test.sep-shinkai";
         let node1_subidentity_name = "main";
         let node1_device_name = "node1_device";
         let node1_agent = "node1_gpt_agent";
@@ -177,9 +177,9 @@ fn native_tool_test_knowledge() {
             {
                 // Check that Rust tools are installed, retry up to 10 times
                 let mut retry_count = 0;
-                let max_retries = 20;
+                let max_retries = 40;
                 let retry_delay = Duration::from_millis(500);
-                
+
                 loop {
                     tokio::time::sleep(retry_delay).await;
 
@@ -188,7 +188,7 @@ fn native_tool_test_knowledge() {
                         .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
                         .await
                         .unwrap();
-                    
+
                     match res_receiver.recv().await {
                         Ok(result) => {
                             match result {

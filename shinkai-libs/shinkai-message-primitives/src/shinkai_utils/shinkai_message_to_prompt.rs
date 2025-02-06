@@ -22,19 +22,18 @@ impl ShinkaiMessage {
         // Attempt to deserialize the message content into a JobMessage
         let job_message: JobMessage = match serde_json::from_str(&self.get_message_content().unwrap_or_default()) {
             Ok(msg) => msg,
-            Err(_) => {
-                JobMessage {
-                    content: self.get_message_content().unwrap_or_default(),
-                    job_id: "".to_string(),
-                    parent: None,
-                    sheet_job_data: None,
-                    callback: None,
-                    metadata: None,
-                    tool_key: None,
-                    fs_files_paths: vec![],
+            Err(_) => JobMessage {
+                content: self.get_message_content().unwrap_or_default(),
+                job_id: "".to_string(),
+                parent: None,
+                sheet_job_data: None,
+                callback: None,
+                metadata: None,
+                tool_key: None,
+                fs_files_paths: vec![],
                 job_filenames: vec![],
-                }
-            }
+                tools: None,
+            },
         };
 
         // Determine the source of the message based on recipient_subidentity

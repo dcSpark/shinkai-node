@@ -177,6 +177,7 @@ impl Node {
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
         node_signing_sk: SigningKey,
+        high_priority: Option<bool>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token and extract the sender identity
@@ -270,7 +271,7 @@ impl Node {
         };
 
         // Process the job message
-        match Self::internal_job_message(job_manager, shinkai_message.clone()).await {
+        match Self::internal_job_message(job_manager, shinkai_message.clone(), high_priority.unwrap_or(false)).await {
             Ok(_) => {
                 let inbox_name = match InboxName::get_job_inbox_name_from_params(job_message.job_id) {
                     Ok(inbox) => inbox.to_string(),
@@ -1025,7 +1026,7 @@ impl Node {
 
         // Send it for processing
         // Process the job message
-        match Self::internal_job_message(job_manager, shinkai_message.clone()).await {
+        match Self::internal_job_message(job_manager, shinkai_message.clone(), false).await {
             Ok(_) => {
                 let scheduled_time = shinkai_message.clone().external_metadata.scheduled_time;
                 let message_hash = shinkai_message.calculate_message_hash_for_pagination();
