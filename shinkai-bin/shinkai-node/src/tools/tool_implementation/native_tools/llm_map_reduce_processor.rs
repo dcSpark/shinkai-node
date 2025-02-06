@@ -1,4 +1,5 @@
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::shinkai_utils::utils::count_tokens_from_message_llama3;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
 use shinkai_tools_primitives::tools::{
@@ -7,6 +8,7 @@ use shinkai_tools_primitives::tools::{
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 use crate::utils::environment::fetch_node_environment;
 use serde_json::{json, Map, Value};
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -139,26 +141,18 @@ async fn apply_prompt_over_fragment(prompt: String, bearer: String, llm_provider
     return Ok(chat_message.job_message.content.clone());
 }
 
-fn get_model_context_size(llm_provider: String) -> usize {
-    // TODO This will be implemented in the future. Do not edit.
-    match llm_provider.as_str() {
-        "openai" => 16384,
-        "anthropic" => 16384,
-        "gemini" => 16384,
-        "claude" => 16384,
-        "ollama" => 16384,
-        "llama" => 16384,
-        "mistral" => 16384,
-        "qwen" => 16384,
-        "llama3" => 16384,
-        "llama3.1" => 16384,
-        _ => 16384,
-    }
+fn get_model_context_size(llm_provider: String, db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<usize, ToolError> {
+    let shinkai_name = ShinkaiName::from_node_and_profile_names(node_name.get_node_name_string(), "main".to_string()).map_err(|_| ToolError::ExecutionError("Failed to create shinkai name".to_string()))?;
+    let llm_provider = db.get_llm_provider(&llm_provider, &shinkai_name).map_err(|_| ToolError::ExecutionError("Failed to get llm provider".to_string()))?;
+    let llm_provider = match llm_provider {
+        Some(llm_provider) => llm_provider,
+        None => return Err(ToolError::ExecutionError("Failed to get llm provider".to_string())),
+    };
+    Ok(ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model).min(25000))
 }
 
 fn get_context_size_for_fragment(data: String) -> usize {
-    // TODO This will be implemented in the future. Do not edit.
-    return data.len();
+    count_tokens_from_message_llama3(&data)
 }
 
 fn split_text_into_chunks(text: &str, max_context_size: usize) -> Vec<String> {
@@ -422,7 +416,7 @@ impl ToolExecutor for LlmMapReduceProcessorTool {
 
 
         // Get the model's maximum context window size.
-        let max_window = get_model_context_size(llm_provider.clone());
+        let max_window = get_model_context_size(llm_provider.clone(), db.clone(), node_name.clone())?;
 
         // Split the long text into fragments within the model's context window.
         let chunks = split_text_into_chunks(&data, max_window);
