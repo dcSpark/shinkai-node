@@ -1,4 +1,5 @@
 use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, SerializedLLMProvider
 };
@@ -18,8 +19,9 @@ use super::utils::node_test_api::{
 use mockito::Server;
 
 #[test]
-fn job_tree_usage_tests() {
+fn test_fork_job_messages() {
     std::env::set_var("WELCOME_MESSAGE", "false");
+
     let mut server = Server::new();
 
     run_test_one_node_network(|env| {
@@ -34,6 +36,7 @@ fn job_tree_usage_tests() {
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
+            let node1_api_key = env.node1_api_key.clone();
             let node1_abort_handler = env.node1_abort_handler;
 
             {
@@ -78,7 +81,7 @@ fn job_tree_usage_tests() {
                             "created_at": "2023-12-19T11:36:44.687874415Z",
                             "message": {
                                 "role": "assistant",
-                                "content": "Why couldn't the bicycle stand up by itself? Because it was two-tired!"
+                                "content": "Paris is the capital of France."
                             },
                             "done": true,
                             "total_duration": 29617027653,
@@ -89,31 +92,6 @@ fn job_tree_usage_tests() {
                             "eval_duration": 3435284000
                         }"#,
                     )
-                    .expect(1) // Expect this mock to be called exactly once
-                    .create();
-
-                let _m2 = server
-                    .mock("POST", "/api/chat")
-                    .with_status(200)
-                    .with_header("content-type", "application/json")
-                    .with_body(
-                        r#"{
-                            "model": "mixtral:8x7b-instruct-v0.1-q4_1",
-                            "created_at": "2023-12-19T11:36:44.687874415Z",
-                            "message": {
-                                "role": "assistant",
-                                "content": "The joke is a play on words (a pun). 'Two-tired' sounds like 'too tired', meaning exhausted. So when we say the bicycle was 'two-tired', it's both literally true (it has two tires) and sounds like it was 'too tired' (exhausted) to stand up."
-                            },
-                            "done": true,
-                            "total_duration": 29617027653,
-                            "load_duration": 7157879293,
-                            "prompt_eval_count": 203,
-                            "prompt_eval_duration": 19022360000,
-                            "eval_count": 25,
-                            "eval_duration": 3435284000
-                        }"#,
-                    )
-                    .expect(1)  // Expect this mock to be called exactly once
                     .create();
 
                 let ollama = Ollama {
@@ -156,10 +134,11 @@ fn job_tree_usage_tests() {
                 )
                 .await;
             }
-            let job_message_content = "tell me a joke".to_string();
+
+            let first_message = "What is the capital of France?".to_string();
             {
-                // Send a Message to the Job for processing
-                eprintln!("\n\nSend a message for the Job");
+                // Send first message to the Job
+                eprintln!("\n\nSend first message for the Job");
                 let start = Instant::now();
                 api_message_job(
                     node1_commands_sender.clone(),
@@ -170,25 +149,26 @@ fn job_tree_usage_tests() {
                     node1_profile_name.clone().as_str(),
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
-                    &job_message_content,
+                    &first_message,
                     &[],
                     "",
                 )
                 .await;
 
-                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
+                let duration = start.elapsed();
                 eprintln!("Time elapsed in api_message_job is: {:?}", duration);
             }
+
             {
-                eprintln!("Waiting for the Job to finish");
+                eprintln!("Waiting for the first message Job to finish");
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 let mut job_completed = false;
-                for i in 0..5 {
+                for i in 0..10 {
                     eprintln!("Checking job completion attempt {}", i + 1);
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::FetchLastMessages {
-                            limit: 4,
+                            limit: 8,
                             res: res1_sender,
                         })
                         .await
@@ -224,11 +204,11 @@ fn job_tree_usage_tests() {
                 }
                 assert!(job_completed, "Job did not complete within the expected time");
             }
-            let second_job_message_content = "I didn't understand the joke. Can you explain it?".to_string();
-            eprintln!("second_job_message_content: {}", second_job_message_content);
+
+            let second_message = "Can you tell me more about its history?".to_string();
             {
-                // Sending a second message to the Job for processing
-                eprintln!("\n\nSend a second message for the Job");
+                // Send second message to the Job
+                eprintln!("\n\nSend second message for the Job");
                 let start = Instant::now();
                 api_message_job(
                     node1_commands_sender.clone(),
@@ -239,25 +219,27 @@ fn job_tree_usage_tests() {
                     node1_profile_name.clone().as_str(),
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
-                    &second_job_message_content,
+                    &second_message,
                     &[],
                     "",
                 )
                 .await;
 
-                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
+                let duration = start.elapsed();
                 eprintln!("Time elapsed in api_message_job is: {:?}", duration);
             }
+
             {
-                eprintln!("Waiting for the Job to finish");
+                eprintln!("Waiting for the second message Job to finish");
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 let mut job_completed = false;
+                let mut message_to_fork_id = String::new();
                 for i in 0..5 {
                     eprintln!("Checking job completion attempt {}", i + 1);
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::FetchLastMessages {
-                            limit: 4,
+                            limit: 8,
                             res: res1_sender,
                         })
                         .await
@@ -271,6 +253,7 @@ fn job_tree_usage_tests() {
                             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                                 Ok(job_message) => {
                                     eprintln!("Successfully parsed job message: {}", job_message.content);
+                                    message_to_fork_id = node1_last_messages[0].calculate_message_hash_for_pagination();
                                     job_completed = true;
                                     break;
                                 }
@@ -292,9 +275,53 @@ fn job_tree_usage_tests() {
                     tokio::time::sleep(Duration::from_millis(500)).await;
                 }
                 assert!(job_completed, "Job did not complete within the expected time");
+
+                // Fork the conversation
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiForkJobMessages {
+                        bearer: node1_api_key.to_string(),
+                        job_id: job_id.clone(),
+                        message_id: message_to_fork_id.clone(),
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                let resp = res_receiver.recv().await.unwrap();
+
+                let job_fork_id = match resp {
+                    Ok(id) => id,
+                    Err(e) => panic!("Failed to fork job: {:?}", e),
+                };
+                println!("Forked job ID: {}", job_fork_id);
+
+                // Verify the forked conversation
+                let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiGetLastMessagesFromInbox {
+                        bearer: node1_api_key.to_string(),
+                        inbox_name: InboxName::get_job_inbox_name_from_params(job_fork_id)
+                            .unwrap()
+                            .to_string(),
+                        limit: 8,
+                        offset_key: None,
+                        res: res2_sender,
+                    })
+                    .await
+                    .unwrap();
+                let forked_messages = res2_receiver.recv().await.unwrap();
+                println!("Forked messages: {:?}", forked_messages);
+
+                assert_eq!(
+                    forked_messages.unwrap().len(),
+                    4,
+                    "Forked messages should match original message count"
+                );
+
+                eprintln!("Job fork messages test completed");
+                node1_abort_handler.abort();
             }
-            eprintln!("Job tree usage tests completed");
-            node1_abort_handler.abort();
         })
     });
 }
