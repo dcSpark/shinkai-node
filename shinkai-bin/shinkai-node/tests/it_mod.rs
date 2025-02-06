@@ -12,6 +12,7 @@ mod it {
     mod get_onchain_identity_tests;
     mod job_branchs_retries_tests;
     mod job_concurrency_in_seq_tests;
+    mod job_fork_messages_tests;
     mod job_image_analysis_tests;
     mod job_manager_concurrency_tests;
     mod job_tree_usage_tests;
