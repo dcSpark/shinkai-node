@@ -1,8 +1,5 @@
 use std::{
-    collections::HashMap,
-    fmt,
-    pin::Pin,
-    sync::{Arc, Weak},
+    collections::HashMap, fmt, pin::Pin, sync::{Arc, Weak}
 };
 
 use chrono::{Local, Utc};
@@ -10,25 +7,17 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
     schemas::{
-        crontab::{CronTask, CronTaskAction},
-        inbox_name::InboxNameError,
-        shinkai_name::ShinkaiName,
-        ws_types::WSUpdateHandler,
-    },
-    shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage},
-    shinkai_utils::{
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        signatures::clone_signature_secret_key,
-    },
+        crontab::{CronTask, CronTaskAction}, inbox_name::InboxNameError, shinkai_name::ShinkaiName, ws_types::WSUpdateHandler
+    }, shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage}, shinkai_utils::{
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::clone_signature_secret_key
+    }
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    llm_provider::{error::LLMProviderError, job_manager::JobManager},
-    managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    llm_provider::{error::LLMProviderError, job_manager::JobManager}, managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 
 #[derive(Debug)]
@@ -333,6 +322,7 @@ impl CronManager {
                 }
                 // Set the associated UI to Cron with the task ID
                 job_creation_info_clone.associated_ui = Some(AssociatedUI::Cron(cron_job.task_id.to_string()));
+                job_creation_info_clone.is_hidden = Some(true);
 
                 let job_id = job_manager
                     .lock()
@@ -539,12 +529,10 @@ impl CronManager {
     ///
     /// We do this by:
     /// 1. Fetching all active (non-paused) cron tasks from the DB.
-    /// 2. For each task, parse the cron expression to find the next scheduled
-    ///    time after "now".
-    /// 3. We then find the iteration interval in which this next scheduled time
-    ///    falls. If a task is scheduled to run within the next
-    ///    `cron_interval_time` seconds from some iteration, it will actually be
-    ///    executed at the start of that iteration (due to how we batch checks).
+    /// 2. For each task, parse the cron expression to find the next scheduled time after "now".
+    /// 3. We then find the iteration interval in which this next scheduled time falls. If a task is scheduled to run
+    ///    within the next `cron_interval_time` seconds from some iteration, it will actually be executed at the start
+    ///    of that iteration (due to how we batch checks).
     ///
     /// Note: This will only approximate when tasks are executed since they only
     /// run at discrete intervals.
