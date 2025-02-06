@@ -1,18 +1,24 @@
 use crate::llm_provider::{
-    error::LLMProviderError, providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages}
+    error::LLMProviderError,
+    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
 use shinkai_message_primitives::{
     schemas::{
-        llm_message::LlmMessage, llm_providers::{
-            common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}
-        }, prompts::Prompt, shinkai_name::ShinkaiName
-    }, shinkai_utils::utils::count_tokens_from_message_llama3
+        llm_message::LlmMessage,
+        llm_providers::{
+            common_agent_llm_provider::ProviderOrAgent,
+            serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+        },
+        prompts::Prompt,
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_utils::utils::count_tokens_from_message_llama3,
 };
 use shinkai_sqlite::SqliteManager;
 use std::{
-    fmt, sync::{Arc, Weak}
+    fmt,
+    sync::{Arc, Weak},
 };
-use tokio::sync::RwLock;
 
 #[derive(Debug)]
 pub enum ModelCapabilitiesManagerError {

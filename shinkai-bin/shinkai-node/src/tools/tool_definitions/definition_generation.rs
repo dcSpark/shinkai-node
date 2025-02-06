@@ -18,6 +18,8 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     custom_tools.push(
         tool_implementation::native_tools::typescript_unsafe_processor::TypescriptUnsafeProcessorTool::new().tool,
     );
+    custom_tools
+        .push(tool_implementation::native_tools::llm_map_reduce_processor::LlmMapReduceProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);
@@ -99,7 +101,10 @@ pub async fn generate_tool_definitions(
 
     eprintln!("Found tools:");
     for tool in &all_tools {
-        eprintln!("- Name: {}, Key: {}, Version: {}", tool.name, tool.tool_router_key, tool.version);
+        eprintln!(
+            "- Name: {}, Key: {}, Version: {}",
+            tool.name, tool.tool_router_key, tool.version
+        );
     }
 
     if all_tools.is_empty() {
