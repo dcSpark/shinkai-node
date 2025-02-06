@@ -19,6 +19,7 @@ use mockito::Server;
 
 #[test]
 fn job_tree_usage_tests() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
     let mut server = Server::new();
 
     run_test_one_node_network(|env| {
@@ -196,7 +197,7 @@ fn job_tree_usage_tests() {
                     eprintln!("Number of messages received: {}", node1_last_messages.len());
                     eprintln!("Last messages: {:?}", node1_last_messages);
 
-                    if node1_last_messages.len() >= 2 {
+                    if node1_last_messages.len() == 2 {
                         match node1_last_messages[1].get_message_content() {
                             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                                 Ok(job_message) => {
@@ -265,7 +266,7 @@ fn job_tree_usage_tests() {
                     eprintln!("Number of messages received: {}", node1_last_messages.len());
                     eprintln!("Last messages: {:?}", node1_last_messages);
 
-                    if node1_last_messages.len() >= 4 {
+                    if node1_last_messages.len() == 4 {
                         match node1_last_messages[3].get_message_content() {
                             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                                 Ok(job_message) => {

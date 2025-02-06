@@ -20,6 +20,8 @@ use mockito::Server;
 
 #[test]
 fn test_fork_job_messages() {
+    std::env::set_var("WELCOME_MESSAGE", "false");
+
     let mut server = Server::new();
 
     run_test_one_node_network(|env| {
@@ -166,7 +168,7 @@ fn test_fork_job_messages() {
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::FetchLastMessages {
-                            limit: 4,
+                            limit: 8,
                             res: res1_sender,
                         })
                         .await
@@ -175,7 +177,7 @@ fn test_fork_job_messages() {
                     eprintln!("Number of messages received: {}", node1_last_messages.len());
                     eprintln!("Last messages: {:?}", node1_last_messages);
 
-                    if node1_last_messages.len() >= 2 {
+                    if node1_last_messages.len() == 2 {
                         match node1_last_messages[1].get_message_content() {
                             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                                 Ok(job_message) => {
@@ -237,7 +239,7 @@ fn test_fork_job_messages() {
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::FetchLastMessages {
-                            limit: 4,
+                            limit: 8,
                             res: res1_sender,
                         })
                         .await
@@ -246,7 +248,7 @@ fn test_fork_job_messages() {
                     eprintln!("Number of messages received: {}", node1_last_messages.len());
                     eprintln!("Last messages: {:?}", node1_last_messages);
 
-                    if node1_last_messages.len() >= 4 {
+                    if node1_last_messages.len() == 4 {
                         match node1_last_messages[3].get_message_content() {
                             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                                 Ok(job_message) => {
@@ -286,13 +288,24 @@ fn test_fork_job_messages() {
                     .await
                     .unwrap();
 
-                let _ = res_receiver.recv().await.unwrap();
+                let resp = res_receiver.recv().await.unwrap();
+
+                let job_fork_id = match resp {
+                    Ok(id) => id,
+                    Err(e) => panic!("Failed to fork job: {:?}", e),
+                };
+                println!("Forked job ID: {}", job_fork_id);
 
                 // Verify the forked conversation
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
                 node1_commands_sender
-                    .send(NodeCommand::FetchLastMessages {
+                    .send(NodeCommand::V2ApiGetLastMessagesFromInbox {
+                        bearer: node1_api_key.to_string(),
+                        inbox_name: InboxName::get_job_inbox_name_from_params(job_fork_id)
+                            .unwrap()
+                            .to_string(),
                         limit: 8,
+                        offset_key: None,
                         res: res2_sender,
                     })
                     .await
@@ -301,7 +314,7 @@ fn test_fork_job_messages() {
                 println!("Forked messages: {:?}", forked_messages);
 
                 assert_eq!(
-                    forked_messages.len(),
+                    forked_messages.unwrap().len(),
                     4,
                     "Forked messages should match original message count"
                 );
