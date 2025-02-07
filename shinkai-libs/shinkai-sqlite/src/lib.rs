@@ -101,7 +101,8 @@ impl SqliteManager {
         // Create a connection pool for the in-memory database
         let fts_manager = SqliteConnectionManager::memory();
         let fts_pool = Pool::builder()
-            .max_size(5) // Adjust the pool size as needed
+            .max_size(10) // Increased from 5 to match main pool
+            .connection_timeout(Duration::from_secs(60))
             .build(fts_manager)
             .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
 
@@ -111,7 +112,8 @@ impl SqliteManager {
                 .get()
                 .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
             fts_conn.execute_batch(
-                "PRAGMA foreign_keys = ON;", // Enable foreign key support for in-memory connection
+                "PRAGMA foreign_keys = ON;
+                 PRAGMA busy_timeout = 5000;", // Added 5 second busy timeout
             )?;
             Self::initialize_fts_tables(&fts_conn)?;
         }
@@ -853,8 +855,8 @@ impl SqliteManager {
 
     //     // Create an index for the vector_resource_id column
     //     conn.execute(
-    //         "CREATE INDEX IF NOT EXISTS idx_source_file_maps_vector_resource_id ON source_file_maps (vector_resource_id);",
-    //         [],
+    //         "CREATE INDEX IF NOT EXISTS idx_source_file_maps_vector_resource_id ON source_file_maps
+    // (vector_resource_id);",         [],
     //     )?;
 
     //     Ok(())
