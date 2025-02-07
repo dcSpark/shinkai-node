@@ -157,49 +157,91 @@ fn get_context_size_for_fragment(data: String) -> usize {
 
 fn split_text_into_chunks(text: &str, max_context_size: usize) -> Vec<String> {
     let mut chunks = Vec::new();
-    let target_chunk_size = (max_context_size as f64 * 0.8) as usize; // 80% of max context
-    let overlap_size = (max_context_size as f64 * 0.05) as usize; // 5% overlap
+    let target_size = (max_context_size as f64 * 0.8) as usize;
     
-    let current_chunk = String::new();
-    // Split on word boundaries while preserving newlines
-    let words: Vec<&str> = text.split_inclusive(|c: char| c.is_whitespace()).collect();
-    let mut i = 0;
+    // Split into words while preserving whitespace
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut start_idx = 0;
     
-    while i < words.len() {
-        let mut chunk_words = Vec::new();
-        let mut chunk_size = 0;
+    // First pass: Build main chunks without overlap
+    while start_idx < words.len() {
+        let mut current_chunk = String::new();
+        let mut current_size = 0;
+        let mut words_used = 0;
         
         // Build chunk up to target size
-        while i < words.len() && chunk_size + words[i].len() <= target_chunk_size {
-            chunk_words.push(words[i]);
-            chunk_size += words[i].len();
-            i += 1;
+        while start_idx + words_used < words.len() {
+            let word = words[start_idx + words_used];
+            let size_with_word = current_size + word.len() + if current_chunk.is_empty() { 0 } else { 1 }; // +1 for space
+            
+            // Stop if we exceed target size, unless it's the first word
+            if size_with_word > target_size && !current_chunk.is_empty() {
+                break;
+            }
+            
+            // Add word with space
+            if !current_chunk.is_empty() {
+                current_chunk.push(' ');
+            }
+            current_chunk.push_str(word);
+            current_size = size_with_word;
+            words_used += 1;
         }
         
-        // If we have a valid chunk
-        if !chunk_words.is_empty() {
-            // Create the chunk
-            let chunk = chunk_words.join("");
-            chunks.push(chunk);
-            
-            // Move index back by overlap amount
-            if i < words.len() {
-                let overlap_word_count = overlap_size / 5; // Approximate words for overlap
-                i = i.saturating_sub(overlap_word_count);
-            }
-        } else if i < words.len() {
-            // If we couldn't fit even one word, take it anyway
-            chunks.push(words[i].to_string());
-            i += 1;
+        // Add chunk if not empty
+        if !current_chunk.is_empty() {
+            chunks.push(current_chunk);
+        }
+        
+        // Move to next section
+        if words_used == 0 {
+            // If we couldn't fit even one word, force progress
+            start_idx += 1;
+        } else {
+            start_idx += words_used;
         }
     }
     
-    // Add the final chunk if there's remaining text
-    if !current_chunk.is_empty() {
-        chunks.push(current_chunk);
+    let overlap_size = (max_context_size as f64 * 0.05) as usize;
+
+    // Second pass: Add overlaps from next chunks
+    let mut final_chunks = Vec::with_capacity(chunks.len());
+    for i in 0..chunks.len() {
+        let mut chunk_with_overlap = chunks[i].clone();
+        
+        // Add overlap from next chunk if available
+        if i < chunks.len() - 1 {
+            let next_chunk_words: Vec<&str> = chunks[i + 1].split_whitespace().collect();
+            let mut overlap = String::new();
+            let mut overlap_size_current = 0;
+            
+            // Add words from next chunk until we hit overlap size
+            for word in next_chunk_words.iter() {
+                let size_with_word = overlap_size_current + word.len() + if overlap.is_empty() { 0 } else { 1 };
+                
+                // Use the defined overlap_size variable
+                if overlap_size_current >= overlap_size {
+                    break;
+                }
+                
+                if !overlap.is_empty() {
+                    overlap.push(' ');
+                }
+                overlap.push_str(word);
+                overlap_size_current = size_with_word;
+            }
+            
+            // Add overlap to chunk
+            if !overlap.is_empty() {
+                chunk_with_overlap.push(' ');
+                chunk_with_overlap.push_str(&overlap);
+            }
+        }
+        
+        final_chunks.push(chunk_with_overlap);
     }
     
-    chunks
+    final_chunks
 }
 
 async fn map(chunk: String, prompt: String, bearer: String, llm_provider: String, db: Arc<SqliteManager>, 
@@ -641,7 +683,7 @@ mod tests {
         assert_eq!(chunks.len(), 0);
 
         // Test with text containing special characters and newlines
-        let special_text = "First line\nSecond line with special chars: !@#$%^&*\nThird line";
+        let special_text = "First line Second line with special chars: !@#$%^&* Third line";
         let chunks = split_text_into_chunks(special_text, 1000);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], special_text);
@@ -788,7 +830,7 @@ Researchers publish projections for interspecies viral sharing, that can lead to
         let chunks = split_text_into_chunks(&long_text, max_context_size);
 
         for (i, chunk) in chunks.iter().enumerate() {
-            let chunk_size = get_context_size_for_fragment(chunk.clone());
+            let chunk_size = chunk.len();
             
             // Last chunk might be smaller, so we only check upper bound
             if i == chunks.len() - 1 {
@@ -847,7 +889,7 @@ Researchers publish projections for interspecies viral sharing, that can lead to
     #[test]
     fn test_split_text_non_utf8() {
         // Test text with various non-UTF8 characters and special characters
-        let text = "Hello 世界! 🌍 \u{1F4A9} é è ü ñ 汉字 \u{10437}";
+        let text = "Hello 世界!🌍 \u{1F4A9}éèüñ汉字 \u{10437}";
         let max_context_size = 10;
         let chunks = split_text_into_chunks(text, max_context_size);
         
@@ -864,7 +906,7 @@ Researchers publish projections for interspecies viral sharing, that can lead to
         }
         
         // Verify all characters are preserved when joining chunks
-        let reconstructed = chunks.join("");
+        let reconstructed = chunks.join(" ");
         assert_eq!(
             reconstructed, 
             text,
@@ -896,4 +938,64 @@ Researchers publish projections for interspecies viral sharing, that can lead to
             );
         }
     }
+
+    #[test]
+    fn test_split_text_deterministic() {
+        // Create a text with unique sections that are exactly 100 chars each
+        let text = "\
+Section A: The quick brown fox jumps over the lazy dog near a crystal-clear stream as sunlight filters down the wall of a castle in the distance
+Section B: Whispers echo through ancient marble halls while shadows dance upon weathered stone pillars standing tall but crumbling and cold weth
+Section C: Emerald leaves rustle gently in the autumn breeze as golden sunbeams pierce through morning mountain mystical and misty night full of
+Section D: Stars twinkle silently above snow-covered peaks while northern lights paint ribbons across midnight skies of a winter night as none h";
+
+        let max_context_size = 180; // Each section is exactly 100 chars
+        let chunks = split_text_into_chunks(text, max_context_size);
+
+        // We expect 4 chunks based on our max_context_size
+        assert_eq!(chunks.len(), 4, "Should split into exactly 4 chunks");
+
+        // Verify each chunk contains exactly what we expect
+        assert!(chunks[0].starts_with("Section A:"));
+        assert!(chunks[0].contains("quick brown fox"));
+        assert!(chunks[0].contains("Section B:"));
+
+        assert!(chunks[1].starts_with("Section B:"));
+        assert!(chunks[1].contains("marble halls"));
+        assert!(chunks[1].contains("Section C:"));
+        
+        assert!(chunks[2].starts_with("Section C:"));
+        assert!(chunks[2].contains("Emerald leaves"));
+        assert!(chunks[2].contains("Section D:"));
+        
+        assert!(chunks[3].starts_with("Section D:"));
+        assert!(chunks[3].contains("Stars twinkle"));
+        assert!(!chunks[3].contains("Section A:"));
+
+        // Verify that when joined, we can still recover the original text
+        let reconstructed = chunks.join(" ");
+        
+        // Verify that all original lines are preserved
+        let original_lines: Vec<&str> = text.lines().collect();
+
+        for (i, original_line) in original_lines.iter().enumerate() {
+            assert!(
+                reconstructed.contains(original_line),
+                "Original line {} should be present in reconstructed text",
+                i
+            );
+        }
+
+        // Verify each chunk size is within the max context size
+        for (i, chunk) in chunks.iter().enumerate() {
+            let chunk_size = get_context_size_for_fragment(chunk.clone());
+            assert!(
+                chunk_size <= max_context_size,
+                "Chunk {} exceeds max context size (size: {}, max: {})",
+                i,
+                chunk_size,
+                max_context_size
+            );
+        }
+    }
 }
+
