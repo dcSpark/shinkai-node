@@ -1,6 +1,6 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider
+    LLMProviderInterface, Ollama, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
@@ -8,7 +8,9 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMes
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_tools_primitives::tools::{
-    parameters::Parameters, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    parameters::Parameters,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 
 use std::time::Duration;
@@ -16,7 +18,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration,
 };
 use mockito::Server;
 
@@ -346,15 +348,32 @@ fn test_job_code_fork() {
 
                         // Compare messages from both inboxes
                         if let (Ok(original_messages), Ok(forked_messages)) = (original_messages, forked_messages) {
-                            if let (Some(original_last), Some(forked_last)) =
-                                (original_messages.last(), forked_messages.last())
+                            assert!(
+                                original_messages.len() == forked_messages.len(),
+                                "Original and forked messages should have the same length"
+                            );
+                            assert!(original_messages.len() > 0, "Original messages should not be empty");
+
+                            for (original_message, forked_message) in
+                                original_messages.iter().zip(forked_messages.iter())
                             {
-                                if original_last.job_message.content == forked_last.job_message.content {
-                                    eprintln!("Found matching messages in both inboxes - fork completed successfully");
-                                    fork_completed = true;
-                                    break;
-                                }
+                                assert!(
+                                    original_message.sender_subidentity == forked_message.sender_subidentity,
+                                    "Original and forked messages should have the same sender subidentity"
+                                );
+                                assert!(
+                                    original_message.sender == forked_message.sender,
+                                    "Original and forked messages should have the same sender"
+                                );
+                                assert!(
+                                    original_message.job_message.content == forked_message.job_message.content,
+                                    "Original and forked messages should have the same content"
+                                );
                             }
+                            fork_completed = true;
+                            break;
+                        } else {
+                            assert!(false, "Failed to get messages from inboxes");
                         }
                     }
 

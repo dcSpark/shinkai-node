@@ -1245,7 +1245,6 @@ impl Node {
                     }
                 };
                 // This should be the last message in the inbox
-                println!("m: {:?}", m.get_message_content());
                 m.calculate_message_hash_for_pagination()
             }
         };
