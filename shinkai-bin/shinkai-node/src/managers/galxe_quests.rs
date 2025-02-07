@@ -148,27 +148,23 @@ pub async fn compute_create_identity_quest(db: Arc<SqliteManager>, node_name: Sh
             };
 
             // Hash our local keys
-            let local_enc_hash = blake3::hash(&local_enc_key);
-            let local_sig_hash = blake3::hash(&local_sig_key);
+            let local_enc_hash = blake3::hash(&local_enc_key).to_hex().to_string();
+            let local_sig_hash = blake3::hash(&local_sig_key).to_hex().to_string();
 
-            // Hash registry keys (converting from hex string to bytes first)
-            let registry_enc_key = hex::decode(&onchain_identity.encryption_key)
-                .map_err(|e| format!("Failed to decode registry encryption key: {}", e))?;
-            let registry_sig_key = hex::decode(&onchain_identity.signature_key)
-                .map_err(|e| format!("Failed to decode registry signature key: {}", e))?;
-            let registry_enc_hash = blake3::hash(&registry_enc_key);
-            let registry_sig_hash = blake3::hash(&registry_sig_key);
+            // The registry keys are already hex strings of the hashes, no need to decode and hash again
+            let registry_enc_hash = onchain_identity.encryption_key;
+            let registry_sig_hash = onchain_identity.signature_key;
 
             println!(
                 "Node Identity Found:\nName: {}\nLocal Encryption Key Hash: {}\nLocal Signature Key Hash: {}\nRegistry Encryption Key Hash: {}\nRegistry Signature Key Hash: {}",
                 name,
-                local_enc_hash.to_hex(),
-                local_sig_hash.to_hex(),
-                registry_enc_hash.to_hex(),
-                registry_sig_hash.to_hex()
+                local_enc_hash,
+                local_sig_hash,
+                registry_enc_hash,
+                registry_sig_hash
             );
 
-            // Compare the hashes
+            // Compare the hex strings directly
             let keys_match = local_enc_hash == registry_enc_hash && local_sig_hash == registry_sig_hash;
             println!("Keys match with registry: {}", keys_match);
             keys_match
