@@ -37,6 +37,7 @@ pub enum ShinkaiRegistryError {
     CustomError(String),
     SystemTimeError(std::time::SystemTimeError),
     AddressParseError(AddrParseError),
+    IdentityNotFound(String),
 }
 
 impl fmt::Display for ShinkaiRegistryError {
@@ -49,6 +50,7 @@ impl fmt::Display for ShinkaiRegistryError {
             ShinkaiRegistryError::CustomError(err) => write!(f, "Custom Error: {}", err),
             ShinkaiRegistryError::SystemTimeError(err) => write!(f, "System Time Error: {}", err),
             ShinkaiRegistryError::AddressParseError(err) => write!(f, "Address Parse Error: {}", err),
+            ShinkaiRegistryError::IdentityNotFound(err) => write!(f, "Identity Not Found: {}", err),
         }
     }
 }
@@ -378,6 +380,22 @@ impl ShinkaiRegistry {
 
             match function_call.call().await {
                 Ok(result) => {
+                    // Check if the result contains default/empty values indicating identity not found
+                    if result.0 == U256::zero()
+                        && result.1 == U256::zero()
+                        && result.2.is_empty()
+                        && result.3.is_empty()
+                        && !result.4
+                        && result.5.is_empty()
+                        && result.6 == U256::zero()
+                        && result.7 == U256::zero()
+                    {
+                        return Err(ShinkaiRegistryError::IdentityNotFound(format!(
+                            "Identity '{}' not found",
+                            identity
+                        )));
+                    }
+
                     let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
                     let last_updated = DateTime::<Utc>::from(last_updated);
                     eprintln!("result: {:?}", result);
