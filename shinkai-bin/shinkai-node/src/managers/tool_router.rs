@@ -96,14 +96,14 @@ impl ToolRouter {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
+        if let Err(e) = self.add_rust_tools().await {
+            eprintln!("Error adding rust tools: {}", e);
+        }
+
         if let Err(e) =
             Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await
         {
             eprintln!("Error importing tools from directory: {}", e);
-        }
-
-        if let Err(e) = self.add_rust_tools().await {
-            eprintln!("Error adding rust tools: {}", e);
         }
 
         if is_empty {
