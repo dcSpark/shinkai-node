@@ -2889,6 +2889,35 @@ impl Node {
                     let _ = Node::v2_api_disable_all_tools(db_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiDuplicateTool {
+                bearer,
+                tool_key_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let identity_manager = self.identity_manager.clone();
+                let job_manager = self.job_manager.clone();
+                let encryption_secret_key = self.encryption_secret_key.clone();
+                let encryption_public_key = self.encryption_public_key.clone();
+                let signing_secret_key = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_duplicate_tool(
+                        db_clone,
+                        bearer,
+                        tool_key_path,
+                        node_name_clone,
+                        identity_manager,
+                        job_manager,
+                        encryption_secret_key,
+                        encryption_public_key,
+                        signing_secret_key,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiAddRegexPattern {
                 bearer,
                 provider_name,
@@ -2959,6 +2988,12 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiCheckDefaultToolsSync { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_check_default_tools_sync(db_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiComputeQuestsStatus { bearer, res } => {

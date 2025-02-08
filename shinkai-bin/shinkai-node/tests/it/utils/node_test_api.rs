@@ -1,6 +1,4 @@
 use async_channel::Sender;
-use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
-use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use core::panic;
 use ed25519_dalek::SigningKey;
 use serde_json::{Map, Value};
@@ -11,11 +9,13 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
+    IdentityPermissions, MessageSchemaType, RegistrationCodeType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
+use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -705,4 +705,35 @@ pub async fn api_execute_tool(
         .unwrap();
 
     res_receiver.recv().await.unwrap()
+}
+
+pub async fn wait_for_default_tools(
+    node_commands_sender: Sender<NodeCommand>,
+    bearer: String,
+    timeout_seconds: u64,
+) -> Result<bool, APIError> {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(timeout_seconds);
+
+    while start.elapsed() < timeout {
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::V2ApiCheckDefaultToolsSync {
+                bearer: bearer.clone(),
+                res: res_sender,
+            })
+            .await
+            .unwrap();
+
+        match res_receiver.recv().await.unwrap() {
+            Ok(true) => return Ok(true),
+            Ok(false) => {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(false) // Timeout reached without getting true
 }

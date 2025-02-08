@@ -39,6 +39,7 @@ use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 
+use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use std::time::Instant;
 use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1707,6 +1708,32 @@ impl Node {
         if let Some(tool_router) = tool_router {
             if let Err(e) = tool_router.sync_tools_from_directory().await {
                 eprintln!("Error during periodic tool import: {}", e);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_check_default_tools_sync(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate bearer token
+        if let Err(_) = Self::validate_bearer_token(&bearer, db.clone(), &res).await {
+            return Ok(());
+        }
+
+        // Get the internal_comms preference from the database
+        match db.get_preference::<ShinkaiInternalComms>("internal_comms") {
+            Ok(Some(internal_comms)) => {
+                let _ = res.send(Ok(internal_comms.internal_has_sync_default_tools)).await;
+            }
+            Ok(None) => {
+                let _ = res.send(Ok(false)).await;
+            }
+            Err(e) => {
+                eprintln!("Error getting internal_comms preference: {}", e);
+                let _ = res.send(Ok(false)).await;
             }
         }
         Ok(())

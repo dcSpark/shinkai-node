@@ -1191,6 +1191,11 @@ pub enum NodeCommand {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiDuplicateTool {
+        bearer: String,
+        tool_key_path: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiAddRegexPattern {
         bearer: String,
         provider_name: String,
@@ -1220,6 +1225,10 @@ pub enum NodeCommand {
         llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiCheckDefaultToolsSync {
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    },      
     V2ApiComputeQuestsStatus {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
