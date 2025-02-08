@@ -2996,6 +2996,13 @@ impl Node {
                     let _ = Node::v2_api_check_default_tools_sync(db_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiComputeQuestsStatus { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_compute_quests_status(db_clone, node_name_clone, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }

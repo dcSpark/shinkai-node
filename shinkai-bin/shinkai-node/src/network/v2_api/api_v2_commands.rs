@@ -33,6 +33,7 @@ use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
+use crate::managers::galxe_quests::compute_quests;
 use crate::managers::tool_router::ToolRouter;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
@@ -724,13 +725,19 @@ impl Node {
                 return Ok(());
             }
         };
+        let docker_status = match shinkai_tools_runner::tools::container_utils::is_docker_available() {
+            shinkai_tools_runner::tools::container_utils::DockerStatus::NotInstalled => "not-installed",
+            shinkai_tools_runner::tools::container_utils::DockerStatus::NotRunning => "not-running",
+            shinkai_tools_runner::tools::container_utils::DockerStatus::Running => "running",
+        };
 
         let _ = res
             .send(Ok(serde_json::json!({
                 "is_pristine": !db.has_any_profile().unwrap_or(false),
                 "public_https_certificate": public_https_certificate,
                 "version": version,
-                "update_requires_reset": needs_global_reset || lancedb_exists
+                "update_requires_reset": needs_global_reset || lancedb_exists,
+                "docker_status": docker_status,
             })))
             .await;
         Ok(())
@@ -1729,6 +1736,38 @@ impl Node {
                 let _ = res.send(Ok(false)).await;
             }
         }
+        Ok(())
+    }
+
+    pub async fn v2_api_compute_quests_status(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let quests_status = compute_quests(db.clone(), node_name).await?;
+
+        // Convert the HashMap into a Vec of objects with just name and status
+        let quests_array: Vec<_> = quests_status
+            .into_iter()
+            .map(|(_quest_type, quest_info)| {
+                json!({
+                    "name": quest_info.name,
+                    "status": quest_info.status
+                })
+            })
+            .collect();
+
+        let response = json!({
+            "status": "success",
+            "message": "Quests status computed successfully",
+            "quests": quests_array
+        });
+        let _ = res.send(Ok(response)).await;
 
         Ok(())
     }
