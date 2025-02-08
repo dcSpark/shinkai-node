@@ -191,6 +191,12 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(add_regex_pattern_handler);
 
+    let compute_quests_status_route = warp::path("compute_quests_status")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(compute_quests_status_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -217,6 +223,7 @@ pub fn general_routes(
         .or(import_agent_route)        
         .or(test_llm_provider_route)
         .or(add_regex_pattern_route)
+        .or(compute_quests_status_route)
 }
 
 #[derive(Deserialize)]
@@ -1050,6 +1057,36 @@ pub async fn add_regex_pattern_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/compute_quests_status",
+    responses(
+        (status = 200, description = "Successfully computed quests status", body = HashMap<QuestType, QuestProgress>),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn compute_quests_status_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiComputeQuestsStatus {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1079,6 +1116,7 @@ pub async fn add_regex_pattern_handler(
         get_all_agents_handler,
         test_llm_provider_handler,
         add_regex_pattern_handler,
+        compute_quests_status_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,

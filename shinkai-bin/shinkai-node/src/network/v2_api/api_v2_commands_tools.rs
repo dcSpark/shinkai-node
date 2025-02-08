@@ -2953,7 +2953,12 @@ impl Node {
         );
         let tool_type = match language.clone() {
             CodeLanguage::Typescript => "denodynamic",
-            CodeLanguage::Python => "denopython",
+            CodeLanguage::Python => "pythondynamic",
+            _ => unreachable!(),
+        };
+        let language_extension = match language.clone() {
+            CodeLanguage::Typescript => "ts",
+            CodeLanguage::Python => "py",
             _ => unreachable!(),
         };
 
@@ -2971,7 +2976,7 @@ const LLM_PROVIDER = "{llm_provider}";
 const TOOL_TYPE = "{tool_type}";
 
 // Read file contents
-const CODE_CONTENT = fs.readFileSync('./tool.ts', 'utf8');
+const CODE_CONTENT = fs.readFileSync('./tool.{language_extension}', 'utf8');
 const TOOLS_CONTENT = JSON.parse(fs.readFileSync('./tools.json', 'utf8'));
 const CONFIG_CONTENT = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 const PARAMETERS_CONTENT = JSON.parse(fs.readFileSync('./parameters.json', 'utf8'));
@@ -3033,6 +3038,15 @@ async function start() {{
         console.log('Tool Execution Started at ', new Date().toISOString());
         let data = await makeApiCall();
         // Check for log files in the response
+        if (data.message && data.message.match(/Files: shinkai:\/\/file\//)) {{
+            const file = data.message.match(/shinkai:\/\/file\/[@a-zA-Z0-9/_.-]+/);
+            if (file) {{
+                const logContent = await fetchLogFile(file[0]);
+                console.log('Log content:', logContent);
+            }} else {{
+                console.log('No file found in the response.');
+            }}
+        }}
         if (data.__created_files__) {{
             for (const filePath of data.__created_files__) {{
                 if (filePath.endsWith('.log')) {{
