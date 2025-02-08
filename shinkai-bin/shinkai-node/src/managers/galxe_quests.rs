@@ -39,7 +39,7 @@ pub enum QuestType {
     TopRanking,           // Done
     WriteFeedback,        // Done
     WriteHonestReview,
-    UseRAG,
+    UseRAG, // Done
     UseSpotlight,
     InstallCommunityTools,
     WriteAppReviews,
@@ -349,28 +349,12 @@ pub async fn compute_top_ranking_quest(db: Arc<SqliteManager>, node_name: Shinka
     Ok(has_featured)
 }
 
-pub async fn compute_write_feedback_quest(_db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
-    let url = format!("https://store-api.shinkai.com/user/{}/reviews", node_name.to_string());
+pub async fn compute_write_feedback_quest(db: Arc<SqliteManager>, _node_name: ShinkaiName) -> Result<bool, String> {
+    let feedback_count = db
+        .query_row("SELECT COUNT(*) FROM feedback", params![], |row| row.get::<_, i64>(0))
+        .map_err(|e| format!("Failed to count feedback: {}", e))? as u32;
 
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&url)
-        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch user reviews: {}", e))?;
-
-    if response.status() != 200 {
-        return Ok(false);
-    }
-
-    let reviews: Vec<serde_json::Value> = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse reviews response: {}", e))?;
-
-    // If we have any reviews, the quest is completed
-    Ok(!reviews.is_empty())
+    Ok(feedback_count > 0)
 }
 
 pub async fn compute_use_rag_quest(db: Arc<SqliteManager>) -> Result<bool, String> {
@@ -451,18 +435,28 @@ fn compute_install_community_tools_quest(db: Arc<SqliteManager>, now: DateTime<U
     ))
 }
 
-fn compute_write_app_reviews_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let app_reviews = db
-        .query_row("SELECT COUNT(*) FROM app_reviews", params![], |row| {
-            row.get::<_, i64>(0)
-        })
-        .map_err(|e| format!("Failed to count app reviews: {}", e))? as u32;
+pub async fn compute_write_app_reviews_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+    let url = format!("https://store-api.shinkai.com/user/{}/reviews", node_name.to_string());
 
-    Ok(create_progress(
-        app_reviews,
-        3,
-        if app_reviews > 0 { Some(now) } else { None },
-    ))
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch user reviews: {}", e))?;
+
+    if response.status() != 200 {
+        return Ok(false);
+    }
+
+    let reviews: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse reviews response: {}", e))?;
+
+    // If we have any reviews, the quest is completed
+    Ok(!reviews.is_empty())
 }
 
 fn create_progress(current: u32, required: u32, started: Option<DateTime<Utc>>) -> QuestProgress {
