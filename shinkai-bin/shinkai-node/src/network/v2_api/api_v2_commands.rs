@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Write;
 use std::{env, sync::Arc};
 
+use async_std::println;
 use serde_json::{json, Value};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use tokio::fs;
@@ -1412,33 +1413,40 @@ impl Node {
                         if let Ok(content) = message.get_message_content() {
                             if !content.is_empty() && content.contains(expected_response) {
                                 return Ok(());
-                            } else if content.contains("error") {
-                                // Parse the JSON content to extract the error message directly
-                                if let Ok(parsed_content) = serde_json::from_str::<serde_json::Value>(&content) {
-                                    if let Some(error_message) = parsed_content.get("content").and_then(|e| e.as_str())
-                                    {
-                                        return Err(APIError {
-                                            code: StatusCode::BAD_REQUEST.as_u16(),
-                                            error: "Bad Request".to_string(),
-                                            message: error_message.to_string(),
-                                        });
-                                    }
-                                }
-                                // Fallback if parsing fails
-                                return Err(APIError {
-                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                    error: "Bad Request".to_string(),
-                                    message: "Error in message content".to_string(),
-                                });
                             }
                         }
                     }
                 }
                 // If the second message does not contain the expected response, return an error
+                let error_message = if let Some(second_message_group) = last_messages_inbox.get(1) {
+                    let content = second_message_group
+                        .iter()
+                        .filter_map(|msg| {
+                            // Get the raw content from the message
+                            if let MessageBody::Unencrypted(body) = &msg.body {
+                                if let MessageData::Unencrypted(data) = &body.message_data {
+                                    // Parse the raw content as JobMessage
+                                    if let Ok(job_message) =
+                                        serde_json::from_str::<JobMessage>(&data.message_raw_content)
+                                    {
+                                        return Some(job_message.content);
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", ");
+
+                    content
+                } else {
+                    "Error but no specific error message received. Double-check the model name and your key."
+                        .to_string()
+                };
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
-                    message: "The second message does not contain the expected response".to_string(),
+                    message: error_message,
                 });
             }
 

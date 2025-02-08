@@ -42,8 +42,8 @@ impl JobManager {
         let response = task_response?;
         shinkai_log(
             ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            format!("inference_llm_provider_markdown> response: {:?}", response).as_str(),
+            ShinkaiLogLevel::Info,
+            format!("inference_with_llm_provider> response: {:?}", response).as_str(),
         );
 
         response

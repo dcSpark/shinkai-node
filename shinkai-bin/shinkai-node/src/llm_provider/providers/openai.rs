@@ -248,6 +248,35 @@ pub async fn parse_openai_stream_chunk(
     inbox_name: Option<InboxName>,
     session_id: &str,
 ) -> Result<Option<String>, LLMProviderError> {
+    // If the buffer starts with '{', assume we might be receiving a JSON error.
+    if buffer.trim_start().starts_with('{') {
+        match serde_json::from_str::<JsonValue>(buffer) {
+            Ok(json_data) => {
+                // If it has an "error" field, record that and return immediately.
+                if let Some(error_obj) = json_data.get("error") {
+                    let code = error_obj
+                        .get("code")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("Unknown code")
+                        .to_string();
+                    let msg = error_obj
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Unknown error");
+                    // Clear the buffer since we've consumed it
+                    buffer.clear();
+                    return Ok(Some(format!("{}: {}", code, msg)));
+                }
+                // Once parsed, clear the buffer since we've consumed it.
+                buffer.clear();
+            }
+            Err(_) => {
+                // It's not yet valid JSON (partial) - keep the buffer and wait for more data
+                return Ok(None);
+            }
+        }
+    }
+
     let mut error_message: Option<String> = None;
 
     loop {
@@ -571,7 +600,7 @@ pub async fn handle_streaming_response(
                 }
 
                 // Handle WebSocket updates for function calls
-                if let Some(ref manager) = ws_manager_trait {
+                if let Some(ref _manager) = ws_manager_trait {
                     if let Some(ref inbox_name) = inbox_name {
                         if let Some(last_function_call) = function_calls.last() {
                             send_tool_ws_update(&ws_manager_trait, Some(inbox_name.clone()), last_function_call)
