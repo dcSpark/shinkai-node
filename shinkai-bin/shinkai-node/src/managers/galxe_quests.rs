@@ -4,10 +4,12 @@ use reqwest;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json;
+use serde_json::{json, Value};
 use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashMap;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -29,98 +31,103 @@ pub struct QuestProgress {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub enum QuestType {
-    CreateIdentity,       // Done
-    DownloadFromStore,    // Done
-    ReturnFor7Days,       // Done
-    ReturnFor3Days,       // Done
-    ReturnFor2Days,       // Done
-    CreateTool,           // Done
-    SubmitAndGetApproval, // Done
-    TopRanking,           // Done
-    WriteFeedback,        // Done
+    CreateIdentity,
+    DownloadFromStore,
+    ComeBack7Days,
+    CreateTool,
+    SubmitAndGetApprovalForTool,
+    Top50Ranking,
+    WriteFeedback,
     WriteHonestReview,
-    UseRAG, // Done
-    UseSpotlight,
-    InstallCommunityTools,
-    WriteAppReviews,
+    UseRAG3Days,
+    UseSpotlight3Days,
+    Install3PlusCommunityTools,
+    Write3PlusAppReviews,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestInfo {
+    pub name: String,
+    pub status: bool,
 }
 
 pub async fn compute_quests(
     db: Arc<SqliteManager>,
     node_name: ShinkaiName,
-) -> Result<HashMap<QuestType, bool>, String> {
-    let mut quests: HashMap<QuestType, bool> = HashMap::new();
+) -> Result<HashMap<QuestType, QuestInfo>, String> {
+    let mut quests: HashMap<QuestType, QuestInfo> = HashMap::new();
 
     // Create Identity Quest
     quests.insert(
         QuestType::CreateIdentity,
-        compute_create_identity_quest(db.clone(), node_name.clone()).await?,
+        QuestInfo {
+            name: "CreateIdentity".to_string(),
+            status: compute_create_identity_quest(db.clone(), node_name.clone()).await?,
+        },
     );
 
     // Download from Store Quest
     quests.insert(
         QuestType::DownloadFromStore,
-        compute_download_store_quest(db.clone()).await?,
+        QuestInfo {
+            name: "DownloadFromStore".to_string(),
+            status: compute_download_store_quest(db.clone()).await?,
+        },
     );
 
     // Return For Days Quests
     quests.insert(
-        QuestType::ReturnFor7Days,
-        compute_return_for_days_quest(db.clone(), 7).await?,
-    );
-    quests.insert(
-        QuestType::ReturnFor3Days,
-        compute_return_for_days_quest(db.clone(), 3).await?,
-    );
-    quests.insert(
-        QuestType::ReturnFor2Days,
-        compute_return_for_days_quest(db.clone(), 2).await?,
+        QuestType::ComeBack7Days,
+        QuestInfo {
+            name: "ComeBack7Days".to_string(),
+            status: compute_return_for_days_quest(db.clone(), 7).await?,
+        },
     );
 
     // Create Tool Quest
-    quests.insert(QuestType::CreateTool, compute_create_tool_quest(db.clone()).await?);
+    quests.insert(
+        QuestType::CreateTool,
+        QuestInfo {
+            name: "CreateTool".to_string(),
+            status: compute_create_tool_quest(db.clone()).await?,
+        },
+    );
 
     // Submit and Get Approval Quest
     quests.insert(
-        QuestType::SubmitAndGetApproval,
-        compute_submit_approval_quest(db.clone(), node_name.clone()).await?,
+        QuestType::SubmitAndGetApprovalForTool,
+        QuestInfo {
+            name: "SubmitAndGetApprovalForTool".to_string(),
+            status: compute_submit_approval_quest(db.clone(), node_name.clone()).await?,
+        },
     );
 
     // Top Ranking Quest
     quests.insert(
-        QuestType::TopRanking,
-        compute_top_ranking_quest(db.clone(), node_name.clone()).await?,
+        QuestType::Top50Ranking,
+        QuestInfo {
+            name: "Top50Ranking".to_string(),
+            status: compute_top_ranking_quest(db.clone(), node_name.clone()).await?,
+        },
     );
 
     // Write Feedback Quest
     quests.insert(
         QuestType::WriteFeedback,
-        compute_write_feedback_quest(db.clone(), node_name).await?,
+        QuestInfo {
+            name: "WriteFeedback".to_string(),
+            status: compute_write_feedback_quest(db.clone(), node_name).await?,
+        },
     );
 
-    // // Write Honest Review Quest
-    // quests.insert(
-    //     QuestType::WriteHonestReview,
-    //     compute_write_review_quest(db.clone(), now)?,
-    // );
-
-    // // Use RAG Quest
-    quests.insert(QuestType::UseRAG, compute_use_rag_quest(db.clone()).await?);
-
-    // // Use Spotlight Quest
-    // quests.insert(QuestType::UseSpotlight, compute_use_spotlight_quest(db.clone(), now)?);
-
-    // // Install Community Tools Quest
-    // quests.insert(
-    //     QuestType::InstallCommunityTools,
-    //     compute_install_community_tools_quest(db.clone(), now)?,
-    // );
-
-    // // Write App Reviews Quest
-    // quests.insert(
-    //     QuestType::WriteAppReviews,
-    //     compute_write_app_reviews_quest(db.clone(), now)?,
-    // );
+    // Use RAG Quest
+    quests.insert(
+        QuestType::UseRAG3Days,
+        QuestInfo {
+            name: "UseRAG3Days".to_string(),
+            status: compute_use_rag_quest(db.clone()).await?,
+        },
+    );
 
     Ok(quests)
 }

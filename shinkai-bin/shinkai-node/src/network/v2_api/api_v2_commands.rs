@@ -1724,10 +1724,21 @@ impl Node {
 
         let quests_status = compute_quests(db.clone(), node_name).await?;
 
+        // Convert the HashMap into a Vec of objects with just name and status
+        let quests_array: Vec<_> = quests_status
+            .into_iter()
+            .map(|(_quest_type, quest_info)| {
+                json!({
+                    "name": quest_info.name,
+                    "status": quest_info.status
+                })
+            })
+            .collect();
+
         let response = json!({
             "status": "success",
             "message": "Quests status computed successfully",
-            "quests_status": quests_status
+            "quests": quests_array
         });
         let _ = res.send(Ok(response)).await;
 
