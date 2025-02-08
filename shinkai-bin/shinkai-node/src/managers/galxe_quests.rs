@@ -1,14 +1,14 @@
 use blake3;
 use chrono::{DateTime, Utc};
-use hex;
+use reqwest;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::runtime::Runtime;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum QuestStatus {
@@ -29,13 +29,15 @@ pub struct QuestProgress {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub enum QuestType {
-    CreateIdentity,
-    DownloadFromStore,
-    ReturnAfterDays,
-    CreateTool,
-    SubmitAndGetApproval,
-    TopRanking,
-    WriteFeedback,
+    CreateIdentity,       // Done
+    DownloadFromStore,    // Done
+    ReturnFor7Days,       // Done
+    ReturnFor3Days,       // Done
+    ReturnFor2Days,       // Done
+    CreateTool,           // Done
+    SubmitAndGetApproval, // Done
+    TopRanking,           // Done
+    WriteFeedback,        // Done
     WriteHonestReview,
     UseRAG,
     UseSpotlight,
@@ -55,32 +57,46 @@ pub async fn compute_quests(
         compute_create_identity_quest(db.clone(), node_name.clone()).await?,
     );
 
-    // // Download from Store Quest
-    // quests.insert(
-    //     QuestType::DownloadFromStore,
-    //     compute_download_store_quest(db.clone(), now)?,
-    // );
+    // Download from Store Quest
+    quests.insert(
+        QuestType::DownloadFromStore,
+        compute_download_store_quest(db.clone()).await?,
+    );
 
-    // // Return After Days Quest
-    // quests.insert(
-    //     QuestType::ReturnAfterDays,
-    //     compute_return_after_days_quest(db.clone(), now)?,
-    // );
+    // Return For Days Quests
+    quests.insert(
+        QuestType::ReturnFor7Days,
+        compute_return_for_days_quest(db.clone(), 7).await?,
+    );
+    quests.insert(
+        QuestType::ReturnFor3Days,
+        compute_return_for_days_quest(db.clone(), 3).await?,
+    );
+    quests.insert(
+        QuestType::ReturnFor2Days,
+        compute_return_for_days_quest(db.clone(), 2).await?,
+    );
 
-    // // Create Tool Quest
-    // quests.insert(QuestType::CreateTool, compute_create_tool_quest(db.clone(), now)?);
+    // Create Tool Quest
+    quests.insert(QuestType::CreateTool, compute_create_tool_quest(db.clone()).await?);
 
-    // // Submit and Get Approval Quest
-    // quests.insert(
-    //     QuestType::SubmitAndGetApproval,
-    //     compute_submit_approval_quest(db.clone(), now)?,
-    // );
+    // Submit and Get Approval Quest
+    quests.insert(
+        QuestType::SubmitAndGetApproval,
+        compute_submit_approval_quest(db.clone(), node_name.clone()).await?,
+    );
 
-    // // Top Ranking Quest
-    // quests.insert(QuestType::TopRanking, compute_top_ranking_quest(db.clone(), now)?);
+    // Top Ranking Quest
+    quests.insert(
+        QuestType::TopRanking,
+        compute_top_ranking_quest(db.clone(), node_name.clone()).await?,
+    );
 
-    // // Write Feedback Quest
-    // quests.insert(QuestType::WriteFeedback, compute_write_feedback_quest(db.clone(), now)?);
+    // Write Feedback Quest
+    quests.insert(
+        QuestType::WriteFeedback,
+        compute_write_feedback_quest(db.clone(), node_name).await?,
+    );
 
     // // Write Honest Review Quest
     // quests.insert(
@@ -89,7 +105,7 @@ pub async fn compute_quests(
     // );
 
     // // Use RAG Quest
-    // quests.insert(QuestType::UseRAG, compute_use_rag_quest(db.clone(), now)?);
+    quests.insert(QuestType::UseRAG, compute_use_rag_quest(db.clone()).await?);
 
     // // Use Spotlight Quest
     // quests.insert(QuestType::UseSpotlight, compute_use_spotlight_quest(db.clone(), now)?);
@@ -166,7 +182,6 @@ pub async fn compute_create_identity_quest(db: Arc<SqliteManager>, node_name: Sh
 
             // Compare the hex strings directly
             let keys_match = local_enc_hash == registry_enc_hash && local_sig_hash == registry_sig_hash;
-            println!("Keys match with registry: {}", keys_match);
             keys_match
         }
         Err(_) => false,
@@ -176,92 +191,222 @@ pub async fn compute_create_identity_quest(db: Arc<SqliteManager>, node_name: Sh
     Ok(has_identity)
 }
 
-fn compute_download_store_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let has_downloaded = db
-        .query_row("SELECT COUNT(*) FROM downloads", params![], |row| row.get::<_, i64>(0))
-        .map_err(|e| format!("Failed to check downloads: {}", e))?
-        > 0;
+pub async fn compute_download_store_quest(db: Arc<SqliteManager>) -> Result<bool, String> {
+    // Get the list of default tools from the store
+    let url = std::env::var("SHINKAI_TOOLS_DIRECTORY_URL")
+        .unwrap_or_else(|_| "https://shinkai-store-302883622007.us-central1.run.app/store/defaults".to_string());
 
-    Ok(create_progress(
-        if has_downloaded { 1 } else { 0 },
-        1,
-        if has_downloaded { Some(now) } else { None },
-    ))
-}
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch default tools: {}", e))?;
 
-fn compute_return_after_days_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let first_activity_date: Option<String> = db
-        .query_row("SELECT MIN(created_at) FROM user_activities", params![], |row| {
-            row.get(0)
-        })
-        .ok();
-
-    let first_activity_date = first_activity_date.and_then(|date_str| {
-        DateTime::parse_from_rfc3339(&date_str)
-            .ok()
-            .map(|dt| dt.with_timezone(&Utc))
-    });
-
-    if let Some(first_date) = first_activity_date {
-        let days = (now - first_date).num_days() as u32;
-        Ok(create_progress(days, 7, Some(first_date)))
-    } else {
-        Ok(create_progress(0, 7, None))
+    if response.status() != 200 {
+        return Err(format!(
+            "Default tools request returned a non OK status: {}",
+            response.status()
+        ));
     }
-}
 
-fn compute_create_tool_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let tools_created = db
-        .query_row("SELECT COUNT(*) FROM tools", params![], |row| row.get::<_, i64>(0))
-        .map_err(|e| format!("Failed to count tools: {}", e))? as u32;
+    let default_tools: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse default tools: {}", e))?;
 
-    Ok(create_progress(
-        tools_created,
-        1,
-        if tools_created > 0 { Some(now) } else { None },
-    ))
-}
+    // Get the router keys of default tools
+    let default_tool_keys: std::collections::HashSet<String> = default_tools
+        .iter()
+        .filter_map(|tool| tool["routerKey"].as_str().map(|key| key.to_string()))
+        .collect();
 
-fn compute_submit_approval_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let tools_approved = db
-        .query_row(
-            "SELECT COUNT(*) FROM tools WHERE status = 'approved'",
-            params![],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|e| format!("Failed to count approved tools: {}", e))? as u32;
+    println!("Default tool keys: {:?}", default_tool_keys);
 
-    Ok(create_progress(
-        tools_approved,
-        1,
-        if tools_approved > 0 { Some(now) } else { None },
-    ))
-}
+    // Get all installed tools
+    let installed_tools = db
+        .get_all_tool_headers()
+        .map_err(|e| format!("Failed to get installed tools: {}", e))?;
 
-fn compute_top_ranking_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let current_rank = db
-        .query_row("SELECT MIN(ranking) FROM user_rankings", params![], |row| {
-            row.get::<_, i64>(0)
+    // Count tools that were downloaded (exist in default tools but don't have playground)
+    let downloaded_tools = installed_tools
+        .iter()
+        .filter(|tool| {
+            let router_key = tool.tool_router_key.clone();
+            let is_default = default_tool_keys.contains(&router_key);
+            let is_deno_or_python = tool.tool_type == "Deno" || tool.tool_type == "Python";
+
+            if !is_default {
+                println!(
+                    "Tool not in default list: {} (router key: {}, is_deno_or_python: {})",
+                    tool.name, router_key, is_deno_or_python
+                );
+            }
+
+            !is_default && is_deno_or_python
         })
-        .unwrap_or(1000) as u32;
+        .count();
 
-    Ok(create_progress(
-        if current_rank <= 50 { 1 } else { 0 },
-        1,
-        if current_rank <= 50 { Some(now) } else { None },
-    ))
+    println!("\nNumber of non-default Deno/Python tools: {}", downloaded_tools);
+    Ok(downloaded_tools > 0)
 }
 
-fn compute_write_feedback_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let feedback_count = db
-        .query_row("SELECT COUNT(*) FROM feedback", params![], |row| row.get::<_, i64>(0))
-        .map_err(|e| format!("Failed to count feedback: {}", e))? as u32;
+pub async fn compute_return_for_days_quest(db: Arc<SqliteManager>, required_days: u32) -> Result<bool, String> {
+    // Get all jobs
+    let all_jobs = db.get_all_jobs().map_err(|e| format!("Failed to get jobs: {}", e))?;
 
-    Ok(create_progress(
-        feedback_count,
-        1,
-        if feedback_count > 0 { Some(now) } else { None },
-    ))
+    // Define the valid date range (Feb 9th to Feb 20th)
+    let start_date = chrono::DateTime::parse_from_rfc3339("2025-02-08T00:00:00Z")
+        .map_err(|e| format!("Failed to parse start date: {}", e))?
+        .with_timezone(&chrono::Utc);
+    let end_date = chrono::DateTime::parse_from_rfc3339("2025-02-20T23:59:59Z")
+        .map_err(|e| format!("Failed to parse end date: {}", e))?
+        .with_timezone(&chrono::Utc);
+
+    // Collect unique dates when jobs were created
+    let mut unique_dates = std::collections::HashSet::new();
+
+    for job in all_jobs {
+        // Parse the job's creation date
+        let job_date = chrono::DateTime::parse_from_rfc3339(&job.datetime_created())
+            .map_err(|e| format!("Failed to parse job date: {}", e))?
+            .with_timezone(&chrono::Utc);
+
+        // Check if the job was created within the valid date range
+        if job_date >= start_date && job_date <= end_date {
+            // Add the date (without time) to the set
+            unique_dates.insert(job_date.date_naive());
+        }
+    }
+
+    // Check if we have enough unique dates
+    Ok(unique_dates.len() >= required_days as usize)
+}
+
+pub async fn compute_create_tool_quest(db: Arc<SqliteManager>) -> Result<bool, String> {
+    // Get all playground tools
+    let playground_tools = db
+        .get_all_tool_playground()
+        .map_err(|e| format!("Failed to get playground tools: {}", e))?;
+
+    // Count tools that were created in the playground (not downloaded from store)
+    let created_tools = playground_tools.len();
+
+    println!("\nNumber of tools created in playground: {}", created_tools);
+    Ok(created_tools > 0)
+}
+
+pub async fn compute_submit_approval_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+    let url = format!("https://store-api.shinkai.com/user/{}/apps", node_name.to_string());
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch user apps: {}", e))?;
+
+    if response.status() != 200 {
+        return Ok(false);
+    }
+
+    let apps: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse apps response: {}", e))?;
+
+    // If we have any apps in the store, it means they were approved
+    Ok(!apps.is_empty())
+}
+
+pub async fn compute_top_ranking_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+    let url = format!("https://store-api.shinkai.com/user/{}/apps", node_name.to_string());
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch user apps: {}", e))?;
+
+    if response.status() != 200 {
+        return Ok(false);
+    }
+
+    let apps: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse apps response: {}", e))?;
+
+    // Check if any app is featured
+    let has_featured = apps
+        .iter()
+        .any(|app| app.get("featured").and_then(|v| v.as_bool()).unwrap_or(false));
+
+    Ok(has_featured)
+}
+
+pub async fn compute_write_feedback_quest(_db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+    let url = format!("https://store-api.shinkai.com/user/{}/reviews", node_name.to_string());
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch user reviews: {}", e))?;
+
+    if response.status() != 200 {
+        return Ok(false);
+    }
+
+    let reviews: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse reviews response: {}", e))?;
+
+    // If we have any reviews, the quest is completed
+    Ok(!reviews.is_empty())
+}
+
+pub async fn compute_use_rag_quest(db: Arc<SqliteManager>) -> Result<bool, String> {
+    // Get all jobs
+    let all_jobs = db.get_all_jobs().map_err(|e| format!("Failed to get jobs: {}", e))?;
+
+    // Define the valid date range (Feb 9th to Feb 20th)
+    let start_date = chrono::DateTime::parse_from_rfc3339("2025-02-08T00:00:00Z")
+        .map_err(|e| format!("Failed to parse start date: {}", e))?
+        .with_timezone(&chrono::Utc);
+    let end_date = chrono::DateTime::parse_from_rfc3339("2025-02-20T23:59:59Z")
+        .map_err(|e| format!("Failed to parse end date: {}", e))?
+        .with_timezone(&chrono::Utc);
+
+    // Collect unique dates when jobs with file resources were created
+    let mut unique_dates = std::collections::HashSet::new();
+
+    for job in all_jobs {
+        // Parse the job's creation date
+        let job_date = chrono::DateTime::parse_from_rfc3339(&job.datetime_created())
+            .map_err(|e| format!("Failed to parse job date: {}", e))?
+            .with_timezone(&chrono::Utc);
+
+        // Check if the job was created within the valid date range
+        if job_date >= start_date && job_date <= end_date {
+            // Check if the job's scope contains any files or folders
+            let scope = job.scope();
+            if !scope.vector_fs_items.is_empty() || !scope.vector_fs_folders.is_empty() {
+                // Add the date (without time) to the set
+                unique_dates.insert(job_date.date_naive());
+            }
+        }
+    }
+
+    // Check if we have at least one day with file resource usage
+    Ok(!unique_dates.is_empty())
 }
 
 fn compute_write_review_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
@@ -273,22 +418,6 @@ fn compute_write_review_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Res
         review_count,
         1,
         if review_count > 0 { Some(now) } else { None },
-    ))
-}
-
-fn compute_use_rag_quest(db: Arc<SqliteManager>, now: DateTime<Utc>) -> Result<QuestProgress, String> {
-    let days_used_rag = db
-        .query_row(
-            "SELECT COUNT(DISTINCT DATE(created_at)) FROM rag_usage",
-            params![],
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|e| format!("Failed to count RAG usage days: {}", e))? as u32;
-
-    Ok(create_progress(
-        days_used_rag,
-        3,
-        if days_used_rag > 0 { Some(now) } else { None },
     ))
 }
 
