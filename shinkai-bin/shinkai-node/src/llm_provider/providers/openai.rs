@@ -250,6 +250,26 @@ pub async fn parse_openai_stream_chunk(
 ) -> Result<Option<String>, LLMProviderError> {
     let mut error_message: Option<String> = None;
 
+    // First try to parse the entire buffer as a JSON object
+    if let Ok(json_data) = serde_json::from_str::<JsonValue>(buffer.trim()) {
+        // Check for error object at the root level
+        if let Some(error_obj) = json_data.get("error") {
+            let code = error_obj
+                .get("code")
+                .and_then(|c| c.as_str())
+                .unwrap_or("Unknown code")
+                .to_string();
+            let msg = error_obj
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Unknown error");
+            error_message = Some(format!("{}: {}", code, msg));
+            // If this was a top-level JSON error, we can clear the buffer so we don't parse it again
+            buffer.clear();
+            return Ok(error_message);
+        }
+    }
+
     loop {
         // Look for a newline in `buffer`; if none is found, break.
         let Some(newline_pos) = buffer.find('\n') else {
@@ -322,6 +342,8 @@ pub async fn parse_openai_stream_chunk(
                     }
                 }
             }
+
+            // Not [DONE], not an array error → keep going
             continue;
         }
 
@@ -1880,5 +1902,58 @@ mod tests {
             ]
         });
         assert_eq!(arguments, expected_args);
+    }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_model_not_found_error() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+        };
+        let tools = None;
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        // Add the error response exactly as provided
+        buffer.push_str(
+            r#"{
+  "error": {
+    "message": "Project `proj_CB3NjbRtMtt87iKgJo4my` does not have access to model `o3-mini`",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "model_not_found"
+  }
+}"#,
+        );
+        buffer.push('\n');
+
+        let result = parse_openai_stream_chunk(
+            &mut buffer,
+            &mut response_text,
+            &mut function_calls,
+            &mut partial_fc,
+            &tools,
+            &ws_manager,
+            None,
+            "session_id",
+        )
+        .await;
+
+        // Verify that we got an error message back
+        assert!(result.is_ok());
+        let error_message = result.unwrap();
+        assert!(error_message.is_some());
+        assert_eq!(
+            error_message.unwrap(),
+            "model_not_found: Project `proj_CB3NjbRtMtt87iKgJo4my` does not have access to model `o3-mini`"
+        );
+
+        // Verify no function calls were created
+        assert!(function_calls.is_empty());
+        // Verify no response text was generated
+        assert!(response_text.is_empty());
     }
 }
