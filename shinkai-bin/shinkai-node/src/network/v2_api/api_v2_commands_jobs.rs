@@ -1164,120 +1164,112 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
+        let forked_job_id = Self::fork_job(
+            db,
+            node_name,
+            identity_manager,
+            job_id,
+            Some(message_id),
+            node_encryption_sk,
+            node_encryption_pk,
+            node_signing_sk,
+        )
+        .await;
+
+        let _ = match forked_job_id {
+            Ok(forked_job_id) => res.send(Ok(forked_job_id)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+        Ok(())
+    }
+
+    pub async fn fork_job(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_id: String,
+        message_id: Option<String>,
+        node_encryption_sk: EncryptionStaticKey,
+        node_encryption_pk: EncryptionPublicKey,
+        node_signing_sk: SigningKey,
+    ) -> Result<String, APIError> {
+        // Retrieve the job
+        let source_job = db.get_job_with_options(&job_id, false).map_err(|err| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to retrieve job: {}", err),
+        })?;
 
         // Retrieve the message from the inbox
-        let source_message = match db.fetch_message_and_hash(&message_id) {
-            Ok(msg) => msg.0,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::NOT_FOUND.as_u16(),
-                    error: "Not Found".to_string(),
-                    message: format!("Message not found: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Retrieve the job
-        let source_job = match db.get_job_with_options(&job_id, false) {
-            Ok(job) => job,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve job: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Get the main identity from the identity manager
-        let main_identity = {
-            let identity_manager = identity_manager.lock().await;
-            match identity_manager.get_main_identity() {
-                Some(identity) => identity.clone(),
-                None => {
-                    let api_error = APIError {
+        let message_id = match message_id {
+            Some(message_id) => message_id,
+            None => {
+                let messages = db
+                    .get_last_messages_from_inbox(source_job.conversation_inbox_name.to_string(), usize::MAX - 1, None)
+                    .map_err(|err| APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
-                        message: "Failed to get main identity".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            }
-        };
-
-        let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
-            Ok(name) => name,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create sender name: {}", err),
+                        message: format!("Failed to retrieve message: {}", err),
+                    })?;
+                let m = match messages.get(messages.len() - 1) {
+                    Some(m) => m,
+                    None => {
+                        return Err(APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "Message not found".to_string(),
+                        })
+                    }
                 };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let recipient = match ShinkaiName::from_node_and_profile_names_and_type_and_name(
-            node_name.node_name,
-            "main".to_string(),
-            ShinkaiSubidentityType::Agent,
-            source_job.parent_agent_or_llm_provider_id.clone(),
-        ) {
-            Ok(name) => name,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create recipient name: {}", err),
+                let m = match m.get(m.len() - 1) {
+                    Some(m) => m,
+                    None => {
+                        return Err(APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: "Message not found".to_string(),
+                        });
+                    }
                 };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                // This should be the last message in the inbox
+                m.calculate_message_hash_for_pagination()
             }
         };
+        let source_message = db
+            .fetch_message_and_hash(&message_id)
+            .map_err(|err| APIError {
+                code: StatusCode::NOT_FOUND.as_u16(),
+                error: "Not Found".to_string(),
+                message: format!("Message not found: {}", err),
+            })?
+            .0;
 
         // Retrieve the messages from the inbox
         let inbox_name = source_job.conversation_inbox_name.to_string();
-        let last_messages =
-            match db.get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, Some(message_id.clone())) {
-                Ok(messages) => messages,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to retrieve messages: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
+        let last_messages = db
+            .get_last_messages_from_inbox(inbox_name.clone(), usize::MAX - 1, Some(message_id.clone()))
+            .map_err(|err| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to retrieve messages: {}", err),
+            })?;
 
         // Create a new job
         let forked_job_id = format!("jobid_{}", uuid::Uuid::new_v4());
-        match db.create_new_job(
-            forked_job_id.clone(),
-            source_job.parent_agent_or_llm_provider_id,
-            source_job.scope.clone(),
-            source_job.is_hidden,
-            source_job.associated_ui,
-            source_job.config,
-        ) {
-            Ok(_) => {}
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create new job: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        }
+        let _ = db
+            .create_new_job(
+                forked_job_id.clone(),
+                source_job.parent_agent_or_llm_provider_id,
+                source_job.scope.clone(),
+                source_job.is_hidden,
+                source_job.associated_ui,
+                source_job.config,
+            )
+            .map_err(|err| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to create new job: {}", err),
+            })?;
 
         // Fork the messages
         let mut forked_message_map: HashMap<String, String> = HashMap::new();
@@ -1289,18 +1281,29 @@ impl Node {
             if let MessageBody::Unencrypted(body) = &message.body {
                 if let MessageData::Unencrypted(data) = &body.message_data {
                     if let MessageSchemaType::JobMessageSchema = data.message_content_schema {
-                        let mut job_message = match serde_json::from_str::<JobMessage>(&data.message_raw_content) {
-                            Ok(message) => message,
-                            Err(err) => {
-                                let api_error = APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("Failed to deserialize job message: {}", err),
-                                };
-                                let _ = res.send(Err(api_error)).await;
-                                return Ok(());
-                            }
-                        };
+                        let mut job_message =
+                            serde_json::from_str::<JobMessage>(&data.message_raw_content).map_err(|err| APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to deserialize job message: {}", err),
+                            })?;
+
+                        // Extract original sender and recipient from the message
+                        let original_sender = ShinkaiName::from_shinkai_message_using_sender_subidentity(message)
+                            .or_else(|_| ShinkaiName::from_shinkai_message_only_using_sender_node_name(message))
+                            .map_err(|err| APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to extract sender from message: {}", err),
+                            })?;
+
+                        let original_recipient = ShinkaiName::from_shinkai_message_using_recipient_subidentity(message)
+                            .or_else(|_| ShinkaiName::from_shinkai_message_only_using_recipient_node_name(message))
+                            .map_err(|err| APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to extract recipient from message: {}", err),
+                            })?;
 
                         job_message.job_id = forked_job_id.clone();
                         job_message.parent = job_message.parent.map(|parent| {
@@ -1310,48 +1313,29 @@ impl Node {
                                 .unwrap_or_else(|| parent.to_string())
                         });
 
-                        let forked_message = match Self::api_v2_create_shinkai_message(
-                            sender.clone(),
-                            recipient.clone(),
+                        let forked_message = Self::api_v2_create_shinkai_message(
+                            original_sender,
+                            original_recipient,
                             &serde_json::to_string(&job_message).unwrap(),
                             MessageSchemaType::JobMessageSchema,
                             node_encryption_sk.clone(),
                             node_signing_sk.clone(),
                             node_encryption_pk,
                             Some(job_message.job_id.clone()),
-                        ) {
-                            Ok(message) => message,
-                            Err(err) => {
-                                let api_error = APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("Failed to create Shinkai message: {}", err),
-                                };
-                                let _ = res.send(Err(api_error)).await;
-                                return Ok(());
-                            }
-                        };
+                        )?;
 
                         forked_message_map.insert(
                             message.calculate_message_hash_for_pagination(),
                             forked_message.calculate_message_hash_for_pagination(),
                         );
 
-                        match db
-                            .add_message_to_job_inbox(&forked_job_id, &forked_message, job_message.parent.clone(), None)
+                        db.add_message_to_job_inbox(&forked_job_id, &forked_message, job_message.parent.clone(), None)
                             .await
-                        {
-                            Ok(_) => {}
-                            Err(err) => {
-                                let api_error = APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("Failed to add message to job inbox: {}", err),
-                                };
-                                let _ = res.send(Err(api_error)).await;
-                                return Ok(());
-                            }
-                        }
+                            .map_err(|err| APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to add message to job inbox: {}", err),
+                            })?;
                     }
                 }
             }
@@ -1361,21 +1345,14 @@ impl Node {
             job_id: forked_job_id.clone(),
             message_id: message_id.clone(),
         };
-        match db.add_forked_job(&job_id, forked_job) {
-            Ok(_) => {}
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to add forked job: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        }
 
-        let _ = res.send(Ok(forked_job_id)).await;
-        Ok(())
+        db.add_forked_job(&job_id, forked_job).map_err(|err| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to add forked job: {}", err),
+        })?;
+
+        Ok(forked_job_id)
     }
 
     pub async fn v2_remove_job(
