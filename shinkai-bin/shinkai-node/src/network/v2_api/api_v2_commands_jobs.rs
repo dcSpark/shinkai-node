@@ -8,25 +8,14 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity,
-        inbox_name::InboxName,
-        job::{ForkedJob, JobLike},
-        job_config::JobConfig,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData},
-        shinkai_message_schemas::{
-            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath,
-        signatures::clone_signature_secret_key,
-    },
+        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath, signatures::clone_signature_secret_key
+    }
 };
 
 use shinkai_sqlite::SqliteManager;
@@ -34,9 +23,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1257,30 +1244,6 @@ impl Node {
             })?
             .0;
 
-        // Get the main identity from the identity manager
-        let main_identity = identity_manager
-            .lock()
-            .await
-            .get_main_identity()
-            .map_or(
-                Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: "Failed to get main identity".to_string(),
-                }),
-                |identity| Ok(identity.clone()),
-            )?
-            .clone();
-
-        let sender = ShinkaiName::new(main_identity.get_full_identity_name())?;
-
-        let recipient = ShinkaiName::from_node_and_profile_names_and_type_and_name(
-            node_name.node_name,
-            "main".to_string(),
-            ShinkaiSubidentityType::Agent,
-            source_job.parent_agent_or_llm_provider_id.clone(),
-        )?;
-
         // Retrieve the messages from the inbox
         let inbox_name = source_job.conversation_inbox_name.to_string();
         let last_messages = db
@@ -1325,6 +1288,23 @@ impl Node {
                                 message: format!("Failed to deserialize job message: {}", err),
                             })?;
 
+                        // Extract original sender and recipient from the message
+                        let original_sender = ShinkaiName::from_shinkai_message_using_sender_subidentity(message)
+                            .or_else(|_| ShinkaiName::from_shinkai_message_only_using_sender_node_name(message))
+                            .map_err(|err| APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to extract sender from message: {}", err),
+                            })?;
+
+                        let original_recipient = ShinkaiName::from_shinkai_message_using_recipient_subidentity(message)
+                            .or_else(|_| ShinkaiName::from_shinkai_message_only_using_recipient_node_name(message))
+                            .map_err(|err| APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to extract recipient from message: {}", err),
+                            })?;
+
                         job_message.job_id = forked_job_id.clone();
                         job_message.parent = job_message.parent.map(|parent| {
                             forked_message_map
@@ -1334,8 +1314,8 @@ impl Node {
                         });
 
                         let forked_message = Self::api_v2_create_shinkai_message(
-                            sender.clone(),
-                            recipient.clone(),
+                            original_sender,
+                            original_recipient,
                             &serde_json::to_string(&job_message).unwrap(),
                             MessageSchemaType::JobMessageSchema,
                             node_encryption_sk.clone(),

@@ -299,25 +299,93 @@ fn test_fork_job_messages() {
                 // Verify the forked conversation
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
                 node1_commands_sender
-                    .send(NodeCommand::V2ApiGetLastMessagesFromInbox {
-                        bearer: node1_api_key.to_string(),
-                        inbox_name: InboxName::get_job_inbox_name_from_params(job_fork_id)
-                            .unwrap()
-                            .to_string(),
-                        limit: 8,
-                        offset_key: None,
+                    .send(NodeCommand::V2ApiGetAllSmartInboxes {
+                        bearer: node1_api_key.clone(),
+                        limit: None,
+                        offset: None,
+                        show_hidden: None,
                         res: res2_sender,
                     })
                     .await
                     .unwrap();
-                let forked_messages = res2_receiver.recv().await.unwrap();
-                println!("Forked messages: {:?}", forked_messages);
+                let inboxes = res2_receiver.recv().await.unwrap();
+                eprintln!("Inboxes: {:?}", inboxes);
 
-                assert_eq!(
-                    forked_messages.unwrap().len(),
-                    4,
-                    "Forked messages should match original message count"
+                // Find the two job inboxes (original and forked)
+                let job_inboxes: Vec<_> = match inboxes {
+                    Ok(inboxes) => inboxes
+                        .iter()
+                        .filter(|inbox| inbox.inbox_id.starts_with("job_inbox::"))
+                        .cloned()
+                        .collect(),
+                    Err(_) => vec![],
+                };
+
+                assert!(
+                    job_inboxes.len() >= 2,
+                    "Should have at least two job inboxes (original and forked)"
                 );
+                let original_inbox = &job_inboxes[0];
+                let forked_inbox = &job_inboxes[1];
+
+                // Get messages from original inbox
+                let (res3_sender, res3_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiGetLastMessagesFromInbox {
+                        bearer: node1_api_key.clone(),
+                        inbox_name: original_inbox.inbox_id.clone(),
+                        limit: 8,
+                        offset_key: None,
+                        res: res3_sender,
+                    })
+                    .await
+                    .unwrap();
+                let original_messages = res3_receiver.recv().await.unwrap();
+
+                // Get messages from forked inbox
+                let (res4_sender, res4_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::V2ApiGetLastMessagesFromInbox {
+                        bearer: node1_api_key.clone(),
+                        inbox_name: forked_inbox.inbox_id.clone(),
+                        limit: 8,
+                        offset_key: None,
+                        res: res4_sender,
+                    })
+                    .await
+                    .unwrap();
+                let forked_messages = res4_receiver.recv().await.unwrap();
+
+                // Compare messages from both inboxes
+                if let (Ok(original_messages), Ok(forked_messages)) = (original_messages, forked_messages) {
+                    assert_eq!(
+                        original_messages.len(),
+                        forked_messages.len(),
+                        "Original and forked messages should have the same length"
+                    );
+                    assert!(original_messages.len() == 4, "Should have exactly 4 messages");
+
+                    for (original_message, forked_message) in original_messages.iter().zip(forked_messages.iter()) {
+                        assert_eq!(
+                            original_message.sender_subidentity, forked_message.sender_subidentity,
+                            "Original and forked messages should have the same sender subidentity"
+                        );
+                        assert_eq!(
+                            original_message.sender, forked_message.sender,
+                            "Original and forked messages should have the same sender"
+                        );
+                        assert_eq!(
+                            original_message.job_message.content, forked_message.job_message.content,
+                            "Original and forked messages should have the same content"
+                        );
+                        assert_eq!(
+                            original_message.job_message.parent, forked_message.job_message.parent,
+                            "Original and forked messages should have the same parent"
+                        );
+                    }
+                } else {
+                    panic!("Failed to get messages from inboxes");
+                }
 
                 eprintln!("Job fork messages test completed");
                 node1_abort_handler.abort();
