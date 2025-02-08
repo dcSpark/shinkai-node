@@ -26,6 +26,7 @@ pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
 pub mod oauth_manager;
+pub mod preferences;
 pub mod prompt_manager;
 pub mod regex_pattern_manager;
 pub mod retry_manager;
@@ -160,6 +161,7 @@ impl SqliteManager {
         Self::initialize_llm_providers_table(conn)?;
         Self::initialize_local_node_keys_table(conn)?;
         Self::initialize_message_box_symmetric_keys_table(conn)?;
+        Self::initialize_preferences_table(conn)?;
         Self::initialize_prompt_table(conn)?;
         Self::initialize_prompt_vector_tables(conn)?;
         Self::initialize_registration_code_table(conn)?;
@@ -832,35 +834,6 @@ impl SqliteManager {
 
         Ok(())
     }
-
-    // fn initialize_source_file_maps_table(conn: &rusqlite::Connection) -> Result<()> {
-    //     conn.execute(
-    //         "CREATE TABLE IF NOT EXISTS source_file_maps (
-    //             profile_name TEXT NOT NULL,
-    //             vector_resource_id TEXT NOT NULL,
-    //             vr_path TEXT NOT NULL,
-    //             source_file_type TEXT NOT NULL,
-    //             file_name TEXT NOT NULL,
-    //             file_type TEXT NOT NULL,
-    //             distribution_info BLOB
-    //         );",
-    //         [],
-    //     )?;
-
-    //     // Create an index for the profile_name column
-    //     conn.execute(
-    //         "CREATE INDEX IF NOT EXISTS idx_source_file_maps_profile_name ON source_file_maps (profile_name);",
-    //         [],
-    //     )?;
-
-    //     // Create an index for the vector_resource_id column
-    //     conn.execute(
-    //         "CREATE INDEX IF NOT EXISTS idx_source_file_maps_vector_resource_id ON source_file_maps
-    // (vector_resource_id);",         [],
-    //     )?;
-
-    //     Ok(())
-    // }
 
     // New method to initialize the embedding model type table
     fn initialize_embedding_model_type_table(conn: &rusqlite::Connection) -> Result<()> {

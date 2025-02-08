@@ -14,7 +14,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job, wait_for_default_tools
 };
 use mockito::Server;
 
@@ -54,6 +54,16 @@ fn test_fork_job_messages() {
                     node1_device_name.as_str(),
                 )
                 .await;
+
+                // Wait for default tools to be ready
+                let tools_ready = wait_for_default_tools(
+                    node1_commands_sender.clone(),
+                    node1_api_key.clone(),
+                    20, // Wait up to 20 seconds
+                )
+                .await
+                .expect("Failed to check for default tools");
+                assert!(tools_ready, "Default tools should be ready within 20 seconds");
             }
 
             {

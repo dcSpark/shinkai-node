@@ -2990,6 +2990,12 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiCheckDefaultToolsSync { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_check_default_tools_sync(db_clone, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }

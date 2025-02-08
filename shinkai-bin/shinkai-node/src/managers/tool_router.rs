@@ -1,6 +1,6 @@
+use std::env;
 use std::sync::Arc;
 use std::time::Instant;
-use std::{env, fs};
 
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::GenericInferenceChain;
@@ -20,8 +20,9 @@ use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
@@ -160,6 +161,18 @@ impl ToolRouter {
             .eq("true")
         {
             return Ok(());
+        }
+
+        // Set the sync status to false at the start
+        let internal_comms = ShinkaiInternalComms {
+            internal_has_sync_default_tools: false,
+        };
+        if let Err(e) = db.set_preference(
+            "internal_comms",
+            &internal_comms,
+            Some("Internal communication preferences"),
+        ) {
+            eprintln!("Error setting internal_comms preference: {}", e);
         }
 
         let start_time = Instant::now();
@@ -323,6 +336,18 @@ impl ToolRouter {
 
         let duration = start_time.elapsed();
         println!("Total time taken to import/upgrade tools: {:?}", duration);
+
+        // Set the sync status to true after successful completion
+        let internal_comms = ShinkaiInternalComms {
+            internal_has_sync_default_tools: true,
+        };
+        if let Err(e) = db.set_preference(
+            "internal_comms",
+            &internal_comms,
+            Some("Internal communication preferences"),
+        ) {
+            eprintln!("Error setting internal_comms preference: {}", e);
+        }
 
         Ok(())
     }
@@ -1209,7 +1234,7 @@ impl ToolRouter {
                 }
 
                 // Check if the top vector search result has a score under 0.2
-                if let Some((tool, score)) = vector_tools.first() {
+                if let Some((tool, _score)) = vector_tools.first() {
                     if seen_ids.insert(tool.tool_router_key.clone()) {
                         combined_tools.push(tool.clone());
                     }
