@@ -77,6 +77,18 @@ impl SerializedLLMProvider {
         }
     }
 
+    pub fn mock_provider_with_reasoning() -> Self {
+        SerializedLLMProvider {
+            id: "mock_agent_reasoning".to_string(),
+            full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/mock_agent_reasoning".to_string()).unwrap(),
+            external_url: Some("https://api.example.com".to_string()),
+            api_key: Some("mockapikey".to_string()),
+            model: LLMProviderInterface::OpenAI(OpenAI {
+                model_type: "o1-mini".to_string(),
+            }),
+        }
+    }
+
     pub fn baml_provider_base_url(&self) -> Option<String> {
         let mut base_url = self.external_url.clone().unwrap_or_default();
 

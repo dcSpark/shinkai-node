@@ -6,7 +6,7 @@ use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIR
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -104,20 +104,32 @@ impl LLMService for OpenAI {
                     Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
                 };
 
-                let mut payload = json!({
-                    "model": self.model_type,
-                    "messages": messages_json,
-                    "max_tokens": result.remaining_output_tokens,
-                    "stream": is_stream,
-                });
+                // Set up initial payload with appropriate token limit field based on model capabilities
+                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                    json!({
+                        "model": self.model_type,
+                        "messages": messages_json,
+                        "max_completion_tokens": result.remaining_output_tokens,
+                        "stream": is_stream,
+                    })
+                } else {
+                    json!({
+                        "model": self.model_type,
+                        "messages": messages_json,
+                        "max_tokens": result.remaining_output_tokens,
+                        "stream": is_stream,
+                    })
+                };
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
                     payload["functions"] = serde_json::Value::Array(tools_json.clone());
                 }
 
-                // Add options to payload
-                add_options_to_payload(&mut payload, config.as_ref());
+                // Only add options to payload for non-reasoning models
+                if !ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                    add_options_to_payload(&mut payload, config.as_ref());
+                }
 
                 // Print payload as a pretty JSON string
                 match serde_json::to_string_pretty(&payload) {
@@ -248,6 +260,35 @@ pub async fn parse_openai_stream_chunk(
     inbox_name: Option<InboxName>,
     session_id: &str,
 ) -> Result<Option<String>, LLMProviderError> {
+    // If the buffer starts with '{', assume we might be receiving a JSON error.
+    if buffer.trim_start().starts_with('{') {
+        match serde_json::from_str::<JsonValue>(buffer) {
+            Ok(json_data) => {
+                // If it has an "error" field, record that and return immediately.
+                if let Some(error_obj) = json_data.get("error") {
+                    let code = error_obj
+                        .get("code")
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("Unknown code")
+                        .to_string();
+                    let msg = error_obj
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Unknown error");
+                    // Clear the buffer since we've consumed it
+                    buffer.clear();
+                    return Ok(Some(format!("{}: {}", code, msg)));
+                }
+                // Once parsed, clear the buffer since we've consumed it.
+                buffer.clear();
+            }
+            Err(_) => {
+                // It's not yet valid JSON (partial) - keep the buffer and wait for more data
+                return Ok(None);
+            }
+        }
+    }
+
     let mut error_message: Option<String> = None;
 
     loop {
@@ -571,7 +612,7 @@ pub async fn handle_streaming_response(
                 }
 
                 // Handle WebSocket updates for function calls
-                if let Some(ref manager) = ws_manager_trait {
+                if let Some(ref _manager) = ws_manager_trait {
                     if let Some(ref inbox_name) = inbox_name {
                         if let Some(last_function_call) = function_calls.last() {
                             send_tool_ws_update(&ws_manager_trait, Some(inbox_name.clone()), last_function_call)
