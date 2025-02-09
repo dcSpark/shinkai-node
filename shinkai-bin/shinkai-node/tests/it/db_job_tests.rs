@@ -73,20 +73,10 @@ mod tests {
     use super::*;
     use shinkai_message_primitives::{
         schemas::{
-            identity::{StandardIdentity, StandardIdentityType},
-            inbox_name::InboxName,
-            inbox_permission::InboxPermission,
-            job::ForkedJob,
-            shinkai_name::ShinkaiName,
-            subprompts::SubPrompt,
-        },
-        shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage},
-        shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair,
-            job_scope::MinimalJobScope,
-            shinkai_message_builder::ShinkaiMessageBuilder,
-            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
-        },
+            identity::{StandardIdentity, StandardIdentityType}, inbox_name::InboxName, inbox_permission::InboxPermission, job::ForkedJob, shinkai_name::ShinkaiName, subprompts::SubPrompt
+        }, shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage}, shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair, job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}
+        }
     };
     use shinkai_sqlite::errors::SqliteManagerError;
 
@@ -360,7 +350,7 @@ mod tests {
                 parent_message_hash_2 = Some(shinkai_message.calculate_message_hash_for_pagination());
             }
 
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
         // Check if the job inbox is not empty after adding a message

@@ -1,4 +1,5 @@
 use crate::llm_provider::error::LLMProviderError;
+use crate::llm_provider::execution::chains::inference_chain_trait::InferenceChainResult;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -239,7 +240,7 @@ impl JobManager {
         let start = Instant::now();
 
         // Call the inference chain router to choose which chain to use, and call it
-        let inference_response = JobManager::inference_chain_router(
+        let (inference_response, inference_response_content) = match JobManager::inference_chain_router(
             db.clone(),
             llm_provider_found,
             full_job,
@@ -257,8 +258,21 @@ impl JobManager {
             // sqlite_logger.clone(),
             llm_stopper.clone(),
         )
-        .await?;
-        let inference_response_content = inference_response.response.clone();
+        .await
+        {
+            Ok(response) => (response.clone(), response.response),
+            Err(e) => {
+                let error_message = format!("{}", e);
+                // Create a minimal inference response with the error message
+                let error_response = InferenceChainResult {
+                    response: error_message.clone(),
+                    tps: None,
+                    answer_duration: None,
+                    tool_calls: None,
+                };
+                (error_response, error_message)
+            }
+        };
 
         let duration = start.elapsed();
         shinkai_log(

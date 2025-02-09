@@ -28,7 +28,7 @@ use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_too
 use crate::it::utils::vecfs_test_utils::{create_folder, upload_file};
 
 use super::utils::db_handlers::setup_node_storage_path;
-use super::utils::node_test_api::api_registration_device_node_profile_main;
+use super::utils::node_test_api::{api_registration_device_node_profile_main, wait_for_default_tools};
 use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use mockito::Server;
@@ -173,6 +173,16 @@ fn native_tool_test_knowledge() {
                     node1_device_name,
                 )
                 .await;
+
+                // Wait for default tools to be ready
+                let tools_ready = wait_for_default_tools(
+                    node1_commands_sender.clone(),
+                    api_key_bearer.clone(),
+                    20, // Wait up to 20 seconds
+                )
+                .await
+                .expect("Failed to check for default tools");
+                assert!(tools_ready, "Default tools should be ready within 20 seconds");
             }
             {
                 // Check that Rust tools are installed, retry up to 10 times

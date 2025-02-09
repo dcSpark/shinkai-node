@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
 use super::shared_model_logic;
 
@@ -106,6 +107,17 @@ pub struct Usage {
 }
 
 pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
+    let mut prompt = prompt.clone();
+
+    // If this is a reasoning model, filter out system prompts before any processing
+    if ModelCapabilitiesManager::has_reasoning_capabilities(model) {
+        prompt.sub_prompts.retain(|sp| match sp {
+            SubPrompt::Content(SubPromptType::System, _, _) => false,
+            SubPrompt::Omni(SubPromptType::System, _, _, _) => false,
+            _ => true,
+        });
+    }
+
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
@@ -125,25 +137,35 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         .into_iter()
         .partition(|message| message.role.is_some());
 
-
     // Convert both sets of messages to serde Value
     let messages_json = serde_json::to_value(messages_with_role)?;
 
     // Convert tools to serde Value with name transformation
     let tools_json = serde_json::to_value(
-        tools.clone().into_iter().map(|mut tool| {
-            if let Some(functions) = tool.functions.as_mut() {
-                for function in functions {
-                    // Replace any characters that aren't alphanumeric, underscore, or hyphen
-                    function.name = function.name
-                        .chars()
-                        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
-                        .collect::<String>()
-                        .to_lowercase();
+        tools
+            .clone()
+            .into_iter()
+            .map(|mut tool| {
+                if let Some(functions) = tool.functions.as_mut() {
+                    for function in functions {
+                        // Replace any characters that aren't alphanumeric, underscore, or hyphen
+                        function.name = function
+                            .name
+                            .chars()
+                            .map(|c| {
+                                if c.is_alphanumeric() || c == '_' || c == '-' {
+                                    c
+                                } else {
+                                    '_'
+                                }
+                            })
+                            .collect::<String>()
+                            .to_lowercase();
+                    }
                 }
-            }
-            tool
-        }).collect::<Vec<_>>()
+                tool
+            })
+            .collect::<Vec<_>>(),
     )?;
 
     // Convert messages_json and tools_json to Vec<serde_json::Value>
@@ -211,7 +233,10 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     })
 }
 
-pub fn openai_prepare_messages_gemini(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
+pub fn openai_prepare_messages_gemini(
+    model: &LLMProviderInterface,
+    prompt: Prompt,
+) -> Result<PromptResult, LLMProviderError> {
     let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
 
     // Generate the messages and filter out images
@@ -525,7 +550,10 @@ mod tests {
         let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
 
         // Verify basic response fields
-        assert_eq!(response.id.clone().unwrap(), "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc");
+        assert_eq!(
+            response.id.clone().unwrap(),
+            "chatcmpl-0cae310a-2b36-470a-9261-0f24d77b01bc"
+        );
         assert_eq!(response.object, "chat.completion");
         assert_eq!(response.created, 1736736692);
         assert_eq!(response.system_fingerprint, Some("fp_9cb648b966".to_string()));
@@ -540,10 +568,10 @@ mod tests {
         let message = &choice.message;
         assert_eq!(message.role, "assistant");
         assert!(message.content.is_none());
-        
+
         let tool_calls = message.tool_calls.as_ref().expect("Should have tool_calls");
         assert_eq!(tool_calls.len(), 1);
-        
+
         let tool_call = &tool_calls[0];
         assert_eq!(tool_call.id, "call_sa3n");
         assert_eq!(tool_call.call_type, "function");
@@ -562,5 +590,48 @@ mod tests {
         // Verify Groq info
         let groq = response.groq.expect("Should have Groq info");
         assert_eq!(groq.id, "req_01jhes5nvkedsb8hcw0x912fa6");
+    }
+
+    #[test]
+    fn test_system_prompt_filtering() {
+        // Create a prompt with both Content and Omni system prompts
+        let sub_prompts = vec![
+            SubPrompt::Content(
+                SubPromptType::System,
+                "System prompt that should be filtered".to_string(),
+                98,
+            ),
+            SubPrompt::Content(SubPromptType::User, "User message that should remain".to_string(), 100),
+            SubPrompt::Omni(
+                SubPromptType::UserLastMessage,
+                "Last user message that should remain".to_string(),
+                vec![],
+                100,
+            ),
+        ];
+
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(sub_prompts);
+
+        // Create a mock model with reasoning capabilities
+        let model = SerializedLLMProvider::mock_provider_with_reasoning().model;
+
+        // Process the prompt
+        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+
+        // Extract the messages from the result
+        let messages = match &result.messages {
+            PromptResultEnum::Value(value) => value.as_array().unwrap(),
+            _ => panic!("Expected Value variant"),
+        };
+
+        // Verify that only non-system messages remain
+        assert_eq!(messages.len(), 2, "Should only have 2 messages after filtering");
+
+        // Check that the remaining messages are the user messages
+        for message in messages {
+            let role = message["role"].as_str().unwrap();
+            assert_eq!(role, "user", "All remaining messages should be user messages");
+        }
     }
 }

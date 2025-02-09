@@ -687,9 +687,24 @@ impl SqliteManager {
         tx.execute("INSERT INTO shinkai_tools_fts(name) VALUES (?1)", params![tool.name()])?;
 
         // Commit the transaction
-        tx.commit()?;
-
-        Ok(())
+        match tx.commit() {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // If commit fails due to lock, retry after a short delay
+                if let rusqlite::Error::SqliteFailure(err, _) = &e {
+                    if err.code == rusqlite::ErrorCode::DatabaseBusy {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        // Retry the operation
+                        let tx = fts_conn.transaction()?;
+                        tx.execute("DELETE FROM shinkai_tools_fts WHERE name = ?1", params![tool.name()])?;
+                        tx.execute("INSERT INTO shinkai_tools_fts(name) VALUES (?1)", params![tool.name()])?;
+                        tx.commit()?;
+                        return Ok(());
+                    }
+                }
+                Err(SqliteManagerError::DatabaseError(e))
+            }
+        }
     }
 
     // Search the FTS table

@@ -43,6 +43,13 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(disable_all_tools_handler);
 
+    let duplicate_tool_route = warp::path("duplicate_tool")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(duplicate_tool_handler);
+
     let get_shinkai_tool_route = warp::path("get_shinkai_tool")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -249,6 +256,7 @@ pub fn tool_routes(
         .or(get_shinkai_tool_route)
         .or(search_shinkai_tool_route)
         .or(add_shinkai_tool_route)
+        .or(duplicate_tool_route)
         .or(set_playground_tool_route)
         .or(list_playground_tools_route)
         .or(remove_playground_tool_route)
@@ -1904,17 +1912,52 @@ pub async fn disable_all_tools_handler(
     }
 }
 
-#[derive(Deserialize, ToSchema)]
-pub struct StandAlonePlaygroundRequest {
-    pub code: String,
-    pub metadata: Value,
-    pub assets: Option<Vec<String>>,
-    pub language: CodeLanguage,
-    pub tools: Vec<ToolRouterKey>,
-    pub parameters: Value,
-    pub config: Value,
-    pub oauth: Option<Vec<OAuth>>,
-}
+#[utoipa::path(
+    post,
+    path = "/v2/duplicate_tool",
+    responses(
+        (status = 200, description = "Successfully duplicated tool", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+
+pub async fn duplicate_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    let tool_key_path = query_params.get("tool_key_path").unwrap_or(&String::new()).to_string();
+    if tool_key_path.is_empty() {
+        return Ok(warp::reply::with_status(
+            warp::reply::json(&APIError {
+                code: 400,
+                error: "Missing tool key path".to_string(),
+                message: "Tool key path is required".to_string(),
+            }),
+            StatusCode::BAD_REQUEST,
+        ));
+    }
+    sender
+        .send(NodeCommand::V2ApiDuplicateTool { bearer, tool_key_path, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+        let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+        match result {
+            Ok(response) => {
+                let response = create_success_response(response);
+                Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+            }
+            Err(error) => Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap(),
+            )),
+        }
+    }
 
 
 #[utoipa::path(
@@ -1958,6 +2001,18 @@ pub async fn tool_store_proxy_handler(
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct StandAlonePlaygroundRequest {
+    pub code: String,
+    pub metadata: Value,
+    pub assets: Option<Vec<String>>,
+    pub language: CodeLanguage,
+    pub tools: Vec<ToolRouterKey>,
+    pub parameters: Value,
+    pub config: Value,
+    pub oauth: Option<Vec<OAuth>>,
+}
+
 #[utoipa::path(
     post,
     path = "/v2/tools_standalone_playground",
@@ -1968,6 +2023,7 @@ pub async fn tool_store_proxy_handler(
         (status = 500, description = "Internal server error", body = APIError)
     )
 )]
+
 pub async fn standalone_playground_handler(
     sender: Sender<NodeCommand>,
     authorization: String,

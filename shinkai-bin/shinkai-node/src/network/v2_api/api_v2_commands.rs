@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Write;
 use std::{env, sync::Arc};
 
+use async_std::println;
 use serde_json::{json, Value};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use tokio::fs;
@@ -39,6 +40,7 @@ use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 
+use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use std::time::Instant;
 use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1351,6 +1353,11 @@ impl Node {
                         let timeout_duration = Duration::from_secs(60); // Set a timeout duration
                         match Self::check_job_response(db.clone(), job_id.clone(), "dogcat", timeout_duration).await {
                             Ok(_) => {
+                                // Clean up the test LLM provider
+                                if let Err(e) = db.remove_llm_provider(&provider.id, &profile) {
+                                    eprintln!("Warning: Failed to clean up test LLM provider: {}", e);
+                                }
+
                                 let response = serde_json::json!({
                                     "message": "LLM provider tested successfully",
                                     "status": "success"
@@ -1359,6 +1366,11 @@ impl Node {
                                 Ok(())
                             }
                             Err(err) => {
+                                // Clean up the test LLM provider even if test failed
+                                if let Err(e) = db.remove_llm_provider(&provider.id, &profile) {
+                                    eprintln!("Warning: Failed to clean up test LLM provider: {}", e);
+                                }
+
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
@@ -1418,33 +1430,40 @@ impl Node {
                         if let Ok(content) = message.get_message_content() {
                             if !content.is_empty() && content.contains(expected_response) {
                                 return Ok(());
-                            } else if content.contains("error") {
-                                // Parse the JSON content to extract the error message directly
-                                if let Ok(parsed_content) = serde_json::from_str::<serde_json::Value>(&content) {
-                                    if let Some(error_message) = parsed_content.get("content").and_then(|e| e.as_str())
-                                    {
-                                        return Err(APIError {
-                                            code: StatusCode::BAD_REQUEST.as_u16(),
-                                            error: "Bad Request".to_string(),
-                                            message: error_message.to_string(),
-                                        });
-                                    }
-                                }
-                                // Fallback if parsing fails
-                                return Err(APIError {
-                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                    error: "Bad Request".to_string(),
-                                    message: "Error in message content".to_string(),
-                                });
                             }
                         }
                     }
                 }
                 // If the second message does not contain the expected response, return an error
+                let error_message = if let Some(second_message_group) = last_messages_inbox.get(1) {
+                    let content = second_message_group
+                        .iter()
+                        .filter_map(|msg| {
+                            // Get the raw content from the message
+                            if let MessageBody::Unencrypted(body) = &msg.body {
+                                if let MessageData::Unencrypted(data) = &body.message_data {
+                                    // Parse the raw content as JobMessage
+                                    if let Ok(job_message) =
+                                        serde_json::from_str::<JobMessage>(&data.message_raw_content)
+                                    {
+                                        return Some(job_message.content);
+                                    }
+                                }
+                            }
+                            None
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", ");
+
+                    content
+                } else {
+                    "Error but no specific error message received. Double-check the model name and your key."
+                        .to_string()
+                };
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
-                    message: "The second message does not contain the expected response".to_string(),
+                    message: error_message,
                 });
             }
 
@@ -1707,6 +1726,32 @@ impl Node {
         if let Some(tool_router) = tool_router {
             if let Err(e) = tool_router.sync_tools_from_directory().await {
                 eprintln!("Error during periodic tool import: {}", e);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_check_default_tools_sync(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<bool, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate bearer token
+        if let Err(_) = Self::validate_bearer_token(&bearer, db.clone(), &res).await {
+            return Ok(());
+        }
+
+        // Get the internal_comms preference from the database
+        match db.get_preference::<ShinkaiInternalComms>("internal_comms") {
+            Ok(Some(internal_comms)) => {
+                let _ = res.send(Ok(internal_comms.internal_has_sync_default_tools)).await;
+            }
+            Ok(None) => {
+                let _ = res.send(Ok(false)).await;
+            }
+            Err(e) => {
+                eprintln!("Error getting internal_comms preference: {}", e);
+                let _ = res.send(Ok(false)).await;
             }
         }
         Ok(())
