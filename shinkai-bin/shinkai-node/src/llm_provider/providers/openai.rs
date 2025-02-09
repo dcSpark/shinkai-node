@@ -6,7 +6,7 @@ use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIR
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::managers::model_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
@@ -104,20 +104,32 @@ impl LLMService for OpenAI {
                     Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
                 };
 
-                let mut payload = json!({
-                    "model": self.model_type,
-                    "messages": messages_json,
-                    "max_tokens": result.remaining_output_tokens,
-                    "stream": is_stream,
-                });
+                // Set up initial payload with appropriate token limit field based on model capabilities
+                let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                    json!({
+                        "model": self.model_type,
+                        "messages": messages_json,
+                        "max_completion_tokens": result.remaining_output_tokens,
+                        "stream": is_stream,
+                    })
+                } else {
+                    json!({
+                        "model": self.model_type,
+                        "messages": messages_json,
+                        "max_tokens": result.remaining_output_tokens,
+                        "stream": is_stream,
+                    })
+                };
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
                     payload["functions"] = serde_json::Value::Array(tools_json.clone());
                 }
 
-                // Add options to payload
-                add_options_to_payload(&mut payload, config.as_ref());
+                // Only add options to payload for non-reasoning models
+                if !ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
+                    add_options_to_payload(&mut payload, config.as_ref());
+                }
 
                 // Print payload as a pretty JSON string
                 match serde_json::to_string_pretty(&payload) {

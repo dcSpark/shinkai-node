@@ -1,23 +1,16 @@
 use crate::llm_provider::{
-    error::LLMProviderError,
-    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
+    error::LLMProviderError, providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages}
 };
 use shinkai_message_primitives::{
     schemas::{
-        llm_message::LlmMessage,
-        llm_providers::{
-            common_agent_llm_provider::ProviderOrAgent,
-            serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
-        },
-        prompts::Prompt,
-        shinkai_name::ShinkaiName,
-    },
-    shinkai_utils::utils::count_tokens_from_message_llama3,
+        llm_message::LlmMessage, llm_providers::{
+            common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}
+        }, prompts::Prompt, shinkai_name::ShinkaiName
+    }, shinkai_utils::utils::count_tokens_from_message_llama3
 };
 use shinkai_sqlite::SqliteManager;
 use std::{
-    fmt,
-    sync::{Arc, Weak},
+    fmt, sync::{Arc, Weak}
 };
 
 #[derive(Debug)]
@@ -723,6 +716,21 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("gemini-1.5")
                     || model.model_type.starts_with("gemini-2.0")
             }
+            _ => false,
+        }
+    }
+
+    /// Returns whether the given model has reasoning capabilities
+    pub fn has_reasoning_capabilities(model: &LLMProviderInterface) -> bool {
+        match model {
+            LLMProviderInterface::OpenAI(openai) => {
+                openai.model_type.starts_with("o1")
+                    || openai.model_type.starts_with("o2")
+                    || openai.model_type.starts_with("o3")
+                    || openai.model_type.starts_with("o4")
+                    || openai.model_type.starts_with("o5")
+            }
+            LLMProviderInterface::Ollama(ollama) => ollama.model_type.starts_with("deepseek-r1"),
             _ => false,
         }
     }

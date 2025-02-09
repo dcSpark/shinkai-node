@@ -1353,6 +1353,11 @@ impl Node {
                         let timeout_duration = Duration::from_secs(60); // Set a timeout duration
                         match Self::check_job_response(db.clone(), job_id.clone(), "dogcat", timeout_duration).await {
                             Ok(_) => {
+                                // Clean up the test LLM provider
+                                if let Err(e) = db.remove_llm_provider(&provider.id, &profile) {
+                                    eprintln!("Warning: Failed to clean up test LLM provider: {}", e);
+                                }
+
                                 let response = serde_json::json!({
                                     "message": "LLM provider tested successfully",
                                     "status": "success"
@@ -1361,6 +1366,11 @@ impl Node {
                                 Ok(())
                             }
                             Err(err) => {
+                                // Clean up the test LLM provider even if test failed
+                                if let Err(e) = db.remove_llm_provider(&provider.id, &profile) {
+                                    eprintln!("Warning: Failed to clean up test LLM provider: {}", e);
+                                }
+
                                 let api_error = APIError {
                                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                                     error: "Internal Server Error".to_string(),
