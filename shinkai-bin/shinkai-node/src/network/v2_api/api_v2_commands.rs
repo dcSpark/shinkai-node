@@ -1842,13 +1842,24 @@ impl Node {
 
         match Self::internal_compute_quests_status(db.clone(), node_name.clone()).await {
             Ok(response) => {
-                // Get the Galxe quests URL from env or use default
+                // Use the production Galxe API endpoint
                 let galxe_quests_url = std::env::var("GALXE_QUESTS_URL")
-                    .unwrap_or_else(|_| "https://galxe-quests-backend.shinkai.com".to_string());
+                    .unwrap_or_else(|_| "https://api.shinkai.com/galxe/user".to_string());
+
+                // Wrap the data in the correct structure
+                let payload = json!({
+                    "data": response["data"]
+                });
 
                 // Send the quests data to the Galxe backend
                 let client = reqwest::Client::new();
-                match client.post(&galxe_quests_url).json(&response["data"]).send().await {
+                match client
+                    .post(&galxe_quests_url)
+                    .header("Content-Type", "application/json; charset=utf-8")
+                    .json(&payload)
+                    .send()
+                    .await
+                {
                     Ok(galxe_response) => match galxe_response.status() {
                         StatusCode::OK => {
                             let success_response = json!({
