@@ -1786,13 +1786,13 @@ impl Node {
             .map_err(|e| format!("Failed to get node signature public key: {}", e))?;
 
         // Generate proof using the node's signature public key
-        let (signature, proof) = generate_proof(hex::encode(node_signature_public_key), payload_string)?;
+        let (signature, metadata) = generate_proof(hex::encode(node_signature_public_key), payload_string)?;
 
         // Create the quests payload
         let quests_payload = json!({
             "quests": quests_array,
-            "signature": signature,
-            "proof": proof,
+            "signed_proof": signature,
+            "metadata": metadata,
             "node_name": node_name.to_string()
         });
 

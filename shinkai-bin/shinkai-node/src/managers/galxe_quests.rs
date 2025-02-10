@@ -77,7 +77,13 @@ pub async fn compute_quests(
         QuestType::CreateIdentity,
         QuestInfo {
             name: "CreateIdentity".to_string(),
-            status: compute_create_identity_quest(db.clone(), node_name.clone()).await?,
+            status: match compute_create_identity_quest(db.clone(), node_name.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing create identity quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -86,7 +92,13 @@ pub async fn compute_quests(
         QuestType::DownloadFromStore,
         QuestInfo {
             name: "DownloadFromStore".to_string(),
-            status: compute_download_store_quest(db.clone()).await?,
+            status: match compute_download_store_quest(db.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing download store quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -95,7 +107,13 @@ pub async fn compute_quests(
         QuestType::ComeBack2Days,
         QuestInfo {
             name: "ComeBack2Days".to_string(),
-            status: compute_return_for_days_quest(db.clone(), 2).await?,
+            status: match compute_return_for_days_quest(db.clone(), 2).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing comeback 2 days quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -104,7 +122,13 @@ pub async fn compute_quests(
         QuestType::ComeBack4Days,
         QuestInfo {
             name: "ComeBack4Days".to_string(),
-            status: compute_return_for_days_quest(db.clone(), 4).await?,
+            status: match compute_return_for_days_quest(db.clone(), 4).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing comeback 4 days quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -113,7 +137,13 @@ pub async fn compute_quests(
         QuestType::ComeBack7Days,
         QuestInfo {
             name: "ComeBack7Days".to_string(),
-            status: compute_return_for_days_quest(db.clone(), 7).await?,
+            status: match compute_return_for_days_quest(db.clone(), 7).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing comeback 7 days quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -122,7 +152,13 @@ pub async fn compute_quests(
         QuestType::CreateTool,
         QuestInfo {
             name: "CreateTool".to_string(),
-            status: compute_create_tool_quest(db.clone()).await?,
+            status: match compute_create_tool_quest(db.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing create tool quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -131,7 +167,13 @@ pub async fn compute_quests(
         QuestType::SubmitAndGetApprovalForTool,
         QuestInfo {
             name: "SubmitAndGetApprovalForTool".to_string(),
-            status: compute_submit_approval_quest(db.clone(), node_name.clone()).await?,
+            status: match compute_submit_approval_quest(db.clone(), node_name.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing submit approval quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -140,7 +182,13 @@ pub async fn compute_quests(
         QuestType::SubmitAndGetApprovalFor2Tool,
         QuestInfo {
             name: "SubmitAndGetApprovalFor2Tool".to_string(),
-            status: compute_submit_approval_quest_with_count(db.clone(), node_name.clone(), 2).await?,
+            status: match compute_submit_approval_quest_with_count(db.clone(), node_name.clone(), 2).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing submit approval 2 tools quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -149,7 +197,13 @@ pub async fn compute_quests(
         QuestType::SubmitAndGetApprovalFor3Tool,
         QuestInfo {
             name: "SubmitAndGetApprovalFor3Tool".to_string(),
-            status: compute_submit_approval_quest_with_count(db.clone(), node_name.clone(), 3).await?,
+            status: match compute_submit_approval_quest_with_count(db.clone(), node_name.clone(), 3).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing submit approval 3 tools quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -158,7 +212,13 @@ pub async fn compute_quests(
         QuestType::FeaturedInRanking,
         QuestInfo {
             name: "FeaturedInRanking".to_string(),
-            status: compute_top_ranking_quest(db.clone(), node_name.clone()).await?,
+            status: match compute_top_ranking_quest(db.clone(), node_name.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing featured in ranking quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -167,7 +227,13 @@ pub async fn compute_quests(
         QuestType::WriteHonestReview,
         QuestInfo {
             name: "WriteHonestReview".to_string(),
-            status: compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 1).await?,
+            status: match compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 1).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing write review quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -176,7 +242,13 @@ pub async fn compute_quests(
         QuestType::Write5HonestReview,
         QuestInfo {
             name: "Write5HonestReview".to_string(),
-            status: compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 5).await?,
+            status: match compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 5).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing write 5 reviews quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -185,7 +257,13 @@ pub async fn compute_quests(
         QuestType::Write10HonestReview,
         QuestInfo {
             name: "Write10HonestReview".to_string(),
-            status: compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 10).await?,
+            status: match compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 10).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing write 10 reviews quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -194,7 +272,13 @@ pub async fn compute_quests(
         QuestType::UseRAG3Days,
         QuestInfo {
             name: "UseRAG3Days".to_string(),
-            status: compute_use_rag_quest(db.clone()).await?,
+            status: match compute_use_rag_quest(db.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing use RAG quest: {}", e);
+                    false
+                }
+            },
         },
     ));
 
@@ -586,8 +670,8 @@ fn create_progress(current: u32, required: u32, started: Option<DateTime<Utc>>) 
 pub fn generate_proof(node_signature: String, payload: String) -> Result<(String, String), String> {
     // Get the secret desktop key from environment or use default
     // This adds an additional secret factor to the proof generation
-    let secret_desktop_key: &str =
-        option_env!("SECRET_DESKTOP_INSTALLATION_PROOF_KEY").unwrap_or("Dc9{3R9JmXe7£w9Fs](7");
+    let secret_desktop_key: String =
+        std::env::var("SECRET_DESKTOP_INSTALLATION_PROOF_KEY").unwrap_or_else(|_| "Dc9{3R9JmXe7£w9Fs](7".to_string());
 
     // Hash the node signature and take first 4 bytes to create a deterministic seed
     // This ensures the same node signature always generates the same key pair
