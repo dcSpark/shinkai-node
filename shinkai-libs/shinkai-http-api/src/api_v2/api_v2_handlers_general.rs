@@ -197,6 +197,12 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(compute_quests_status_handler);
 
+    let compute_and_send_quests_status_route = warp::path("compute_and_send_quests_status")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(compute_and_send_quests_status_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -211,8 +217,6 @@ pub fn general_routes(
         .or(is_pristine_route)
         .or(scan_ollama_models_route)
         .or(add_ollama_models_route)
-        // .or(download_file_from_inbox_route)
-        // .or(list_files_in_inbox_route)
         .or(stop_llm_route)
         .or(add_agent_route)
         .or(remove_agent_route)
@@ -224,6 +228,7 @@ pub fn general_routes(
         .or(test_llm_provider_route)
         .or(add_regex_pattern_route)
         .or(compute_quests_status_route)
+        .or(compute_and_send_quests_status_route)
 }
 
 #[derive(Deserialize)]
@@ -1087,6 +1092,36 @@ pub async fn compute_quests_status_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/compute_and_send_quests_status",
+    responses(
+        (status = 200, description = "Successfully computed and sent quests status", body = HashMap<QuestType, QuestProgress>),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn compute_and_send_quests_status_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiComputeAndSendQuestsStatus {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1117,6 +1152,7 @@ pub async fn compute_quests_status_handler(
         test_llm_provider_handler,
         add_regex_pattern_handler,
         compute_quests_status_handler,
+        compute_and_send_quests_status_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,

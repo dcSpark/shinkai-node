@@ -3,6 +3,7 @@ use std::io::Write;
 use std::{env, sync::Arc};
 
 use async_std::println;
+use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use tokio::fs;
@@ -34,7 +35,7 @@ use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::managers::galxe_quests::compute_quests;
+use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
@@ -1757,19 +1758,10 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_api_compute_quests_status(
-        db: Arc<SqliteManager>,
-        node_name: ShinkaiName,
-        bearer: String,
-        res: Sender<Result<Value, APIError>>,
-    ) -> Result<(), NodeError> {
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
+    async fn internal_compute_quests_status(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<Value, String> {
+        let quests_status = compute_quests(db.clone(), node_name.clone()).await?;
 
-        let quests_status = compute_quests(db.clone(), node_name).await?;
-
-        // Convert the HashMap into a Vec of objects with just name and status
+        // Convert the Vec into a Vec of objects with just name and status
         let quests_array: Vec<_> = quests_status
             .into_iter()
             .map(|(_quest_type, quest_info)| {
@@ -1780,12 +1772,124 @@ impl Node {
             })
             .collect();
 
-        let response = json!({
+        // Convert to string for signature generation
+        let payload_string =
+            serde_json::to_string(&quests_array).map_err(|e| format!("Failed to serialize quests array: {}", e))?;
+
+        // Get the node's signature public key from the database
+        let node_signature_public_key = db
+            .query_row(
+                "SELECT node_signature_public_key FROM local_node_keys LIMIT 1",
+                params![],
+                |row| row.get::<_, Vec<u8>>(0),
+            )
+            .map_err(|e| format!("Failed to get node signature public key: {}", e))?;
+
+        // Generate proof using the node's signature public key
+        let (signature, proof) = generate_proof(hex::encode(node_signature_public_key), payload_string)?;
+
+        // Create the quests payload
+        let quests_payload = json!({
+            "quests": quests_array,
+            "signature": signature,
+            "proof": proof,
+            "node_name": node_name.to_string()
+        });
+
+        Ok(json!({
             "status": "success",
             "message": "Quests status computed successfully",
-            "quests": quests_array
-        });
-        let _ = res.send(Ok(response)).await;
+            "data": quests_payload,
+        }))
+    }
+
+    pub async fn v2_api_compute_quests_status(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match Self::internal_compute_quests_status(db, node_name).await {
+            Ok(response) => {
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to compute quests status: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_compute_and_send_quests_status(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match Self::internal_compute_quests_status(db.clone(), node_name.clone()).await {
+            Ok(response) => {
+                // Get the Galxe quests URL from env or use default
+                let galxe_quests_url = std::env::var("GALXE_QUESTS_URL")
+                    .unwrap_or_else(|_| "https://galxe-quests-backend.shinkai.com".to_string());
+
+                // Send the quests data to the Galxe backend
+                let client = reqwest::Client::new();
+                match client.post(&galxe_quests_url).json(&response["data"]).send().await {
+                    Ok(galxe_response) => match galxe_response.status() {
+                        StatusCode::OK => {
+                            let success_response = json!({
+                                "status": "success",
+                                "message": "Quests status computed and sent successfully",
+                                "data": response["data"],
+                            });
+                            let _ = res.send(Ok(success_response)).await;
+                        }
+                        status => {
+                            let error_message = galxe_response
+                                .text()
+                                .await
+                                .unwrap_or_else(|_| "Failed to read error response".to_string());
+                            let api_error = APIError {
+                                code: status.as_u16(),
+                                error: "Failed to send quests status".to_string(),
+                                message: error_message,
+                            };
+                            let _ = res.send(Err(api_error)).await;
+                        }
+                    },
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to send quests status: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to compute quests status: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
         Ok(())
     }
