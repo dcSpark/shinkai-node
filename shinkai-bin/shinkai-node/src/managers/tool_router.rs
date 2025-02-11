@@ -22,7 +22,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
@@ -215,7 +215,7 @@ impl ToolRouter {
             })
             .collect::<Vec<_>>();
 
-        let chunk_size = 5;
+        let chunk_size = 1;
         for chunk in tool_infos.chunks(chunk_size) {
             let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
                 let db = db.clone();
@@ -224,108 +224,42 @@ impl ToolRouter {
                 let signing_secret_key = signing_secret_key.clone();
                 async move {
                     // Try to see if a tool with the same routerKey is already installed.
-                    match db.get_tool_by_key(router_key) {
+                    let do_install = match db.get_tool_by_key(router_key) {
                         Ok(existing_tool) => {
                             // Compare version numbers:
                             // The local version is existing_tool.version(),
                             // the remote version is new_version (string from the JSON).
                             // We parse them into IndexableVersion and compare.
-                            let local_ver = match existing_tool.version_indexable() {
-                                Ok(iv) => iv,
-                                Err(e) => {
-                                    eprintln!("Failed to parse local version: {}", e);
-                                    return Ok::<(), ToolError>(());
-                                }
-                            };
-                            let remote_ver = match IndexableVersion::from_string(new_version) {
-                                Ok(iv) => iv,
-                                Err(e) => {
-                                    eprintln!("Failed to parse remote version: {}", e);
-                                    return Ok::<(), ToolError>(());
-                                }
-                            };
-
-                            if remote_ver > local_ver {
-                                eprintln!(
-                                    "A newer version is available for tool {} (local: {}, remote: {}). Upgrading...",
-                                    router_key,
-                                    local_ver.to_string(),
-                                    remote_ver.to_string()
-                                );
-
-                                // Node::v2_api_import_tool_internal fetches the new tool code,
-                                // builds a new ShinkaiTool, and returns it.
-                                match Node::v2_api_import_tool_internal(
-                                    db.clone(),
-                                    node_env.clone(),
-                                    tool_url.to_string(),
-                                    node_name,
-                                    signing_secret_key,
-                                )
-                                .await
-                                {
-                                    Ok(val) => {
-                                        // We stored the tool under val["tool"] in the JSON response
-                                        let new_tool: ShinkaiTool =
-                                            match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
-                                                Ok(tool) => tool,
-                                                Err(err) => {
-                                                    eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
-                                                    return Ok(());
-                                                }
-                                            };
-
-                                        match db.upgrade_tool(new_tool).await {
-                                            Ok(_) => {
-                                                println!("Upgraded tool {} to version {}", router_key, new_version);
-                                            }
-                                            Err(e) => {
-                                                eprintln!("Failed to upgrade tool {}: {:?}", router_key, e);
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Failed to download tool {} for upgrade: {:?}", router_key, e);
-                                    }
-                                }
-                            } else {
-                                // Versions are the same or the local one is newer:
-                                println!("Tool already up-to-date: {} (version: {})", router_key, local_ver);
-                            }
+                            let local_ver = existing_tool.version_indexable()?;
+                            let remote_ver = IndexableVersion::from_string(new_version)?;
+                            Ok(remote_ver > local_ver)
                         }
-                        Err(SqliteManagerError::ToolNotFound(_)) => {
-                            // If the tool isn't found locally, import it anew
-                            match Node::v2_api_import_tool_internal(
-                                db.clone(),
-                                node_env.clone(),
-                                tool_url.to_string(),
-                                node_name,
-                                signing_secret_key,
-                            )
-                            .await
-                            {
-                                Ok(val) => {
-                                    // We stored the tool under val["tool"] in the JSON response
-                                    match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
-                                        Ok(_tool) => {
-                                            println!(
-                                                "Successfully imported tool {} (version: {})",
-                                                tool_name, new_version
-                                            );
-                                        }
-                                        Err(err) => {
-                                            eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to import tool {}: {:?}", tool_name, e);
-                                }
-                            }
+                        Err(SqliteManagerError::ToolNotFound(_)) => Ok(true), // Update needed
+                        Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+                    }?;
+
+                    if !do_install {
+                        // Skip installation
+                        return Ok::<(), ToolError>(());
+                    }
+
+                    let val: Value = Node::v2_api_import_tool_internal(
+                        db.clone(),
+                        node_env.clone(),
+                        tool_url.to_string(),
+                        node_name,
+                        signing_secret_key,
+                    )
+                    .await
+                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+
+                    // We stored the tool under val["tool"] in the JSON response
+                    match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
+                        Ok(_tool) => {
+                            println!("Successfully imported tool {} (version: {})", tool_name, new_version);
                         }
-                        Err(e) => {
-                            // Some DB error or other
-                            eprintln!("Failed to get tool {}: {:?}", router_key, e);
+                        Err(err) => {
+                            eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
                         }
                     }
                     Ok::<(), ToolError>(())
@@ -407,9 +341,17 @@ impl ToolRouter {
                 None,
                 tool.tool_router_key,
             );
-            if let Err(e) = self.sqlite_manager.add_tool(ShinkaiTool::Rust(rust_tool, true)).await {
-                eprintln!("Error adding rust tool: {}", e);
-            }
+
+            let _ = match self.sqlite_manager.get_tool_by_key(&rust_tool.tool_router_key) {
+                // TODO We have no good mechanism to check if the tool is up to date.
+                Err(SqliteManagerError::ToolNotFound(_)) => self
+                    .sqlite_manager
+                    .add_tool(ShinkaiTool::Rust(rust_tool, true))
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string())),
+                Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+                Ok(_db_tool) => continue,
+            }?;
         }
         Ok(())
     }
