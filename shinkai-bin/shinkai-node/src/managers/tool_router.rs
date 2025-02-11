@@ -215,7 +215,7 @@ impl ToolRouter {
             })
             .collect::<Vec<_>>();
 
-        let chunk_size = 1;
+        let chunk_size = 5;
         for chunk in tool_infos.chunks(chunk_size) {
             let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
                 let db = db.clone();
