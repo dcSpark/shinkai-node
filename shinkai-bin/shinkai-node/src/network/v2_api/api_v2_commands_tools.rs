@@ -1883,77 +1883,106 @@ impl Node {
             tool.enable();
         }
 
-        // Save the tool to the database
-        match db.add_tool(tool).await {
-            Ok(tool) => {
-                let archive_clone = zip_contents.archive.clone();
-                let files = archive_clone.file_names();
-                for file in files {
-                    if file == "__tool.json" {
-                        continue;
-                    }
-                    let mut buffer = Vec::new();
-                    {
-                        let file = zip_contents.archive.by_name(file);
-                        let mut tool_file = match file {
-                            Ok(file) => file,
-                            Err(_) => {
-                                return Err(APIError {
-                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                    error: "Invalid Tool Archive".to_string(),
-                                    message: "Archive does not contain tool.json".to_string(),
-                                });
-                            }
-                        };
+        // check if any version of the tool exists in the database
+        let db_tool = match db.get_tool_by_key(&tool.tool_router_key().to_string_without_version()) {
+            Ok(tool) => Some(tool),
+            Err(_) => None,
+        };
 
-                        // Read the tool file contents into a buffer
-                        if let Err(err) = tool_file.read_to_end(&mut buffer) {
-                            return Err(APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Read Error".to_string(),
-                                message: format!("Failed to read tool.json contents: {}", err),
-                            });
-                        }
-                    } // `tool_file` goes out of scope here
-
-                    let mut file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
-                        .join(".tools_storage")
-                        .join("tools")
-                        .join(tool.tool_router_key().convert_to_path());
-                    if !file_path.exists() {
-                        let s = std::fs::create_dir_all(&file_path);
-                        if s.is_err() {
-                            return Err(APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Failed to create directory".to_string(),
-                                message: format!("Failed to create directory: {}", s.err().unwrap()),
-                            });
-                        }
-                    }
-                    file_path.push(file);
-                    let s = std::fs::write(&file_path, &buffer);
-                    if s.is_err() {
-                        return Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Failed to write file".to_string(),
-                            message: format!("Failed to write file: {}", s.err().unwrap()),
-                        });
-                    }
-                }
-
-                Ok(json!({
+        // if the tool exists in the database, check if the version is the same or newer
+        if let Some(db_tool) = db_tool.clone() {
+            let version_db = db_tool.version_number()?;
+            let version_zip = tool.version_number()?;
+            if version_db >= version_zip {
+                // No need to update
+                return Ok(json!({
                     "status": "success",
-                    "message": "Tool imported successfully",
+                    "message": "Tool already up-to-date",
                     "tool_key": tool.tool_router_key().to_string_without_version(),
-                    "tool": tool
-                }))
+                    "tool": tool.clone()
+                }));
             }
-            Err(err) => Err(APIError {
+        }
+
+        // Save the tool to the database
+
+        let tool = match db_tool {
+            None => db.add_tool(tool).await.map_err(|e| APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Database Error".to_string(),
-                message: format!("Failed to save tool to database: {}", err),
-            }),
+                message: format!("Failed to save tool to database: {}", e),
+            })?,
+            Some(_) => db.upgrade_tool(tool).await.map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to upgrade tool: {}", e),
+            })?,
+        };
+
+        let archive_clone = zip_contents.archive.clone();
+        let files = archive_clone.file_names();
+        for file in files {
+            if file.contains("__MACOSX/") {
+                continue;
+            }
+            if file == "__tool.json" {
+                continue;
+            }
+            let mut buffer = Vec::new();
+            {
+                let file = zip_contents.archive.by_name(file);
+                let mut tool_file = match file {
+                    Ok(file) => file,
+                    Err(_) => {
+                        return Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid Tool Archive".to_string(),
+                            message: "Archive does not contain tool.json".to_string(),
+                        });
+                    }
+                };
+
+                // Read the tool file contents into a buffer
+                if let Err(err) = tool_file.read_to_end(&mut buffer) {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Read Error".to_string(),
+                        message: format!("Failed to read tool.json contents: {}", err),
+                    });
+                }
+            } // `tool_file` goes out of scope here
+
+            let mut file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
+                .join(".tools_storage")
+                .join("tools")
+                .join(tool.tool_router_key().convert_to_path());
+            if !file_path.exists() {
+                let s = std::fs::create_dir_all(&file_path);
+                if s.is_err() {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Failed to create directory".to_string(),
+                        message: format!("Failed to create directory: {}", s.err().unwrap()),
+                    });
+                }
+            }
+            file_path.push(file);
+            let s = std::fs::write(&file_path, &buffer);
+            if s.is_err() {
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to write file".to_string(),
+                    message: format!("Failed to write file: {}", s.err().unwrap()),
+                });
+            }
         }
+
+        Ok(json!({
+            "status": "success",
+            "message": "Tool imported successfully",
+            "tool_key": tool.tool_router_key().to_string_without_version(),
+            "tool": tool
+        }))
     }
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
