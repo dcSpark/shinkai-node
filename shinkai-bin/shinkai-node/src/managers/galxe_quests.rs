@@ -1,15 +1,15 @@
-use blake3;
+use blake3::{self, Hasher};
 use chrono::{DateTime, Utc};
+use ed25519_dalek::Signer;
 use reqwest;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use serde_json::{json, Value};
 use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -31,18 +31,22 @@ pub struct QuestProgress {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub enum QuestType {
+    InstalledApp,
     CreateIdentity,
     DownloadFromStore,
+    ComeBack2Days,
+    ComeBack4Days,
     ComeBack7Days,
     CreateTool,
     SubmitAndGetApprovalForTool,
-    Top50Ranking,
-    WriteFeedback,
+    SubmitAndGetApprovalFor2Tool,
+    SubmitAndGetApprovalFor3Tool,
+    FeaturedInRanking,
     WriteHonestReview,
+    Write5HonestReview,
+    Write10HonestReview,
     UseRAG3Days,
-    UseSpotlight3Days,
-    Install3PlusCommunityTools,
-    Write3PlusAppReviews,
+    // UseSpotlight3Days,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,80 +58,238 @@ pub struct QuestInfo {
 pub async fn compute_quests(
     db: Arc<SqliteManager>,
     node_name: ShinkaiName,
-) -> Result<HashMap<QuestType, QuestInfo>, String> {
-    let mut quests: HashMap<QuestType, QuestInfo> = HashMap::new();
+) -> Result<Vec<(QuestType, QuestInfo)>, String> {
+    let mut quests = Vec::new();
 
-    // Create Identity Quest
-    quests.insert(
+    // Add quests in the same order as QuestType enum
+
+    // InstalledApp
+    quests.push((
+        QuestType::InstalledApp,
+        QuestInfo {
+            name: "InstalledApp".to_string(),
+            status: true,
+        },
+    ));
+
+    // CreateIdentity
+    quests.push((
         QuestType::CreateIdentity,
         QuestInfo {
             name: "CreateIdentity".to_string(),
-            status: compute_create_identity_quest(db.clone(), node_name.clone()).await?,
+            status: match compute_create_identity_quest(db.clone(), node_name.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing create identity quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
 
-    // Download from Store Quest
-    quests.insert(
+    // DownloadFromStore
+    quests.push((
         QuestType::DownloadFromStore,
         QuestInfo {
             name: "DownloadFromStore".to_string(),
-            status: compute_download_store_quest(db.clone()).await?,
+            status: match compute_download_store_quest(db.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing download store quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
 
-    // Return For Days Quests
-    quests.insert(
+    // ComeBack2Days
+    quests.push((
+        QuestType::ComeBack2Days,
+        QuestInfo {
+            name: "ComeBack2Days".to_string(),
+            status: match compute_return_for_days_quest(db.clone(), 2).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing comeback 2 days quest: {}", e);
+                    false
+                }
+            },
+        },
+    ));
+
+    // ComeBack4Days
+    quests.push((
+        QuestType::ComeBack4Days,
+        QuestInfo {
+            name: "ComeBack4Days".to_string(),
+            status: match compute_return_for_days_quest(db.clone(), 4).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing comeback 4 days quest: {}", e);
+                    false
+                }
+            },
+        },
+    ));
+
+    // ComeBack7Days
+    quests.push((
         QuestType::ComeBack7Days,
         QuestInfo {
             name: "ComeBack7Days".to_string(),
-            status: compute_return_for_days_quest(db.clone(), 7).await?,
+            status: match compute_return_for_days_quest(db.clone(), 7).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing comeback 7 days quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
 
-    // Create Tool Quest
-    quests.insert(
+    // CreateTool
+    quests.push((
         QuestType::CreateTool,
         QuestInfo {
             name: "CreateTool".to_string(),
-            status: compute_create_tool_quest(db.clone()).await?,
+            status: match compute_create_tool_quest(db.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing create tool quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
 
-    // Submit and Get Approval Quest
-    quests.insert(
+    // SubmitAndGetApprovalForTool
+    quests.push((
         QuestType::SubmitAndGetApprovalForTool,
         QuestInfo {
             name: "SubmitAndGetApprovalForTool".to_string(),
-            status: compute_submit_approval_quest(db.clone(), node_name.clone()).await?,
+            status: match compute_submit_approval_quest(db.clone(), node_name.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing submit approval quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
 
-    // Top Ranking Quest
-    quests.insert(
-        QuestType::Top50Ranking,
+    // SubmitAndGetApprovalFor2Tool
+    quests.push((
+        QuestType::SubmitAndGetApprovalFor2Tool,
         QuestInfo {
-            name: "Top50Ranking".to_string(),
-            status: compute_top_ranking_quest(db.clone(), node_name.clone()).await?,
+            name: "SubmitAndGetApprovalFor2Tool".to_string(),
+            status: match compute_submit_approval_quest_with_count(db.clone(), node_name.clone(), 2).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing submit approval 2 tools quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
 
-    // Write Feedback Quest
-    quests.insert(
-        QuestType::WriteFeedback,
+    // SubmitAndGetApprovalFor3Tool
+    quests.push((
+        QuestType::SubmitAndGetApprovalFor3Tool,
         QuestInfo {
-            name: "WriteFeedback".to_string(),
-            status: compute_write_feedback_quest(db.clone(), node_name).await?,
+            name: "SubmitAndGetApprovalFor3Tool".to_string(),
+            status: match compute_submit_approval_quest_with_count(db.clone(), node_name.clone(), 3).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing submit approval 3 tools quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
 
-    // Use RAG Quest
-    quests.insert(
+    // FeaturedInRanking
+    quests.push((
+        QuestType::FeaturedInRanking,
+        QuestInfo {
+            name: "FeaturedInRanking".to_string(),
+            status: match compute_top_ranking_quest(db.clone(), node_name.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing featured in ranking quest: {}", e);
+                    false
+                }
+            },
+        },
+    ));
+
+    // WriteHonestReview
+    quests.push((
+        QuestType::WriteHonestReview,
+        QuestInfo {
+            name: "WriteHonestReview".to_string(),
+            status: match compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 1).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing write review quest: {}", e);
+                    false
+                }
+            },
+        },
+    ));
+
+    // Write5HonestReview
+    quests.push((
+        QuestType::Write5HonestReview,
+        QuestInfo {
+            name: "Write5HonestReview".to_string(),
+            status: match compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 5).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing write 5 reviews quest: {}", e);
+                    false
+                }
+            },
+        },
+    ));
+
+    // Write10HonestReview
+    quests.push((
+        QuestType::Write10HonestReview,
+        QuestInfo {
+            name: "Write10HonestReview".to_string(),
+            status: match compute_write_app_reviews_quest_with_count(db.clone(), node_name.clone(), 10).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing write 10 reviews quest: {}", e);
+                    false
+                }
+            },
+        },
+    ));
+
+    // UseRAG3Days
+    quests.push((
         QuestType::UseRAG3Days,
         QuestInfo {
             name: "UseRAG3Days".to_string(),
-            status: compute_use_rag_quest(db.clone()).await?,
+            status: match compute_use_rag_quest(db.clone()).await {
+                Ok(status) => status,
+                Err(e) => {
+                    eprintln!("Error computing use RAG quest: {}", e);
+                    false
+                }
+            },
         },
-    );
+    ));
+
+    // // UseSpotlight3Days
+    // quests.push((
+    //     QuestType::UseSpotlight3Days,
+    //     QuestInfo {
+    //         name: "UseSpotlight3Days".to_string(),
+    //         status: compute_use_spotlight_quest(db.clone(), Utc::now())?.status == QuestStatus::Completed,
+    //     },
+    // ));
 
     Ok(quests)
 }
@@ -356,12 +518,28 @@ pub async fn compute_top_ranking_quest(db: Arc<SqliteManager>, node_name: Shinka
     Ok(has_featured)
 }
 
-pub async fn compute_write_feedback_quest(db: Arc<SqliteManager>, _node_name: ShinkaiName) -> Result<bool, String> {
-    let feedback_count = db
-        .query_row("SELECT COUNT(*) FROM feedback", params![], |row| row.get::<_, i64>(0))
-        .map_err(|e| format!("Failed to count feedback: {}", e))? as u32;
+pub async fn compute_write_app_reviews_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+    let url = format!("https://store-api.shinkai.com/user/{}/reviews", node_name.to_string());
 
-    Ok(feedback_count > 0)
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch user reviews: {}", e))?;
+
+    if response.status() != 200 {
+        return Ok(false);
+    }
+
+    let reviews: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse reviews response: {}", e))?;
+
+    // If we have any reviews, the quest is completed
+    Ok(!reviews.is_empty())
 }
 
 pub async fn compute_use_rag_quest(db: Arc<SqliteManager>) -> Result<bool, String> {
@@ -442,7 +620,142 @@ fn compute_install_community_tools_quest(db: Arc<SqliteManager>, now: DateTime<U
     ))
 }
 
-pub async fn compute_write_app_reviews_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+fn create_progress(current: u32, required: u32, started: Option<DateTime<Utc>>) -> QuestProgress {
+    let now = Utc::now();
+    let completed = current >= required;
+    QuestProgress {
+        status: if completed {
+            QuestStatus::Completed
+        } else if started.is_some() {
+            QuestStatus::InProgress
+        } else {
+            QuestStatus::NotStarted
+        },
+        started_at: started,
+        completed_at: if completed { Some(now) } else { None },
+        current_count: current,
+        required_count: required,
+    }
+}
+
+/// Generates a cryptographic proof that combines a node signature, a payload, and a secret desktop key.
+/// This function creates a deterministic signature that can be used to verify the authenticity of the payload
+/// and its association with a specific node.
+///
+/// # Arguments
+///
+/// * `node_signature` - A unique identifier string for the node that will be used to deterministically derive an
+///   Ed25519 key pair. eg the signature public key of the node
+/// * `payload` - The data to be included in the proof, typically a JSON string containing relevant information
+///
+/// # Returns
+///
+/// Returns a Result containing a tuple of:
+/// * A hex-encoded Ed25519 signature of the final proof
+/// * A concatenated string containing the public key, a verification tag, and the base64-encoded payload
+///
+/// # Internal Process
+///
+/// 1. Uses a secret desktop key (from env or default) as an additional security factor
+/// 2. Deterministically derives an Ed25519 key pair from the node signature
+/// 3. Combines the public key with the secret desktop key to create a verification tag
+/// 4. Constructs a proof string containing the public key, tag, and encoded payload
+/// 5. Signs the proof with the derived private key
+///
+/// # Security Notes
+///
+/// * The function uses deterministic key generation which should be used with caution in cryptographic contexts
+/// * The security relies on both the node signature and the secret desktop key
+/// * The proof can be verified using the public key contained in the concatenated string
+pub fn generate_proof(node_signature: String, payload: String) -> Result<(String, String), String> {
+    // Get the secret desktop key from environment or use default
+    // This adds an additional secret factor to the proof generation
+    let secret_desktop_key: String =
+        std::env::var("SECRET_DESKTOP_INSTALLATION_PROOF_KEY").unwrap_or_else(|_| "Dc9{3R9JmXe7£w9Fs](7".to_string());
+
+    // Hash the node signature and take first 4 bytes to create a deterministic seed
+    // This ensures the same node signature always generates the same key pair
+    let mut hasher = Hasher::new();
+    hasher.update(node_signature.as_bytes());
+    let hash_result = hasher.finalize();
+    let bytes: [u8; 4] = hash_result.as_bytes()[..4].try_into().unwrap();
+    let deterministic_seed = u32::from_le_bytes(bytes);
+
+    // Generate a deterministic Ed25519 key pair from the seed
+    let (secret_key, public_key) = unsafe_deterministic_signature_keypair(deterministic_seed);
+    // Convert the public key to hex for inclusion in the proof
+    let public_key_hex = hex::encode(public_key.to_bytes());
+
+    // Create a verification tag by combining the public key and secret desktop key
+    // This tag helps verify the proof's authenticity and association with the desktop installation
+    let combined = format!("{}{}", public_key_hex, secret_desktop_key);
+
+    // Hash the combined value and take the last 8 characters as a verification tag
+    let mut hasher = Hasher::new();
+    hasher.update(combined.as_bytes());
+    let hash_result = hasher.finalize();
+    let hash_str = hex::encode(hash_result.as_bytes());
+    let last_8_chars = &hash_str[hash_str.len() - 8..];
+
+    // Construct the final proof string with three components:
+    // 1. The public key (hex encoded)
+    // 2. The verification tag (last 8 chars of the combined hash)
+    // 3. The base64 encoded payload
+    let concatenated = format!(
+        "{}:::{}:::{}",
+        public_key_hex,
+        last_8_chars,
+        base64::encode(payload.as_bytes())
+    );
+
+    // Create the final signature by:
+    // 1. Hashing the concatenated proof string
+    // 2. Signing the hash with the deterministic private key
+    let mut hasher = Hasher::new();
+    hasher.update(concatenated.as_bytes());
+    let final_hash_result = hasher.finalize();
+    let final_hash_bytes = final_hash_result.as_bytes();
+
+    // Sign the final hash with the deterministic private key
+    let signature = secret_key.sign(final_hash_bytes);
+
+    // Return the hex-encoded signature and the concatenated proof string
+    Ok((hex::encode(signature.to_bytes()), concatenated))
+}
+
+pub async fn compute_submit_approval_quest_with_count(
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+    required_count: usize,
+) -> Result<bool, String> {
+    let url = format!("https://store-api.shinkai.com/user/{}/apps", node_name.to_string());
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch user apps: {}", e))?;
+
+    if response.status() != 200 {
+        return Ok(false);
+    }
+
+    let apps: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse apps response: {}", e))?;
+
+    // Check if we have enough approved apps
+    Ok(apps.len() >= required_count)
+}
+
+pub async fn compute_write_app_reviews_quest_with_count(
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+    required_count: usize,
+) -> Result<bool, String> {
     let url = format!("https://store-api.shinkai.com/user/{}/reviews", node_name.to_string());
 
     let client = reqwest::Client::new();
@@ -462,24 +775,24 @@ pub async fn compute_write_app_reviews_quest(db: Arc<SqliteManager>, node_name: 
         .await
         .map_err(|e| format!("Failed to parse reviews response: {}", e))?;
 
-    // If we have any reviews, the quest is completed
-    Ok(!reviews.is_empty())
+    // Check if we have enough reviews
+    Ok(reviews.len() >= required_count)
 }
 
-fn create_progress(current: u32, required: u32, started: Option<DateTime<Utc>>) -> QuestProgress {
-    let now = Utc::now();
-    let completed = current >= required;
-    QuestProgress {
-        status: if completed {
-            QuestStatus::Completed
-        } else if started.is_some() {
-            QuestStatus::InProgress
-        } else {
-            QuestStatus::NotStarted
-        },
-        started_at: started,
-        completed_at: if completed { Some(now) } else { None },
-        current_count: current,
-        required_count: required,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_generate_proof() {
+        let node_signature = "test_node_signature".to_string();
+        let json_string = r#"{"number_of_qa_subscriptions":3, "number_of_subscriptions":5}"#.to_string();
+        let result = generate_proof(node_signature, json_string.clone());
+        assert!(result.is_ok());
+        let expected_signature = "adfec30225d48079ba160b4ab1e30c0118ad39f18da9ee409da103bc17dd8fd556d7e0f91677a4fcd39f10bbf310c31d24dba502b096f1559786be3b65978f08";
+        let expected_concatenated = "74255b58dd17b859e777177062510a821bb658b6bcfbe66071422e4240bbf702:::976ebc9b:::eyJudW1iZXJfb2ZfcWFfc3Vic2NyaXB0aW9ucyI6MywgIm51bWJlcl9vZl9zdWJzY3JpcHRpb25zIjo1fQ==";
+        let (signature, concatenated) = result.unwrap();
+        assert_eq!(signature, expected_signature);
+        assert_eq!(concatenated, expected_concatenated);
     }
 }

@@ -1228,8 +1228,12 @@ pub enum NodeCommand {
     V2ApiCheckDefaultToolsSync {
         bearer: String,
         res: Sender<Result<bool, APIError>>,
-    },      
+    },
     V2ApiComputeQuestsStatus {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiComputeAndSendQuestsStatus {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
