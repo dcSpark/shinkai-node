@@ -276,41 +276,48 @@ impl ShinkaiRegistry {
         })
     }
 
-    pub async fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    pub async fn get_identity_record(
+        &self,
+        identity: String,
+        force_refresh: Option<bool>,
+    ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         let identity = if identity.starts_with("@@") {
             identity.trim_start_matches("@@").to_string()
         } else {
             identity
         };
 
-        // eprintln!("Getting identity record for: {}", identity);
+        let force_refresh = force_refresh.unwrap_or(false);
         let now = SystemTime::now();
 
-        // If the cache is up-to-date, return the cached value
-        if let Some(value) = self.cache.get(&identity) {
-            let (last_updated, record) = value.value().clone();
-            if now.duration_since(last_updated)? < *CACHE_NO_UPDATE {
-                return Ok(record);
-            } else if now.duration_since(last_updated)? < *CACHE_TIME {
-                // Spawn a new task to update the cache in the background
-                let identity_clone = identity.clone();
-                let contract_clone = self.contract.clone();
-                let cache_clone = self.cache.clone();
-                let rpc_endpoints_clone = self.rpc_endpoints.clone();
-                task::spawn(async move {
-                    if let Err(e) =
-                        Self::update_cache(&contract_clone, &cache_clone, identity_clone, rpc_endpoints_clone).await
-                    {
-                        // Log the error
-                        shinkai_log(
-                            ShinkaiLogOption::CryptoIdentity,
-                            ShinkaiLogLevel::Error,
-                            format!("Error updating cache: {}", e).as_str(),
-                        );
-                    }
-                });
+        // Skip cache check if force_refresh is true
+        if !force_refresh {
+            // If the cache is up-to-date, return the cached value
+            if let Some(value) = self.cache.get(&identity) {
+                let (last_updated, record) = value.value().clone();
+                if now.duration_since(last_updated)? < *CACHE_NO_UPDATE {
+                    return Ok(record);
+                } else if now.duration_since(last_updated)? < *CACHE_TIME {
+                    // Spawn a new task to update the cache in the background
+                    let identity_clone = identity.clone();
+                    let contract_clone = self.contract.clone();
+                    let cache_clone = self.cache.clone();
+                    let rpc_endpoints_clone = self.rpc_endpoints.clone();
+                    task::spawn(async move {
+                        if let Err(e) =
+                            Self::update_cache(&contract_clone, &cache_clone, identity_clone, rpc_endpoints_clone).await
+                        {
+                            // Log the error
+                            shinkai_log(
+                                ShinkaiLogOption::CryptoIdentity,
+                                ShinkaiLogLevel::Error,
+                                format!("Error updating cache: {}", e).as_str(),
+                            );
+                        }
+                    });
 
-                return Ok(record);
+                    return Ok(record);
+                }
             }
         }
 

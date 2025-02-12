@@ -605,7 +605,7 @@ impl Node {
             // Check if the new node name exists in the blockchain and the keys match
             let identity_manager = identity_manager.lock().await;
             match identity_manager
-                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str())
+                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str(), Some(true))
                 .await
             {
                 Ok(standard_identity) => {
@@ -1758,8 +1758,19 @@ impl Node {
         Ok(())
     }
 
-    async fn internal_compute_quests_status(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<Value, String> {
-        let quests_status = compute_quests(db.clone(), node_name.clone()).await?;
+    async fn internal_compute_quests_status(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
+    ) -> Result<Value, String> {
+        let quests_status = compute_quests(
+            db.clone(),
+            node_name.clone(),
+            encryption_public_key.clone(),
+            identity_public_key.clone(),
+        )
+        .await?;
 
         // Convert the Vec into a Vec of objects with just name and status
         let quests_array: Vec<_> = quests_status
@@ -1806,6 +1817,8 @@ impl Node {
     pub async fn v2_api_compute_quests_status(
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1813,7 +1826,7 @@ impl Node {
             return Ok(());
         }
 
-        match Self::internal_compute_quests_status(db, node_name).await {
+        match Self::internal_compute_quests_status(db, node_name, encryption_public_key, identity_public_key).await {
             Ok(response) => {
                 let _ = res.send(Ok(response)).await;
             }
@@ -1833,6 +1846,8 @@ impl Node {
     pub async fn v2_api_compute_and_send_quests_status(
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
+        encryption_public_key: EncryptionPublicKey,
+        identity_public_key: VerifyingKey,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1840,7 +1855,14 @@ impl Node {
             return Ok(());
         }
 
-        match Self::internal_compute_quests_status(db.clone(), node_name.clone()).await {
+        match Self::internal_compute_quests_status(
+            db.clone(),
+            node_name.clone(),
+            encryption_public_key.clone(),
+            identity_public_key.clone(),
+        )
+        .await
+        {
             Ok(response) => {
                 // Use the production Galxe API endpoint
                 let galxe_quests_url = std::env::var("GALXE_QUESTS_URL")

@@ -27,16 +27,10 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider},
-        shinkai_name::ShinkaiName,
-    },
-    shinkai_message::shinkai_message::ShinkaiMessage,
-    shinkai_utils::{
-        encryption::clone_static_secret_key,
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        signatures::clone_signature_secret_key,
-    },
+        inbox_name::InboxName, llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider}, shinkai_name::ShinkaiName
+    }, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{
+        encryption::clone_static_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::clone_signature_secret_key
+    }
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
@@ -63,7 +57,7 @@ impl Node {
         let external_global_identity = identity_manager
             .lock()
             .await
-            .external_profile_to_global_identity(&name)
+            .external_profile_to_global_identity(&name, None)
             .await
             .unwrap();
         res.send(external_global_identity).await.unwrap();
@@ -152,28 +146,32 @@ impl Node {
     ) -> Result<(), String> {
         // Parse the inbox name to check if it's a job inbox
         let inbox_name = InboxName::new(inbox_id.clone()).map_err(|e| format!("Failed to parse inbox name: {}", e))?;
-        
+
         // Get the job ID if it's a job inbox
         let job_id = inbox_name.get_job_id();
-        
+
         if let Some(job_id) = job_id {
             // Get the current folder name before updating
-            let old_folder = db.get_job_folder_name(&job_id).map_err(|e| format!("Failed to get old folder name: {}", e))?;
-            
+            let old_folder = db
+                .get_job_folder_name(&job_id)
+                .map_err(|e| format!("Failed to get old folder name: {}", e))?;
+
             // Update the inbox name
             db.unsafe_update_smart_inbox_name(&inbox_id, &new_name)
                 .map_err(|e| format!("Failed to update inbox name: {}", e))?;
-            
+
             // Get the new folder name after updating
-            let new_folder = db.get_job_folder_name(&job_id).map_err(|e| format!("Failed to get new folder name: {}", e))?;
-            
+            let new_folder = db
+                .get_job_folder_name(&job_id)
+                .map_err(|e| format!("Failed to get new folder name: {}", e))?;
+
             // Move the folder if it exists
             if old_folder.exists() {
                 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
                 ShinkaiFileManager::move_folder(old_folder, new_folder, &db)
                     .map_err(|e| format!("Failed to move folder: {}", e))?;
             }
-            
+
             Ok(())
         } else {
             // If it's not a job inbox, just update the name
@@ -497,7 +495,9 @@ impl Node {
                                 let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
 
                                 // Create an UPLOAD_YOUR_FILES_HERE file
-                                let upload_file_path = ShinkaiPath::from_string("My Files (Private)/UPLOAD_YOUR_FILES_HERE.txt".to_string());
+                                let upload_file_path = ShinkaiPath::from_string(
+                                    "My Files (Private)/UPLOAD_YOUR_FILES_HERE.txt".to_string(),
+                                );
                                 let upload_file_content = "You can upload your files here in the 'My Files (Private)' folder.\n\nThey will be processed and made searchable automatically.".as_bytes().to_vec();
                                 let _ = ShinkaiFileManager::write_file_to_fs(upload_file_path, upload_file_content);
 
@@ -579,13 +579,14 @@ impl Node {
             let receiver_profile_identity = identity_manager
                 .lock()
                 .await
-                .external_profile_to_global_identity(&peer.1.clone())
+                .external_profile_to_global_identity(&peer.1.clone(), None)
                 .await
                 .unwrap();
             let receiver = receiver_profile_identity.full_identity_name.get_node_name_string();
             let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
-            // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
+            // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the
+            // connection
             let _ = ping_pong(
                 peer,
                 PingPong::Ping,
@@ -627,8 +628,12 @@ impl Node {
                                 if seen_models.insert(model_name.to_string()) {
                                     let mut model_clone = model.clone();
                                     if let Some(obj) = model_clone.as_object_mut() {
-                                        let port = url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
-                                        obj.insert("port_used".to_string(), serde_json::Value::String(port.to_string()));
+                                        let port =
+                                            url.splitn(3, ':').nth(2).unwrap_or("").split('/').next().unwrap_or("");
+                                        obj.insert(
+                                            "port_used".to_string(),
+                                            serde_json::Value::String(port.to_string()),
+                                        );
                                     }
                                     Some(model_clone)
                                 } else {
@@ -685,7 +690,8 @@ impl Node {
             .iter()
             .map(|model| {
                 // Replace any non-alphanumeric character with underscore
-                let sanitized_model = model.chars()
+                let sanitized_model = model
+                    .chars()
                     .map(|c| if c.is_alphanumeric() { c } else { '_' })
                     .collect::<String>();
 
@@ -725,7 +731,7 @@ impl Node {
         // Iterate over each agent and add it using internal_add_agent
         for agent in llm_providers {
             let profile_name = agent.full_identity_name.clone();
-            
+
             // Check if the provider already exists in the database
             match db.get_llm_provider(&agent.id, &profile_name) {
                 Ok(_) => {
@@ -765,4 +771,3 @@ impl Node {
         Ok(())
     }
 }
-

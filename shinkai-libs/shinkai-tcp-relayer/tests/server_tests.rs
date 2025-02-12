@@ -570,7 +570,7 @@ async fn get_onchain_identity(node_name: &str) -> (VerifyingKey, EncryptionPubli
     let registry = ShinkaiRegistry::new(&rpc_url, &contract_address, None).await.unwrap();
 
     // Fetch the public keys from the registry
-    let registry_identity = registry.get_identity_record(node_name.to_string()).await.unwrap();
+    let registry_identity = registry.get_identity_record(node_name.to_string(), None).await.unwrap();
     eprintln!("Registry Identity: {:?}", registry_identity);
     let registry_identity_public_key = registry_identity.signature_verifying_key().unwrap();
     let registry_encryption_public_key = registry_identity.encryption_public_key().unwrap();

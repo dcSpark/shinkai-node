@@ -32,11 +32,12 @@ impl IdentityNetworkManager {
     pub async fn external_identity_to_profile_data(
         &self,
         global_identity: String,
+        force_refresh: Option<bool>,
     ) -> Result<OnchainIdentity, &'static str> {
         let record = {
             let identity = global_identity.trim_start_matches("@@");
             let registry = self.registry.lock().await;
-            match registry.get_identity_record(identity.to_string()).await {
+            match registry.get_identity_record(identity.to_string(), force_refresh).await {
                 Ok(record) => record,
                 Err(_) => return Err("Unrecognized global identity"),
             }
@@ -53,7 +54,10 @@ impl IdentityNetworkManager {
             let proxy_identity = record.address_or_proxy_nodes.clone();
             let proxy_record = {
                 let registry = self.registry.lock().await;
-                match registry.get_identity_record(proxy_identity.join(",")).await {
+                match registry
+                    .get_identity_record(proxy_identity.join(","), force_refresh)
+                    .await
+                {
                     Ok(record) => record,
                     Err(_) => return Err("Failed to fetch proxy node data"),
                 }

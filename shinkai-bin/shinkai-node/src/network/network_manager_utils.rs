@@ -1,9 +1,7 @@
 use std::sync::{Arc, Weak};
 
 use shinkai_message_primitives::{
-    schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo},
-    shinkai_message::shinkai_message::ShinkaiMessage,
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+    schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo}, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::{Mutex, RwLock};
@@ -11,8 +9,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::managers::identity_manager::IdentityManagerTrait;
 
 use super::{
-    agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo,
-    Node,
+    agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo, Node
 };
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -29,7 +26,10 @@ pub async fn get_proxy_builder_info_static(
     let proxy_connection_info = proxy_connection_info.lock().await;
     if let Some(proxy_connection) = proxy_connection_info.as_ref() {
         let proxy_name = proxy_connection.proxy_identity.clone().get_node_name_string();
-        match identity_manager.external_profile_to_global_identity(&proxy_name).await {
+        match identity_manager
+            .external_profile_to_global_identity(&proxy_name, None)
+            .await
+        {
             Ok(proxy_identity) => Some(ShinkaiProxyBuilderInfo {
                 proxy_enc_public_key: proxy_identity.node_encryption_public_key,
             }),

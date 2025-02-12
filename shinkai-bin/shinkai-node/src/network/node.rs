@@ -980,7 +980,7 @@ impl Node {
     ) -> Result<SocketAddr, String> {
         let identity_manager = identity_manager.lock().await;
         match identity_manager
-            .external_profile_to_global_identity(proxy_identity)
+            .external_profile_to_global_identity(proxy_identity, None)
             .await
         {
             Ok(identity) => {
@@ -1299,7 +1299,7 @@ impl Node {
             let sender_encryption_pk = maybe_identity_manager
                 .lock()
                 .await
-                .external_profile_to_global_identity(&counterpart_identity.clone())
+                .external_profile_to_global_identity(&counterpart_identity.clone(), None)
                 .await
                 .unwrap()
                 .node_encryption_public_key;

@@ -5,32 +5,22 @@ use serde_json::Value;
 
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment},
-        shinkai_name::ShinkaiName,
-        shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo,
-        shinkai_tool_offering::{ToolPrice, UsageTypeInquiry},
-        wallet_mixed::AddressBalanceList,
-    },
-    shinkai_message::shinkai_message_schemas::MessageSchemaType,
-    shinkai_utils::{
-        encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
+        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::AddressBalanceList
+    }, shinkai_message::shinkai_message_schemas::MessageSchemaType, shinkai_utils::{
+        encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
+    }
 };
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
+    network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
 use tokio::sync::{Mutex, RwLock};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
-    managers::{identity_manager::IdentityManagerTrait, tool_router::ToolRouter},
-    network::{
-        network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer},
-        node::ProxyConnectionInfo,
-    },
-    wallet::wallet_manager::WalletManager,
+    managers::{identity_manager::IdentityManagerTrait, tool_router::ToolRouter}, network::{
+        network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer}, node::ProxyConnectionInfo
+    }, wallet::wallet_manager::WalletManager
 };
 
 use super::external_agent_offerings_manager::AgentOfferingManagerError;
@@ -150,7 +140,7 @@ impl MyAgentOfferingsManager {
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&network_tool.provider.get_node_name_string())
+                .external_profile_to_global_identity(&network_tool.provider.get_node_name_string(), Some(true))
                 .await
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
@@ -195,7 +185,8 @@ impl MyAgentOfferingsManager {
     ///
     /// # Returns
     ///
-    /// * `Result<bool, AgentOfferingManagerError>` - True if the invoice is valid (and even if we asked for it) false otherwise.
+    /// * `Result<bool, AgentOfferingManagerError>` - True if the invoice is valid (and even if we asked for it) false
+    ///   otherwise.
     pub async fn verify_invoice(&self, invoice: &Invoice) -> Result<bool, AgentOfferingManagerError> {
         // Upgrade the database reference to a strong reference
         let db = self
@@ -493,7 +484,7 @@ impl MyAgentOfferingsManager {
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&invoice.provider_name.to_string())
+                .external_profile_to_global_identity(&invoice.provider_name.to_string(), None)
                 .await
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
@@ -651,11 +642,9 @@ mod tests {
     use async_trait::async_trait;
 
     use shinkai_message_primitives::{
-        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
-        shinkai_message::shinkai_message_schemas::IdentityPermissions,
-        shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
-        },
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType}, shinkai_message::shinkai_message_schemas::IdentityPermissions, shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair
+        }
     };
 
     use std::{fs, path::Path};
@@ -712,6 +701,7 @@ mod tests {
         async fn external_profile_to_global_identity(
             &self,
             full_profile_name: &str,
+            _: Option<bool>,
         ) -> Result<StandardIdentity, String> {
             if full_profile_name == "@@localhost.sep-shinkai" {
                 if let Identity::Standard(identity) = &self.dummy_standard_identity {

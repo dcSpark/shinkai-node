@@ -93,7 +93,11 @@ impl IdentityManagerTrait for MockIdentityManager {
         Box::new(self.clone())
     }
 
-    async fn external_profile_to_global_identity(&self, _full_profile_name: &str) -> Result<StandardIdentity, String> {
+    async fn external_profile_to_global_identity(
+        &self,
+        _full_profile_name: &str,
+        _: Option<bool>,
+    ) -> Result<StandardIdentity, String> {
         unimplemented!()
     }
 }
@@ -656,8 +660,8 @@ async fn test_websocket_smart_inbox() {
     std::mem::drop(shinkai_db);
 }
 
-// Note: We need to mock up JobManager and change the depencency of SheetManager to a trait so we can swap between JobManager or the MockJobManager
-// #[tokio::test]
+// Note: We need to mock up JobManager and change the depencency of SheetManager to a trait so we can swap between
+// JobManager or the MockJobManager #[tokio::test]
 // async fn test_websocket_sheet_update() {
 //
 //     // Setup
@@ -835,8 +839,8 @@ async fn test_websocket_smart_inbox() {
 //         .expect("Failed to read message");
 
 //     let encrypted_message = msg.to_text().unwrap();
-//     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
-//     let ws_message_payload: WSMessagePayload =
+//     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt
+// message");     let ws_message_payload: WSMessagePayload =
 //         serde_json::from_str(&decrypted_message).expect("Failed to parse WSMessagePayload");
 //     let recovered_shinkai = ShinkaiMessage::from_string(ws_message_payload.message.unwrap()).unwrap();
 //     let recovered_content = recovered_shinkai.get_message_content().unwrap();
