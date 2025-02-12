@@ -10,7 +10,7 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::invoices::{
-    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum,
+    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
@@ -382,7 +382,8 @@ impl ExtAgentOfferingsManager {
     ///
     /// # Returns
     ///
-    /// * `Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>>` - A future that resolves to the result of the processing.
+    /// * `Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>>` - A future that
+    ///   resolves to the result of the processing.
     #[allow(clippy::too_many_arguments)]
     fn process_invoice_payment(
         _invoice: Invoice,
@@ -637,7 +638,7 @@ impl ExtAgentOfferingsManager {
                 if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
                     let identity_manager = identity_manager_arc.lock().await;
                     let standard_identity = identity_manager
-                        .external_profile_to_global_identity(&invoice_request.requester_name.to_string())
+                        .external_profile_to_global_identity(&invoice_request.requester_name.to_string(), None)
                         .await
                         .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
                     drop(identity_manager);
@@ -678,7 +679,7 @@ impl ExtAgentOfferingsManager {
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&invoice_request.requester_name.to_string())
+                .external_profile_to_global_identity(&invoice_request.requester_name.to_string(), None)
                 .await
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
@@ -794,9 +795,10 @@ impl ExtAgentOfferingsManager {
 
         // TODO: update the db and mark the invoice as paid (maybe after the job is done)
         // Note: what happens if the job fails? should we retry and then good-luck with the payment?
-        // Should we actually receive the job input before the payment so we can confirm that we are "comfortable" with the job?
-        // What happens if you want to crawl a website, but the website is down? should we refund the payment?
-        // What happens if the job is done, but the requester is not happy with the result? should we refund the payment?
+        // Should we actually receive the job input before the payment so we can confirm that we are "comfortable" with
+        // the job? What happens if you want to crawl a website, but the website is down? should we refund the
+        // payment? What happens if the job is done, but the requester is not happy with the result? should we
+        // refund the payment?
 
         Ok(local_invoice)
     }
@@ -826,7 +828,7 @@ impl ExtAgentOfferingsManager {
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&requester_node_name.to_string())
+                .external_profile_to_global_identity(&requester_node_name.to_string(), None)
                 .await
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
@@ -871,11 +873,9 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use shinkai_message_primitives::{
-        schemas::identity::{Identity, StandardIdentity, StandardIdentityType},
-        shinkai_message::shinkai_message_schemas::IdentityPermissions,
-        shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
-        },
+        schemas::identity::{Identity, StandardIdentity, StandardIdentityType}, shinkai_message::shinkai_message_schemas::IdentityPermissions, shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair
+        }
     };
 
     #[derive(Clone, Debug)]
@@ -932,6 +932,7 @@ mod tests {
         async fn external_profile_to_global_identity(
             &self,
             _full_profile_name: &str,
+            _: Option<bool>,
         ) -> Result<StandardIdentity, String> {
             unimplemented!()
         }
@@ -997,10 +998,11 @@ mod tests {
     //     // Initialize ShinkaiDB
     //     let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
     //         Ok(db) => Arc::new(db),
-    //         Err(e) => return Err(SqliteManagerError::DatabaseError(rusqlite::Error::InvalidParameterName(e.to_string()))),
-    //     };
+    //         Err(e) => return
+    // Err(SqliteManagerError::DatabaseError(rusqlite::Error::InvalidParameterName(e.to_string()))),     };
 
-    //     let sqlite_manager = SqliteManager::new("sqlite_tests".to_string(), "".to_string(), embedding_model).unwrap();
+    //     let sqlite_manager = SqliteManager::new("sqlite_tests".to_string(), "".to_string(),
+    // embedding_model).unwrap();
 
     //     let tools = built_in_tools::get_tools();
 

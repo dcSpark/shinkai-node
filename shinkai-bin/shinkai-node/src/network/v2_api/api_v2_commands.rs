@@ -15,33 +15,21 @@ use reqwest::StatusCode;
 
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
-    node_api_router::{APIError, GetPublicKeysResponse},
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler,
-    shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
+    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
 };
 use shinkai_message_primitives::{
     schemas::{
-        identity::{Identity, IdentityType, RegistrationCode},
-        inbox_name::InboxName,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
-        shinkai_name::ShinkaiName,
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{
-            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod},
-        shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::signature_public_key_to_string,
-    },
+        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::signature_public_key_to_string
+    }
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -50,11 +38,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
-    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::tool_generation,
-    utils::update_global_identity::update_global_identity_name,
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
@@ -621,7 +605,7 @@ impl Node {
             // Check if the new node name exists in the blockchain and the keys match
             let identity_manager = identity_manager.lock().await;
             match identity_manager
-                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str())
+                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str(), Some(true))
                 .await
             {
                 Ok(standard_identity) => {

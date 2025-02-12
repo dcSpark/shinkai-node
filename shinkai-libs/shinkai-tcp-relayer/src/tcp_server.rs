@@ -110,7 +110,7 @@ impl TCPProxy {
         );
 
         // Fetch the public keys from the registry
-        let registry_identity = registry.get_identity_record(node_name.to_string()).await.unwrap();
+        let registry_identity = registry.get_identity_record(node_name.to_string(), None).await.unwrap();
         eprintln!("Registry Identity: {:?}", registry_identity);
         let registry_identity_public_key = registry_identity.signature_verifying_key().unwrap();
         let registry_encryption_public_key = registry_identity.encryption_public_key().unwrap();
@@ -531,7 +531,7 @@ impl TCPProxy {
 
         let recipient_addresses = if !recipient_matches {
             // Fetch the public keys from the registry
-            let registry_identity = registry.get_identity_record(msg_recipient.clone()).await.unwrap();
+            let registry_identity = registry.get_identity_record(msg_recipient.clone(), None).await.unwrap();
             registry_identity.address_or_proxy_nodes
         } else {
             vec![]
@@ -600,7 +600,7 @@ impl TCPProxy {
         let relayer_addresses = if !recipient_matches {
             // Fetch the public keys from the registry
             let registry_identity = registry
-                .get_identity_record(tcp_node_name_string.clone())
+                .get_identity_record(tcp_node_name_string.clone(), None)
                 .await
                 .unwrap();
             registry_identity.address_or_proxy_nodes
@@ -640,7 +640,7 @@ impl TCPProxy {
         session_id: Uuid,
     ) -> Result<(), NetworkMessageError> {
         // Fetch the public keys from the registry
-        let registry_identity = registry.get_identity_record(msg_sender.clone()).await.unwrap();
+        let registry_identity = registry.get_identity_record(msg_sender.clone(), None).await.unwrap();
         let sender_encryption_pk = registry_identity.encryption_public_key()?;
         let sender_signature_pk = registry_identity.signature_verifying_key()?;
 
@@ -731,7 +731,7 @@ impl TCPProxy {
         writer: Arc<Mutex<WriteHalf<TcpStream>>>,
         session_id: Uuid,
     ) -> Result<(), NetworkMessageError> {
-        match registry.get_identity_record(msg_recipient.clone()).await {
+        match registry.get_identity_record(msg_recipient.clone(), None).await {
             Ok(onchain_identity) => {
                 match onchain_identity.first_address().await {
                     Ok(first_address) => {
@@ -949,7 +949,7 @@ impl TCPProxy {
         let signature = Self::read_signature_from_cursor(&mut cursor).await?;
 
         // eprintln!("Received response: {}", signature);
-        let onchain_identity = self.registry.get_identity_record(identity.to_string()).await;
+        let onchain_identity = self.registry.get_identity_record(identity.to_string(), None).await;
         let public_key = onchain_identity.unwrap().signature_verifying_key().unwrap();
 
         if public_key.verify(validation_data.as_bytes(), &signature).is_err() {

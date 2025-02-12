@@ -324,7 +324,7 @@ pub async fn compute_create_identity_quest(
     .await
     .map_err(|e| format!("Failed to create registry: {}", e))?;
 
-    let onchain_identity = match registry.get_identity_record(node_name.to_string()).await {
+    let onchain_identity = match registry.get_identity_record(node_name.to_string(), Some(true)).await {
         Ok(identity) => identity,
         Err(e) => {
             println!("Identity not found in registry: {}", e);

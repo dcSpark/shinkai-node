@@ -20,7 +20,7 @@ mod tests {
 
             let identity = "node1_test.sep-shinkai".to_string();
 
-            let record = registry.get_identity_record(identity.clone()).await.unwrap();
+            let record = registry.get_identity_record(identity.clone(), None).await.unwrap();
 
             let expected_record = OnchainIdentity {
                 shinkai_identity: "node1_test.sep-shinkai".to_string(),

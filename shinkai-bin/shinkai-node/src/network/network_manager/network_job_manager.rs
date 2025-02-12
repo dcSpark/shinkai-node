@@ -32,7 +32,7 @@ use tokio::sync::{Mutex, Semaphore};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use super::network_handlers::{
-    extract_message, handle_based_on_message_content_and_encryption, verify_message_signature,
+    extract_message, handle_based_on_message_content_and_encryption, verify_message_signature
 };
 use super::network_job_manager_error::NetworkJobQueueError;
 
@@ -486,7 +486,7 @@ impl NetworkJobManager {
         let sender_identity = identity_manager
             .lock()
             .await
-            .external_profile_to_global_identity(&sender_profile_name_string)
+            .external_profile_to_global_identity(&sender_profile_name_string, None)
             .await;
 
         if let Err(e) = sender_identity {

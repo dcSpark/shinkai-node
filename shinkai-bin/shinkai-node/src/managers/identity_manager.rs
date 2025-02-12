@@ -29,7 +29,11 @@ pub trait IdentityManagerTrait {
     fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity>;
     async fn search_identity(&self, full_identity_name: &str) -> Option<Identity>;
     fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send>;
-    async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Result<StandardIdentity, String>;
+    async fn external_profile_to_global_identity(
+        &self,
+        full_profile_name: &str,
+        force_refresh: Option<bool>,
+    ) -> Result<StandardIdentity, String>;
 }
 
 impl Clone for Box<dyn IdentityManagerTrait + Send> {
@@ -280,7 +284,11 @@ impl IdentityManagerTrait for IdentityManager {
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
                 Identity::Device(device) => device.full_identity_name == full_profile_name,
-                Identity::LLMProvider(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+                Identity::LLMProvider(agent) => agent.full_identity_name == full_profile_name, /* Assuming the 'name'
+                                                                                                * field of Agent
+                                                                                                * struct can be
+                                                                                                * considered as the
+                                                                                                * profile name */
             }
         })
     }
@@ -296,7 +304,7 @@ impl IdentityManagerTrait for IdentityManager {
             // If not, query the identity network manager
             let external_im = self.external_identity_manager.lock().await;
             match external_im
-                .external_identity_to_profile_data(full_identity_name.to_string())
+                .external_identity_to_profile_data(full_identity_name.to_string(), None)
                 .await
             {
                 Ok(identity_network_manager) => match identity_network_manager.first_address().await {
@@ -332,7 +340,11 @@ impl IdentityManagerTrait for IdentityManager {
         Box::new(self.clone())
     }
 
-    async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Result<StandardIdentity, String> {
+    async fn external_profile_to_global_identity(
+        &self,
+        full_profile_name: &str,
+        force_refresh: Option<bool>,
+    ) -> Result<StandardIdentity, String> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Debug,
@@ -362,7 +374,7 @@ impl IdentityManagerTrait for IdentityManager {
         let external_im = self.external_identity_manager.lock().await;
 
         match external_im
-            .external_identity_to_profile_data(node_name.to_string())
+            .external_identity_to_profile_data(node_name.to_string(), force_refresh)
             .await
         {
             Ok(identity_network_manager) => match identity_network_manager.first_address().await {

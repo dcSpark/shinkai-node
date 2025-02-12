@@ -1,12 +1,9 @@
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{
-        node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node,
-    },
-    utils::update_global_identity::update_global_identity_name,
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{
+        node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
+    }, utils::update_global_identity::update_global_identity_name
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
@@ -23,32 +20,23 @@ use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
-    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType,
+    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
 };
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{
-            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
-            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
-            RegistrationCodeType,
-        },
-    },
-    shinkai_utils::{
+        inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
+            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType
+        }
+    }, shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod,
-        },
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
-    },
+            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod
+        }, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key}
+    }
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
@@ -617,7 +605,7 @@ impl Node {
     #[allow(clippy::too_many_arguments)]
     pub async fn api_handle_registration_code_usage(
         db: Arc<SqliteManager>,
-        
+
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
         first_device_needs_registration_code: bool,
@@ -861,7 +849,8 @@ impl Node {
                         let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
                         let encryption_pk_obj =
                             string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
-                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
+                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(),
+                        // profile_name.clone());
 
                         let full_identity_name_result = ShinkaiName::from_node_and_profile_names(
                             node_name.get_node_name_string(),
@@ -989,7 +978,8 @@ impl Node {
                         }
 
                         // Logic for handling device identity
-                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
+                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(),
+                        // profile_name.clone());
                         let full_identity_name = ShinkaiName::from_node_and_profile_names_and_type_and_name(
                             node_name.get_node_name_string(),
                             profile_name,
@@ -1891,7 +1881,8 @@ impl Node {
             }
         };
 
-        // Convert DeviceIdentity to StandardIdentity if necessary and check if it's a Profile type with admin privileges
+        // Convert DeviceIdentity to StandardIdentity if necessary and check if it's a Profile type with admin
+        // privileges
         let standard_identity = match sender_identity {
             Identity::Standard(std_identity) => Some(std_identity),
             Identity::Device(device_identity) => device_identity.to_standard_identity(),
@@ -3017,7 +3008,7 @@ impl Node {
             // Check if the new node name exists in the blockchain and the keys match
             let identity_manager = identity_manager.lock().await;
             match identity_manager
-                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str())
+                .external_profile_to_global_identity(new_node_name.get_node_name_string().as_str(), Some(true))
                 .await
             {
                 Ok(standard_identity) => {
@@ -3196,7 +3187,7 @@ impl Node {
         let external_global_identity_result = identity_manager
             .lock()
             .await
-            .external_profile_to_global_identity(&recipient_node_name_string.clone())
+            .external_profile_to_global_identity(&recipient_node_name_string.clone(), None)
             .await;
 
         let external_global_identity = match external_global_identity_result {
