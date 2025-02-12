@@ -1,6 +1,6 @@
 use blake3::{self, Hasher};
 use chrono::{DateTime, Utc};
-use ed25519_dalek::Signer;
+use ed25519_dalek::{Signer, VerifyingKey};
 use reqwest;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,8 @@ use shinkai_crypto_identities::ShinkaiRegistry;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_sqlite::SqliteManager;
-use std::collections::HashMap;
 use std::sync::Arc;
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum QuestStatus {
@@ -58,6 +58,8 @@ pub struct QuestInfo {
 pub async fn compute_quests(
     db: Arc<SqliteManager>,
     node_name: ShinkaiName,
+    encryption_public_key: EncryptionPublicKey,
+    identity_public_key: VerifyingKey,
 ) -> Result<Vec<(QuestType, QuestInfo)>, String> {
     let mut quests = Vec::new();
 
@@ -77,7 +79,14 @@ pub async fn compute_quests(
         QuestType::CreateIdentity,
         QuestInfo {
             name: "CreateIdentity".to_string(),
-            status: match compute_create_identity_quest(db.clone(), node_name.clone()).await {
+            status: match compute_create_identity_quest(
+                db.clone(),
+                node_name.clone(),
+                encryption_public_key.clone(),
+                identity_public_key.clone(),
+            )
+            .await
+            {
                 Ok(status) => status,
                 Err(e) => {
                     eprintln!("Error computing create identity quest: {}", e);
@@ -294,70 +303,57 @@ pub async fn compute_quests(
     Ok(quests)
 }
 
-pub async fn compute_create_identity_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+pub async fn compute_create_identity_quest(
+    db: Arc<SqliteManager>,
+    node_name: ShinkaiName,
+    encryption_public_key: EncryptionPublicKey,
+    identity_public_key: VerifyingKey,
+) -> Result<bool, String> {
     // First check if the node name is localhost
     if node_name.to_string() == "@@localhost.sep-shinkai" {
         println!("Identity is localhost, quest not completed");
         return Ok(false);
     }
 
-    let node_info = db.query_row(
-        "SELECT node_name, node_encryption_public_key, node_signature_public_key FROM local_node_keys LIMIT 1",
-        params![],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Vec<u8>>(1)?,
-                row.get::<_, Vec<u8>>(2)?,
-            ))
-        },
-    );
+    // Get registry data
+    let registry = ShinkaiRegistry::new(
+        "https://sepolia.base.org",
+        "0x425fb20ba3874e887336aaa7f3fab32d08135ba9",
+        None,
+    )
+    .await
+    .map_err(|e| format!("Failed to create registry: {}", e))?;
 
-    let has_identity = match node_info {
-        Ok((name, local_enc_key, local_sig_key)) => {
-            // Get registry data
-            let registry = ShinkaiRegistry::new(
-                "https://sepolia.base.org",
-                "0x425fb20ba3874e887336aaa7f3fab32d08135ba9",
-                None,
-            )
-            .await
-            .map_err(|e| format!("Failed to create registry: {}", e))?;
-
-            let onchain_identity = match registry.get_identity_record(node_name.to_string()).await {
-                Ok(identity) => identity,
-                Err(e) => {
-                    println!("Identity not found in registry: {}", e);
-                    return Ok(false);
-                }
-            };
-
-            // Hash our local keys
-            let local_enc_hash = blake3::hash(&local_enc_key).to_hex().to_string();
-            let local_sig_hash = blake3::hash(&local_sig_key).to_hex().to_string();
-
-            // The registry keys are already hex strings of the hashes, no need to decode and hash again
-            let registry_enc_hash = onchain_identity.encryption_key;
-            let registry_sig_hash = onchain_identity.signature_key;
-
-            println!(
-                "Node Identity Found:\nName: {}\nLocal Encryption Key Hash: {}\nLocal Signature Key Hash: {}\nRegistry Encryption Key Hash: {}\nRegistry Signature Key Hash: {}",
-                name,
-                local_enc_hash,
-                local_sig_hash,
-                registry_enc_hash,
-                registry_sig_hash
-            );
-
-            // Compare the hex strings directly
-            let keys_match = local_enc_hash == registry_enc_hash && local_sig_hash == registry_sig_hash;
-            keys_match
+    let onchain_identity = match registry.get_identity_record(node_name.to_string()).await {
+        Ok(identity) => identity,
+        Err(e) => {
+            println!("Identity not found in registry: {}", e);
+            return Ok(false);
         }
-        Err(_) => false,
     };
 
-    println!("Has valid identity: {}", has_identity);
-    Ok(has_identity)
+    // Hash our local keys
+    let local_enc_hash = hex::encode(encryption_public_key.to_bytes());
+    let local_sig_hash = hex::encode(identity_public_key.to_bytes());
+
+    // The registry keys are already hex strings of the hashes, no need to decode and hash again
+    let registry_enc_hash = onchain_identity.encryption_key;
+    let registry_sig_hash = onchain_identity.signature_key;
+
+    println!(
+        "Node Identity Found:\nName: {}\nLocal Encryption Key Hash: {}\nLocal Signature Key Hash: {}\nRegistry Encryption Key Hash: {}\nRegistry Signature Key Hash: {}",
+        node_name,
+        local_enc_hash,
+        local_sig_hash,
+        registry_enc_hash,
+        registry_sig_hash
+    );
+
+    // Compare the hex strings directly
+    let keys_match = local_enc_hash == registry_enc_hash && local_sig_hash == registry_sig_hash;
+
+    println!("Has valid identity: {}", keys_match);
+    Ok(keys_match)
 }
 
 pub async fn compute_download_store_quest(db: Arc<SqliteManager>) -> Result<bool, String> {
