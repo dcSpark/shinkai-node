@@ -1,6 +1,6 @@
 use crate::{
     llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
+    managers::{tool_router, IdentityManager},
     network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
@@ -35,7 +35,6 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
-use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use shinkai_tools_primitives::tools::{
     deno_tools::DenoTool,
     error::ToolError,
@@ -44,6 +43,10 @@ use shinkai_tools_primitives::tools::{
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+};
+use shinkai_tools_primitives::tools::{
+    shinkai_tool::ShinkaiToolHeader,
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::path::PathBuf;
 use std::{
@@ -214,8 +217,36 @@ impl Node {
         // List all tools
         match db.get_all_tool_headers() {
             Ok(tools) => {
-                let response = json!(tools);
-                let _ = res.send(Ok(response)).await;
+                // Group tools by their base key (without version)
+                use std::collections::HashMap;
+                let mut tool_groups: HashMap<String, Vec<ShinkaiToolHeader>> = HashMap::new();
+
+                for tool in tools {
+                    let tool_router_key = tool.tool_router_key.clone();
+                    tool_groups.entry(tool_router_key).or_default().push(tool);
+                }
+
+                // For each group, keep only the tool with the highest version
+                let mut latest_tools = Vec::new();
+                for (_, mut group) in tool_groups {
+                    if group.len() == 1 {
+                        latest_tools.push(group.pop().unwrap());
+                    } else {
+                        // Sort by version in descending order
+                        group.sort_by(|a, b| {
+                            let a_version = IndexableVersion::from_string(&a.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            let b_version = IndexableVersion::from_string(&b.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            b_version.cmp(&a_version)
+                        });
+
+                        // Take the first one (highest version)
+                        latest_tools.push(group.remove(0));
+                    }
+                }
+                let t = latest_tools.iter().map(|tool| json!(tool)).collect();
+                let _ = res.send(Ok(t)).await;
                 Ok(())
             }
             Err(err) => {
@@ -2229,11 +2260,25 @@ impl Node {
         // Acquire a write lock on the database
         let db_write = db;
 
+        let tool_router_key = ToolRouterKey::from_string(&tool_key);
+        if tool_router_key.is_err() {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Bad Request".to_string(),
+                message: format!("Invalid tool key: {}", tool_router_key.err().unwrap()),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        let tool_router_key = tool_router_key.unwrap();
+
+        let version = tool_router_key.version;
+
         // Attempt to remove the playground tool first
         let _ = db_write.remove_tool_playground(&tool_key);
 
         // Remove the tool from the database
-        match db_write.remove_tool(&tool_key, None) {
+        match db_write.remove_tool(&tool_key, version) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
                 let _ = res.send(Ok(response)).await;
@@ -3415,6 +3460,64 @@ Happy coding!"#,
             "playground_path": temp_dir.to_string_lossy().to_string(),
             "files": files_created
         }))
+    }
+
+    pub async fn v2_api_list_all_shinkai_tools_versions(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // List all tools
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                // Group tools by their base key (without version)
+                use std::collections::HashMap;
+                let mut tool_groups: HashMap<String, Vec<ShinkaiToolHeader>> = HashMap::new();
+
+                for tool in tools {
+                    let tool_router_key = tool.tool_router_key.clone();
+                    tool_groups.entry(tool_router_key).or_default().push(tool);
+                }
+
+                // For each group, sort versions and create the response structure
+                let mut result = Vec::new();
+                for (key, mut group) in tool_groups {
+                    // Sort by version in descending order
+                    group.sort_by(|a, b| {
+                        let a_version = IndexableVersion::from_string(&a.version.clone())
+                            .unwrap_or(IndexableVersion::from_number(0));
+                        let b_version = IndexableVersion::from_string(&b.version.clone())
+                            .unwrap_or(IndexableVersion::from_number(0));
+                        b_version.cmp(&a_version)
+                    });
+
+                    // Extract versions
+                    let versions: Vec<String> = group.iter().map(|tool| tool.version.clone()).collect();
+
+                    result.push(json!({
+                        "tool_router_key": key,
+                        "versions": versions,
+                    }));
+                }
+
+                let _ = res.send(Ok(json!(result))).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
     }
 }
 
