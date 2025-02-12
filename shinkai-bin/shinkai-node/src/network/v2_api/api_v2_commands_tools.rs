@@ -3255,11 +3255,15 @@ start().then(() => {{
             })?;
 
         // First try to open with cursor
-        let cursor_open = Command::new("code").arg(temp_dir.clone()).spawn();
+        let cursor_open = Command::new("cursor").arg(temp_dir.clone()).spawn();
         if cursor_open.is_err() {
-            // If cursor fails, try with open
-            // Ignore error if any.
-            let _ = open::that(temp_dir.clone());
+            // If cursor fails try with the "code" command
+            let code_open = Command::new("code").arg(temp_dir.clone()).spawn();
+            if code_open.is_err() {
+                // If cursor and code fails, try with open
+                // Ignore error if any.
+                let _ = open::that(temp_dir.clone());
+            }
         }
 
         // Create parameters.json
