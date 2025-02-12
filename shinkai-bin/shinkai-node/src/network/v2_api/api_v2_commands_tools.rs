@@ -2995,7 +2995,7 @@ impl Node {
         let launch_script = format!(
             r#"
 // Import required modules
-const fs = require('fs');
+const fs = require('node:fs');
 
 // Configuration variables
 const API_URL = "{api_url}";
@@ -3006,10 +3006,11 @@ const TOOL_TYPE = "{tool_type}";
 
 // Read file contents
 const CODE_CONTENT = fs.readFileSync('./tool.{language_extension}', 'utf8');
-const TOOLS_CONTENT = JSON.parse(fs.readFileSync('./tools.json', 'utf8'));
+const METADATA_CONTENT = JSON.parse(fs.readFileSync('./metadata.json', 'utf8'));
+const TOOLS_CONTENT = METADATA_CONTENT.tools;
 const CONFIG_CONTENT = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
 const PARAMETERS_CONTENT = JSON.parse(fs.readFileSync('./parameters.json', 'utf8'));
-const OAUTH_CONTENT = JSON.parse(fs.readFileSync('./oauth.json', 'utf8'));
+const OAUTH_CONTENT = METADATA_CONTENT.oauth;
 
 // Make the API call
 async function makeApiCall() {{
@@ -3043,8 +3044,6 @@ async function makeApiCall() {{
     }}
 }}
 
-
-// Add new function to fetch log file
 async function fetchLogFile(filePath) {{
     const encodedPath = encodeURIComponent(filePath);
     try {{
@@ -3061,9 +3060,100 @@ async function fetchLogFile(filePath) {{
     }}
 }}
 
+
+// Add new functions for asset management
+async function listRemoteAssets() {{
+    try {{
+        const response = await fetch(`${{API_URL}}/v2/list_tool_asset`, {{
+            headers: {{
+                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
+                'x-shinkai-tool-id': 'run',
+                'x-shinkai-app-id': APP_ID
+            }}
+        }});
+        const data = await response.json();
+        return data.files || [];
+    }} catch (error) {{
+        console.error('Error listing remote assets:', error);
+        return [];
+    }}
+}}
+
+async function uploadAsset(fileName, content) {{
+    const formData = new FormData();
+    formData.append('file_name', fileName);
+    formData.append('file', content);
+
+    try {{
+        await fetch(`${{API_URL}}/v2/tool_asset`, {{
+            method: 'POST',
+            headers: {{
+                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
+                'x-shinkai-tool-id': 'run',
+                'x-shinkai-app-id': APP_ID
+            }},
+            body: formData
+        }});
+        console.log(`Uploaded asset: ${{fileName}}`);
+    }} catch (error) {{
+        console.error(`Error uploading asset ${{fileName}}:`, error);
+    }}
+}}
+
+async function deleteAsset(fileName) {{
+    try {{
+        await fetch(`${{API_URL}}/v2/tool_asset?file_name=${{encodeURIComponent(fileName)}}`, {{
+            method: 'DELETE',
+            headers: {{
+                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
+                'x-shinkai-tool-id': 'run',
+                'x-shinkai-app-id': APP_ID
+            }}
+        }});
+        console.log(`Deleted asset: ${{fileName}}`);
+    }} catch (error) {{
+        console.error(`Error deleting asset ${{fileName}}:`, error);
+    }}
+}}
+
+async function syncAssets() {{
+    // Get local assets
+    try {{
+        const localAssets = fs.readdirSync('./assets')
+            .filter(file => file.endsWith('.txt'))
+            .reduce((acc, file) => {{
+                acc[file] = fs.readFileSync(`./assets/${{file}}`, 'utf8');
+                return acc;
+            }}, {{}});
+
+        // Get remote assets
+        const remoteAssets = await listRemoteAssets();
+
+        // Upload missing assets
+        for (const [fileName, content] of Object.entries(localAssets)) {{
+            if (!remoteAssets.includes(fileName)) {{
+                await uploadAsset(fileName, content);
+            }}
+        }}
+
+        // Delete extra remote assets
+        for (const remoteFile of remoteAssets) {{
+            if (!localAssets.hasOwnProperty(remoteFile)) {{
+                await deleteAsset(remoteFile);
+            }}
+        }}
+    }} catch (error) {{
+        console.error('Error synchronizing assets:', error);
+    }}
+}}
+
 // Execute the API call
 async function start() {{
     try {{
+        console.log('Starting asset synchronization...');
+        await syncAssets();
+        console.log('Asset synchronization completed');
+
         console.log('Tool Execution Started at ', new Date().toISOString());
         let data = await makeApiCall();
         // Check for log files in the response
@@ -3189,27 +3279,6 @@ start().then(() => {{
                 message: e.to_string(),
             })?;
 
-        // Create tools.json
-        let mut tools_file = temp_dir.clone();
-        tools_file.push("tools.json");
-        let tools_content = serde_json::to_string_pretty(
-            &tools
-                .iter()
-                .map(|tool| tool.to_string_without_version())
-                .collect::<Vec<String>>(),
-        )
-        .map_err(|e| APIError {
-            code: 500,
-            error: "Failed to serialize tools".to_string(),
-            message: e.to_string(),
-        })?;
-        files_created.insert(tools_file.clone(), tools_content.clone());
-        fs::write(&tools_file, tools_content).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to write tools.json".to_string(),
-            message: e.to_string(),
-        })?;
-
         // Create config.json
         let mut config_file = temp_dir.clone();
         config_file.push("config.json");
@@ -3222,25 +3291,6 @@ start().then(() => {{
         fs::write(&config_file, config_content).await.map_err(|e| APIError {
             code: 500,
             error: "Failed to write config.json".to_string(),
-            message: e.to_string(),
-        })?;
-
-        // Create oauth.json if OAuth data is provided
-        let oauth_content = if let Some(oauth_data) = oauth {
-            serde_json::to_string_pretty(&oauth_data).map_err(|e| APIError {
-                code: 500,
-                error: "Failed to serialize OAuth data".to_string(),
-                message: e.to_string(),
-            })?
-        } else {
-            "[]".to_string()
-        };
-        let mut oauth_file: PathBuf = temp_dir.clone();
-        oauth_file.push("oauth.json");
-        files_created.insert(oauth_file.clone(), oauth_content.clone());
-        fs::write(&oauth_file, oauth_content).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to write oauth.json".to_string(),
             message: e.to_string(),
         })?;
 
@@ -3295,9 +3345,7 @@ This is a standalone playground for testing your Shinkai tool.
 - `*.ts` or `*.py`: Tool definition files for dependencies
 - `metadata.json`: Tool metadata and configuration
 - `parameters.json`: Runtime parameters passed to your tool (modify this to test different inputs)
-- `tools.json`: Array of tool keys that your tool depends on
 - `config.json`: Additional configuration options for tool execution
-- `oauth.json`: OAuth credentials configuration
 - `assets/`: Directory containing tool assets
 - `launch.js`: Script to execute the tool
 - `.vscode/`: VS Code configuration for easy execution
@@ -3305,18 +3353,14 @@ This is a standalone playground for testing your Shinkai tool.
 
 ## Configuration Files
 - `parameters.json`: Contains the input parameters that will be passed to your tool during execution. Modify this file to test how your tool behaves with different inputs.
-- `tools.json`: Lists the tool dependencies required by your implementation. Add tool keys here if your code needs to call other tools.
 - `config.json`: Holds additional configuration options that affect tool execution. Use this for environment-specific settings.
-- `oauth.json`: Contains OAuth configuration if your tool requires authentication.
-- `metadata.json`: Defines your tool's metadata like name, description, version etc.
+- `metadata.json`: Defines your tool's metadata like name, description, version, tools and oauth are extracted from this file.
 
 ## Running the Tool
 1. Make sure you have Shinkai running locally
 2. Configure your test setup:
    - Update input parameters in `parameters.json`
-   - Add required tool dependencies to `tools.json`
    - Modify execution settings in `config.json`
-   - Configure OAuth settings in `oauth.json` if needed
 3. Run the tool using either:
    - VS Code's debug launcher
    - Execute `node launch.js` from the terminal
@@ -3337,6 +3381,30 @@ Happy coding!"#,
                 error: "Failed to write README file".to_string(),
                 message: e.to_string(),
             })?;
+
+        // After creating .vscode/launch.json, add settings.json for TypeScript
+        if language == CodeLanguage::Typescript {
+            let settings_json = json!({
+                "deno.enable": true,
+                "editor.formatOnSave": true,
+                "editor.defaultFormatter": "denoland.vscode-deno"
+            });
+            let mut settings_json_file = vscode_dir.clone();
+            settings_json_file.push("settings.json");
+            let settings_json_string = serde_json::to_string_pretty(&settings_json).map_err(|e| APIError {
+                code: 500,
+                error: "Failed to serialize settings.json".to_string(),
+                message: format!("Failed to serialize settings.json: {}", e),
+            })?;
+            files_created.insert(settings_json_file.clone(), settings_json_string.clone());
+            fs::write(&settings_json_file, settings_json_string.clone())
+                .await
+                .map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to write settings.json".to_string(),
+                    message: format!("Failed to write settings.json: {}", e),
+                })?;
+        }
 
         Ok(json!({
             "status": "success",
