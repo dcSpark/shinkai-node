@@ -203,6 +203,12 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(compute_and_send_quests_status_handler);
 
+    let list_mcp_servers_route = warp::path("list_mcp_servers")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(list_mcp_servers_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -229,6 +235,7 @@ pub fn general_routes(
         .or(add_regex_pattern_route)
         .or(compute_quests_status_route)
         .or(compute_and_send_quests_status_route)
+        .or(list_mcp_servers_route)
 }
 
 #[derive(Deserialize)]
@@ -1122,6 +1129,32 @@ pub async fn compute_and_send_quests_status_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/list_mcp_servers",
+    responses(
+        (status = 200, description = "Successfully retrieved MCP servers", body = Vec<MCPServer>),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn list_mcp_servers_handler(
+    sender: Sender<NodeCommand>,
+    bearer: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiListMCPServers { bearer, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1153,6 +1186,7 @@ pub async fn compute_and_send_quests_status_handler(
         add_regex_pattern_handler,
         compute_quests_status_handler,
         compute_and_send_quests_status_handler,
+        list_mcp_servers_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,

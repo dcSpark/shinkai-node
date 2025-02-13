@@ -3008,7 +3008,15 @@ impl Node {
                 let encryption_public_key_clone = self.encryption_public_key.clone();
                 let identity_public_key_clone = self.identity_public_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_compute_quests_status(db_clone, node_name_clone, encryption_public_key_clone, identity_public_key_clone, bearer, res).await;
+                    let _ = Node::v2_api_compute_quests_status(
+                        db_clone,
+                        node_name_clone,
+                        encryption_public_key_clone,
+                        identity_public_key_clone,
+                        bearer,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiComputeAndSendQuestsStatus { bearer, res } => {
@@ -3017,7 +3025,21 @@ impl Node {
                 let encryption_public_key_clone = self.encryption_public_key.clone();
                 let identity_public_key_clone = self.identity_public_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_compute_and_send_quests_status(db_clone, node_name_clone, encryption_public_key_clone, identity_public_key_clone, bearer, res).await;
+                    let _ = Node::v2_api_compute_and_send_quests_status(
+                        db_clone,
+                        node_name_clone,
+                        encryption_public_key_clone,
+                        identity_public_key_clone,
+                        bearer,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiListMCPServers { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_mcp_servers(db_clone, bearer, res).await;
                 });
             }
             _ => (),

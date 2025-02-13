@@ -12,6 +12,7 @@ use shinkai_message_primitives::{
         identity::{Identity, StandardIdentity},
         job_config::JobConfig,
         llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
+        mcp_server::MCPServer,
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
@@ -1266,5 +1267,9 @@ pub enum NodeCommand {
     V2ApiComputeAndSendQuestsStatus {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListMCPServers {
+        bearer: String,
+        res: Sender<Result<Vec<MCPServer>, APIError>>,
     },
 }

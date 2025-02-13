@@ -2,9 +2,9 @@ use std::fs::File;
 use std::io::Write;
 use std::{env, sync::Arc};
 
-use async_std::println;
 use rusqlite::params;
 use serde_json::{json, Value};
+use shinkai_message_primitives::schemas::mcp_server::MCPServer;
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use tokio::fs;
 use zip::{write::FileOptions, ZipWriter};
@@ -15,21 +15,33 @@ use reqwest::StatusCode;
 
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
+    node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
+    schemas::ws_types::WSUpdateHandler,
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
 use shinkai_message_primitives::{
     schemas::{
-        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
-    }, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
-            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
-        }
-    }, shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::signature_public_key_to_string
-    }
+        identity::{Identity, IdentityType, RegistrationCode},
+        inbox_name::InboxName,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_schemas::{
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
+        },
+    },
+    shinkai_utils::{
+        encryption::{encryption_public_key_to_string, EncryptionMethod},
+        shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::signature_public_key_to_string,
+    },
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -38,7 +50,11 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
+    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
+    tools::tool_generation,
+    utils::update_global_identity::update_global_identity_name,
 };
 
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
@@ -1919,6 +1935,34 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to compute quests status: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_list_mcp_servers(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Vec<MCPServer>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve MCP servers from the database
+        match db.get_all_mcp_servers() {
+            Ok(servers) => {
+                let _ = res.send(Ok(servers)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve MCP servers: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
