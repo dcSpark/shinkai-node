@@ -12,18 +12,15 @@ on:
           - debug
           - release
       tag:
-        description: 'Docker image tag'
+        description: 'Docker image tag (e.g. v0.9.10)'
         required: true
         type: string
         default: 'latest'
 
-env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/shinkai-node
-
 jobs:
-  build-and-push:
+  build-docker-image:
     runs-on: ubuntu-latest
-
+    name: Build Docker image
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,5 +43,5 @@ jobs:
           build-args: |
             BUILD_TYPE=${{ inputs.build_type }}
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ inputs.tag }}
-            ${{ env.IMAGE_NAME }}:${{ inputs.build_type }}-latest
+            dcspark/shinkai-node:${{ inputs.tag }}
+            dcspark/shinkai-node:${{ inputs.build_type }}-latest
