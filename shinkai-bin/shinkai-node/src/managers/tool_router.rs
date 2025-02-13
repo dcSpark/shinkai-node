@@ -33,12 +33,14 @@ use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::rust_tools::RustTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
+use shinkai_tools_primitives::tools::tool_types::ToolResult;
 use tokio::sync::Mutex;
 
 use ed25519_dalek::SigningKey;
@@ -330,7 +332,44 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
+    async fn add_mcp_server_tool(&self) -> Result<(), ToolError> {
+        // ADD MCP SERVER TOOL``
+        let _ = match self
+            .sqlite_manager
+            .get_tool_by_key("local:::__official_shinkai:::mcp_server")
+        {
+            Err(SqliteManagerError::ToolNotFound(_)) => {
+                let mcp_server_tool = MCPServerTool {
+                    version: "1.0.0".to_string(),
+                    name: "mcp_server".to_string(),
+                    author: "@@official.shinkai".to_string(),
+                    mcp_server_ref: "_unknown_".to_string(),
+                    description: "A tool for interacting with the MCP server".to_string(),
+                    mcp_server_url: "https://mcp.shinkai.io".to_string(),
+                    mcp_server_tool: "mcp_server".to_string(),
+                    config: vec![],
+                    keywords: vec![],
+                    input_args: Parameters::new(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: true,
+                    embedding: None,
+                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    tool_set: None,
+                };
+                self.sqlite_manager
+                    .add_tool(ShinkaiTool::MCPServer(mcp_server_tool, true))
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            }
+            Ok(_) => {}
+            Err(e) => return Err(ToolError::DatabaseError(e.to_string())),
+        };
+        Ok(())
+    }
+
     pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
+        self.add_mcp_server_tool().await?;
+
         let rust_tools = get_rust_tools();
         for tool in rust_tools {
             let rust_tool = RustTool::new(

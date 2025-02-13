@@ -79,19 +79,22 @@ impl MCPServerTool {
 
         let init_code = format!(
             r#"
-        const inputs = {};
-        const config = {};
+        const inputs = {{}};
+        const config = {{}};
         run(config, inputs).then((result) => {{
             console.log("<TYPE_SCRIPT_UNSAFE_PROCESSOR_OUTPUT>");
             console.log(JSON.stringify(result));
             console.log("</TYPE_SCRIPT_UNSAFE_PROCESSOR_OUTPUT>");
+            setTimeout(() => {{
+                process.exit(0);
+            }}, 1000);
         }}).catch((error) => {{
             console.log("<TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>");
             console.log(JSON.stringify({{ error }}));
             console.log("</TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>");
         }});
         "#,
-            parameters_json_string, config_json_string
+            // parameters_json_string, config_json_string
         );
 
         // Create temporary directory with random name
@@ -108,10 +111,12 @@ impl MCPServerTool {
         fs::create_dir_all(temp_path.clone())
             .map_err(|e| ToolError::ExecutionError(format!("Failed to create temp dir: {}", e)))?;
         // Write files}
+        println!("Folder created: {}", temp_path.display());
+
         let final_code = format!("{}\n{}", code, init_code);
         // println!("Running code: {}", final_code);
-        fs::write(temp_path.clone().join("index.ts"), final_code)
-            .map_err(|e| ToolError::ExecutionError(format!("Failed to write index.ts: {}", e)))?;
+        fs::write(temp_path.clone().join("index.js"), final_code)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to write index.js: {}", e)))?;
 
         if let Some(package) = package {
             // Run npm install
@@ -143,11 +148,10 @@ impl MCPServerTool {
             }
         }
 
-        // Run node index.ts
+        // Run node index.js
         let node_output = Command::new(&node_binary)
             .envs(envs)
-            .arg("--experimental-strip-types")
-            .arg("index.ts")
+            .arg("index.js")
             .current_dir(temp_path.clone())
             .stderr(Stdio::inherit())
             .output()
@@ -195,56 +199,59 @@ impl MCPServerTool {
             import { Client } from "@modelcontextprotocol/sdk/client/index.js";
             import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-            console.log("Starting client...");
-            const transport = new StdioClientTransport({
-            command: "node",
-            args: ["/Users/edwardalvarado/mcp-server-tmdb/dist/index.js"]
-            });
+            async function run() {
+                console.log("Starting client...");
+                const transport = new StdioClientTransport({
+                command: "node",
+                args: ["/Users/edwardalvarado/mcp-server-tmdb/dist/index.js"]
+                });
 
-            console.log("Creating client...");
-            const client = new Client(
-            {
-                name: "example-client",
-                version: "1.0.0"
-            },
-            {
-                capabilities: {
-                prompts: {},
-                resources: {},
-                tools: {}
+                console.log("Creating client...");
+                const client = new Client(
+                {
+                    name: "example-client",
+                    version: "1.0.0"
+                },
+                {
+                    capabilities: {
+                    prompts: {},
+                    resources: {},
+                    tools: {}
+                    }
                 }
+                );
+
+                console.log("Connecting client...");
+                await client.connect(transport);
+
+                // console.log("Listing prompts...");
+                // // List prompts
+                // const prompts = await client.listPrompts();
+                // console.log(prompts);
+                // Get a prompt
+                // const prompt = await client.getPrompt("example-prompt", {
+                //   arg1: "value"
+                // });
+
+                console.log("Listing resources...");
+                // List resources
+                const resources = await client.listTools();
+                console.log(JSON.stringify(resources, null, 2));
+
+                // Read a resource
+                // const resource = await client.readResource("file:///example.txt");
+
+                // // Call a tool
+                const result = await client.callTool({
+                name: "search_movies",
+                arguments: {
+                    query: "dune"
+                }
+                });
+
+                console.log(JSON.stringify(result, null, 2));
+                return result;
             }
-            );
-
-            console.log("Connecting client...");
-            await client.connect(transport);
-
-            // console.log("Listing prompts...");
-            // // List prompts
-            // const prompts = await client.listPrompts();
-            // console.log(prompts);
-            // Get a prompt
-            // const prompt = await client.getPrompt("example-prompt", {
-            //   arg1: "value"
-            // });
-
-            console.log("Listing resources...");
-            // List resources
-            const resources = await client.listTools();
-            console.log(JSON.stringify(resources, null, 2));
-
-            // Read a resource
-            // const resource = await client.readResource("file:///example.txt");
-
-            // // Call a tool
-            const result = await client.callTool({
-            name: "search_movies",
-            arguments: {
-                query: "dune"
-            }
-            });
-
-            console.log(JSON.stringify(result, null, 2));
 
         "#;
         return js.to_string();
