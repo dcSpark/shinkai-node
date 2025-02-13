@@ -13,8 +13,8 @@ use warp::{
 
 use super::{
     api_v2_handlers_ext_agent_offers::ToolOfferingsApiDoc, api_v2_handlers_general::GeneralApiDoc,
-    api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_tools::ToolsApiDoc, api_v2_handlers_vecfs::VecFsApiDoc,
-    api_v2_handlers_wallets::WalletApiDoc,
+    api_v2_handlers_jobs::JobsApiDoc, api_v2_handlers_mcp_servers::MCPServerApiDoc, api_v2_handlers_tools::ToolsApiDoc,
+    api_v2_handlers_vecfs::VecFsApiDoc, api_v2_handlers_wallets::WalletApiDoc,
 };
 
 pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -58,12 +58,17 @@ pub fn swagger_ui_routes() -> impl Filter<Extract = impl warp::Reply, Error = wa
         .and(warp::any().map(move || config.clone()))
         .and_then(serve_swagger);
 
+    let mcp_servers_schema_route = warp::path!("openapi" / "mcp_servers.json")
+        .and(warp::get())
+        .map(|| warp::reply::json(&MCPServerApiDoc::openapi()));
+
     general_schema_route
         .or(jobs_schema_route)
         .or(vecfs_schema_route)
         .or(wallet_schema_route)
         .or(tools_schema_route)
         .or(ext_agent_offers_schema_route)
+        .or(mcp_servers_schema_route)
         .or(swagger_ui)
 }
 

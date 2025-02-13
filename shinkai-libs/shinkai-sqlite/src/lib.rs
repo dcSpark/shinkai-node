@@ -857,7 +857,7 @@ impl SqliteManager {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                name TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
                 type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND')) DEFAULT 'SSE',
                 url TEXT,
                 command TEXT,

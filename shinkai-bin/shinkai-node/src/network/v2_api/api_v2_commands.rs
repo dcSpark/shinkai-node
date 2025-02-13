@@ -4,7 +4,8 @@ use std::{env, sync::Arc};
 
 use rusqlite::params;
 use serde_json::{json, Value};
-use shinkai_message_primitives::schemas::mcp_server::MCPServer;
+use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use tokio::fs;
 use zip::{write::FileOptions, ZipWriter};
@@ -1968,6 +1969,75 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_api_add_mcp_server(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server: AddMCPServerRequest,
+        res: Sender<Result<MCPServer, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        println!("mcp_server: {:?}", mcp_server);
+
+        match mcp_server.r#type {
+            MCPServerType::Command => {
+                // Split command into command and arguments if present
+                if let Some(cmd) = &mcp_server.command {
+                    let mut parts = cmd.splitn(2, ' ');
+                    let command = parts.next().unwrap_or("").to_string();
+                    let arguments = parts.next().unwrap_or("").to_string();
+
+                    log::info!("Command: {:?}, Arguments: {:?}", command, arguments);
+                } else {
+                    log::warn!("No command provided for MCP Server: {:?}", mcp_server.name);
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Type".to_string(),
+                            message: format!("No command provided for MCP Server: {:?}", mcp_server.name),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            _ => {
+                log::warn!("MCP Server type not yet implemented: {:?}", mcp_server.r#type);
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server Type".to_string(),
+                    message: format!("MCP Server type {:?} is not yet implemented", mcp_server.r#type),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
+        // Add the MCP server to the database
+        match db.add_mcp_server(
+            mcp_server.name,
+            mcp_server.r#type,
+            mcp_server.url,
+            mcp_server.command,
+            mcp_server.is_enabled,
+        ) {
+            Ok(server) => {
+                let _ = res.send(Ok(server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add MCP server: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
         Ok(())
     }
 }

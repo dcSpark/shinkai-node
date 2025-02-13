@@ -27,4 +27,11 @@ impl MCPServerType {
             _ => Err(format!("Invalid MCP server type: {}", s)),
         }
     }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            MCPServerType::Sse => "SSE".to_string(),
+            MCPServerType::Command => "COMMAND".to_string(),
+        }
+    }
 }
