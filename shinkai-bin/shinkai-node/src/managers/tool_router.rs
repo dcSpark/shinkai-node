@@ -588,6 +588,17 @@ impl ToolRouter {
         all_files.extend(additional_files);
 
         match shinkai_tool {
+            ShinkaiTool::MCPServer(mcp_server_tool, _is_enabled) => {
+                let function_config = shinkai_tool.get_config_from_env();
+                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+                let result = mcp_server_tool.run(function_args, function_config_vec).await?;
+                let result_str = serde_json::to_string(&result)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                return Ok(ToolCallFunctionResponse {
+                    response: result_str,
+                    function_call,
+                });
+            }
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
                 let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
