@@ -43,14 +43,14 @@ impl MCPServerTool {
     pub async fn run(
         &self,
         parameters: serde_json::Map<String, serde_json::Value>,
-        extra_config: Vec<ToolConfig>,
+        config: Vec<ToolConfig>,
     ) -> Result<RunResult, ToolError> {
         let r = self
             .run_node_code(
                 &self.js().clone(),
                 Some(&self.package_json().clone()),
-                "",
-                "",
+                parameters,
+                config,
                 &HashMap::new(),
             )
             .await;
@@ -69,14 +69,15 @@ impl MCPServerTool {
         self: &Self,
         code: &str,
         package: Option<&str>,
-        parameters_json_string: &str,
-        config_json_string: &str,
+        parameters: serde_json::Map<String, serde_json::Value>,
+        config: Vec<ToolConfig>,
         envs: &HashMap<String, String>,
     ) -> Result<String, ToolError> {
         // Get npm and node binary locations from env or use defaults
         let npm_binary = env::var("NPM_BINARY_LOCATION").unwrap_or_else(|_| "npm".to_string());
         let node_binary = env::var("NODE_BINARY_LOCATION").unwrap_or_else(|_| "node".to_string());
 
+        // TODO pass the parameters and config into the code
         let init_code = format!(
             r#"
         const inputs = {{}};
@@ -94,7 +95,6 @@ impl MCPServerTool {
             console.log("</TYPE_SCRIPT_UNSAFE_PROCESSOR_ERROR>");
         }});
         "#,
-            // parameters_json_string, config_json_string
         );
 
         // Create temporary directory with random name
@@ -202,8 +202,8 @@ impl MCPServerTool {
             async function run() {
                 console.log("Starting client...");
                 const transport = new StdioClientTransport({
-                command: "node",
-                args: ["/Users/edwardalvarado/mcp-server-tmdb/dist/index.js"]
+                    command: "node",
+                    args: ["/Users/edwardalvarado/mcp-server-tmdb/dist/index.js"]
                 });
 
                 console.log("Creating client...");
