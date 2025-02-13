@@ -6,3 +6,4 @@ pub mod model_capabilities_manager;
 pub mod sheet_manager;
 pub mod token_counter_tests;
 pub mod tool_router;
+pub mod ollama_models_repository;
