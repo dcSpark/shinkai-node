@@ -24,7 +24,7 @@ export INITIAL_AGENT_URLS="https://api.openai.com"
 export INITIAL_AGENT_MODELS="openai:gpt-4o-mini"
 
 export CONTRACT_ADDRESS="0x425fb20ba3874e887336aaa7f3fab32d08135ba9"
-export ADD_TESTING_NETWORK_ECHO="true"
+export ADD_TESTING_NETWORK_ECHO="false"
 
 # Add these lines to enable all log options
 export LOG_ALL=1
