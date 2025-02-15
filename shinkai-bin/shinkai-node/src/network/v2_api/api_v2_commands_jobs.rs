@@ -987,6 +987,27 @@ impl Node {
             None
         };
 
+        // Check if the parent message is the first message in the job
+        let is_parent_first_message_in_job =
+            if let Ok(Some(first_message)) = db.get_first_message_from_inbox(inbox_name.clone()) {
+                first_message.calculate_message_hash_for_pagination() == parent_message_hash
+            } else {
+                false
+            };
+
+        // If the parent message is the first message in the job, clear all messages before adding the new one
+        if is_parent_first_message_in_job {
+            if let Err(err) = db.clear_inbox_messages(&inbox_name) {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to clear inbox messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
         job_message.parent = parent_parent_key;
 
         let shinkai_message = match Self::api_v2_create_shinkai_message(
