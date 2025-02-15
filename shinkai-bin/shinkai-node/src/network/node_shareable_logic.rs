@@ -1,12 +1,14 @@
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentityType};
-use std::sync::Arc;
 use std::io::Read;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::bytes::Bytes;
 
 use crate::managers::identity_manager::IdentityManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
+use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
+use hex;
 use log::error;
 use reqwest::StatusCode;
 use shinkai_message_primitives::{
@@ -15,8 +17,6 @@ use shinkai_message_primitives::{
     shinkai_utils::encryption::string_to_encryption_public_key,
 };
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
-use hex;
 
 pub async fn validate_message_main_logic(
     encryption_secret_key: &EncryptionStaticKey,
@@ -207,17 +207,18 @@ pub async fn download_zip_file(
         .clone()
         .try_sign(url.as_bytes())
         .map_err(|e| APIError {
-        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             error: "Internal Server Error".to_string(),
             message: format!("Failed to sign tool: {}", e),
-    })?;
+        })?;
 
     let signature_bytes = signature.to_bytes();
     let signature_hex = hex::encode(signature_bytes);
 
     // Create the request with headers
     let client = reqwest::Client::new();
-    let request = client.get(&url)
+    let request = client
+        .get(&url)
         .header("X-Shinkai-Version", env!("CARGO_PKG_VERSION"))
         .header("X-Shinkai-Identity", node_name)
         .header("X-Shinkai-Signature", signature_hex);
@@ -233,6 +234,18 @@ pub async fn download_zip_file(
             });
         }
     };
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        println!("Download failed with status: {}", status);
+        println!("Response body: {}", body);
+        return Err(APIError {
+            code: status.as_u16(),
+            error: "Download Failed".to_string(),
+            message: format!("Failed to download asset from URL: {}", status),
+        });
+    }
 
     // Get the bytes from the response
     let bytes = match response.bytes().await {
