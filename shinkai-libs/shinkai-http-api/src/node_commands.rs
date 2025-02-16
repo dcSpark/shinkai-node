@@ -12,6 +12,7 @@ use shinkai_message_primitives::{
         identity::{Identity, StandardIdentity},
         job_config::JobConfig,
         llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
+        mcp_server::MCPServer,
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
@@ -48,7 +49,7 @@ use shinkai_tools_primitives::tools::{
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::node_api_router::SendResponseBody;
+use crate::{api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest, node_api_router::SendResponseBody};
 
 use super::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
@@ -1266,5 +1267,14 @@ pub enum NodeCommand {
     V2ApiComputeAndSendQuestsStatus {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListMCPServers {
+        bearer: String,
+        res: Sender<Result<Vec<MCPServer>, APIError>>,
+    },
+    V2ApiAddMCPServer {
+        bearer: String,
+        mcp_server: AddMCPServerRequest,
+        res: Sender<Result<MCPServer, APIError>>,
     },
 }

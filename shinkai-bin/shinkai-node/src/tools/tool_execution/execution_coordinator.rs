@@ -284,6 +284,11 @@ pub async fn execute_tool_cmd(
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
     match tool {
+        ShinkaiTool::MCPServer(mcp_server_tool, _) => mcp_server_tool
+            .run(parameters, extra_config)
+            .await
+            .map(|result| json!(result.data)),
+
         ShinkaiTool::Rust(_, _) => {
             try_to_execute_rust_tool(
                 &tool_router_key,
