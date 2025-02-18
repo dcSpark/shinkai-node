@@ -252,6 +252,13 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(list_all_shinkai_tools_versions_handler);
 
+    let set_tool_enabled_route = warp::path("set_tool_enabled")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(set_tool_enabled_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -284,6 +291,7 @@ pub fn tool_routes(
         .or(tool_store_proxy_route)
         .or(standalone_playground_route)
         .or(list_all_shinkai_tools_versions_route)
+        .or(set_tool_enabled_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -2112,6 +2120,53 @@ pub async fn list_all_shinkai_tools_versions_handler(
     }
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct SetToolEnabledRequest {
+    pub tool_router_key: String,
+    pub enabled: bool,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/set_tool_enabled",
+    request_body = SetToolEnabledRequest,
+    responses(
+        (status = 200, description = "Successfully enabled/disabled tool", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn set_tool_enabled_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: SetToolEnabledRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiSetToolEnabled {
+            bearer,
+            tool_router_key: payload.tool_router_key,
+            enabled: payload.enabled,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
 
 #[derive(OpenApi)]
 #[openapi(
@@ -2144,11 +2199,13 @@ pub async fn list_all_shinkai_tools_versions_handler(
         disable_all_tools_handler,
         tool_store_proxy_handler,
         standalone_playground_handler,
+        set_tool_enabled_handler,
     ),
     components(
         schemas(
             APIError, 
             ToolExecutionRequest,
+            SetToolEnabledRequest,
         )
     ),
     tags(
