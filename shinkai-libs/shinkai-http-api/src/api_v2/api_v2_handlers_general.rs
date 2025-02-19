@@ -364,7 +364,7 @@ pub async fn get_storage_location_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(response) => Ok(warp::reply::json(&response)),
+        Ok(response) => Ok(warp::reply::json(&json!({ "storage_location": response }))),
         Err(error) => Err(warp::reject::custom(error)),
     }
 }
