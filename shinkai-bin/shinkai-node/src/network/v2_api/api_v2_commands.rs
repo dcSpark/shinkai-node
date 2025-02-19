@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::{env, sync::Arc};
+use std::path::PathBuf;
 
 use async_std::println;
 use rusqlite::params;
@@ -280,6 +281,27 @@ impl Node {
                 let _ = res.send(Err(error)).await;
             }
         }
+    }
+
+    pub async fn v2_api_get_storage_location(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let node_storage_path: String = env::var("NODE_STORAGE_PATH").unwrap_or_else(|_| "storage".to_string());
+        let base_path = env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        let storage_location = base_path
+            .join(node_storage_path)
+            .join("filesystem")
+            .to_string_lossy()
+            .to_string();
+        let _ = res.send(Ok(storage_location)).await;
+
+        Ok(())
     }
 
     pub async fn v2_api_get_default_embedding_model(
