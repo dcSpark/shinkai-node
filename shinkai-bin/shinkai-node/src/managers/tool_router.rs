@@ -179,7 +179,7 @@ impl ToolRouter {
         let node_env = fetch_node_environment();
 
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-            .unwrap_or_else(|_| format!("https://shinkai-store-302883622007.us-central1.run.app/store/defaults"));
+            .unwrap_or_else(|_| format!("https://store-api.shinkai.com/store/defaults"));
 
         let client = reqwest::Client::new();
         let response = client

@@ -156,6 +156,7 @@ impl LLMService for OpenAI {
                         llm_stopper,
                         session_id,
                         Some(tools_json),
+                        None,
                     )
                     .await
                 } else {
@@ -168,6 +169,7 @@ impl LLMService for OpenAI {
                         llm_stopper,
                         ws_manager_trait,
                         Some(tools_json),
+                        None,
                     )
                     .await
                 }
@@ -520,11 +522,16 @@ pub async fn handle_streaming_response(
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
     tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
+        .header("X-Shinkai-Version", headers.as_ref().and_then(|h| h.get("x-shinkai-version")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Identity", headers.as_ref().and_then(|h| h.get("x-shinkai-identity")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Signature", headers.as_ref().and_then(|h| h.get("x-shinkai-signature")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Metadata", headers.as_ref().and_then(|h| h.get("x-shinkai-metadata")).and_then(|v| v.as_str()).unwrap_or(""))
         .json(&payload)
         .send()
         .await?;
@@ -660,12 +667,17 @@ pub async fn handle_non_streaming_response(
     llm_stopper: Arc<LLMStopper>,
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
+        .header("X-Shinkai-Version", headers.as_ref().and_then(|h| h.get("x-shinkai-version")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Identity", headers.as_ref().and_then(|h| h.get("x-shinkai-identity")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Signature", headers.as_ref().and_then(|h| h.get("x-shinkai-signature")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Metadata", headers.as_ref().and_then(|h| h.get("x-shinkai-metadata")).and_then(|v| v.as_str()).unwrap_or(""))
         .json(&payload)
         .send();
     let mut response_fut = Box::pin(response_fut);

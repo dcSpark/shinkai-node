@@ -359,7 +359,7 @@ pub async fn compute_create_identity_quest(
 pub async fn compute_download_store_quest(db: Arc<SqliteManager>) -> Result<bool, String> {
     // Get the list of default tools from the store
     let url = std::env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-        .unwrap_or_else(|_| "https://shinkai-store-302883622007.us-central1.run.app/store/defaults".to_string());
+        .unwrap_or_else(|_| "https://store-api.shinkai.com/store/defaults".to_string());
 
     let client = reqwest::Client::new();
     let response = client
