@@ -126,6 +126,7 @@ pub async fn run_api(
             "x-shinkai-tool-id",
             "x-shinkai-app-id",
             "x-shinkai-llm-provider",
+            "x-shinkai-original-tool-router-key"
         ]);
 
     let v1_routes = warp::path("v1").and(
