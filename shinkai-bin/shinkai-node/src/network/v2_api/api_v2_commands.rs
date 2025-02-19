@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::{File, canonicalize};
 use std::io::Write;
 use std::{env, sync::Arc};
 use std::path::PathBuf;
@@ -296,13 +296,8 @@ impl Node {
             Some(val) => Some(val),
             None => Some("storage".to_string()),
         };
-        let base_path = env::current_exe().unwrap().parent().unwrap().to_path_buf();
-        let storage_location = base_path
-            .join(node_storage_path.unwrap_or_default())
-            .join("filesystem")
-            .to_string_lossy()
-            .to_string();
-        let _ = res.send(Ok(storage_location)).await;
+        let base_path = tokio::fs::canonicalize(node_storage_path.as_ref().unwrap()).await.unwrap();
+        let _ = res.send(Ok(base_path.to_string_lossy().to_string())).await;
 
         Ok(())
     }
