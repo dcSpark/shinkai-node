@@ -585,7 +585,10 @@ impl ToolRouter {
         println!("call_function additional_files: {:?}", additional_files);
         println!("call_function job_scope files: {:?}", all_files);
 
-        all_files.extend(additional_files);
+        // Use a HashSet to ensure unique paths
+        let mut unique_files: std::collections::HashSet<_> = all_files.into_iter().collect();
+        unique_files.extend(additional_files.into_iter());
+        let all_files: Vec<_> = unique_files.into_iter().collect();
 
         match shinkai_tool {
             ShinkaiTool::Python(python_tool, _is_enabled) => {
