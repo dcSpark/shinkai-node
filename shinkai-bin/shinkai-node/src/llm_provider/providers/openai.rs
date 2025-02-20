@@ -156,6 +156,7 @@ impl LLMService for OpenAI {
                         llm_stopper,
                         session_id,
                         Some(tools_json),
+                        None,
                     )
                     .await
                 } else {
@@ -168,6 +169,7 @@ impl LLMService for OpenAI {
                         llm_stopper,
                         ws_manager_trait,
                         Some(tools_json),
+                        None,
                     )
                     .await
                 }
@@ -520,14 +522,41 @@ pub async fn handle_streaming_response(
     llm_stopper: Arc<LLMStopper>,
     session_id: String,
     tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let res = client
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
+        .header("X-Shinkai-Version", headers.as_ref().and_then(|h| h.get("x-shinkai-version")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Identity", headers.as_ref().and_then(|h| h.get("x-shinkai-identity")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Signature", headers.as_ref().and_then(|h| h.get("x-shinkai-signature")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Metadata", headers.as_ref().and_then(|h| h.get("x-shinkai-metadata")).and_then(|v| v.as_str()).unwrap_or(""))
         .json(&payload)
         .send()
         .await?;
+
+    // Check for 429 status code
+    if res.status() == 429 {
+        let error_text = res.text().await?;
+        if let Ok(error_json) = serde_json::from_str::<JsonValue>(&error_text) {
+            if let Some(code) = error_json.get("code").and_then(|c| c.as_str()) {
+                if code == "QUOTA_EXCEEDED" && 
+                   payload.get("model").and_then(|m| m.as_str()).map_or(false, |model| {
+                       model == "FREE_TEXT_INFERENCE" || 
+                       model == "STANDARD_TEXT_INFERENCE" || 
+                       model == "PREMIUM_TEXT_INFERENCE"
+                   }) {
+                    let error_msg = error_json.get("error")
+                        .and_then(|e| e.as_str())
+                        .unwrap_or("Daily quota exceeded")
+                        .to_string();
+                    return Err(LLMProviderError::LLMServiceInferenceLimitReached(error_msg));
+                }
+            }
+        }
+        return Err(LLMProviderError::LLMServiceUnexpectedError("Rate limit exceeded".to_string()));
+    }
 
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
@@ -660,12 +689,17 @@ pub async fn handle_non_streaming_response(
     llm_stopper: Arc<LLMStopper>,
     ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     tools: Option<Vec<JsonValue>>,
+    headers: Option<JsonValue>,
 ) -> Result<LLMInferenceResponse, LLMProviderError> {
     let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(500));
     let response_fut = client
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
+        .header("X-Shinkai-Version", headers.as_ref().and_then(|h| h.get("x-shinkai-version")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Identity", headers.as_ref().and_then(|h| h.get("x-shinkai-identity")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Signature", headers.as_ref().and_then(|h| h.get("x-shinkai-signature")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header("X-Shinkai-Metadata", headers.as_ref().and_then(|h| h.get("x-shinkai-metadata")).and_then(|v| v.as_str()).unwrap_or(""))
         .json(&payload)
         .send();
     let mut response_fut = Box::pin(response_fut);
@@ -688,6 +722,29 @@ pub async fn handle_non_streaming_response(
             },
             response = &mut response_fut => {
                 let res = response?;
+                
+                // Check for 429 status code
+                if res.status() == 429 {
+                    let error_text = res.text().await?;
+                    if let Ok(error_json) = serde_json::from_str::<JsonValue>(&error_text) {
+                        if let Some(code) = error_json.get("code").and_then(|c| c.as_str()) {
+                            if code == "QUOTA_EXCEEDED" && 
+                               payload.get("model").and_then(|m| m.as_str()).map_or(false, |model| {
+                                   model == "FREE_TEXT_INFERENCE" || 
+                                   model == "STANDARD_TEXT_INFERENCE" || 
+                                   model == "PREMIUM_TEXT_INFERENCE"
+                               }) {
+                                let error_msg = error_json.get("error")
+                                    .and_then(|e| e.as_str())
+                                    .unwrap_or("Daily quota exceeded")
+                                    .to_string();
+                                return Err(LLMProviderError::LLMServiceInferenceLimitReached(error_msg));
+                            }
+                        }
+                    }
+                    return Err(LLMProviderError::LLMServiceUnexpectedError("Rate limit exceeded".to_string()));
+                }
+
                 let response_text = res.text().await?;
                 eprintln!("Raw server response: {}", response_text);
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
