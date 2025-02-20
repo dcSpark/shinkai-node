@@ -425,7 +425,7 @@ pub async fn compute_return_for_days_quest(db: Arc<SqliteManager>, required_days
     let start_date = chrono::DateTime::parse_from_rfc3339("2025-02-08T00:00:00Z")
         .map_err(|e| format!("Failed to parse start date: {}", e))?
         .with_timezone(&chrono::Utc);
-    let end_date = chrono::DateTime::parse_from_rfc3339("2025-02-20T23:59:59Z")
+    let end_date = chrono::DateTime::parse_from_rfc3339("2025-03-06T23:59:59Z")
         .map_err(|e| format!("Failed to parse end date: {}", e))?
         .with_timezone(&chrono::Utc);
 
@@ -545,10 +545,10 @@ pub async fn compute_use_rag_quest(db: Arc<SqliteManager>) -> Result<bool, Strin
     // Define the valid date range (Feb 9th to Feb 20th)
     let start_date = chrono::DateTime::parse_from_rfc3339("2025-02-08T00:00:00Z")
         .map_err(|e| format!("Failed to parse start date: {}", e))?
-        .with_timezone(&chrono::Utc);
-    let end_date = chrono::DateTime::parse_from_rfc3339("2025-02-20T23:59:59Z")
+        .with_timezone(&chrono::Local);
+    let end_date = chrono::DateTime::parse_from_rfc3339("2025-03-06T23:59:59Z")
         .map_err(|e| format!("Failed to parse end date: {}", e))?
-        .with_timezone(&chrono::Utc);
+        .with_timezone(&chrono::Local);
 
     // Collect unique dates when jobs with file resources were created
     let mut unique_dates = std::collections::HashSet::new();
@@ -557,7 +557,7 @@ pub async fn compute_use_rag_quest(db: Arc<SqliteManager>) -> Result<bool, Strin
         // Parse the job's creation date
         let job_date = chrono::DateTime::parse_from_rfc3339(&job.datetime_created())
             .map_err(|e| format!("Failed to parse job date: {}", e))?
-            .with_timezone(&chrono::Utc);
+            .with_timezone(&chrono::Local); // Convert to local timezone
 
         // Check if the job was created within the valid date range
         if job_date >= start_date && job_date <= end_date {
