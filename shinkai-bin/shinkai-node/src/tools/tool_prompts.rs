@@ -155,6 +155,7 @@ pub async fn generate_code_prompt(
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
   ```{language}
 # /// script
+# requires-python = ">=3.10,<3.12"
 # dependencies = [
 #   "requests",
 # ]
@@ -214,6 +215,7 @@ class OUTPUT:
   * This is an example of the commented script block that MUST be present before any python code or imports.
 
 # /// script
+# requires-python = ">=3.10,<3.12"
 # dependencies = [
 #   "requests",
 #   "ruff >=0.3.0",
