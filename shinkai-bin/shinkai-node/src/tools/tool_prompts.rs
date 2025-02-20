@@ -766,6 +766,7 @@ pub async fn tool_metadata_implementation_prompt(
   * If the code uses shinkaiSqliteQueryExecutor then fill the sqlTables and sqlQueries sections, otherwise these sections are empty.
   * sqlTables contains the complete table structures, they should be same as in the code.
   * sqlQueries contains from 1 to 3 examples that show how the data should be retrieved for usage.
+  * If properties from CONFIG have default values, then those properties shouldn't be in the required array.
 {oauth_explain}
 </agent_metadata_rules>
 
