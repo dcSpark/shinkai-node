@@ -71,14 +71,7 @@ impl IndexableVersion {
         let major = self.version_number / 1_000_000;
         let minor = (self.version_number % 1_000_000) / 1_000;
         let patch = self.version_number % 1_000;
-
-        if patch > 0 {
-            format!("{}.{}.{}", major, minor, patch)
-        } else if minor > 0 {
-            format!("{}.{}", major, minor)
-        } else {
-            format!("{}", major)
-        }
+        format!("{}.{}.{}", major, minor, patch)
     }
 }
 
@@ -124,10 +117,10 @@ mod tests {
         assert_eq!(version.to_version_string(), "1.2.3");
 
         let version = IndexableVersion::from_number(1_002_000);
-        assert_eq!(version.to_version_string(), "1.2");
+        assert_eq!(version.to_version_string(), "1.2.0");
 
         let version = IndexableVersion::from_number(1_000_000);
-        assert_eq!(version.to_version_string(), "1");
+        assert_eq!(version.to_version_string(), "1.0.0");
 
         let version = IndexableVersion::from_number(3);
         assert_eq!(version.to_version_string(), "0.0.3");
