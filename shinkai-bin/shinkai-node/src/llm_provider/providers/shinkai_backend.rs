@@ -95,9 +95,6 @@ impl LLMService for ShinkaiBackend {
                 // Generate proof using the node's signature public key
                 let (signature, metadata) = generate_proof(hex::encode(node_signature_public_key), messages_json.to_string())?;
 
-                eprintln!("Signature: {}", signature);
-                eprintln!("Metadata: {}", metadata);
-
                 // Set up initial payload with appropriate token limit field based on model capabilities
                 let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
                     json!({
