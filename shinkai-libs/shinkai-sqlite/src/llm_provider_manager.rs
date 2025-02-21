@@ -1,6 +1,6 @@
 use rusqlite::params;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
+    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName
 };
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -60,7 +60,7 @@ impl SqliteManager {
             &llm_provider.full_identity_name.full_name,
             &llm_provider.external_url,
             &llm_provider.api_key,
-            &model,
+            &model.to_lowercase(),
         ])?;
 
         Ok(())
@@ -117,7 +117,9 @@ impl SqliteManager {
     ) -> Result<Option<SerializedLLMProvider>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let llm_provider_id = Self::db_llm_provider_id(llm_provider_id, profile)?;
-        let mut stmt = conn.prepare("SELECT * FROM llm_providers WHERE db_llm_provider_id = ?1")?;
+
+        let mut stmt = conn.prepare("SELECT * FROM llm_providers WHERE db_llm_provider_id = ?1 COLLATE NOCASE")?;
+
         let llm_providers = stmt.query_map(params![&llm_provider_id], |row| {
             let full_identity_name: String = row.get(2)?;
             let model: String = row.get(5)?;
@@ -231,11 +233,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::schemas::{
-        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI},
-        shinkai_name::ShinkaiName,
-    };
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::{
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI}, shinkai_name::ShinkaiName
+    };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
