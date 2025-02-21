@@ -155,6 +155,7 @@ pub async fn generate_code_prompt(
   * To implement the task you can update the CONFIG, INPUTS and OUTPUT types to match the run function type:
   ```{language}
 # /// script
+# requires-python = ">=3.10,<3.12"
 # dependencies = [
 #   "requests",
 # ]
@@ -214,6 +215,7 @@ class OUTPUT:
   * This is an example of the commented script block that MUST be present before any python code or imports.
 
 # /// script
+# requires-python = ">=3.10,<3.12"
 # dependencies = [
 #   "requests",
 #   "ruff >=0.3.0",
@@ -764,6 +766,7 @@ pub async fn tool_metadata_implementation_prompt(
   * If the code uses shinkaiSqliteQueryExecutor then fill the sqlTables and sqlQueries sections, otherwise these sections are empty.
   * sqlTables contains the complete table structures, they should be same as in the code.
   * sqlQueries contains from 1 to 3 examples that show how the data should be retrieved for usage.
+  * If properties from CONFIG have default values, then those properties shouldn't be in the required array.
 {oauth_explain}
 </agent_metadata_rules>
 

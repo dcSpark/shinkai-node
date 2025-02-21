@@ -1,7 +1,7 @@
 use serde_json::json;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_sqlite::SqliteManager;
-use std::{collections::HashMap, fs};
+use std::collections::{HashMap, HashSet};
 
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::managers::tool_router::ToolCallFunctionResponse;
@@ -92,8 +92,10 @@ impl JobPromptGenerator {
             if let Ok(job_scope) = job_scope {
                 all_files.extend(job_scope);
             }
-            // Add fs files and Agent files
-            all_files.extend(additional_files);
+            // Add fs files and Agent files, ensuring no duplicates
+            let mut unique_files: HashSet<String> = all_files.into_iter().collect();
+            unique_files.extend(additional_files.into_iter());
+            all_files = unique_files.into_iter().collect();
 
             if !all_files.is_empty() {
                 prompt.add_content(
@@ -139,7 +141,8 @@ impl JobPromptGenerator {
             prompt.add_omni(content, image_files, SubPromptType::UserLastMessage, 100);
         }
 
-        // If function_call exists, it means that the LLM requested a function call and we need to send the response back
+        // If function_call exists, it means that the LLM requested a function call and we need to send the response
+        // back
         if let Some(function_call) = function_call {
             // Convert FunctionCall to Value
             let function_call_value = json!({
