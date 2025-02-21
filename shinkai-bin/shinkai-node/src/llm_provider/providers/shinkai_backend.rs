@@ -93,7 +93,9 @@ impl LLMService for ShinkaiBackend {
                     .map_err(|e| format!("Failed to get node signature public key: {}", e))?;
 
                 // Generate proof using the node's signature public key
-                let (signature, metadata) = generate_proof(hex::encode(node_signature_public_key), messages_json.to_string())?;
+                let empty_json = json!({});
+                let last_message = messages_json.as_array().and_then(|arr| arr.last()).unwrap_or(&empty_json);
+                let (signature, metadata) = generate_proof(hex::encode(node_signature_public_key), serde_json::to_string(last_message)?)?;
 
                 // Set up initial payload with appropriate token limit field based on model capabilities
                 let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
