@@ -22,7 +22,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
@@ -181,7 +181,7 @@ impl ToolRouter {
         let node_env = fetch_node_environment();
 
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
-            .unwrap_or_else(|_| format!("https://shinkai-store-302883622007.us-central1.run.app/store/defaults"));
+            .unwrap_or_else(|_| format!("https://store-api.shinkai.com/store/defaults"));
 
         let client = reqwest::Client::new();
         let response = client
@@ -624,7 +624,10 @@ impl ToolRouter {
         println!("call_function additional_files: {:?}", additional_files);
         println!("call_function job_scope files: {:?}", all_files);
 
-        all_files.extend(additional_files);
+        // Use a HashSet to ensure unique paths
+        let mut unique_files: std::collections::HashSet<_> = all_files.into_iter().collect();
+        unique_files.extend(additional_files.into_iter());
+        let all_files: Vec<_> = unique_files.into_iter().collect();
 
         match shinkai_tool {
             ShinkaiTool::MCPServer(mcp_server_tool, _is_enabled) => {

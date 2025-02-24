@@ -15,7 +15,7 @@ use std::time::Duration;
 // TODO: remove blocking / non-blocking methods
 
 lazy_static! {
-    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
+    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://api.shinkai.com/embeddings";
     pub static ref DEFAULT_EMBEDDINGS_LOCAL_URL: &'static str = "http://localhost:11434/";
 }
 
@@ -37,7 +37,8 @@ pub trait EmbeddingGenerator: Sync + Send {
     }
 
     /// Generates embeddings from the given list of input strings and ids.
-    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError>;
+    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>)
+        -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError>;
 
     /// Generate Embeddings for a list of input strings, sets ids to default.
     fn generate_embeddings_blocking_default(
@@ -62,7 +63,10 @@ pub trait EmbeddingGenerator: Sync + Send {
     async fn generate_embeddings(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError>;
 
     /// Generate Embeddings for a list of input strings, sets ids to default
-    async fn generate_embeddings_default(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
+    async fn generate_embeddings_default(
+        &self,
+        input_strings: &Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         self.generate_embeddings(input_strings).await
     }
 }
@@ -85,7 +89,10 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate Embeddings for an input list of strings by using the external API.
     /// This method batch generates whenever possible to increase speed.
     /// Note this method is blocking.
-    fn generate_embeddings_blocking(&self, input_strings: &Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
+    fn generate_embeddings_blocking(
+        &self,
+        input_strings: &Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         let input_strings: Vec<String> = input_strings
             .iter()
             .map(|s| s.chars().take(self.model_type.max_input_token_count()).collect())
@@ -361,7 +368,10 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
-    pub async fn generate_embedding_tei(&self, input_strings: Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
+    pub async fn generate_embedding_tei(
+        &self,
+        input_strings: Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         let max_retries = 3;
         let mut retry_count = 0;
         let mut shortening_retry = 0;
@@ -457,7 +467,10 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generates embeddings using a Hugging Face Text Embeddings Inference server
-    fn generate_embedding_tei_blocking(&self, input_strings: Vec<String>) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
+    fn generate_embedding_tei_blocking(
+        &self,
+        input_strings: Vec<String>,
+    ) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
         // Prepare the request body
         let request_body = EmbeddingArrayRequestBody {
             inputs: input_strings.iter().map(|s| s.to_string()).collect(),

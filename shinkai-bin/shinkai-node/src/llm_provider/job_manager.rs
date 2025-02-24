@@ -287,9 +287,7 @@ impl JobManager {
                             )
                             .await;
 
-                            if result.is_ok() {
-                                let _ = queue_immediate.lock().await.dequeue(&job_id).await;
-                            }
+                            let _ = queue_immediate.lock().await.dequeue(&job_id).await;
                             let mut inprog = in_progress.lock().await;
                             inprog.remove(&job_id);
                             drop(permit);
@@ -390,9 +388,7 @@ impl JobManager {
                                         )
                                         .await;
 
-                                        if result.is_ok() {
-                                            let _ = queue_normal.lock().await.dequeue(&job_id).await;
-                                        }
+                                        let _ = queue_normal.lock().await.dequeue(&job_id).await;
                                         let mut inprog = in_progress.lock().await;
                                         inprog.remove(&job_id);
                                         drop(permit);
@@ -446,9 +442,7 @@ impl JobManager {
                                             )
                                             .await;
 
-                                            if result.is_ok() {
-                                                let _ = queue_immediate.lock().await.dequeue(&imm_id).await;
-                                            }
+                                            let _ = queue_immediate.lock().await.dequeue(&imm_id).await;
                                             let mut inprog = in_progress.lock().await;
                                             inprog.remove(&imm_id);
                                             drop(permit);

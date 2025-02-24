@@ -1277,4 +1277,10 @@ pub enum NodeCommand {
         mcp_server: AddMCPServerRequest,
         res: Sender<Result<MCPServer, APIError>>,
     },
+    V2ApiSetToolEnabled {
+        bearer: String,
+        tool_router_key: String,
+        enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
