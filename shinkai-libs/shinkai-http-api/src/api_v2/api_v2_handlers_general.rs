@@ -6,6 +6,7 @@ use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, ShinkaiBackend,
 };
+use shinkai_message_primitives::schemas::mcp_server::MCPServer;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
     EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion
@@ -21,11 +22,13 @@ use warp::Filter;
 use std::collections::HashMap;
 
 use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
+use crate::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
 use crate::{
     node_api_router::{APIError, GetPublicKeysResponse},
     node_commands::NodeCommand,
 };
 
+use super::api_v2_handlers_mcp_servers::{add_mcp_server_handler, list_mcp_servers_handler};
 use super::api_v2_router::{create_success_response, with_node_name, with_sender};
 
 pub fn general_routes(
@@ -203,6 +206,19 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(compute_and_send_quests_status_handler);
 
+    let list_mcp_servers_route = warp::path("list_mcp_servers")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(list_mcp_servers_handler);
+
+    let add_mcp_server_route = warp::path("add_mcp_server")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_mcp_server_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -229,6 +245,8 @@ pub fn general_routes(
         .or(add_regex_pattern_route)
         .or(compute_quests_status_route)
         .or(compute_and_send_quests_status_route)
+        .or(list_mcp_servers_route)
+        .or(add_mcp_server_route)
 }
 
 #[derive(Deserialize)]

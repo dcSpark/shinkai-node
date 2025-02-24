@@ -3036,6 +3036,25 @@ impl Node {
                     .await;
                 });
             }
+
+            NodeCommand::V2ApiListMCPServers { bearer, res } => {
+                let db_clone: Arc<shinkai_sqlite::SqliteManager> = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_mcp_servers(db_clone, bearer, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiAddMCPServer {
+                bearer,
+                mcp_server,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_mcp_server(db_clone, bearer, mcp_server, res).await;
+                });
+            }
+
             NodeCommand::V2ApiSetToolEnabled {
                 bearer,
                 tool_router_key,
@@ -3047,6 +3066,7 @@ impl Node {
                     let _ = Node::v2_api_set_tool_enabled(db_clone, bearer, tool_router_key, enabled, res).await;
                 });
             }
+
             _ => (),
         }
     }

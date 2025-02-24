@@ -32,3 +32,4 @@ pub mod tool_router_key;
 pub mod wallet_complementary;
 pub mod wallet_mixed;
 pub mod ws_types;
+pub mod mcp_server;
