@@ -2109,6 +2109,12 @@ impl Node {
                     let _ = Node::v2_api_list_wallets(db_clone, wallet_manager_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiGetStorageLocation { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_storage_location(db_clone, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiRequestInvoice {
                 bearer,
                 tool_key_name,
