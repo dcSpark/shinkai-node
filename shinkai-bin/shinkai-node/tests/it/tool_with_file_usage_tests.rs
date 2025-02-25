@@ -340,7 +340,7 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
                         let tool_execution_result = api_execute_tool(
                             node1_commands_sender.clone(),
                             node1_api_key.clone(),
-                            "local:::text-file-copy:::text-file-copy".to_string(),
+                            "local:::shinkai_test:::text_file_copy".to_string(),
                             parameters,
                             "text-file-copy".to_string(),
                             "text-file-copy".to_string(),
