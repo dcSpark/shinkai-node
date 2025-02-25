@@ -6979,7 +6979,7 @@ dependencies = [
 [[package]]
 name = "shinkai_tools_runner"
 version = "0.0.0"
-source = "git+https://github.com/dcSpark/shinkai-code-runner.git?branch=feature%2Fmount-abs#0ab96e3d6818d3ae7db68d94ad2a8c91987660b6"
+source = "git+https://github.com/dcSpark/shinkai-code-runner.git?branch=feature%2Fmount-abs#3b401a201ed68c74e7f448f6152069dc4f644f32"
 dependencies = [
  "anyhow",
  "base64-simd",
