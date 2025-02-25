@@ -3,6 +3,7 @@ use serde_json::Value;
 use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader,
     tool_playground::{SqlQuery, SqlTable},
+    tool_types::ToolResult,
 };
 
 // Example output:
@@ -132,7 +133,7 @@ fn generate_parameters(tool: &ShinkaiToolHeader) -> String {
     format!("input: Dict[str, Any]")
 }
 
-fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
+fn generate_docstring(tool: &ShinkaiToolHeader, tool_result: ToolResult, indent: &str) -> String {
     let mut doc = String::new();
 
     // Main description
@@ -156,26 +157,24 @@ fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
 
     // Returns documentation
     doc.push_str(&format!("\n{}Returns:\n{}    Dict[str, Any]: {{\n", indent, indent));
-    if let Ok(output_schema) = serde_json::from_str::<Value>(&tool.output_arg.json) {
-        if let Some(properties) = output_schema.get("properties").and_then(|v| v.as_object()) {
-            for (prop_name, prop_value) in properties {
-                let type_str = json_type_to_python(
-                    prop_value.get("type").unwrap_or(&Value::String("Any".to_string())),
-                    prop_value.get("items"),
-                );
-                let desc = prop_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
-                doc.push_str(&format!(
-                    "{}        {}: {} {}\n",
-                    indent,
-                    prop_name,
-                    type_str,
-                    if !desc.is_empty() {
-                        format!("- {}", desc)
-                    } else {
-                        String::new()
-                    }
-                ));
-            }
+    if let Some(properties) = tool_result.properties.as_object() {
+        for (prop_name, prop_value) in properties {
+            let type_str = json_type_to_python(
+                prop_value.get("type").unwrap_or(&Value::String("Any".to_string())),
+                prop_value.get("items"),
+            );
+            let desc = prop_value.get("description").and_then(|d| d.as_str()).unwrap_or("");
+            doc.push_str(&format!(
+                "{}        {}: {} {}\n",
+                indent,
+                prop_name,
+                type_str,
+                if !desc.is_empty() {
+                    format!("- {}", desc)
+                } else {
+                    String::new()
+                }
+            ));
         }
     }
     doc.push_str(&format!("{}    }}\n{}\"\"\"", indent, indent));
@@ -184,6 +183,7 @@ fn generate_docstring(tool: &ShinkaiToolHeader, indent: &str) -> String {
 
 pub fn generate_python_definition(
     tool: ShinkaiToolHeader,
+    tool_result: ToolResult,
     sql_tables: Vec<SqlTable>,
     sql_queries: Vec<SqlQuery>,
     generate_pyi: bool,
@@ -198,7 +198,7 @@ pub fn generate_python_definition(
         python_output.push_str(") -> Dict[str, Any]:\n");
 
         // Add docstring to .pyi
-        python_output.push_str(&generate_docstring(&tool, "    "));
+        python_output.push_str(&generate_docstring(&tool, tool_result, "    "));
         python_output.push_str("\n    pass\n");
 
         return python_output;
@@ -207,7 +207,7 @@ pub fn generate_python_definition(
         python_output.push_str(&format!("async def {}(", function_name));
         python_output.push_str(&generate_parameters(&tool));
         python_output.push_str(") -> Dict[str, Any]:\n");
-        python_output.push_str(&generate_docstring(&tool, "    "));
+        python_output.push_str(&generate_docstring(&tool, tool_result, "    "));
 
         // Add the implementation
         python_output.push_str(
@@ -306,4 +306,180 @@ pub fn generate_python_definition(
     }
 
     python_output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
+
+    #[test]
+    fn test_generate_python_definition() {
+        // Create a test tool header
+        let tool = ShinkaiToolHeader {
+            name: "Test Tool".to_string(),
+            description: "A test tool for unit testing".to_string(),
+            tool_router_key: "local:::test:::test_tool".to_string(),
+            tool_type: "Python".to_string(),
+            formatted_tool_summary_for_ui: "Test Tool Summary".to_string(),
+            author: "test_author".to_string(),
+            version: "1.0.0".to_string(),
+            enabled: true,
+            input_args: {
+                let mut params = Parameters::new();
+                params.properties.insert(
+                    "string_param".to_string(),
+                    Property::new("string".to_string(), "A string parameter".to_string()),
+                );
+                params.properties.insert(
+                    "number_param".to_string(),
+                    Property::new("number".to_string(), "A number parameter".to_string()),
+                );
+                params.required.push("string_param".to_string());
+                params
+            },
+            output_arg: shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg { json: "{}".to_string() },
+            config: None,
+            usage_type: None,
+            tool_offering: None,
+        };
+
+        // Create a test tool result
+        let tool_result = ToolResult::new(
+            "object".to_string(),
+            json!({
+                "result": { "type": "string", "description": "The result" },
+                "count": { "type": "number", "description": "Count value" }
+            }),
+            vec!["result".to_string()],
+        );
+
+        // Generate Python definition
+        let py_def = generate_python_definition(
+            tool,
+            tool_result,
+            vec![], // No SQL tables
+            vec![], // No SQL queries
+            false,  // Not generating .pyi
+        );
+
+        // Verify the output contains expected elements
+        assert!(py_def.contains("\"\"\"A test tool for unit testing"));
+        assert!(py_def.contains("async def test_tool"));
+        assert!(py_def.contains("input: Dict[str, Any]"));
+        assert!(py_def.contains("string_param: str (required)"));
+        assert!(py_def.contains("number_param: float (optional)"));
+        assert!(py_def.contains("result: str"));
+        assert!(py_def.contains("count: float"));
+        assert!(py_def.contains("Dict[str, Any]"));
+        assert!(py_def.contains("'tool_router_key': 'local:::test:::test_tool'"));
+    }
+
+    #[test]
+    fn test_generate_python_definition_with_sql() {
+        // Create a test tool header similar to previous test
+        let tool = ShinkaiToolHeader {
+            name: "SQL Test Tool".to_string(),
+            description: "A test tool with SQL capabilities".to_string(),
+            tool_router_key: "local:::test:::sql_test_tool".to_string(),
+            tool_type: "Python".to_string(),
+            formatted_tool_summary_for_ui: "SQL Test Tool Summary".to_string(),
+            author: "test_author".to_string(),
+            version: "1.0.0".to_string(),
+            enabled: true,
+            input_args: Parameters::new(),
+            output_arg: shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg { json: "{}".to_string() },
+            config: None,
+            usage_type: None,
+            tool_offering: None,
+        };
+
+        // Create SQL tables and queries
+        let sql_tables = vec![SqlTable {
+            name: "users".to_string(),
+            definition: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)".to_string(),
+        }];
+
+        let sql_queries = vec![SqlQuery {
+            name: "get_users".to_string(),
+            query: "SELECT * FROM users".to_string(),
+        }];
+
+        let tool_result = ToolResult::new("object".to_string(), json!({}), vec![]);
+
+        // Generate Python definition
+        let py_def = generate_python_definition(tool, tool_result, sql_tables, sql_queries, false);
+
+        // Verify SQL-related content
+        assert!(py_def.contains("Query the SQL database"));
+        assert!(py_def.contains("CREATE TABLE users"));
+        assert!(py_def.contains("SELECT * FROM users"));
+        assert!(py_def.contains("async def query_sql_test_tool"));
+    }
+
+    #[test]
+    fn test_generate_python_pyi() {
+        // Test generating .pyi stub file
+        let tool = ShinkaiToolHeader {
+            name: "PYI Test Tool".to_string(),
+            description: "A test tool for .pyi generation".to_string(),
+            tool_router_key: "local:::test:::pyi_test_tool".to_string(),
+            tool_type: "Python".to_string(),
+            formatted_tool_summary_for_ui: "PYI Test Tool Summary".to_string(),
+            author: "test_author".to_string(),
+            version: "1.0.0".to_string(),
+            enabled: true,
+            input_args: Parameters::new(),
+            output_arg: shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg { json: "{}".to_string() },
+            config: None,
+            usage_type: None,
+            tool_offering: None,
+        };
+
+        let tool_result = ToolResult::new(
+            "object".to_string(),
+            json!({
+                "result": { "type": "string" }
+            }),
+            vec!["result".to_string()],
+        );
+
+        let py_def = generate_python_definition(
+            tool,
+            tool_result,
+            vec![],
+            vec![],
+            true, // Generate .pyi
+        );
+
+        // Verify .pyi specific content
+        assert!(py_def.contains("async def pyi_test_tool"));
+        assert!(py_def.contains("Dict[str, Any]"));
+        assert!(py_def.contains("pass")); // Stub implementation
+        assert!(!py_def.contains("requests.post")); // Implementation should not be included
+        assert!(!py_def.contains("os.environ")); // Implementation should not be included
+    }
+
+    #[test]
+    fn test_json_type_to_python() {
+        // Test various JSON type conversions
+        assert_eq!(json_type_to_python(&json!("string"), None), "str");
+        assert_eq!(json_type_to_python(&json!("number"), None), "float");
+        assert_eq!(json_type_to_python(&json!("integer"), None), "int");
+        assert_eq!(json_type_to_python(&json!("boolean"), None), "bool");
+        assert_eq!(json_type_to_python(&json!("object"), None), "Dict[str, Any]");
+        assert_eq!(json_type_to_python(&json!("any"), None), "Any");
+
+        // Test array types
+        assert_eq!(
+            json_type_to_python(&json!("array"), Some(&json!({"type": "string"}))),
+            "List[str]"
+        );
+        assert_eq!(
+            json_type_to_python(&json!("array"), Some(&json!({"type": "number"}))),
+            "List[float]"
+        );
+        assert_eq!(json_type_to_python(&json!("array"), None), "List[Any]");
+    }
 }

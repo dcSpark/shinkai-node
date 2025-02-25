@@ -28,4 +28,5 @@ mod it {
 
     mod change_nodes_name_tests;
     mod native_tool_tests;
+    mod tool_with_file_usage_tests;
 }
