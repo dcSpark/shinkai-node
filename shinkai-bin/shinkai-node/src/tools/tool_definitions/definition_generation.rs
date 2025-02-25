@@ -2,7 +2,8 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::tool_types::ToolResult;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -129,6 +130,35 @@ pub async fn generate_tool_definitions(
             Ok(tool_data) => tool_data,
             Err(e) => return Err(APIError::from(e.to_string())),
         };
+        let tool_result = match tool_data.clone() {
+            ShinkaiTool::Deno(deno_tool, _) => deno_tool.result,
+            ShinkaiTool::Python(python_tool, _) => python_tool.result,
+            ShinkaiTool::Rust(rust_tool, _) => {
+                let value = serde_json::from_str::<serde_json::Value>(&rust_tool.output_arg.json).unwrap();
+                let result_type = value["result_type"].as_str().unwrap_or("object");
+                let properties = value["properties"].clone();
+                let required = value["required"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect();
+                ToolResult::new(result_type.to_string(), properties, required)
+            }
+            ShinkaiTool::Network(network_tool, _) => {
+                let value = serde_json::from_str::<serde_json::Value>(&network_tool.output_arg.json).unwrap();
+                let result_type = value["result_type"].as_str().unwrap_or("object");
+                let properties = value["properties"].clone();
+                let required = value["required"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect();
+                ToolResult::new(result_type.to_string(), properties, required)
+            }
+            _ => return Err(APIError::from("Unsupported tool type".to_string())),
+        };
 
         match language {
             CodeLanguage::Typescript => {
@@ -145,6 +175,7 @@ pub async fn generate_tool_definitions(
                 generated_names.insert(function_name);
                 output.push_str(&generate_typescript_definition(
                     tool_header,
+                    tool_result,
                     tool_data.sql_tables(),
                     tool_data.sql_queries(),
                     only_headers,
@@ -164,6 +195,7 @@ pub async fn generate_tool_definitions(
                 generated_names.insert(function_name);
                 output.push_str(&generate_python_definition(
                     tool_header,
+                    tool_result,
                     tool_data.sql_tables(),
                     tool_data.sql_queries(),
                     only_headers,
