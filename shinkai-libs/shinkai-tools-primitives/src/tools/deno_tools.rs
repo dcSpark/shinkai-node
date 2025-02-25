@@ -63,21 +63,21 @@ impl DenoTool {
         Ok(deserialized)
     }
 
-    pub async fn run(
+    async fn run_internal(
         &self,
-        envs: HashMap<String, String, RandomState>,
+        envs: HashMap<String, String>,
         api_ip: String,
         api_port: u16,
         support_files: HashMap<String, String>,
-        parameters: serde_json::Map<String, serde_json::Value>,
+        parameters: Map<String, serde_json::Value>,
         extra_config: Vec<ToolConfig>,
         node_storage_path: String,
         app_id: String,
         tool_id: String,
         node_name: ShinkaiName,
         is_temporary: bool,
-        files_tool_router_key: Option<String>,
-        mounts: Option<Vec<String>>,
+        assets_files: Vec<PathBuf>,
+        mount_files: Vec<PathBuf>,
     ) -> Result<RunResult, ToolError> {
         println!(
             "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
@@ -164,52 +164,6 @@ impl DenoTool {
         support_files.iter().for_each(|(file_name, file_code)| {
             code_files.insert(format!("{}.ts", file_name), file_code.clone());
         });
-
-        let mount_files = mounts
-            .clone()
-            .unwrap_or_default()
-            .iter()
-            .map(|mount| PathBuf::from(mount))
-            .collect();
-
-        // Get assets files from tool router key
-        let assets_files = match &files_tool_router_key {
-            Some(tool_router_key) => {
-                let tool_key = ToolRouterKey::from_string(tool_router_key)?;
-                let path = PathBuf::from(&node_storage_path)
-                    .join(".tools_storage")
-                    .join("tools")
-                    .join(tool_key.convert_to_path());
-
-                let assets_files_: Vec<PathBuf> = self
-                    .assets
-                    .clone()
-                    .unwrap_or(vec![])
-                    .iter()
-                    .map(|asset| path.clone().join(asset))
-                    .collect();
-                println!("[Running DenoTool] Assets files: {:?}", assets_files_);
-
-                let mut assets_files = Vec::new();
-                if path.exists() {
-                    let _ = create_dir_all(&home_path);
-                    for entry in std::fs::read_dir(&path)
-                        .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
-                    {
-                        let entry = entry
-                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
-                        let file_path = entry.path();
-                        if file_path.is_file() {
-                            assets_files.push(file_path.clone());
-                            // In case of docker the files should be located in the home directory
-                            let _ = std::fs::copy(&file_path, &home_path.join(file_path.file_name().unwrap()));
-                        }
-                    }
-                }
-                assets_files
-            }
-            None => vec![],
-        };
 
         // Setup the engine with the code files and config
         let tool = DenoRunner::new(
@@ -266,6 +220,90 @@ impl DenoTool {
         }
     }
 
+    pub async fn run(
+        &self,
+        envs: HashMap<String, String, RandomState>,
+        api_ip: String,
+        api_port: u16,
+        support_files: HashMap<String, String>,
+        parameters: serde_json::Map<String, serde_json::Value>,
+        extra_config: Vec<ToolConfig>,
+        node_storage_path: String,
+        app_id: String,
+        tool_id: String,
+        node_name: ShinkaiName,
+        is_temporary: bool,
+        files_tool_router_key: Option<String>,
+        mounts: Option<Vec<String>>,
+    ) -> Result<RunResult, ToolError> {
+        let mount_files = mounts
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .map(|mount| PathBuf::from(mount))
+            .collect();
+
+        // Get assets files from tool router key
+        let assets_files = match &files_tool_router_key {
+            Some(tool_router_key) => {
+                let tool_key = ToolRouterKey::from_string(tool_router_key)?;
+                let path = PathBuf::from(&node_storage_path)
+                    .join(".tools_storage")
+                    .join("tools")
+                    .join(tool_key.convert_to_path());
+
+                let assets_files_: Vec<PathBuf> = self
+                    .assets
+                    .clone()
+                    .unwrap_or(vec![])
+                    .iter()
+                    .map(|asset| path.clone().join(asset))
+                    .collect();
+                println!("[Running DenoTool] Assets files: {:?}", assets_files_);
+
+                let mut assets_files = Vec::new();
+                if path.exists() {
+                    let home_path = PathBuf::from(&node_storage_path)
+                        .join("tools_storage")
+                        .join(app_id.clone())
+                        .join("home");
+                    let _ = create_dir_all(&home_path);
+                    for entry in std::fs::read_dir(&path)
+                        .map_err(|e| ToolError::ExecutionError(format!("Failed to read assets directory: {}", e)))?
+                    {
+                        let entry = entry
+                            .map_err(|e| ToolError::ExecutionError(format!("Failed to read directory entry: {}", e)))?;
+                        let file_path = entry.path();
+                        if file_path.is_file() {
+                            assets_files.push(file_path.clone());
+                            // In case of docker the files should be located in the home directory
+                            let _ = std::fs::copy(&file_path, &home_path.join(file_path.file_name().unwrap()));
+                        }
+                    }
+                }
+                assets_files
+            }
+            None => vec![],
+        };
+
+        self.run_internal(
+            envs,
+            api_ip,
+            api_port,
+            support_files,
+            parameters,
+            extra_config,
+            node_storage_path,
+            app_id,
+            tool_id,
+            node_name,
+            is_temporary,
+            assets_files,
+            mount_files,
+        )
+        .await
+    }
+
     pub async fn run_on_demand(
         &self,
         envs: HashMap<String, String>,
@@ -282,92 +320,6 @@ impl DenoTool {
         playground_assets_files: Vec<PathBuf>,
         mounts: Option<Vec<String>>,
     ) -> Result<RunResult, ToolError> {
-        println!(
-            "[Running DenoTool] Named: {}, Input: {:?}, Extra Config: {:?}",
-            self.name, parameters, self.config
-        );
-
-        let code = self.js_code.clone();
-
-        // Create a hashmap with key_name and key_value
-        let mut config: HashMap<String, String> = self
-            .config
-            .iter()
-            .filter_map(|c| {
-                let ToolConfig::BasicConfig(basic_config) = c;
-                basic_config
-                    .key_value
-                    .clone()
-                    .map(|value| (basic_config.key_name.clone(), value))
-            })
-            .collect();
-
-        // Merge extra_config into the config hashmap
-        for c in extra_config {
-            let ToolConfig::BasicConfig(basic_config) = c;
-            if let Some(value) = basic_config.key_value {
-                config.insert(basic_config.key_name.clone(), value);
-            }
-        }
-
-        // Convert the config hashmap to a JSON value
-        let config_json = serde_json::to_value(&config).map_err(|e| ToolError::SerializationError(e.to_string()))?;
-
-        fn print_result(result: &Result<RunResult, ExecutionError>) {
-            match result {
-                Ok(result) => println!("[Running DenoTool] Result: {:?}", result.data),
-                Err(e) => println!("[Running DenoTool] Error: {:?}", e),
-            }
-        }
-
-        println!(
-            "[Running DenoTool] Config: {:?}. Parameters: {:?}",
-            config_json, parameters
-        );
-        println!(
-            "[Running DenoTool] Code: {} ... {}",
-            &code[..120.min(code.len())],
-            &code[code.len().saturating_sub(400)..]
-        );
-        println!(
-            "[Running DenoTool] Config JSON: {}. Parameters: {:?}",
-            config_json, parameters
-        );
-
-        // Create the directory structure for the tool
-        let full_path: PathBuf = Path::new(&node_storage_path).join("tools_storage");
-        let home_path = full_path.clone().join(app_id.clone()).join("home");
-        let logs_path = full_path.clone().join(app_id.clone()).join("logs");
-
-        // Ensure the root directory exists. Subdirectories will be handled by the engine
-        std::fs::create_dir_all(full_path.clone())
-            .map_err(|e| ToolError::ExecutionError(format!("Failed to create directory structure: {}", e)))?;
-        println!(
-            "[Running DenoTool] Full path: {:?}. App ID: {}. Tool ID: {}",
-            full_path, app_id, tool_id
-        );
-
-        // If the tool is temporary, create a .temporal file
-        if is_temporary {
-            // TODO: Garbage collector will delete the tool folder after some time
-            let temporal_path = full_path.join(".temporal");
-            std::fs::write(temporal_path, "")
-                .map_err(|e| ToolError::ExecutionError(format!("Failed to create .temporal file: {}", e)))?;
-        }
-
-        // Get the start time, this is used to check if the files were modified after the tool was executed
-        let start_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        // Create map with file name and source code
-        let mut code_files = HashMap::new();
-        code_files.insert("index.ts".to_string(), code);
-        support_files.iter().for_each(|(file_name, file_code)| {
-            code_files.insert(format!("{}.ts", file_name), file_code.clone());
-        });
-
         let mount_files = mounts
             .clone()
             .unwrap_or_default()
@@ -385,6 +337,10 @@ impl DenoTool {
                 .to_string_lossy()
                 .into_owned();
 
+            let home_path = PathBuf::from(&node_storage_path)
+                .join("tools_storage")
+                .join(app_id.clone())
+                .join("home");
             let dest_path = home_path.join(&file_name);
             let _ = create_dir_all(&home_path);
             std::fs::copy(&asset, &dest_path)
@@ -392,59 +348,22 @@ impl DenoTool {
             assets_files.push(dest_path);
         }
 
-        // Setup the engine with the code files and config
-        let tool = DenoRunner::new(
-            CodeFiles {
-                files: code_files.clone(),
-                entrypoint: "index.ts".to_string(),
-            },
-            config_json,
-            Some(DenoRunnerOptions {
-                context: ExecutionContext {
-                    context_id: app_id.clone(),
-                    execution_id: tool_id.clone(),
-                    code_id: "".to_string(),
-                    storage: full_path.clone(),
-                    assets_files,
-                    mount_files,
-                },
-                deno_binary_path: PathBuf::from(
-                    env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
-                        .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
-                ),
-                shinkai_node_location: ShinkaiNodeLocation {
-                    protocol: String::from("http"),
-                    host: api_ip,
-                    port: api_port,
-                },
-                ..Default::default()
-            }),
-        );
-
-        // Run the tool with DENO
-        let result = tool
-            .run(Some(envs), serde_json::Value::Object(parameters.clone()), None)
-            .await;
-
-        print_result(&result);
-        match result {
-            Ok(result) => {
-                update_result_with_modified_files(result, start_time, &home_path, &logs_path, &node_name, &app_id)
-            }
-            Err(e) => {
-                let files = get_files_after_with_protocol(start_time, &home_path, &logs_path, &node_name, &app_id)
-                    .into_iter()
-                    .map(|file| file.as_str().unwrap_or_default().to_string())
-                    .collect::<Vec<String>>()
-                    .join(" ");
-
-                Err(ToolError::ExecutionError(format!(
-                    "Error: {}. Files: {}",
-                    e.message().to_string(),
-                    files
-                )))
-            }
-        }
+        self.run_internal(
+            envs,
+            api_ip,
+            api_port,
+            support_files,
+            parameters,
+            extra_config,
+            node_storage_path,
+            app_id,
+            tool_id,
+            node_name,
+            is_temporary,
+            assets_files,
+            mount_files,
+        )
+        .await
     }
 
     pub async fn check(
