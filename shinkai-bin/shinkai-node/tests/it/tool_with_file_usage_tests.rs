@@ -5,7 +5,6 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
     LLMProviderInterface, OpenAI, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair
 };
@@ -31,8 +30,8 @@ use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_too
 use crate::it::utils::vecfs_test_utils::{create_folder, upload_file};
 
 use super::utils::db_handlers::setup_node_storage_path;
-use super::utils::node_test_api::{api_registration_device_node_profile_main, wait_for_default_tools};
-use super::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
+use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, wait_for_default_tools};
+use super::utils::test_boilerplate::run_test_one_node_network;
 
 // Import the necessary types for creating a ShinkaiTool
 use shinkai_tools_primitives::tools::parameters::Parameters;
@@ -54,145 +53,79 @@ fn text_file_copy_tool_test() {
     std::env::set_var("WELCOME_MESSAGE", "false");
 
     setup();
-    let rt = Runtime::new().unwrap();
 
     let mut server = Server::new();
 
-    rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sep-shinkai";
-        let node1_subidentity_name = "main";
-        let node1_device_name = "node1_device";
-        let node1_agent = "node1_gpt_agent";
+    run_test_one_node_network(|env| {
+        Box::pin(async move {
+            let node1_commands_sender = env.node1_commands_sender.clone();
+            let node1_identity_name = env.node1_identity_name.clone();
+            let node1_profile_name = env.node1_profile_name.clone();
+            let node1_device_name = env.node1_device_name.clone();
+            let node1_agent = env.node1_llm_provider.clone();
+            let node1_encryption_pk = env.node1_encryption_pk.clone();
+            let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
+            let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
+            let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
+            let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
+            let node1_api_key = env.node1_api_key.clone();
+            let node1_abort_handler = env.node1_abort_handler;
 
-        let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-
-        let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
-            bounded(100);
-
-        let (node1_profile_identity_sk, _node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
-        let (node1_profile_encryption_sk, _node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
-
-        let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
-        let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
-
-        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
-
-        let node1_profile_name = "main";
-        let api_key_bearer = "my_api_key".to_string();
-
-        // Agent pre-creation
-        let _m = server
-            .mock("POST", "/v1/chat/completions")
-            .match_header("authorization", "Bearer mockapikey")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(
-                r#"{
-            "id": "chatcmpl-123",
-            "object": "chat.completion",
-            "created": 1677652288,
-            "choices": [{
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": "The Roman Empire is very interesting"
-                },
-                "finish_reason": "stop"
-            }],
-            "usage": {
-                "prompt_tokens": 9,
-                "completion_tokens": 12,
-                "total_tokens": 21
-            }
-        }"#,
-            )
-            .create();
-
-        let agent_name = ShinkaiName::new(
-            format!(
-                "{}/{}/agent/{}",
-                node1_identity_name, node1_subidentity_name, node1_agent
-            )
-            .to_string(),
-        )
-        .unwrap();
-
-        let open_ai = OpenAI {
-            model_type: "gpt-3.5-turbo-1106".to_string(),
-        };
-
-        let agent = SerializedLLMProvider {
-            id: node1_agent.to_string(),
-            full_identity_name: agent_name,
-            external_url: Some(server.url()),
-            api_key: Some("mockapikey".to_string()),
-            model: LLMProviderInterface::OpenAI(open_ai),
-        };
-
-        // Create node1
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let node1 = Node::new(
-            node1_identity_name.to_string(),
-            addr1,
-            clone_signature_secret_key(&node1_identity_sk),
-            node1_encryption_sk.clone(),
-            None,
-            None,
-            0,
-            node1_commands_receiver,
-            node1_db_path,
-            "".to_string(),
-            None,
-            true,
-            vec![agent],
-            None,
-            None,
-            default_embedding_model(),
-            supported_embedding_models(),
-            Some(api_key_bearer.clone()),
-        );
-
-        let node1_handler = tokio::spawn(async move {
-            shinkai_log(ShinkaiLogOption::Tests, ShinkaiLogLevel::Debug, "Starting Node 1");
-            let _ = node1.await.lock().await.start().await;
-        });
-
-        let abort_handler = node1_handler.abort_handle();
-
-        let interactions_handler = tokio::spawn(async move {
-            shinkai_log(
-                ShinkaiLogOption::Tests,
-                ShinkaiLogLevel::Debug,
-                "\n\nRegistration of an Admin Profile",
-            );
+            // Agent pre-creation
+            let _m = server
+                .mock("POST", "/v1/chat/completions")
+                .match_header("authorization", "Bearer mockapikey")
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(
+                    r#"{
+                "id": "chatcmpl-123",
+                "object": "chat.completion",
+                "created": 1677652288,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "The Roman Empire is very interesting"
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 12,
+                    "total_tokens": 21
+                }
+            }"#,
+                )
+                .create();
 
             {
                 // Register a Profile in Node1 and verifies it
                 eprintln!("\n\nRegister a Device with main Profile in Node1 and verify it");
-                api_registration_device_node_profile_main(
+                api_initial_registration_with_no_code_for_device(
                     node1_commands_sender.clone(),
-                    node1_subidentity_name,
-                    node1_identity_name,
+                    env.node1_profile_name.as_str(),
+                    env.node1_identity_name.as_str(),
                     node1_encryption_pk,
                     node1_device_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_device_identity_sk),
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_device_name,
+                    node1_device_name.as_str(),
                 )
                 .await;
 
                 // Wait for default tools to be ready
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
-                    api_key_bearer.clone(),
+                    node1_api_key.clone(),
                     20, // Wait up to 20 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
                 assert!(tools_ready, "Default tools should be ready within 20 seconds");
             }
+
             {
                 // Check that Rust tools are installed, retry up to 10 times
                 let mut retry_count = 0;
@@ -235,6 +168,7 @@ fn text_file_copy_tool_test() {
                 }
                 eprintln!("Rust tools were installed after {} retries", retry_count);
             }
+
             {
                 // Create a folder and upload a test file
                 eprintln!("\n\n### Creating a folder and uploading a test file \n\n");
@@ -247,8 +181,8 @@ fn text_file_copy_tool_test() {
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk,
-                    node1_identity_name,
-                    node1_profile_name,
+                    node1_identity_name.as_str(),
+                    node1_profile_name.as_str(),
                 )
                 .await;
 
@@ -263,7 +197,7 @@ fn text_file_copy_tool_test() {
                     &node1_commands_sender,
                     "/test_folder",
                     test_file_path,
-                    &api_key_bearer.clone(),
+                    &node1_api_key.clone(),
                 )
                 .await;
 
@@ -358,7 +292,7 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
 
                 node1_commands_sender
                     .send(NodeCommand::V2ApiAddShinkaiTool {
-                        bearer: api_key_bearer.clone(),
+                        bearer: node1_api_key.clone(),
                         shinkai_tool: shinkai_tool_with_assets,
                         res: res_sender,
                     })
@@ -384,14 +318,17 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
                             vector_search_mode: VectorSearchMode::FillUpTo25k,
                         };
 
+                        // Create the agent subidentity string in the correct format
+                        let agent_subidentity = format!("{}/agent/{}", node1_profile_name, node1_agent).to_string();
+
                         let job_id = api_create_job_with_scope(
                             node1_commands_sender.clone(),
                             clone_static_secret_key(&node1_profile_encryption_sk),
                             node1_encryption_pk,
                             clone_signature_secret_key(&node1_profile_identity_sk),
-                            node1_identity_name,
-                            node1_subidentity_name,
-                            &node1_agent.clone(),
+                            node1_identity_name.as_str(),
+                            node1_profile_name.as_str(),
+                            &agent_subidentity.clone(),
                             job_scope,
                         )
                         .await;
@@ -402,7 +339,7 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
 
                         let tool_execution_result = api_execute_tool(
                             node1_commands_sender.clone(),
-                            api_key_bearer.clone(),
+                            node1_api_key.clone(),
                             "local:::text-file-copy:::text-file-copy".to_string(),
                             parameters,
                             "text-file-copy".to_string(),
@@ -446,26 +383,9 @@ async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
 
                 // Clean up the test file
                 fs::remove_file(test_file_path).unwrap();
-
-                abort_handler.abort();
             }
-        });
 
-        // Wait for all tasks to complete
-        let result = tokio::try_join!(node1_handler, interactions_handler);
-
-        match result {
-            Ok(_) => {}
-            Err(e) => {
-                // Check if the error is because one of the tasks was aborted
-                if e.is_cancelled() {
-                    println!("One of the tasks was aborted, but this is expected.");
-                } else {
-                    // If the error is not due to an abort, then it's unexpected
-                    panic!("An unexpected error occurred: {:?}", e);
-                }
-            }
-        }
+            node1_abort_handler.abort();
+        })
     });
-    rt.shutdown_background();
 }
