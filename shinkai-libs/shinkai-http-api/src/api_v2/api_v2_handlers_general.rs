@@ -49,6 +49,12 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(initial_registration_handler);
 
+    let get_storage_location_route = warp::path("storage_location")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_storage_location_handler);
+
     let get_default_embedding_model_route = warp::path("default_embedding_model")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -206,6 +212,7 @@ pub fn general_routes(
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
+        .or(get_storage_location_route)
         .or(get_default_embedding_model_route)
         .or(get_supported_embedding_models_route)
         .or(update_default_embedding_model_route)
@@ -329,6 +336,36 @@ pub async fn initial_registration_handler(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/storage_location",
+    responses(
+        (status = 200, description = "Successfully retrieved storage location", body = String),
+        (status = 500, description = "Internal server error", body = APIError),
+    )
+)]
+pub async fn get_storage_location_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetStorageLocation {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&json!({ "storage_location": response }))),
+        Err(error) => Err(warp::reject::custom(error)),
     }
 }
 
