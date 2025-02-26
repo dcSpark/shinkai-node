@@ -6978,9 +6978,8 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.9.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcfe9137a151740050dbe77d23f3a9f61f0b00e21f4e7b57a7fac18f58c0c421"
+version = "0.0.0"
+source = "git+https://github.com/dcSpark/shinkai-code-runner.git?branch=feature%2Fmount-abs#3b401a201ed68c74e7f448f6152069dc4f644f32"
 dependencies = [
  "anyhow",
  "base64-simd",
