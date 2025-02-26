@@ -1,5 +1,5 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
+    llm_provider::job_manager::JobManager, managers::{tool_router, tool_router::ToolRouter, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
     }, utils::environment::NodeEnvironment
 };
@@ -181,6 +181,9 @@ impl Node {
     pub async fn v2_api_list_all_shinkai_tools(
         db: Arc<SqliteManager>,
         bearer: String,
+        node_name: ShinkaiName,
+        category: Option<String>,
+        tool_router: Option<Arc<ToolRouter>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -219,7 +222,83 @@ impl Node {
                         latest_tools.push(group.remove(0));
                     }
                 }
-                let t = latest_tools.iter().map(|tool| json!(tool)).collect();
+
+                // Filter by category if provided
+                // System Tools -> Rust tools
+                // Default Tools -> is default
+                // My Tools -> author localhost.* or author == MY_ID
+                // Download -> anything else
+                let filtered_tools = if let Some(category) = category {
+                    match category.to_lowercase().as_str() {
+                        "download" => {
+                            // Get default tool keys as a HashSet for O(1) lookups if ToolRouter is provided
+                            let default_tool_keys = if let Some(router) = &tool_router {
+                                Some(router.get_default_tool_router_keys_as_set().await)
+                            } else {
+                                None
+                            };
+
+                            let node_name_string = node_name.get_node_name_string();
+
+                            latest_tools
+                                .into_iter()
+                                .filter(|tool| {
+                                    // Not default
+                                    let is_not_default = if let Some(default_keys) = &default_tool_keys {
+                                        !default_keys.contains(&tool.tool_router_key)
+                                    } else {
+                                        true // If we can't determine default tools, assume it's not default
+                                    };
+
+                                    // Author doesn't start with "localhost."
+                                    let is_not_localhost = !tool.author.starts_with("localhost.");
+
+                                    // Author is not the same as node_name.get_node_name_string()
+                                    let is_not_node_name = tool.author != node_name_string;
+
+                                    is_not_default && is_not_localhost && is_not_node_name
+                                })
+                                .collect()
+                        }
+                        "default" => {
+                            // Get default tool keys as a HashSet for O(1) lookups if ToolRouter is provided
+                            let default_tool_keys = if let Some(router) = &tool_router {
+                                Some(router.get_default_tool_router_keys_as_set().await)
+                            } else {
+                                None
+                            };
+
+                            if let Some(default_keys) = &default_tool_keys {
+                                // Use O(1) lookup with HashSet
+                                latest_tools
+                                    .into_iter()
+                                    .filter(|tool| default_keys.contains(&tool.tool_router_key))
+                                    .collect()
+                            } else {
+                                // Fallback if ToolRouter not provided
+                                latest_tools
+                            }
+                        }
+                        "system" => latest_tools
+                            .into_iter()
+                            .filter(|tool| matches!(tool.tool_type.as_str(), "rust"))
+                            .collect(),
+                        "my" => {
+                            let my_id = env::var("MY_ID").unwrap_or_default();
+                            latest_tools
+                                .into_iter()
+                                .filter(|tool| {
+                                    tool.author.starts_with("localhost") || (!my_id.is_empty() && tool.author == my_id)
+                                })
+                                .collect()
+                        }
+                        _ => latest_tools, // If an unknown category is provided, return all tools
+                    }
+                } else {
+                    latest_tools
+                };
+
+                let t = filtered_tools.iter().map(|tool| json!(tool)).collect();
                 let _ = res.send(Ok(t)).await;
                 Ok(())
             }

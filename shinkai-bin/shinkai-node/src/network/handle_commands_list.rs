@@ -1892,10 +1892,20 @@ impl Node {
                     let _ = Node::v2_api_scan_ollama_models(db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiListAllShinkaiTools { bearer, res } => {
+            NodeCommand::V2ApiListAllShinkaiTools { bearer, category, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let tool_router_clone = self.tool_router.clone();
+                let node_name_clone = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_all_shinkai_tools(db_clone, bearer, res).await;
+                    let _ = Node::v2_api_list_all_shinkai_tools(
+                        db_clone,
+                        bearer,
+                        node_name_clone,
+                        category,
+                        tool_router_clone,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiListAllShinkaiToolsVersions { bearer, res } => {
