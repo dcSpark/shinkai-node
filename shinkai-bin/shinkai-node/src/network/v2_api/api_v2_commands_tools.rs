@@ -3068,25 +3068,29 @@ impl Node {
                 let _ = std::fs::remove_dir_all(temp_dir.join("my-tool-python"));
             }
         }
+        let _ = std::fs::remove_file(temp_dir.join(".env.example"));
 
-        println!(
-            "Playground created successfully: {}",
-            temp_dir.to_string_lossy().to_string()
+        println!("[Step 6] Creating .env file");
+
+        let api_url = format!(
+            "http://{}:{}",
+            node_env.api_listen_address.ip(),
+            node_env.api_listen_address.port()
         );
-        println!("[Step 6] Launching IDE");
-        // Finally launch the playground
-        // First try to open with cursor
-        let cursor_open = Command::new("cursor").arg(temp_dir.clone()).spawn();
-        if cursor_open.is_err() {
-            // If cursor fails try with the "code" command
-            let code_open = Command::new("code").arg(temp_dir.clone()).spawn();
-            if code_open.is_err() {
-                // If cursor and code fails, try with open
-                // Ignore error if any.
-                let _ = open::that(temp_dir.clone());
-            }
-        }
+        // Create .env file with environment variables
+        let env_content = format!(
+            "NODE_URL={}\nAPI_KEY={}\nLLM_PROVIDER={}\nDEBUG_HTTP_REQUESTS=false",
+            api_url, bearer, llm_provider
+        );
+        fs::write(temp_dir.join(".env"), env_content)
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to create .env file".to_string(),
+                message: e.to_string(),
+            })?;
 
+        println!("[Step 7] Writing tool keys to .tool-key-path file");
         // Write tool keys to .tool-key-path file
         let tool_key_path = temp_dir.join(".tool-key-path");
         std::fs::write(
@@ -3102,6 +3106,25 @@ impl Node {
             error: "Failed to write tool keys".to_string(),
             message: e.to_string(),
         })?;
+
+        println!(
+            "Playground created successfully: {}",
+            temp_dir.to_string_lossy().to_string()
+        );
+
+        println!("[Step 8] Launching IDE");
+        // Finally launch the playground
+        // First try to open with cursor
+        let cursor_open = Command::new("cursor").arg(temp_dir.clone()).spawn();
+        if cursor_open.is_err() {
+            // If cursor fails try with the "code" command
+            let code_open = Command::new("code").arg(temp_dir.clone()).spawn();
+            if code_open.is_err() {
+                // If cursor and code fails, try with open
+                // Ignore error if any.
+                let _ = open::that(temp_dir.clone());
+            }
+        }
 
         Ok(json!({
             "status": "success",
