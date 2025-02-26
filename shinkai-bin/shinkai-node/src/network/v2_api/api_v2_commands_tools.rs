@@ -224,13 +224,13 @@ impl Node {
                 }
 
                 // Filter by category if provided
-                // System Tools -> Rust tools
+                // Downloaded -> anything else
                 // Default Tools -> is default
+                // System Tools -> Rust tools
                 // My Tools -> author localhost.* or author == MY_ID
-                // Download -> anything else
                 let filtered_tools = if let Some(category) = category {
                     match category.to_lowercase().as_str() {
-                        "download" => {
+                        "downloaded" => {
                             // Get default tool keys as a HashSet for O(1) lookups if ToolRouter is provided
                             let default_tool_keys = if let Some(router) = &tool_router {
                                 Some(router.get_default_tool_router_keys_as_set().await)
@@ -281,15 +281,13 @@ impl Node {
                         }
                         "system" => latest_tools
                             .into_iter()
-                            .filter(|tool| matches!(tool.tool_type.as_str(), "rust"))
+                            .filter(|tool| matches!(tool.tool_type.to_lowercase().as_str(), "rust"))
                             .collect(),
-                        "my" => {
-                            let my_id = env::var("MY_ID").unwrap_or_default();
+                        "my_tools" => {
+                            let node_name_string = node_name.get_node_name_string();
                             latest_tools
                                 .into_iter()
-                                .filter(|tool| {
-                                    tool.author.starts_with("localhost") || (!my_id.is_empty() && tool.author == my_id)
-                                })
+                                .filter(|tool| tool.author.starts_with("localhost.") || tool.author == node_name_string)
                                 .collect()
                         }
                         _ => latest_tools, // If an unknown category is provided, return all tools
