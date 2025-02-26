@@ -1873,6 +1873,12 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiShinkaiBackendGetQuota { bearer, model_type, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_check_shinkai_backend_quota(db_clone, model_type, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiIsPristine { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
