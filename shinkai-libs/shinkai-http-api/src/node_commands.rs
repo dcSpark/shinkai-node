@@ -754,6 +754,10 @@ pub enum NodeCommand {
     V2ApiHealthCheck {
         res: Sender<Result<serde_json::Value, APIError>>,
     },
+    V2ApiGetStorageLocation {
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    },
     V2ApiScanOllamaModels {
         bearer: String,
         res: Sender<Result<Vec<serde_json::Value>, APIError>>,
