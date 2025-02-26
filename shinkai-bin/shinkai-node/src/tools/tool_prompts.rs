@@ -781,11 +781,12 @@ pub async fn tool_metadata_implementation_prompt(
 <agent_metadata_implementation>
   * The main goal is you to generate the METADATA for the following source code in the input_command tag.
   * The METADATA is a JSON object, that is a valid json schema.
+  * Output the literal METADATA JSON and NOT a program that generates the JSON.
   * The entire METADATA must be a single valid JSON object.
   * Return a single METADATA in the response, remove trailing commas.
   * Do not use "$ref".
   * Do not split the JSON into multiple code blocks.
-  * The output must be a single JSON fenced code block and nothing else.
+  * Only the METADATA JSON must be fenced in json code block, other blocks can be fenced with "markdown" or "code".
   * Any comments, notes, explanations or examples must be omitted in the Output.
   * Use the available_tools section to get the list of tools for the METADATA.
   * configuration, parameters and result must be objects, not arrays neither basic types.
