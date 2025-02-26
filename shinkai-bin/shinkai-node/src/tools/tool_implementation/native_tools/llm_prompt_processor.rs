@@ -48,7 +48,7 @@ This can be used to process complex requests, text analysis, text matching, text
                 enabled: true,
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("format".to_string(), "string".to_string(), "The format of the prompt".to_string(), true);
+                    params.add_property("format".to_string(), "string".to_string(), "Response type. The only valid option is 'text'".to_string(), true);
                     params.add_property("prompt".to_string(), "string".to_string(), "The prompt to process".to_string(), true);
                     
                     // Add the optional tools array parameter
