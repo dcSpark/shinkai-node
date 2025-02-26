@@ -786,11 +786,12 @@ pub async fn tool_metadata_implementation_prompt(
   * Return a single METADATA in the response, remove trailing commas.
   * Do not use "$ref".
   * Do not split the JSON into multiple code blocks.
-  * Only the METADATA JSON must be fenced in json code block, other blocks can be fenced with "markdown" or "code".
+  * Only the final METADATA JSON must be fenced as a json block, so we can extract it easily, other blocks can be fenced with other keywords as "markdown", "code", "example", etc.
   * Any comments, notes, explanations or examples must be omitted in the Output.
   * Use the available_tools section to get the list of tools for the METADATA.
   * configuration, parameters and result must be objects, not arrays neither basic types.
-  * Start creating the METADATA by using the empty_template tag as base.
+  * Use the empty_template as reference for keys, but complete the METADATA based on the rules provided before, and using the input_command tag provided next as the target for the METADATA.
+  * The METADATA must represent the input_command tag code.
 </agent_metadata_implementation>
 
 <input_command>
@@ -804,7 +805,7 @@ pub async fn tool_metadata_implementation_prompt(
             .map(|tool: &ToolRouterKey| tool.to_string_without_version())
             .collect::<Vec<String>>()
             .join("\n"),
-        final_code,
-        empty_template
+        empty_template,
+        final_code
     ))
 }
