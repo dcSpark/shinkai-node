@@ -302,7 +302,7 @@ pub async fn tool_metadata_implementation_prompt(
 
     let oauth_template = if has_oauth {
         r#",
-      oauth": [
+      "oauth": [
         {
           "name": "",
           "version": "",
