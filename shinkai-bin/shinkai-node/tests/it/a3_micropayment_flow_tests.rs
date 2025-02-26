@@ -346,6 +346,7 @@ fn micropayment_flow_test() {
                 node1_commands_sender
                     .send(NodeCommand::V2ApiListAllShinkaiTools {
                         bearer: api_v2_key.to_string(),
+                        category: None,
                         res: sender,
                     })
                     .await
@@ -529,6 +530,7 @@ fn micropayment_flow_test() {
                 node2_commands_sender
                     .send(NodeCommand::V2ApiListAllShinkaiTools {
                         bearer: api_v2_key.to_string(),
+                        category: None,
                         res: sender,
                     })
                     .await
