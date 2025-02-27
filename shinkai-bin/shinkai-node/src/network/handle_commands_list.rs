@@ -1827,6 +1827,12 @@ impl Node {
                     let _ = Node::v2_api_get_job_config(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiGetJobProvider { bearer, job_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_job_provider(db_clone, bearer, job_id, res).await;
+                });
+            }
             NodeCommand::V2ApiRemoveLlmProvider {
                 bearer,
                 llm_provider_id,
@@ -1871,6 +1877,16 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiShinkaiBackendGetQuota {
+                bearer,
+                model_type,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_check_shinkai_backend_quota(db_clone, model_type, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiIsPristine { bearer, res } => {
