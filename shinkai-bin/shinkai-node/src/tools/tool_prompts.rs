@@ -106,6 +106,8 @@ pub async fn generate_code_prompt(
 {prompt}
 </input_command>
 
+Explain your thinking process step by step and then implement the code.
+
 "#
             ));
         }
@@ -232,6 +234,8 @@ class OUTPUT:
 <input_command>
 {prompt}
 </input_command>
+
+Explain your thinking process step by step and then implement the code.
 
 "#
             ));
@@ -670,9 +674,9 @@ pub async fn tool_metadata_implementation_prompt(
     "result": {{
       "type": "object",
       "properties": {{
-        "walletId": {{ "type": "string", "nullable": true, "description": "The ID of the wallet" }},
-        "seed": {{ "type": "string", "nullable": true, "description": "The seed of the wallet" }},
-        "address": {{ "type": "string", "nullable": true, "description": "The address of the wallet" }},
+        "walletId": {{ "type": "string", "description": "The ID of the wallet" }},
+        "seed": {{ "type": "string", "description": "The seed of the wallet" }},
+        "address": {{ "type": "string", "description": "The address of the wallet" }},
       }},
       "required": []
     }},
@@ -724,7 +728,7 @@ pub async fn tool_metadata_implementation_prompt(
     "parameters": {{
       "type": "object",
       "properties": {{
-        "urls": {{ "type": "array", "description": "The URLs to download", "items": {{ "type": "string" }} }},
+        "urls": {{ "type": "array", "description": "The URLs to download", "items": {{ "type": "string", "description": "URL to download" }} }},
         "email": {{ "type": "string", "description": "The email to send the markdown to" }},
         "subject": {{ "type": "string", "description": "The subject of the email" }},
       }},
@@ -735,7 +739,7 @@ pub async fn tool_metadata_implementation_prompt(
     "result": {{
       "type": "object",
       "properties": {{
-        "markdowns": {{ "type": "array", "items": {{ "type": "string" }}, "description": "The markdown content of the downloaded pages" }},
+        "markdowns": {{ "type": "array", "items": {{ "type": "string", "description": "markdown content" }}, "description": "The markdown content of the downloaded pages" }},
       }},
       "required": [
         "markdowns"
