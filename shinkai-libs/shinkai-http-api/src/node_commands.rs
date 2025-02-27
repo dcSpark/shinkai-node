@@ -1287,4 +1287,12 @@ pub enum NodeCommand {
         enabled: bool,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiCopyToolAssets {
+        bearer: String,
+        is_first_playground: bool,
+        first_path: String,
+        is_second_playground: bool,
+        second_path: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }

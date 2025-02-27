@@ -3069,6 +3069,30 @@ impl Node {
                     let _ = Node::v2_api_set_tool_enabled(db_clone, bearer, tool_router_key, enabled, res).await;
                 });
             }
+            NodeCommand::V2ApiCopyToolAssets {
+                bearer,
+                is_first_playground,
+                first_path,
+                is_second_playground,
+                second_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_copy_tool_assets(
+                        db_clone,
+                        bearer,
+                        node_env,
+                        is_first_playground,
+                        first_path,
+                        is_second_playground,
+                        second_path,
+                        res,
+                    )
+                    .await;
+                });
+            }
             _ => (),
         }
     }
