@@ -761,7 +761,7 @@ pub enum NodeCommand {
     V2ApiGetJobProvider {
         bearer: String,
         job_id: String,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     V2ApiRemoveLlmProvider {
         bearer: String,

@@ -816,7 +816,7 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         job_id: String,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -827,7 +827,7 @@ impl Node {
         match db.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 let provider = job.parent_llm_provider_id().to_string();
-                let _ = res.send(Ok(provider)).await;
+                let _ = res.send(Ok(json!({ "provider": provider }))).await;
                 Ok(())
             }
             Err(_) => {
