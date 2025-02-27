@@ -256,7 +256,10 @@ impl Node {
                                     // Author is not the same as node_name.get_node_name_string()
                                     let is_not_node_name = tool.author != node_name_string;
 
-                                    is_not_default && is_not_localhost && is_not_node_name
+                                    // Not a Rust tool
+                                    let is_not_rust = !matches!(tool.tool_type.to_lowercase().as_str(), "rust");
+
+                                    is_not_default && is_not_localhost && is_not_node_name && is_not_rust
                                 })
                                 .collect()
                         }
