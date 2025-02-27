@@ -14,7 +14,7 @@ use shinkai_sqlite::SqliteManager;
 
 use super::super::error::LLMProviderError;
 use super::openai::{
-    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload
+    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
 };
 use super::shared::openai_api::openai_prepare_messages;
 use super::LLMService;
@@ -24,7 +24,7 @@ use serde_json::json;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, ShinkaiBackend
+    LLMProviderInterface, ShinkaiBackend,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
@@ -112,15 +112,7 @@ impl LLMService for ShinkaiBackend {
             .map_err(|e| format!("Failed to get node signature public key: {}", e))?;
 
         // Generate proof using the node's signature public key
-        let empty_json = json!({});
-        let last_message = messages_json
-            .as_array()
-            .and_then(|arr| arr.last())
-            .unwrap_or(&empty_json);
-        let (signature, metadata) = generate_proof(
-            hex::encode(node_signature_public_key),
-            serde_json::to_string(last_message)?,
-        )?;
+        let (signature, metadata) = generate_proof(hex::encode(node_signature_public_key), session_id.clone())?;
 
         // Set up initial payload with appropriate token limit field based on model capabilities
         let model_type_to_use = if matches!(
@@ -153,6 +145,7 @@ impl LLMService for ShinkaiBackend {
             "x-shinkai-identity": node_name,
             "x-shinkai-signature": signature,
             "x-shinkai-metadata": metadata,
+            "x-shinkai-session-id": session_id,
         });
 
         // Conditionally add functions to the payload if tools_json is not empty
@@ -210,11 +203,9 @@ impl LLMService for ShinkaiBackend {
     }
 }
 
-pub async fn check_quota(
-    db: Arc<SqliteManager>,
-    model_type: String,
-) -> Result<QuotaResponse, LLMProviderError> {
+pub async fn check_quota(db: Arc<SqliteManager>, model_type: String) -> Result<QuotaResponse, LLMProviderError> {
     // Get base URL from environment variable or use default
+    let session_id = Uuid::new_v4().to_string();
     let base_url =
         env::var("SHINKAI_INFERENCE_BASE_URL").unwrap_or_else(|_| "https://api.shinkai.com/inference".to_string());
     let api_url = format!("{}/ai/quotas?model={}", base_url, model_type);
@@ -229,13 +220,7 @@ pub async fn check_quota(
         .map_err(|e| format!("Failed to get node signature public key: {}", e))?;
 
     // Generate proof using the node's signature public key
-    let (signature, metadata) = generate_proof(
-        hex::encode(node_signature_public_key),
-        json!({
-            "role": "system",
-            "content": "Give me the quota usage for this user."
-        }).to_string(),
-    )?;
+    let (signature, metadata) = generate_proof(hex::encode(node_signature_public_key), session_id.clone())?;
 
     let client = Client::new();
     match client
@@ -244,6 +229,7 @@ pub async fn check_quota(
         .header("x-shinkai-identity", node_name)
         .header("x-shinkai-signature", signature)
         .header("x-shinkai-metadata", metadata)
+        .header("x-shinkai-session-id", session_id)
         .send()
         .await
     {
