@@ -2944,6 +2944,7 @@ impl Node {
 
     pub async fn v2_api_standalone_playground(
         db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
         bearer: String,
         node_env: NodeEnvironment,
         code: Option<String>,
@@ -2965,6 +2966,7 @@ impl Node {
         }
 
         let result = Self::create_standalone_playground(
+            node_name,
             code,
             metadata,
             assets,
@@ -2990,6 +2992,7 @@ impl Node {
     }
 
     async fn create_standalone_playground(
+        node_name: ShinkaiName,
         code: Option<String>,
         metadata: Option<Value>,
         assets: Option<Vec<String>>,
@@ -3151,11 +3154,14 @@ impl Node {
 
         println!("[Step 5] Removing folder based on language");
         // Remove folder based on language
+        let mut env_language = "";
         match language {
             CodeLanguage::Python => {
+                env_language = "Python";
                 let _ = std::fs::remove_dir_all(temp_dir.join("my-tool-typescript"));
             }
             CodeLanguage::Typescript => {
+                env_language = "Typescript";
                 let _ = std::fs::remove_dir_all(temp_dir.join("my-tool-python"));
             }
         }
@@ -3168,10 +3174,19 @@ impl Node {
             node_env.api_listen_address.ip(),
             node_env.api_listen_address.port()
         );
+        let random_uuid = uuid::Uuid::new_v4().to_string();
+        let identity = node_name.get_node_name_string();
         // Create .env file with environment variables
         let env_content = format!(
-            "NODE_URL={}\nAPI_KEY={}\nLLM_PROVIDER={}\nDEBUG_HTTP_REQUESTS=false",
-            api_url, bearer, llm_provider
+            r#"
+NODE_URL={api_url}
+API_KEY={bearer}
+LLM_PROVIDER={llm_provider}
+DEBUG_HTTP_REQUESTS=false
+X_SHINKAI_APP_ID=app-id-{random_uuid}
+IDENTITY="{identity}"
+LANGUAGE={env_language}
+            "#,
         );
         fs::write(temp_dir.join(".env"), env_content)
             .await

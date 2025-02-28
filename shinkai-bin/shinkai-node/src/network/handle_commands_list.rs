@@ -3007,9 +3007,11 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let node_name_clone = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_standalone_playground(
                         db_clone,
+                        node_name_clone,
                         bearer,
                         node_env,
                         code,
