@@ -2281,14 +2281,14 @@ impl Node {
             return Ok(());
         }
         let tool_router_key = tool_router_key.unwrap();
-
+        let tool_key_name = tool_router_key.to_string_without_version();
         let version = tool_router_key.version;
 
         // Attempt to remove the playground tool first
         let _ = db_write.remove_tool_playground(&tool_key);
 
         // Remove the tool from the database
-        match db_write.remove_tool(&tool_key, version) {
+        match db_write.remove_tool(&tool_key_name, version) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
                 let _ = res.send(Ok(response)).await;
