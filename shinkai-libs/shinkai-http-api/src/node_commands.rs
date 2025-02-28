@@ -11,7 +11,7 @@ use shinkai_message_primitives::{
         custom_prompt::CustomPrompt,
         identity::{Identity, StandardIdentity},
         job_config::JobConfig,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse},
         shinkai_name::ShinkaiName,
         shinkai_subscription::ShinkaiSubscription,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
@@ -758,6 +758,11 @@ pub enum NodeCommand {
         job_id: String,
         res: Sender<Result<JobConfig, APIError>>,
     },
+    V2ApiGetJobProvider {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiRemoveLlmProvider {
         bearer: String,
         llm_provider_id: String,
@@ -772,6 +777,11 @@ pub enum NodeCommand {
         bearer: String,
         new_name: String,
         res: Sender<Result<(), APIError>>,
+    },
+    V2ApiShinkaiBackendGetQuota {
+        bearer: String,
+        model_type: String,
+        res: Sender<Result<QuotaResponse, APIError>>,
     },
     V2ApiIsPristine {
         bearer: String,
@@ -1275,6 +1285,14 @@ pub enum NodeCommand {
         bearer: String,
         tool_router_key: String,
         enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCopyToolAssets {
+        bearer: String,
+        is_first_playground: bool,
+        first_path: String,
+        is_second_playground: bool,
+        second_path: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

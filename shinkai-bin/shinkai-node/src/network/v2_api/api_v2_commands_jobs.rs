@@ -8,14 +8,25 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{SmartInbox, V2SmartInbox}
-    }, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
-            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
-        }
-    }, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath, signatures::clone_signature_secret_key
-    }
+        identity::Identity,
+        inbox_name::InboxName,
+        job::{ForkedJob, JobLike},
+        job_config::JobConfig,
+        llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider},
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox},
+    },
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData},
+        shinkai_message_schemas::{
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
+            V2ChatMessage,
+        },
+    },
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath,
+        signatures::clone_signature_secret_key,
+    },
 };
 
 use shinkai_sqlite::SqliteManager;
@@ -23,7 +34,9 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
+    llm_provider::job_manager::JobManager,
+    managers::IdentityManager,
+    network::{node_error::NodeError, Node},
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -785,6 +798,102 @@ impl Node {
                     use_tools: None,
                 });
                 let _ = res.send(Ok(config)).await;
+                Ok(())
+            }
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Job with ID {} not found", job_id),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    async fn get_llm_provider_for_agent(
+        db: Arc<SqliteManager>,
+        llm_or_agent_id: String,
+        agent_id: String,
+    ) -> Result<Option<SerializedLLMProvider>, NodeError> {
+        let agents_and_llm_providers = JobManager::get_all_agents_and_llm_providers(db.clone())
+            .await
+            .unwrap_or(vec![]);
+        for agent_or_llm_provider in agents_and_llm_providers {
+            if agent_or_llm_provider.get_id().to_lowercase() == llm_or_agent_id.to_lowercase() {
+                match agent_or_llm_provider.clone() {
+                    ProviderOrAgent::Agent(agent) => {
+                        return Box::pin(Self::get_llm_provider_for_agent(
+                            db.clone(),
+                            agent.llm_provider_id,
+                            agent_id,
+                        ))
+                        .await;
+                    }
+                    ProviderOrAgent::LLMProvider(llm_provider) => {
+                        return Ok(Some(llm_provider));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    pub async fn v2_api_get_job_provider(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Check if the job exists
+        match db.get_job_with_options(&job_id, false) {
+            Ok(job) => {
+                let provider = job.parent_llm_provider_id().to_string();
+
+                // Acquire Agent
+                let mut provider_type: ProviderType = ProviderType::Unknown;
+                let mut agent_or_llm_provider_found: Option<LLMProviderSubset> = None;
+
+                let agent_or_llm_provider_id = job.parent_agent_or_llm_provider_id.clone();
+                let agents_and_llm_providers = JobManager::get_all_agents_and_llm_providers(db.clone())
+                    .await
+                    .unwrap_or(vec![]);
+                for agent_or_llm_provider in agents_and_llm_providers.clone() {
+                    if agent_or_llm_provider.get_id().to_lowercase() == provider.to_lowercase() {
+                        match agent_or_llm_provider.clone() {
+                            ProviderOrAgent::Agent(agent) => {
+                                let llm_provider = Self::get_llm_provider_for_agent(
+                                    db.clone(),
+                                    agent.clone().llm_provider_id,
+                                    agent_or_llm_provider_id.clone(),
+                                )
+                                .await?;
+                                if let Some(llm_provider) = llm_provider {
+                                    agent_or_llm_provider_found =
+                                        Some(LLMProviderSubset::from_agent(agent.clone(), llm_provider));
+                                    provider_type = ProviderType::Agent;
+                                }
+                            }
+                            ProviderOrAgent::LLMProvider(llm_provider) => {
+                                agent_or_llm_provider_found =
+                                    Some(LLMProviderSubset::from_serialized_llm_provider(llm_provider.clone()));
+                                provider_type = ProviderType::LLMProvider;
+                            }
+                        }
+                    }
+                }
+
+                let _ = res
+                    .send(Ok(
+                        json!({ "provider_type": provider_type, "agent": agent_or_llm_provider_found }),
+                    ))
+                    .await;
                 Ok(())
             }
             Err(_) => {

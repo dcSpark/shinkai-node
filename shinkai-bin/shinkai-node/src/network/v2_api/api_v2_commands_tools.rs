@@ -611,50 +611,61 @@ impl Node {
         origin_path.push(".tools_storage");
         origin_path.push("playground");
         origin_path.push(app_id);
-        if let Some(assets) = payload.assets.clone() {
-            for file_name in assets {
-                let mut asset_path: PathBuf = origin_path.clone();
-                asset_path.push(file_name.clone());
-                if !asset_path.exists() {
-                    return Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: format!("Asset file {} does not exist", file_name.clone()),
-                    });
-                }
-            }
-        }
-
-        // Copy asset to permanent tool_storage folder
-        // {storage}/tool_storage/{tool_key}.assets/
+        // Read all files from origin directory
+        let origin_files = if origin_path.exists() {
+            Some(std::fs::read_dir(&origin_path).map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read origin directory: {}", e),
+            })?)
+        } else {
+            None
+        };
+        // Create destination directory path
         let mut perm_file_path = PathBuf::from(storage_path.clone());
         perm_file_path.push(".tools_storage");
         perm_file_path.push("tools");
         perm_file_path.push(shinkai_tool.tool_router_key().convert_to_path());
+
+        // Clear destination directory if it exists
+        if perm_file_path.exists() {
+            std::fs::remove_dir_all(&perm_file_path).map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to clear destination directory: {}", e),
+            })?;
+        }
+
+        // Create destination directory
         std::fs::create_dir_all(&perm_file_path).map_err(|e| APIError {
             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             error: "Internal Server Error".to_string(),
             message: format!("Failed to create permanent storage directory: {}", e),
         })?;
-        if let Some(assets) = payload.assets.clone() {
-            for file_name in assets {
-                let mut tool_path = origin_path.clone();
-                tool_path.push(file_name.clone());
-                let mut perm_path = perm_file_path.clone();
-                perm_path.push(file_name.clone());
-                println!(
-                    "copying {} to {}",
-                    tool_path.to_string_lossy(),
-                    perm_path.to_string_lossy()
-                );
-                let _ = std::fs::copy(tool_path, perm_path).map_err(|e| APIError {
+
+        // Copy all files from origin to destination
+        if let Some(origin_files) = origin_files {
+            for entry in origin_files {
+                let entry = entry.map_err(|e| APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!(
-                        "Failed to copy asset file {} to permanent storage: {}",
-                        file_name.clone(),
-                        e
-                    ),
+                    message: format!("Failed to read directory entry: {}", e),
+                })?;
+
+                let file_name = entry.file_name();
+                let mut dest_path = perm_file_path.clone();
+                dest_path.push(&file_name);
+
+                println!(
+                    "copying {} to {}",
+                    entry.path().to_string_lossy(),
+                    dest_path.to_string_lossy()
+                );
+
+                std::fs::copy(entry.path(), dest_path).map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to copy file {}: {}", file_name.to_string_lossy(), e),
                 })?;
             }
         }
@@ -2271,14 +2282,14 @@ impl Node {
             return Ok(());
         }
         let tool_router_key = tool_router_key.unwrap();
-
+        let tool_key_name = tool_router_key.to_string_without_version();
         let version = tool_router_key.version;
 
         // Attempt to remove the playground tool first
         let _ = db_write.remove_tool_playground(&tool_key);
 
         // Remove the tool from the database
-        match db_write.remove_tool(&tool_key, version) {
+        match db_write.remove_tool(&tool_key_name, version) {
             Ok(_) => {
                 let response = json!({ "status": "success", "message": "Tool and associated playground (if any) removed successfully" });
                 let _ = res.send(Ok(response)).await;
@@ -3245,6 +3256,135 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn v2_api_copy_tool_assets(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_env: NodeEnvironment,
+        is_first_playground: bool,
+        first_path: String,
+        is_second_playground: bool,
+        second_path: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let response = Self::v2_api_copy_tool_assets_internal(
+            node_env,
+            is_first_playground,
+            first_path,
+            is_second_playground,
+            second_path,
+        )
+        .await;
+
+        let _ = res.send(response).await;
+
+        Ok(())
+    }
+
+    async fn v2_api_copy_tool_assets_internal(
+        node_env: NodeEnvironment,
+        is_first_playground: bool,
+        first_path: String,
+        is_second_playground: bool,
+        second_path: String,
+    ) -> Result<Value, APIError> {
+        let storage_path = node_env.node_storage_path.unwrap_or_default();
+
+        // Create source path
+        let mut source_path = PathBuf::from(storage_path.clone());
+        source_path.push(".tools_storage");
+        if is_first_playground {
+            source_path.push("playground");
+            source_path.push(first_path);
+        } else {
+            source_path.push("tools");
+            source_path.push(ToolRouterKey::from_string(&first_path)?.convert_to_path());
+        }
+
+        // Create destination path
+        let mut dest_path = PathBuf::from(storage_path);
+        dest_path.push(".tools_storage");
+        if is_second_playground {
+            dest_path.push("playground");
+            dest_path.push(second_path);
+        } else {
+            dest_path.push("tools");
+            dest_path.push(ToolRouterKey::from_string(&second_path)?.convert_to_path());
+        }
+
+        // Verify source exists
+        if !source_path.exists() {
+            return Ok(json!({
+                "success": false,
+                "message": "Nothing to copy. Source path does not exist"
+            }));
+        }
+
+        if dest_path.exists() {
+            std::fs::remove_dir_all(&dest_path).map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Failed to remove destination directory".to_string(),
+                message: format!("Error removing destination directory: {}", e),
+            })?;
+        }
+
+        std::fs::create_dir_all(&dest_path).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Failed to create destination directory".to_string(),
+            message: format!("Error creating destination directory: {}", e),
+        })?;
+
+        // Copy all files from source to destination
+        let entries = std::fs::read_dir(&source_path).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Failed to read source directory".to_string(),
+            message: format!("Error reading source directory: {}", e),
+        })?;
+
+        for entry_result in entries {
+            let entry = match entry_result {
+                Ok(entry) => entry,
+                Err(e) => {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Failed to read directory entry".to_string(),
+                        message: format!("Error reading directory entry: {}", e),
+                    });
+                }
+            };
+
+            let file_name = entry.file_name();
+            let mut dest_file = dest_path.clone();
+            dest_file.push(file_name);
+
+            match entry.file_type() {
+                Ok(file_type) if file_type.is_file() => {
+                    std::fs::copy(entry.path(), dest_file).map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Failed to copy file".to_string(),
+                        message: format!("Error copying file: {}", e),
+                    })?;
+                }
+                Ok(_) => continue, // Skip if not a file
+                Err(e) => {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Failed to get file type".to_string(),
+                        message: format!("Error getting file type: {}", e),
+                    });
+                }
+            }
+        }
+
+        Ok(json!({
+            "success": true,
+            "message": "Tool assets copied successfully"
+        }))
     }
 }
 

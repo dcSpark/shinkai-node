@@ -106,6 +106,8 @@ pub async fn generate_code_prompt(
 {prompt}
 </input_command>
 
+Explain your thinking process step by step and then implement the code.
+
 "#
             ));
         }
@@ -233,6 +235,8 @@ class OUTPUT:
 {prompt}
 </input_command>
 
+Explain your thinking process step by step and then implement the code.
+
 "#
             ));
         }
@@ -271,7 +275,7 @@ pub async fn tool_metadata_implementation_prompt(
         || (language == CodeLanguage::Python && final_code.contains("get_access_token("));
     let oauth_example = if has_oauth {
         r#"[
-      {{
+      {
         "name": "google",
         "version": "2.0",
         "authorizationUrl": "https://accounts.google.com/o/oauth2/v2/auth",
@@ -284,7 +288,7 @@ pub async fn tool_metadata_implementation_prompt(
           "https://www.googleapis.com/auth/userinfo.profile"
         ],
         "response_type": "code"
-      }}
+      }
     ]"#
     } else {
         r#"[]"#
@@ -302,8 +306,8 @@ pub async fn tool_metadata_implementation_prompt(
 
     let oauth_template = if has_oauth {
         r#",
-      oauth": [
-        {{
+      "oauth": [
+        {
           "name": "",
           "version": "",
           "authorizationUrl": "",
@@ -312,7 +316,7 @@ pub async fn tool_metadata_implementation_prompt(
           "clientId": "",
           "clientSecret": "",
           "scopes": [],
-        }}
+        }
       ]
     "#
     } else {
@@ -670,9 +674,9 @@ pub async fn tool_metadata_implementation_prompt(
     "result": {{
       "type": "object",
       "properties": {{
-        "walletId": {{ "type": "string", "nullable": true, "description": "The ID of the wallet" }},
-        "seed": {{ "type": "string", "nullable": true, "description": "The seed of the wallet" }},
-        "address": {{ "type": "string", "nullable": true, "description": "The address of the wallet" }},
+        "walletId": {{ "type": "string", "description": "The ID of the wallet" }},
+        "seed": {{ "type": "string", "description": "The seed of the wallet" }},
+        "address": {{ "type": "string", "description": "The address of the wallet" }},
       }},
       "required": []
     }},
@@ -724,7 +728,7 @@ pub async fn tool_metadata_implementation_prompt(
     "parameters": {{
       "type": "object",
       "properties": {{
-        "urls": {{ "type": "array", "description": "The URLs to download", "items": {{ "type": "string" }} }},
+        "urls": {{ "type": "array", "description": "The URLs to download", "items": {{ "type": "string", "description": "URL to download" }} }},
         "email": {{ "type": "string", "description": "The email to send the markdown to" }},
         "subject": {{ "type": "string", "description": "The subject of the email" }},
       }},
@@ -735,7 +739,7 @@ pub async fn tool_metadata_implementation_prompt(
     "result": {{
       "type": "object",
       "properties": {{
-        "markdowns": {{ "type": "array", "items": {{ "type": "string" }}, "description": "The markdown content of the downloaded pages" }},
+        "markdowns": {{ "type": "array", "items": {{ "type": "string", "description": "markdown content" }}, "description": "The markdown content of the downloaded pages" }},
       }},
       "required": [
         "markdowns"
@@ -774,24 +778,30 @@ pub async fn tool_metadata_implementation_prompt(
 {}
 </available_tools>
 
+<empty_template>
+{}
+</empty_template>
+
 <agent_metadata_implementation>
-  * Return a valid schema for the described JSON, remove trailing commas.
-  * The METADATA must be in JSON valid format in only one JSON code block and nothing else.
-  * Output only the METADATA, so the complete Output it's a valid JSON string.
+  * The main goal is you to generate the METADATA for the following source code in the input_command tag.
+  * The METADATA is a JSON object, that is a valid json schema.
+  * Output the literal METADATA JSON and NOT a program that generates the JSON.
+  * The entire METADATA must be a single valid JSON object.
+  * Return a single METADATA in the response, remove trailing commas.
+  * Do not use "$ref".
+  * Do not split the JSON into multiple code blocks.
+  * Only the final METADATA JSON must be fenced as a json block, so we can extract it easily, other blocks can be fenced with other keywords as "markdown", "code", "example", etc.
   * Any comments, notes, explanations or examples must be omitted in the Output.
-  * Use the available_tools section to get the list of tools for the metadata.
-  * Generate the METADATA for the following source code in the input_command tag.
+  * Use the available_tools section to get the list of tools for the METADATA.
   * configuration, parameters and result must be objects, not arrays neither basic types.
-  * Create the schema starting by using the empty_template tag
+  * Use the empty_template as reference for keys, but complete the METADATA based on the rules provided before, and using the input_command tag provided next as the target for the METADATA.
+  * The METADATA must represent the input_command tag code.
 </agent_metadata_implementation>
 
 <input_command>
 {}
 </input_command>
 
-<empty_template>
-{}
-</empty_template>
 
 "####,
         tools
@@ -799,7 +809,7 @@ pub async fn tool_metadata_implementation_prompt(
             .map(|tool: &ToolRouterKey| tool.to_string_without_version())
             .collect::<Vec<String>>()
             .join("\n"),
-        final_code,
-        empty_template
+        empty_template,
+        final_code
     ))
 }
