@@ -21,6 +21,7 @@ pub fn tool_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(list_all_shinkai_tools_handler);
 
     let set_shinkai_tool_route = warp::path("set_shinkai_tool")
@@ -650,6 +651,9 @@ pub async fn search_shinkai_tool_handler(
 #[utoipa::path(
     get,
     path = "/v2/list_all_shinkai_tools",
+    params(
+        ("category" = Option<String>, Query, description = "Optional category filter for tools. Use 'download' to only list tools from external sources.")
+    ),
     responses(
         (status = 200, description = "Successfully listed all Shinkai tools", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -659,12 +663,16 @@ pub async fn search_shinkai_tool_handler(
 pub async fn list_all_shinkai_tools_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let category = query_params.get("category").cloned();
+    
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiListAllShinkaiTools {
             bearer,
+            category,
             res: res_sender,
         })
         .await
