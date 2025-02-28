@@ -54,6 +54,7 @@ use std::{
     env,
     fs::File,
     io::{Read, Write},
+    result,
     sync::Arc,
     time::Instant,
 };
@@ -2943,15 +2944,16 @@ impl Node {
 
     pub async fn v2_api_standalone_playground(
         db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
         bearer: String,
         node_env: NodeEnvironment,
-        code: String,
-        metadata: Value,
+        code: Option<String>,
+        metadata: Option<Value>,
         assets: Option<Vec<String>>,
         language: CodeLanguage,
-        tools: Vec<ToolRouterKey>,
-        parameters: Value,
-        config: Value,
+        tools: Option<Vec<ToolRouterKey>>,
+        parameters: Option<Value>,
+        config: Option<Value>,
         oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
@@ -2964,6 +2966,7 @@ impl Node {
         }
 
         let result = Self::create_standalone_playground(
+            node_name,
             code,
             metadata,
             assets,
@@ -2989,30 +2992,119 @@ impl Node {
     }
 
     async fn create_standalone_playground(
-        code: String,
-        metadata: Value,
+        node_name: ShinkaiName,
+        code: Option<String>,
+        metadata: Option<Value>,
         assets: Option<Vec<String>>,
         language: CodeLanguage,
-        tools: Vec<ToolRouterKey>,
-        parameters: Value,
-        config: Value,
+        tools: Option<Vec<ToolRouterKey>>,
+        parameters: Option<Value>,
+        config: Option<Value>,
         oauth: Option<Vec<OAuth>>,
-        _tool_id: String,
+        tool_id: String,
         app_id: String,
         llm_provider: String,
         bearer: String,
         node_env: NodeEnvironment,
         db: Arc<SqliteManager>,
     ) -> Result<Value, APIError> {
-        // Create temporal directory
         let mut temp_dir = std::env::temp_dir();
         temp_dir.push(format!("shinkai_playground_{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(&temp_dir).await.map_err(|e| APIError {
+        let _ = fs::create_dir_all(&temp_dir).await.map_err(|e| APIError {
             code: 500,
             error: "Failed to create temporary directory".to_string(),
             message: e.to_string(),
         })?;
-        let mut files_created = HashMap::new();
+
+        // Download and extract template from GitHub
+        println!(
+            "[Step 1] Downloading template from GitHub to {}",
+            temp_dir.to_string_lossy().to_string()
+        );
+
+        let zip_url =
+            "https://pub-e508ac8b539c45edb9724730588f74cc.r2.dev/shinkai-tool-boilerplate-feature-user-template.zip";
+
+        let response = reqwest::get(zip_url).await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to download template".to_string(),
+            message: e.to_string(),
+        })?;
+        if !response.status().is_success() {
+            return Err(APIError {
+                code: 500,
+                error: "Failed to download template".to_string(),
+                message: format!("Failed to download template: {}", response.status()),
+            });
+        }
+
+        let response_bytes = response.bytes().await.map_err(|e| APIError {
+            code: 500,
+            error: "Failed to read template bytes".to_string(),
+            message: e.to_string(),
+        })?;
+
+        let zip_reader = std::io::Cursor::new(response_bytes);
+        let mut archive = zip::ZipArchive::new(zip_reader).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to read ZIP archive".to_string(),
+            message: e.to_string(),
+        })?;
+
+        archive.extract(&temp_dir).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to extract template".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Move contents from the extracted subdirectory to temp_dir
+        let extracted_dir = temp_dir.join("shinkai-tool-boilerplate-feature-user-template");
+        for entry in std::fs::read_dir(&extracted_dir).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to read extracted directory".to_string(),
+            message: e.to_string(),
+        })? {
+            let entry = entry.map_err(|e| APIError {
+                code: 500,
+                error: "Failed to read directory entry".to_string(),
+                message: e.to_string(),
+            })?;
+            let target = temp_dir.join(entry.file_name());
+            if entry.path() != target {
+                std::fs::rename(entry.path(), target).map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to move template files".to_string(),
+                    message: e.to_string(),
+                })?;
+            }
+        }
+        std::fs::remove_dir_all(&extracted_dir).map_err(|e| APIError {
+            code: 500,
+            error: "Failed to cleanup extracted directory".to_string(),
+            message: e.to_string(),
+        })?;
+
+        // Install dependencies
+        println!(
+            "[Step 3] Installing dependencies: npm ci @ {}",
+            temp_dir.to_string_lossy().to_string()
+        );
+
+        let npm_binary = env::var("NPM_BINARY_LOCATION").unwrap_or_else(|_| "npm".to_string());
+        let result = Command::new(npm_binary)
+            .current_dir(&temp_dir)
+            .args(["ci"])
+            .output()
+            .await;
+
+        if let Ok(output) = result {
+            println!("{}", String::from_utf8_lossy(&output.stdout));
+            println!("{}", String::from_utf8_lossy(&output.stderr));
+        } else {
+            println!("Failed to install dependencies (npm ci)");
+        }
+
+        // Get all tool-key-paths
         let tool_list: Vec<ToolRouterKey> = db
             .get_all_tool_headers()
             .map_err(|e| APIError {
@@ -3025,370 +3117,109 @@ impl Node {
             .filter(|tool| tool.is_ok())
             .map(|tool| tool.unwrap())
             .collect::<Vec<ToolRouterKey>>();
-        let tool_definitions = generate_tool_definitions(tool_list, language.clone(), db, false).await?;
+
+        println!("[Step 4] Updating shinkai-local-tools & shinkai-local-support files");
+        // Update shinkai-local-tools & shinkai-local-support files
+        let tool_definitions = generate_tool_definitions(tool_list.clone(), language.clone(), db, false).await?;
         for (tool_key, tool_definition) in tool_definitions {
-            let mut tool_file = temp_dir.clone();
             match language.clone() {
                 CodeLanguage::Typescript => {
-                    tool_file.push(format!("{}.ts", tool_key));
+                    let tool_file_path = temp_dir
+                        .clone()
+                        .join(PathBuf::from("my-tool-typescript"))
+                        .join(format!("{}.ts", tool_key));
+                    fs::write(&tool_file_path, tool_definition.clone())
+                        .await
+                        .map_err(|e| APIError {
+                            code: 500,
+                            error: "Failed to write tool file".to_string(),
+                            message: e.to_string(),
+                        })?;
                 }
                 CodeLanguage::Python => {
-                    tool_file.push(format!("{}.py", tool_key));
+                    let tool_file_path = temp_dir
+                        .clone()
+                        .join(PathBuf::from("my-tool-python"))
+                        .join(format!("{}.py", tool_key));
+                    fs::write(&tool_file_path, tool_definition.clone())
+                        .await
+                        .map_err(|e| APIError {
+                            code: 500,
+                            error: "Failed to write tool file".to_string(),
+                            message: e.to_string(),
+                        })?;
                 }
             }
-            files_created.insert(tool_file.clone(), tool_definition.clone());
-            fs::write(&tool_file, tool_definition.clone())
-                .await
-                .map_err(|e| APIError {
-                    code: 500,
-                    error: "Failed to write tool file".to_string(),
-                    message: e.to_string(),
-                })?;
         }
 
-        // Create tool file
-        let tool_filename = match language.clone() {
-            CodeLanguage::Typescript => "tool.ts",
-            CodeLanguage::Python => "tool.py",
-            _ => {
-                return Err(APIError {
-                    code: 400,
-                    error: "Unsupported Language".to_string(),
-                    message: "Only TypeScript and Python are supported".to_string(),
-                })
+        println!("[Step 5] Removing folder based on language");
+        // Remove folder based on language
+        let mut env_language = "";
+        match language {
+            CodeLanguage::Python => {
+                env_language = "Python";
+                let _ = std::fs::remove_dir_all(temp_dir.join("my-tool-typescript"));
             }
-        };
-        let mut tool_file = temp_dir.clone();
-        tool_file.push(tool_filename);
-        files_created.insert(tool_file.clone(), code.clone());
-        fs::write(&tool_file, code.clone()).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to write tool file".to_string(),
-            message: e.to_string(),
-        })?;
-
-        // Create metadata.json
-        let mut metadata_file = temp_dir.clone();
-        metadata_file.push("metadata.json");
-        let metadata_string = serde_json::to_string_pretty(&metadata).map_err(|e| APIError {
-            code: 500,
-            error: "Failed to serialize metadata".to_string(),
-            message: e.to_string(),
-        })?;
-        files_created.insert(metadata_file.clone(), metadata_string.clone());
-        fs::write(&metadata_file, metadata_string.clone())
-            .await
-            .map_err(|e| APIError {
-                code: 500,
-                error: "Failed to write metadata file".to_string(),
-                message: e.to_string(),
-            })?;
-
-        // Copy assets if any
-        if let Some(asset_files) = assets {
-            let mut assets_dir = temp_dir.clone();
-            assets_dir.push("assets");
-            fs::create_dir_all(&assets_dir).await.map_err(|e| APIError {
-                code: 500,
-                error: "Failed to create assets directory".to_string(),
-                message: e.to_string(),
-            })?;
-
-            for asset in asset_files {
-                let mut source_path = PathBuf::from(".temporal_store");
-                source_path.push(&app_id);
-                source_path.push(&asset);
-
-                let mut dest_path = assets_dir.clone();
-                dest_path.push(&asset);
-
-                fs::copy(source_path, dest_path).await.map_err(|e| APIError {
-                    code: 500,
-                    error: "Failed to copy asset".to_string(),
-                    message: e.to_string(),
-                })?;
+            CodeLanguage::Typescript => {
+                env_language = "Typescript";
+                let _ = std::fs::remove_dir_all(temp_dir.join("my-tool-python"));
             }
         }
+        let _ = std::fs::remove_file(temp_dir.join(".env.example"));
+
+        println!("[Step 6] Creating .env file");
 
         let api_url = format!(
             "http://{}:{}",
             node_env.api_listen_address.ip(),
             node_env.api_listen_address.port()
         );
-        let tool_type = match language.clone() {
-            CodeLanguage::Typescript => "denodynamic",
-            CodeLanguage::Python => "pythondynamic",
-            _ => unreachable!(),
-        };
-        let language_extension = match language.clone() {
-            CodeLanguage::Typescript => "ts",
-            CodeLanguage::Python => "py",
-            _ => unreachable!(),
-        };
-
-        // Create launch.js
-        let launch_script = format!(
+        let random_uuid = uuid::Uuid::new_v4().to_string();
+        let identity = node_name.get_node_name_string();
+        // Create .env file with environment variables
+        let env_content = format!(
             r#"
-// Import required modules
-const fs = require('node:fs');
-
-// Configuration variables
-const API_URL = "{api_url}";
-const AUTH_TOKEN = "{bearer}";
-const APP_ID = "{app_id}";
-const LLM_PROVIDER = "{llm_provider}";
-const TOOL_TYPE = "{tool_type}";
-
-// Read file contents
-const CODE_CONTENT = fs.readFileSync('./tool.{language_extension}', 'utf8');
-const METADATA_CONTENT = JSON.parse(fs.readFileSync('./metadata.json', 'utf8'));
-const TOOLS_CONTENT = METADATA_CONTENT.tools;
-const CONFIG_CONTENT = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
-const PARAMETERS_CONTENT = JSON.parse(fs.readFileSync('./parameters.json', 'utf8'));
-const OAUTH_CONTENT = METADATA_CONTENT.oauth;
-
-// Make the API call
-async function makeApiCall() {{
-    const body = {{
-        code: CODE_CONTENT,
-        tools: TOOLS_CONTENT,
-        tool_type: TOOL_TYPE,
-        llm_provider: LLM_PROVIDER,
-        extra_config: CONFIG_CONTENT,
-        parameters: PARAMETERS_CONTENT,
-        oauth: OAUTH_CONTENT
-    }};
-    console.log(body);
-    try {{
-        const response = await fetch(`${{API_URL}}/v2/code_execution`, {{
-            method: 'POST',
-            headers: {{
-                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
-                'x-shinkai-tool-id': 'run',
-                'x-shinkai-app-id': APP_ID,
-                'x-shinkai-llm-provider': LLM_PROVIDER,
-                'Content-Type': 'application/json; charset=utf-8'
-            }},
-            body: JSON.stringify(body)
-        }});
-
-        const data = await response.json();
-        return data;
-    }} catch (error) {{
-        return error;
-    }}
-}}
-
-async function fetchLogFile(filePath) {{
-    const encodedPath = encodeURIComponent(filePath);
-    try {{
-        const response = await fetch(`${{API_URL}}/v2/resolve_shinkai_file_protocol?file=${{encodedPath}}`, {{
-            headers: {{
-                'Authorization': `Bearer ${{AUTH_TOKEN}}`
-            }}
-        }});
-        const data = await response.text();
-        return data;
-    }} catch (error) {{
-        console.error('Error fetching log:', error);
-        return null;
-    }}
-}}
-
-
-// Add new functions for asset management
-async function listRemoteAssets() {{
-    try {{
-        const response = await fetch(`${{API_URL}}/v2/list_tool_asset`, {{
-            headers: {{
-                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
-                'x-shinkai-tool-id': 'run',
-                'x-shinkai-app-id': APP_ID
-            }}
-        }});
-        const data = await response.json();
-        return data.files || [];
-    }} catch (error) {{
-        console.error('Error listing remote assets:', error);
-        return [];
-    }}
-}}
-
-async function uploadAsset(fileName, content) {{
-    const formData = new FormData();
-    formData.append('file_name', fileName);
-    formData.append('file', content);
-
-    try {{
-        await fetch(`${{API_URL}}/v2/tool_asset`, {{
-            method: 'POST',
-            headers: {{
-                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
-                'x-shinkai-tool-id': 'run',
-                'x-shinkai-app-id': APP_ID
-            }},
-            body: formData
-        }});
-        console.log(`Uploaded asset: ${{fileName}}`);
-    }} catch (error) {{
-        console.error(`Error uploading asset ${{fileName}}:`, error);
-    }}
-}}
-
-async function deleteAsset(fileName) {{
-    try {{
-        await fetch(`${{API_URL}}/v2/tool_asset?file_name=${{encodeURIComponent(fileName)}}`, {{
-            method: 'DELETE',
-            headers: {{
-                'Authorization': `Bearer ${{AUTH_TOKEN}}`,
-                'x-shinkai-tool-id': 'run',
-                'x-shinkai-app-id': APP_ID
-            }}
-        }});
-        console.log(`Deleted asset: ${{fileName}}`);
-    }} catch (error) {{
-        console.error(`Error deleting asset ${{fileName}}:`, error);
-    }}
-}}
-
-async function syncAssets() {{
-    // Get local assets
-    try {{
-        const localAssets = fs.readdirSync('./assets')
-            .filter(file => file.endsWith('.txt'))
-            .reduce((acc, file) => {{
-                acc[file] = fs.readFileSync(`./assets/${{file}}`, 'utf8');
-                return acc;
-            }}, {{}});
-
-        // Get remote assets
-        const remoteAssets = await listRemoteAssets();
-
-        // Upload missing assets
-        for (const [fileName, content] of Object.entries(localAssets)) {{
-            if (!remoteAssets.includes(fileName)) {{
-                await uploadAsset(fileName, content);
-            }}
-        }}
-
-        // Delete extra remote assets
-        for (const remoteFile of remoteAssets) {{
-            if (!localAssets.hasOwnProperty(remoteFile)) {{
-                await deleteAsset(remoteFile);
-            }}
-        }}
-    }} catch (error) {{
-        console.error('Error synchronizing assets:', error);
-    }}
-}}
-
-// Execute the API call
-async function start() {{
-    try {{
-        console.log('Starting asset synchronization...');
-        await syncAssets();
-        console.log('Asset synchronization completed');
-
-        console.log('Tool Execution Started at ', new Date().toISOString());
-        let data = await makeApiCall();
-        // Check for log files in the response
-        if (data.message && data.message.match(/Files: shinkai:\/\/file\//)) {{
-            const file = data.message.match(/shinkai:\/\/file\/[@a-zA-Z0-9/_.-]+/);
-            if (file) {{
-                const logContent = await fetchLogFile(file[0]);
-                console.log('Log content:', logContent);
-            }} else {{
-                console.log('No file found in the response.');
-            }}
-        }}
-        if (data.__created_files__) {{
-            for (const filePath of data.__created_files__) {{
-                if (filePath.endsWith('.log')) {{
-                    console.log('--------------------------------');
-                    console.log('Fetching log file:', filePath);
-                    const logContent = await fetchLogFile(filePath);
-                    console.log('Log content:', logContent);
-                    console.log('--------------------------------');
-                }}
-            }}
-        }}
-        console.log('Tool Execution Completed at ', new Date().toISOString());
-        console.log('Response:\n', JSON.stringify(data, null, 2));
-    }} catch(error) {{
-        console.error('Error:', error);
-    }}
-}}
-
-start().then(() => {{
-    console.log('All operations completed');
-}});
-
-
-"#
+NODE_URL={api_url}
+API_KEY={bearer}
+LLM_PROVIDER={llm_provider}
+DEBUG_HTTP_REQUESTS=false
+X_SHINKAI_APP_ID=app-id-{random_uuid}
+IDENTITY="{identity}"
+LANGUAGE={env_language}
+            "#,
         );
-        let mut launch_file = temp_dir.clone();
-        launch_file.push("launch.js");
-        files_created.insert(launch_file.clone(), launch_script.clone());
-        fs::write(&launch_file, launch_script.clone())
+        fs::write(temp_dir.join(".env"), env_content)
             .await
             .map_err(|e| APIError {
                 code: 500,
-                error: "Failed to write launch.sh".to_string(),
+                error: "Failed to create .env file".to_string(),
                 message: e.to_string(),
             })?;
 
-        // Set file permissions in a cross-platform way
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perm = std::fs::Permissions::from_mode(0o755);
-            fs::set_permissions(&launch_file, perm).await.map_err(|e| APIError {
-                code: 500,
-                error: "Failed to set permissions".to_string(),
-                message: e.to_string(),
-            })?;
-        }
-
-        // On Windows, executable permissions don't exist in the same way
-        #[cfg(windows)]
-        {
-            // Windows doesn't need special executable permissions for .js files
-        }
-
-        // Create .vscode/launch.json
-        let mut vscode_dir = temp_dir.clone();
-        vscode_dir.push(".vscode");
-        fs::create_dir_all(&vscode_dir).await.map_err(|e| APIError {
+        println!("[Step 7] Writing tool keys to .tool-key-path file");
+        // Write tool keys to .tool-key-path file
+        let tool_key_path = temp_dir.join(".tool-key-path");
+        std::fs::write(
+            &tool_key_path,
+            tool_list
+                .iter()
+                .map(|tool| tool.to_string_without_version())
+                .collect::<Vec<String>>()
+                .join("\n"),
+        )
+        .map_err(|e| APIError {
             code: 500,
-            error: "Failed to create .vscode directory".to_string(),
+            error: "Failed to write tool keys".to_string(),
             message: e.to_string(),
         })?;
 
-        let launch_json = json!({
-            "version": "2.0.0",
-            "configurations": [{
-                "name": "Launch Tool",
-                "program": "${workspaceFolder}/launch.js",
-                "request": "launch",
-                "type": "node"
-            }]
-        });
-        let mut launch_json_file = vscode_dir.clone();
-        launch_json_file.push("launch.json");
-        let launch_json_string = serde_json::to_string_pretty(&launch_json).map_err(|e| APIError {
-            code: 500,
-            error: "Failed to serialize launch.json".to_string(),
-            message: e.to_string(),
-        })?;
-        files_created.insert(launch_json_file.clone(), launch_json_string.clone());
-        fs::write(&launch_json_file, launch_json_string.clone())
-            .await
-            .map_err(|e| APIError {
-                code: 500,
-                error: "Failed to write launch.json".to_string(),
-                message: e.to_string(),
-            })?;
+        println!(
+            "Playground created successfully: {}",
+            temp_dir.to_string_lossy().to_string()
+        );
 
+        println!("[Step 8] Launching IDE");
+        // Finally launch the playground
         // First try to open with cursor
         let cursor_open = Command::new("cursor").arg(temp_dir.clone()).spawn();
         if cursor_open.is_err() {
@@ -3401,154 +3232,9 @@ start().then(() => {{
             }
         }
 
-        // Create parameters.json
-        let mut parameters_file = temp_dir.clone();
-        parameters_file.push("parameters.json");
-        let parameters_content = serde_json::to_string_pretty(&parameters).map_err(|e| APIError {
-            code: 500,
-            error: "Failed to serialize parameters".to_string(),
-            message: e.to_string(),
-        })?;
-        files_created.insert(parameters_file.clone(), parameters_content.clone());
-        fs::write(&parameters_file, parameters_content)
-            .await
-            .map_err(|e| APIError {
-                code: 500,
-                error: "Failed to write parameters.json".to_string(),
-                message: e.to_string(),
-            })?;
-
-        // Create config.json
-        let mut config_file = temp_dir.clone();
-        config_file.push("config.json");
-        let config_content = serde_json::to_string_pretty(&config).map_err(|e| APIError {
-            code: 500,
-            error: "Failed to serialize config".to_string(),
-            message: e.to_string(),
-        })?;
-        files_created.insert(config_file.clone(), config_content.clone());
-        fs::write(&config_file, config_content).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to write config.json".to_string(),
-            message: e.to_string(),
-        })?;
-
-        // Let's copy assets if any
-        let node_storage_path = node_env.node_storage_path.clone().unwrap_or_else(|| "".to_string());
-        let assets_path = PathBuf::from(&node_storage_path)
-            .join(".tools_storage")
-            .join("playground")
-            .join(app_id.clone());
-
-        let mut asset_folder = temp_dir.clone();
-        asset_folder.push("assets");
-        fs::create_dir_all(&asset_folder).await.map_err(|e| APIError {
-            code: 500,
-            error: "Failed to create assets directory".to_string(),
-            message: e.to_string(),
-        })?;
-
-        if assets_path.exists() {
-            for entry in std::fs::read_dir(assets_path).map_err(|e| APIError {
-                code: 500,
-                error: "Failed to read assets directory".to_string(),
-                message: e.to_string(),
-            })? {
-                let entry = entry.map_err(|e| APIError {
-                    code: 500,
-                    error: "Failed to read directory entry".to_string(),
-                    message: e.to_string(),
-                })?;
-                let path = entry.path();
-                if path.is_file() {
-                    let mut asset_file = asset_folder.clone();
-                    asset_file.push(path.file_name().unwrap().to_string_lossy().to_string());
-                    files_created.insert(asset_file.clone(), path.to_string_lossy().to_string());
-                    fs::copy(path, asset_file).await.map_err(|e| APIError {
-                        code: 500,
-                        error: "Failed to copy asset".to_string(),
-                        message: e.to_string(),
-                    })?;
-                }
-            }
-        }
-
-        // Create README.md
-        let readme_content = format!(
-            r#"# Shinkai Tool Playground
-
-This is a standalone playground for testing your Shinkai tool.
-
-## Structure
-- `{}`: The main tool implementation
-- `*.ts` or `*.py`: Tool definition files for dependencies
-- `metadata.json`: Tool metadata and configuration
-- `parameters.json`: Runtime parameters passed to your tool (modify this to test different inputs)
-- `config.json`: Additional configuration options for tool execution
-- `assets/`: Directory containing tool assets
-- `launch.js`: Script to execute the tool
-- `.vscode/`: VS Code configuration for easy execution
-- `README.md`: This file
-
-## Configuration Files
-- `parameters.json`: Contains the input parameters that will be passed to your tool during execution. Modify this file to test how your tool behaves with different inputs.
-- `config.json`: Holds additional configuration options that affect tool execution. Use this for environment-specific settings.
-- `metadata.json`: Defines your tool's metadata like name, description, version, tools and oauth are extracted from this file.
-
-## Running the Tool
-1. Make sure you have Shinkai running locally
-2. Configure your test setup:
-   - Update input parameters in `parameters.json`
-   - Modify execution settings in `config.json`
-3. Run the tool using either:
-   - VS Code's debug launcher
-   - Execute `node launch.js` from the terminal
-
-## Dependencies
-You will need node.js to run the tool. If you don't have it, you can install it from [here](https://nodejs.org/en/download/).
-
-Happy coding!"#,
-            tool_filename
-        );
-        let mut readme_file = temp_dir.clone();
-        readme_file.push("README.md");
-        files_created.insert(readme_file.clone(), readme_content.clone());
-        fs::write(&readme_file, readme_content.clone())
-            .await
-            .map_err(|e| APIError {
-                code: 500,
-                error: "Failed to write README file".to_string(),
-                message: e.to_string(),
-            })?;
-
-        // After creating .vscode/launch.json, add settings.json for TypeScript
-        if language == CodeLanguage::Typescript {
-            let settings_json = json!({
-                "deno.enable": true,
-                "editor.formatOnSave": true,
-                "editor.defaultFormatter": "denoland.vscode-deno"
-            });
-            let mut settings_json_file = vscode_dir.clone();
-            settings_json_file.push("settings.json");
-            let settings_json_string = serde_json::to_string_pretty(&settings_json).map_err(|e| APIError {
-                code: 500,
-                error: "Failed to serialize settings.json".to_string(),
-                message: format!("Failed to serialize settings.json: {}", e),
-            })?;
-            files_created.insert(settings_json_file.clone(), settings_json_string.clone());
-            fs::write(&settings_json_file, settings_json_string.clone())
-                .await
-                .map_err(|e| APIError {
-                    code: 500,
-                    error: "Failed to write settings.json".to_string(),
-                    message: format!("Failed to write settings.json: {}", e),
-                })?;
-        }
-
         Ok(json!({
             "status": "success",
             "playground_path": temp_dir.to_string_lossy().to_string(),
-            "files": files_created
         }))
     }
 

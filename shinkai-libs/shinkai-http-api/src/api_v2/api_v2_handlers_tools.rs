@@ -2034,13 +2034,13 @@ pub async fn tool_store_proxy_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct StandAlonePlaygroundRequest {
-    pub code: String,
-    pub metadata: Value,
-    pub assets: Option<Vec<String>>,
     pub language: CodeLanguage,
-    pub tools: Vec<ToolRouterKey>,
-    pub parameters: Value,
-    pub config: Value,
+    pub code: Option<String>,
+    pub metadata: Option<Value>,
+    pub assets: Option<Vec<String>>,
+    pub tools: Option<Vec<ToolRouterKey>>,
+    pub parameters: Option<Value>,
+    pub config: Option<Value>,
     pub oauth: Option<Vec<OAuth>>,
 }
 
