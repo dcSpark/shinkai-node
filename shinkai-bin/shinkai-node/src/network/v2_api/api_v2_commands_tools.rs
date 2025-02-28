@@ -3167,6 +3167,79 @@ impl Node {
         }
         let _ = std::fs::remove_file(temp_dir.join(".env.example"));
 
+        // Handle code replacement if provided
+        if let Some(code_content) = code {
+            let tool_file_path = match language {
+                CodeLanguage::Python => temp_dir.join("my-tool-python").join("tool.py"),
+                CodeLanguage::Typescript => temp_dir.join("my-tool-typescript").join("tool.ts"),
+            };
+            fs::write(&tool_file_path, code_content).await.map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write tool code file".to_string(),
+                message: e.to_string(),
+            })?;
+        }
+
+        // Handle metadata replacement if provided
+        if let Some(metadata_content) = metadata {
+            let metadata_file_path = match language {
+                CodeLanguage::Python => temp_dir.join("my-tool-python").join("metadata.json"),
+                CodeLanguage::Typescript => temp_dir.join("my-tool-typescript").join("metadata.json"),
+            };
+            fs::write(
+                &metadata_file_path,
+                serde_json::to_string_pretty(&metadata_content).map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to serialize metadata".to_string(),
+                    message: e.to_string(),
+                })?,
+            )
+            .await
+            .map_err(|e| APIError {
+                code: 500,
+                error: "Failed to write metadata file".to_string(),
+                message: e.to_string(),
+            })?;
+        }
+
+        // Handle assets if provided
+        if let Some(asset_paths) = assets {
+            let assets_dir = match language {
+                CodeLanguage::Python => temp_dir.join("my-tool-python").join("assets"),
+                CodeLanguage::Typescript => temp_dir.join("my-tool-typescript").join("assets"),
+            };
+
+            // Create assets directory if it doesn't exist
+            fs::create_dir_all(&assets_dir).await.map_err(|e| APIError {
+                code: 500,
+                error: "Failed to create assets directory".to_string(),
+                message: e.to_string(),
+            })?;
+
+            let node_storage_path = node_env.node_storage_path.clone().unwrap_or_else(|| "".to_string());
+            let node_assets_path = PathBuf::from(&node_storage_path)
+                .join(".tools_storage")
+                .join("playground")
+                .join(app_id.clone());
+
+            // Copy each asset file
+            for file_name in asset_paths {
+                let source_path = node_assets_path.join(file_name.clone());
+                let target_path = assets_dir.join(file_name.clone());
+
+                fs::copy(&source_path, &target_path).await.map_err(|e| APIError {
+                    code: 500,
+                    error: "Failed to copy asset file".to_string(),
+                    message: format!(
+                        "Failed to copy {} to {}: {}",
+                        source_path.display(),
+                        target_path.display(),
+                        e
+                    ),
+                })?;
+            }
+        }
+
         println!("[Step 6] Creating .env file");
 
         let api_url = format!(
