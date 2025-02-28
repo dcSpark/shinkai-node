@@ -697,6 +697,7 @@ pub enum NodeCommand {
     },
     V2ApiListAllShinkaiTools {
         bearer: String,
+        category: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiToolsVersions {
