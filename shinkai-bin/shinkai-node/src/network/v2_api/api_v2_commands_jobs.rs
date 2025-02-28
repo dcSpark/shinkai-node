@@ -12,9 +12,9 @@ use shinkai_message_primitives::{
         inbox_name::InboxName,
         job::{ForkedJob, JobLike},
         job_config::JobConfig,
-        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider},
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
+        smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox},
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData},
@@ -812,6 +812,34 @@ impl Node {
         }
     }
 
+    async fn get_llm_provider_for_agent(
+        db: Arc<SqliteManager>,
+        llm_or_agent_id: String,
+        agent_id: String,
+    ) -> Result<Option<SerializedLLMProvider>, NodeError> {
+        let agents_and_llm_providers = JobManager::get_all_agents_and_llm_providers(db.clone())
+            .await
+            .unwrap_or(vec![]);
+        for agent_or_llm_provider in agents_and_llm_providers {
+            if agent_or_llm_provider.get_id().to_lowercase() == llm_or_agent_id.to_lowercase() {
+                match agent_or_llm_provider.clone() {
+                    ProviderOrAgent::Agent(agent) => {
+                        return Box::pin(Self::get_llm_provider_for_agent(
+                            db.clone(),
+                            agent.llm_provider_id,
+                            agent_id,
+                        ))
+                        .await;
+                    }
+                    ProviderOrAgent::LLMProvider(llm_provider) => {
+                        return Ok(Some(llm_provider));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+
     pub async fn v2_api_get_job_provider(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -827,7 +855,45 @@ impl Node {
         match db.get_job_with_options(&job_id, false) {
             Ok(job) => {
                 let provider = job.parent_llm_provider_id().to_string();
-                let _ = res.send(Ok(json!({ "provider": provider }))).await;
+
+                // Acquire Agent
+                let mut provider_type: ProviderType = ProviderType::Unknown;
+                let mut agent_or_llm_provider_found: Option<LLMProviderSubset> = None;
+
+                let agent_or_llm_provider_id = job.parent_agent_or_llm_provider_id.clone();
+                let agents_and_llm_providers = JobManager::get_all_agents_and_llm_providers(db.clone())
+                    .await
+                    .unwrap_or(vec![]);
+                for agent_or_llm_provider in agents_and_llm_providers.clone() {
+                    if agent_or_llm_provider.get_id().to_lowercase() == provider.to_lowercase() {
+                        match agent_or_llm_provider.clone() {
+                            ProviderOrAgent::Agent(agent) => {
+                                let llm_provider = Self::get_llm_provider_for_agent(
+                                    db.clone(),
+                                    agent.clone().llm_provider_id,
+                                    agent_or_llm_provider_id.clone(),
+                                )
+                                .await?;
+                                if let Some(llm_provider) = llm_provider {
+                                    agent_or_llm_provider_found =
+                                        Some(LLMProviderSubset::from_agent(agent.clone(), llm_provider));
+                                    provider_type = ProviderType::Agent;
+                                }
+                            }
+                            ProviderOrAgent::LLMProvider(llm_provider) => {
+                                agent_or_llm_provider_found =
+                                    Some(LLMProviderSubset::from_serialized_llm_provider(llm_provider.clone()));
+                                provider_type = ProviderType::LLMProvider;
+                            }
+                        }
+                    }
+                }
+
+                let _ = res
+                    .send(Ok(
+                        json!({ "provider_type": provider_type, "agent": agent_or_llm_provider_found }),
+                    ))
+                    .await;
                 Ok(())
             }
             Err(_) => {
