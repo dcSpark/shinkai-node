@@ -1827,6 +1827,12 @@ impl Node {
                     let _ = Node::v2_api_get_job_config(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiGetJobProvider { bearer, job_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_job_provider(db_clone, bearer, job_id, res).await;
+                });
+            }
             NodeCommand::V2ApiRemoveLlmProvider {
                 bearer,
                 llm_provider_id,
@@ -1871,6 +1877,16 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiShinkaiBackendGetQuota {
+                bearer,
+                model_type,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_check_shinkai_backend_quota(db_clone, model_type, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiIsPristine { bearer, res } => {
@@ -2117,6 +2133,12 @@ impl Node {
                 let wallet_manager_clone = self.wallet_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_list_wallets(db_clone, wallet_manager_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetStorageLocation { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_storage_location(db_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiRequestInvoice {
@@ -3055,6 +3077,30 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_tool_enabled(db_clone, bearer, tool_router_key, enabled, res).await;
+                });
+            }
+            NodeCommand::V2ApiCopyToolAssets {
+                bearer,
+                is_first_playground,
+                first_path,
+                is_second_playground,
+                second_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_copy_tool_assets(
+                        db_clone,
+                        bearer,
+                        node_env,
+                        is_first_playground,
+                        first_path,
+                        is_second_playground,
+                        second_path,
+                        res,
+                    )
+                    .await;
                 });
             }
             _ => (),

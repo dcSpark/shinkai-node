@@ -182,6 +182,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(add_messages_god_mode_handler);
 
+    let get_job_provider_route = warp::path!("get_job_provider")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetJobProviderRequest>())
+        .and_then(get_job_provider_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -203,6 +210,7 @@ pub fn job_routes(
         .or(remove_job_route)
         .or(export_messages_from_inbox_route)
         .or(add_messages_god_mode_route)
+        .or(get_job_provider_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -1256,6 +1264,52 @@ pub async fn add_messages_god_mode_handler(
     match result {
         Ok(response) => {
             let response = create_success_response(json!({ "result": response }));
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GetJobProviderRequest {
+    pub job_id: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_job_provider",
+    params(
+        ("job_id" = String, Query, description = "Job ID to retrieve LLM provider for")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved job LLM provider", body = String),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_job_provider_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    query: GetJobProviderRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetJobProvider {
+            bearer,
+            job_id: query.job_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
             Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
         }
         Err(error) => Ok(warp::reply::with_status(

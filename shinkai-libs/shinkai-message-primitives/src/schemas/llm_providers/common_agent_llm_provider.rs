@@ -1,8 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 use crate::schemas::shinkai_name::ShinkaiName;
 
 use super::{agent::Agent, serialized_llm_provider::SerializedLLMProvider};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ProviderOrAgent {
     LLMProvider(SerializedLLMProvider),
     Agent(Agent),
