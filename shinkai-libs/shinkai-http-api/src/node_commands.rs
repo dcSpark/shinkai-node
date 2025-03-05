@@ -977,6 +977,12 @@ pub enum NodeCommand {
         mounts: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiCheckTool {
+        bearer: String,
+        code: String,
+        language: CodeLanguage,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiExecuteCode {
         bearer: String,
         code: String,
