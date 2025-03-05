@@ -62,6 +62,42 @@ impl PythonTool {
         Ok(deserialized)
     }
 
+    pub async fn check_code(
+        &self,
+        code: String,
+        support_files: HashMap<String, String>,
+    ) -> Result<Vec<String>, ToolError> {
+        // Create map with file name and source code
+        let mut code_files = HashMap::new();
+        code_files.insert("index.py".to_string(), code);
+        support_files.iter().for_each(|(file_name, file_code)| {
+            code_files.insert(format!("{}.py", file_name), file_code.clone());
+        });
+
+        let empty_hash_map: HashMap<String, String> = HashMap::new();
+        let config_json =
+            serde_json::to_value(empty_hash_map).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+
+        let tool = PythonRunner::new(
+            CodeFiles {
+                files: code_files.clone(),
+                entrypoint: "index.py".to_string(),
+            },
+            config_json,
+            Some(PythonRunnerOptions {
+                uv_binary_path: PathBuf::from(
+                    env::var("SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH")
+                        .unwrap_or_else(|_| "./shinkai-tools-runner-resources/uv".to_string()),
+                ),
+                ..Default::default()
+            }),
+        );
+
+        let result = tool.check().await;
+        println!("[Checking PythonTool] Result: {:?}", result);
+        result.map_err(|e| ToolError::ExecutionError(e.to_string()))
+    }
+
     pub async fn run(
         &self,
         envs: HashMap<String, String>,

@@ -63,6 +63,39 @@ impl DenoTool {
         Ok(deserialized)
     }
 
+    pub async fn check_code(
+        &self,
+        code: String,
+        support_files: HashMap<String, String>,
+    ) -> Result<Vec<String>, ToolError> {
+        // Create map with file name and source code
+        let mut code_files = HashMap::new();
+        code_files.insert("index.ts".to_string(), code);
+        support_files.iter().for_each(|(file_name, file_code)| {
+            code_files.insert(format!("{}.ts", file_name), file_code.clone());
+        });
+        let empty_hash_map: HashMap<String, String> = HashMap::new();
+        let config_json =
+            serde_json::to_value(empty_hash_map).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+        let tool = DenoRunner::new(
+            CodeFiles {
+                files: code_files.clone(),
+                entrypoint: "index.ts".to_string(),
+            },
+            config_json,
+            Some(DenoRunnerOptions {
+                deno_binary_path: PathBuf::from(
+                    env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
+                        .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
+                ),
+                ..Default::default()
+            }),
+        );
+        let result = tool.check().await;
+        println!("[Checking DenoTool] Result: {:?}", result);
+        result.map_err(|e| ToolError::ExecutionError(e.to_string()))
+    }
+
     async fn run_internal(
         &self,
         envs: HashMap<String, String>,
