@@ -109,7 +109,7 @@ pub fn create_function_name_set(tool: &ShinkaiToolHeader) -> String {
 
 pub fn python_common_code() -> String {
     "
-from typing import Optional, Any, Dict, List, Union
+from typing import Optional, Any, Dict, List
 import os
 import requests
 "
@@ -252,11 +252,11 @@ pub fn generate_python_definition(
             error_message += f"Status: {e.response.status_code}, "
             try:
                 error_message += f"Response: {e.response.json()}"
-            except:
+            except ValueError:
                 error_message += f"Response: {e.response.text}"
         else:
             error_message += str(e)
-        raise Exception(error_message)
+        raise Exception(error_message) from e
 "#,
         );
     }
