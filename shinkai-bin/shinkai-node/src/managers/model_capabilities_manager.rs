@@ -162,6 +162,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Ollama(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Exo(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::SambaNova(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -424,6 +425,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(groq) => {
                 std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000)
             }
+            LLMProviderInterface::SambaNova(sambanova) => Self::get_max_tokens_for_model_type(&sambanova.model_type),
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
@@ -545,6 +547,10 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Groq(_) => {
                 // Fill in the appropriate logic for Ollama
+                4096
+            }
+            LLMProviderInterface::SambaNova(_) => {
+                // Fill in the appropriate logic for SambaNova
                 4096
             }
             LLMProviderInterface::Exo(_) => 4096,
