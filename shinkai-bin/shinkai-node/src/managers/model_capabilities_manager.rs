@@ -220,6 +220,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelCost::Free,
             LLMProviderInterface::Groq(_) => ModelCost::VeryCheap,
+            LLMProviderInterface::SambaNova(_) => ModelCost::Cheap,
             LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
@@ -248,6 +249,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelPrivacy::Local,
             LLMProviderInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::SambaNova(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
@@ -341,6 +343,11 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(groq) => {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string = llama_prepare_messages(model, groq.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
+            LLMProviderInterface::SambaNova(sambanova) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, sambanova.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
             LLMProviderInterface::Gemini(gemini) => {

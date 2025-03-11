@@ -22,6 +22,7 @@ pub mod local_regex;
 pub mod ollama;
 pub mod openai;
 pub mod openrouter;
+pub mod sambanova;
 pub mod shared;
 pub mod shinkai_backend;
 pub mod togetherai;
