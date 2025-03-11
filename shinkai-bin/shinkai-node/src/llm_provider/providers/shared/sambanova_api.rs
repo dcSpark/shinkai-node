@@ -110,7 +110,12 @@ mod tests {
             },
             {
                 "role": "assistant",
-                "content": "How can I help you today?"
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "How can I help you today?"
+                    }
+                ]
             },
             {
                 "role": "user",
