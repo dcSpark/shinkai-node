@@ -715,6 +715,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-pixtral")
             }
             LLMProviderInterface::Claude(_) => true,
+            LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => {
                 model.model_type.starts_with("gemini-pro")
                     || model.model_type.starts_with("gemini-pro-vision")
