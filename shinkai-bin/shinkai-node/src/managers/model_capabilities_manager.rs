@@ -162,6 +162,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Ollama(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Exo(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::SambaNova(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -220,6 +221,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelCost::Free,
             LLMProviderInterface::Groq(_) => ModelCost::VeryCheap,
+            LLMProviderInterface::SambaNova(_) => ModelCost::Cheap,
             LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
@@ -248,6 +250,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelPrivacy::Local,
             LLMProviderInterface::Groq(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::SambaNova(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
@@ -343,6 +346,11 @@ impl ModelCapabilitiesManager {
                 let messages_string = llama_prepare_messages(model, groq.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
             }
+            LLMProviderInterface::SambaNova(sambanova) => {
+                let total_tokens = Self::get_max_tokens(model);
+                let messages_string = llama_prepare_messages(model, sambanova.clone().model_type, prompt, total_tokens)?;
+                Ok(messages_string)
+            }
             LLMProviderInterface::Gemini(gemini) => {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string = llama_prepare_messages(model, gemini.clone().model_type, prompt, total_tokens)?;
@@ -417,6 +425,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(groq) => {
                 std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000)
             }
+            LLMProviderInterface::SambaNova(sambanova) => Self::get_max_tokens_for_model_type(&sambanova.model_type),
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
@@ -544,6 +553,10 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Groq(_) => {
                 // Fill in the appropriate logic for Ollama
+                4096
+            }
+            LLMProviderInterface::SambaNova(_) => {
+                // Fill in the appropriate logic for SambaNova
                 4096
             }
             LLMProviderInterface::Exo(_) => 4096,

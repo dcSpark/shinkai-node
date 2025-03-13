@@ -194,6 +194,21 @@ impl LLMProvider {
                 )
                 .await
             }
+            LLMProviderInterface::SambaNova(sambanova) => {
+                sambanova.call_api(
+                    &self.client,
+                    self.external_url.as_ref(),
+                    self.api_key.as_ref(),
+                    prompt.clone(),
+                    self.model.clone(),
+                    inbox_name,
+                    ws_manager_trait,
+                    merged_config,
+                    llm_stopper,
+                    self.db.clone(),
+                )
+                .await
+            }
             LLMProviderInterface::Gemini(gemini) => {
                 gemini
                     .call_api(

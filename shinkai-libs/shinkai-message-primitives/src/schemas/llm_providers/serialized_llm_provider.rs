@@ -29,6 +29,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::OpenRouter(_) => "openrouter",
             LLMProviderInterface::Claude(_) => "claude",
             LLMProviderInterface::LocalRegex(_) => "local-regex",
+            LLMProviderInterface::SambaNova(_) => "sambanova",
         }
         .to_string()
     }
@@ -46,6 +47,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
             LLMProviderInterface::Claude(_) => "claude".to_string(),
             LLMProviderInterface::LocalRegex(_) => "local-regex".to_string(),
+            LLMProviderInterface::SambaNova(_) => "openai-generic".to_string(),
         }
     }
 
@@ -62,6 +64,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
             LLMProviderInterface::Claude(claude) => claude.model_type.clone(),
             LLMProviderInterface::LocalRegex(local_regex) => local_regex.model_type.clone(),
+            LLMProviderInterface::SambaNova(sambanova) => sambanova.model_type.clone(),
         }
     }
 
@@ -119,6 +122,7 @@ pub enum LLMProviderInterface {
     OpenRouter(OpenRouter),
     Claude(Claude),
     LocalRegex(LocalRegex),
+    SambaNova(SambaNova),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
@@ -226,6 +230,17 @@ impl LocalRegex {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct SambaNova {
+    pub model_type: String,
+}
+
+impl SambaNova {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
 impl FromStr for LLMProviderInterface {
     type Err = ();
 
@@ -261,6 +276,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("local-regex:") {
             let model_type = s.strip_prefix("local-regex:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::LocalRegex(LocalRegex { model_type }))
+        } else if s.starts_with("sambanova:") {
+            let model_type = s.strip_prefix("sambanova:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::SambaNova(SambaNova { model_type }))
         } else {
             Err(())
         }
@@ -314,6 +332,10 @@ impl Serialize for LLMProviderInterface {
                 let model_type = format!("local-regex:{}", local_regex.model_type);
                 serializer.serialize_str(&model_type)
             }
+            LLMProviderInterface::SambaNova(sambanova) => {
+                let model_type = format!("sambanova:{}", sambanova.model_type);
+                serializer.serialize_str(&model_type)
+            }
         }
     }
 }
@@ -364,6 +386,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "local-regex" => Ok(LLMProviderInterface::LocalRegex(LocalRegex {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "sambanova" => Ok(LLMProviderInterface::SambaNova(SambaNova {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             _ => Err(de::Error::unknown_variant(
                 value,
                 &[
@@ -378,6 +403,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "openrouter",
                     "claude",
                     "local-regex",
+                    "sambanova",
                 ],
             )),
         }
