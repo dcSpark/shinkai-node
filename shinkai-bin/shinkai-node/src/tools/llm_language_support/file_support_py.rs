@@ -43,8 +43,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
             "Gets a valid OAuth AccessToken for the given provider.",
             "str",
             vec!["provider_name: str"],
-            r#"from typing import TypedDict, List, Optional
-
+            r#"
     oauth_config_str = os.environ.get('SHINKAI_OAUTH', '{}')
     try:
         oauth_config = json.loads(oauth_config_str)
@@ -67,7 +66,7 @@ pub fn generate_file_support_py(declaration_only: bool) -> String {
     let mut output = String::new();
 
     if !declaration_only {
-        output.push_str("import os\nimport json\nfrom typing import List, TypedDict, Optional\n\n");
+        output.push_str("import os\nimport json\nfrom typing import List\n\n");
     }
 
     for (name, doc, return_type, args, implementation, return_desc) in function_definitions {

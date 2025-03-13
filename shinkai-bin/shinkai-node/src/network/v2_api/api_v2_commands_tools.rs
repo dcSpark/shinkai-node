@@ -1,6 +1,6 @@
 use crate::{
     llm_provider::job_manager::JobManager,
-    managers::{tool_router, tool_router::ToolRouter, IdentityManager},
+    managers::{tool_router::ToolRouter, IdentityManager},
     network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
@@ -38,6 +38,7 @@ use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
     deno_tools::DenoTool,
     error::ToolError,
+    parameters::Parameters,
     python_tools::PythonTool,
     shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
     tool_config::{OAuth, ToolConfig},
@@ -50,11 +51,9 @@ use shinkai_tools_primitives::tools::{
 };
 use std::path::PathBuf;
 use std::{
-    collections::HashMap,
     env,
     fs::File,
     io::{Read, Write},
-    result,
     sync::Arc,
     time::Instant,
 };
@@ -3554,17 +3553,121 @@ LANGUAGE={env_language}
             "message": "Tool assets copied successfully"
         }))
     }
+
+    pub async fn check_tool(
+        bearer: String,
+        db: Arc<SqliteManager>,
+        code: String,
+        language: CodeLanguage,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tools = db
+            .get_all_tool_headers()
+            .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?;
+        let tools = tools
+            .iter()
+            .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
+            .filter(|tool| tool.is_ok())
+            .map(|tool| tool.unwrap())
+            .collect();
+
+        let warnings = match language {
+            CodeLanguage::Typescript => {
+                let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
+                    .await
+                    .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
+                let tool = DenoTool {
+                    name: "".to_string(),
+                    homepage: None,
+                    author: "".to_string(),
+                    version: "".to_string(),
+                    js_code: code.clone(),
+                    tools: vec![],
+                    config: vec![],
+                    description: "".to_string(),
+                    keywords: vec![],
+                    input_args: Parameters::new(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: true,
+                    embedding: None,
+                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    sql_tables: None,
+                    sql_queries: None,
+                    file_inbox: None,
+                    oauth: None,
+                    assets: None,
+                    runner: RunnerType::Any,
+                    operating_system: vec![],
+                    tool_set: None,
+                };
+                tool.check_code(code.clone(), support_files).await
+            }
+            CodeLanguage::Python => {
+                let support_files = generate_tool_definitions(tools, CodeLanguage::Python, db.clone(), false)
+                    .await
+                    .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
+                let tool: PythonTool = PythonTool {
+                    version: "".to_string(),
+                    name: "".to_string(),
+                    homepage: None,
+                    author: "".to_string(),
+                    py_code: code.clone(),
+                    tools: vec![],
+                    config: vec![],
+                    description: "".to_string(),
+                    keywords: vec![],
+                    input_args: Parameters::new(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: true,
+                    embedding: None,
+                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    sql_tables: None,
+                    sql_queries: None,
+                    file_inbox: None,
+                    oauth: None,
+                    assets: None,
+                    runner: RunnerType::Any,
+                    operating_system: vec![],
+                    tool_set: None,
+                };
+                tool.check_code(code.clone(), support_files).await
+            }
+        };
+
+        match warnings {
+            Ok(warnings) => {
+                let _ = res
+                    .send(Ok(json!({
+                        "warnings": warnings,
+                        "success": true
+                    })))
+                    .await;
+            }
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: 500,
+                        error: "Check Failed".to_string(),
+                        message: format!("Tool check failed: {}", e),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-
-    use shinkai_embedding::model_type::EmbeddingModelType;
-    use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
-    use std::path::PathBuf;
-    use tempfile::NamedTempFile;
 
     // TODO: update to not use workflow
     #[test]

@@ -6650,7 +6650,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai-spreadsheet-llm"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "async-trait",
  "chrono",
@@ -6665,7 +6665,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "chrono",
  "dashmap",
@@ -6681,7 +6681,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_embedding"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6702,7 +6702,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6736,7 +6736,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "async-channel 1.9.0",
  "bytes",
@@ -6761,7 +6761,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "chrono",
  "serde",
@@ -6775,7 +6775,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -6803,14 +6803,14 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mini_libs"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "base64 0.22.1",
 ]
 
 [[package]]
 name = "shinkai_node"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -6884,7 +6884,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "anyhow",
  "image 0.25.5",
@@ -6899,7 +6899,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sheet"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "async-channel 1.9.0",
  "chrono",
@@ -6913,7 +6913,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "bincode",
  "blake3",
@@ -6944,7 +6944,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -6963,7 +6963,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "0.9.12"
+version = "0.9.13"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -6978,8 +6978,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.0.0"
-source = "git+https://github.com/dcSpark/shinkai-code-runner.git?branch=feature%2Fmount-abs#3b401a201ed68c74e7f448f6152069dc4f644f32"
+version = "0.9.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "891f0e2384cc3e6eef0e285eb32cda0ff44335d6accdcd1cf47f3a2c2c373f73"
 dependencies = [
  "anyhow",
  "base64-simd",
@@ -6999,6 +7000,7 @@ dependencies = [
  "once_cell",
  "patch",
  "phf 0.11.2",
+ "regex",
  "reqwest 0.11.27",
  "serde",
  "serde_json",

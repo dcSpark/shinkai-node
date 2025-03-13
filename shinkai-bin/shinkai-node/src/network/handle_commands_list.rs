@@ -3105,6 +3105,18 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiCheckTool {
+                bearer,
+                code,
+                language,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+
+                tokio::spawn(async move {
+                    let _ = Node::check_tool(bearer, db_clone, code, language, res).await;
+                });
+            }
             _ => (),
         }
     }
