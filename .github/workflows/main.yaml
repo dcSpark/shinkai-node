@@ -24,7 +24,9 @@ concurrency:
 
 jobs:
   test:
-    runs-on: nico-workstation
+    runs-on:
+      group: Shinkai Runners
+      labels: self-hosted
     if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
     steps:
       - name: Checkout
