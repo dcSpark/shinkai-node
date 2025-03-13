@@ -488,6 +488,12 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("deepseek-v3") => 128_000,
             model_type if model_type.starts_with("command-r7b") => 128_000,
             model_type if model_type.starts_with("mistral-small") => 128_000,
+            model_type if model_type.starts_with("qwq") => 32_000,
+            model_type if model_type.starts_with("gemma3:1b") => 32_000,
+            model_type if model_type.starts_with("gemma3:4b") => 128_000,
+            model_type if model_type.starts_with("gemma3:12b") => 128_000,
+            model_type if model_type.starts_with("gemma3:27b") => 128_000,
+            model_type if model_type.starts_with("gemma3") => 128_000,
             _ => 4096, // Default token count if no specific model type matches
         }
     }
@@ -672,6 +678,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwq")
+                    || model.model_type.starts_with("gemma3")
                     || model.model_type.starts_with("deepseek-r1:14b")
                     || model.model_type.starts_with("deepseek-r1:8b")
                     || model.model_type.starts_with("deepseek-r1:70b")
@@ -708,6 +715,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-pixtral")
             }
             LLMProviderInterface::Claude(_) => true,
+            LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => {
                 model.model_type.starts_with("gemini-pro")
                     || model.model_type.starts_with("gemini-pro-vision")
@@ -730,7 +738,9 @@ impl ModelCapabilitiesManager {
                     || openai.model_type.starts_with("o4")
                     || openai.model_type.starts_with("o5")
             }
-            LLMProviderInterface::Ollama(ollama) => ollama.model_type.starts_with("deepseek-r1"),
+            LLMProviderInterface::Ollama(ollama) => {
+                ollama.model_type.starts_with("deepseek-r1") || ollama.model_type.starts_with("qwq")
+            },
             _ => false,
         }
     }
