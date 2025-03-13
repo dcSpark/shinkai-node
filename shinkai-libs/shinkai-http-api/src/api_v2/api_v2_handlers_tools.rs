@@ -21,6 +21,7 @@ pub fn tool_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
         .and_then(list_all_shinkai_tools_handler);
 
     let set_shinkai_tool_route = warp::path("set_shinkai_tool")
@@ -259,6 +260,20 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(set_tool_enabled_handler);
 
+    let copy_tool_asset_route = warp::path!("copy_tool_assets")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(copy_tool_assets_handler);
+
+    let tool_check_route = warp::path("tool_check")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(tool_check_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -292,6 +307,8 @@ pub fn tool_routes(
         .or(standalone_playground_route)
         .or(list_all_shinkai_tools_versions_route)
         .or(set_tool_enabled_route)
+        .or(copy_tool_asset_route)
+        .or(tool_check_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -642,6 +659,9 @@ pub async fn search_shinkai_tool_handler(
 #[utoipa::path(
     get,
     path = "/v2/list_all_shinkai_tools",
+    params(
+        ("category" = Option<String>, Query, description = "Optional category filter for tools. Use 'download' to only list tools from external sources.")
+    ),
     responses(
         (status = 200, description = "Successfully listed all Shinkai tools", body = Value),
         (status = 400, description = "Bad request", body = APIError),
@@ -651,12 +671,16 @@ pub async fn search_shinkai_tool_handler(
 pub async fn list_all_shinkai_tools_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    query_params: HashMap<String, String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let category = query_params.get("category").cloned();
+    
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiListAllShinkaiTools {
             bearer,
+            category,
             res: res_sender,
         })
         .await
@@ -2018,13 +2042,13 @@ pub async fn tool_store_proxy_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct StandAlonePlaygroundRequest {
-    pub code: String,
-    pub metadata: Value,
-    pub assets: Option<Vec<String>>,
     pub language: CodeLanguage,
-    pub tools: Vec<ToolRouterKey>,
-    pub parameters: Value,
-    pub config: Value,
+    pub code: Option<String>,
+    pub metadata: Option<Value>,
+    pub assets: Option<Vec<String>>,
+    pub tools: Option<Vec<ToolRouterKey>>,
+    pub parameters: Option<Value>,
+    pub config: Option<Value>,
     pub oauth: Option<Vec<OAuth>>,
 }
 
@@ -2168,6 +2192,108 @@ pub async fn set_tool_enabled_handler(
     }
 }
 
+
+#[derive(Debug, Deserialize)]
+pub struct CopyToolAssetsRequest {
+    pub is_first_playground: bool,
+    pub first_path: String,  // app_id for playground or tool_key_path for tool
+    pub is_second_playground: bool,
+    pub second_path: String, // app_id for playground or tool_key_path for tool
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/copy_tool_assets",
+    request_body = CopyToolAssetsRequest,
+    responses(
+        (status = 200, description = "Successfully copied tool assets", body = bool),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn copy_tool_assets_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: CopyToolAssetsRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiCopyToolAssets {
+            bearer,
+            is_first_playground: payload.is_first_playground,
+            first_path: payload.first_path,
+            is_second_playground: payload.is_second_playground,
+            second_path: payload.second_path,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+
+#[derive(Deserialize, ToSchema, Debug)]
+pub struct ToolCheckRequest {
+    code: String,
+    language: CodeLanguage,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/tool_check",
+    request_body = ToolCheckRequest,
+    responses(
+        (status = 200, description = "Successfully checked tool", body = Value),
+        (status = 400, description = "Invalid request parameters", body = APIError),
+        (status = 500, description = "Tool check failed", body = APIError)
+    )
+)]
+pub async fn tool_check_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: ToolCheckRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {    
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiCheckTool {
+            bearer,
+            code: payload.code.clone(),
+            language: payload.language,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -2200,6 +2326,8 @@ pub async fn set_tool_enabled_handler(
         tool_store_proxy_handler,
         standalone_playground_handler,
         set_tool_enabled_handler,
+        copy_tool_assets_handler,
+        tool_check_handler,
     ),
     components(
         schemas(

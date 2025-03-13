@@ -54,6 +54,7 @@ pub struct ToolRouter {
     pub encryption_public_key: EncryptionPublicKey,
     pub signing_secret_key: SigningKey,
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
+    pub default_tool_router_keys: Arc<Mutex<Vec<String>>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -78,6 +79,7 @@ impl ToolRouter {
             encryption_public_key,
             signing_secret_key,
             job_manager,
+            default_tool_router_keys: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -100,8 +102,12 @@ impl ToolRouter {
             eprintln!("Error adding rust tools: {}", e);
         }
 
-        if let Err(e) =
-            Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await
+        if let Err(e) = Self::import_tools_from_directory(
+            self.sqlite_manager.clone(),
+            self.signing_secret_key.clone(),
+            self.default_tool_router_keys.clone(),
+        )
+        .await
         {
             eprintln!("Error importing tools from directory: {}", e);
         }
@@ -129,8 +135,12 @@ impl ToolRouter {
         if let Err(e) = self.add_static_prompts(generator).await {
             eprintln!("Error adding static prompts: {}", e);
         }
-        if let Err(e) =
-            Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await
+        if let Err(e) = Self::import_tools_from_directory(
+            self.sqlite_manager.clone(),
+            self.signing_secret_key.clone(),
+            self.default_tool_router_keys.clone(),
+        )
+        .await
         {
             eprintln!("Error importing tools from directory: {}", e);
         }
@@ -141,8 +151,12 @@ impl ToolRouter {
     }
 
     pub async fn sync_tools_from_directory(&self) -> Result<(), ToolError> {
-        if let Err(e) =
-            Self::import_tools_from_directory(self.sqlite_manager.clone(), self.signing_secret_key.clone()).await
+        if let Err(e) = Self::import_tools_from_directory(
+            self.sqlite_manager.clone(),
+            self.signing_secret_key.clone(),
+            self.default_tool_router_keys.clone(),
+        )
+        .await
         {
             eprintln!("Error importing tools from directory: {}", e);
         }
@@ -154,6 +168,7 @@ impl ToolRouter {
     async fn import_tools_from_directory(
         db: Arc<SqliteManager>,
         signing_secret_key: SigningKey,
+        default_tool_router_keys: Arc<Mutex<Vec<String>>>,
     ) -> Result<(), ToolError> {
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
@@ -200,6 +215,27 @@ impl ToolRouter {
             .json()
             .await
             .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
+
+        // Collect default tool router keys
+        let default_tool_keys: Vec<String> = tools
+            .iter()
+            .filter_map(|tool| {
+                let router_key = tool["routerKey"].as_str()?;
+                let is_default = tool["isDefault"].as_bool().unwrap_or(false);
+                if is_default {
+                    Some(router_key.to_owned())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Store the default tool keys in the ToolRouter
+        {
+            let mut default_keys = default_tool_router_keys.lock().await;
+            *default_keys = default_tool_keys;
+            println!("Stored {} default tool router keys", default_keys.len());
+        }
 
         // Each entry must have "name", "file", and "routerKey" at minimum, plus optional "version".
         // E.g. { "name": "xyz", "file": "...", "routerKey": "...", "version": "2.1.0" }
@@ -1208,5 +1244,10 @@ impl ToolRouter {
             }
             (Err(e), _) | (_, Err(e)) => Err(ToolError::DatabaseError(e.to_string())),
         }
+    }
+
+    pub async fn get_default_tool_router_keys_as_set(&self) -> std::collections::HashSet<String> {
+        let default_keys = self.default_tool_router_keys.lock().await;
+        default_keys.iter().cloned().collect()
     }
 }

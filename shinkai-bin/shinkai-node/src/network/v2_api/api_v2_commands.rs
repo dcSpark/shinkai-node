@@ -1,8 +1,6 @@
 use std::fs::File;
 use std::io::Write;
 use std::{env, sync::Arc};
-
-use async_std::println;
 use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
@@ -34,6 +32,9 @@ use shinkai_message_primitives::{
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
+
+use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
+use crate::llm_provider::providers::shinkai_backend::check_quota;
 
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
@@ -280,6 +281,25 @@ impl Node {
                 let _ = res.send(Err(error)).await;
             }
         }
+    }
+
+    pub async fn v2_api_get_storage_location(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let node_storage_path: Option<String> = match env::var("NODE_STORAGE_PATH").ok() {
+            Some(val) => Some(val),
+            None => Some("storage".to_string()),
+        };
+        let base_path = tokio::fs::canonicalize(node_storage_path.as_ref().unwrap()).await.unwrap();
+        let _ = res.send(Ok(base_path.to_string_lossy().to_string())).await;
+
+        Ok(())
     }
 
     pub async fn v2_api_get_default_embedding_model(
@@ -569,6 +589,34 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_api_check_shinkai_backend_quota(
+        db: Arc<SqliteManager>,
+        model_type: String,
+        bearer: String,
+        res: Sender<Result<QuotaResponse, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match check_quota(db, model_type).await {
+            Ok(quota_response) => {
+                let _ = res.send(Ok(quota_response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to fetch quota: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn v2_api_change_nodes_name(

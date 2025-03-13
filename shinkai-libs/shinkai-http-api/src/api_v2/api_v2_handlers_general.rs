@@ -6,6 +6,7 @@ use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, ShinkaiBackend,
 };
+use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
     EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData, NodeApiData, ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion
@@ -48,6 +49,12 @@ pub fn general_routes(
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::body::json())
         .and_then(initial_registration_handler);
+
+    let get_storage_location_route = warp::path("storage_location")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_storage_location_handler);
 
     let get_default_embedding_model_route = warp::path("default_embedding_model")
         .and(warp::get())
@@ -108,6 +115,16 @@ pub fn general_routes(
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and_then(is_pristine_handler);
+
+    let shinkai_backend_quota_route = warp::path("shinkai_backend_quota")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(|sender, auth, params: HashMap<String, String>| {
+            let model_type = params.get("model").cloned().unwrap_or_else(|| "FREE_TEXT_INFERENCE".to_string());
+            shinkai_backend_quota_handler(sender, auth, model_type)
+        });
 
     let scan_ollama_models_route = warp::path("scan_ollama_models")
         .and(warp::get())
@@ -206,6 +223,7 @@ pub fn general_routes(
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
+        .or(get_storage_location_route)
         .or(get_default_embedding_model_route)
         .or(get_supported_embedding_models_route)
         .or(update_default_embedding_model_route)
@@ -215,6 +233,7 @@ pub fn general_routes(
         .or(modify_llm_provider_route)
         .or(change_node_name_route)
         .or(is_pristine_route)
+        .or(shinkai_backend_quota_route)
         .or(scan_ollama_models_route)
         .or(add_ollama_models_route)
         .or(stop_llm_route)
@@ -329,6 +348,36 @@ pub async fn initial_registration_handler(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/storage_location",
+    responses(
+        (status = 200, description = "Successfully retrieved storage location", body = String),
+        (status = 500, description = "Internal server error", body = APIError),
+    )
+)]
+pub async fn get_storage_location_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetStorageLocation {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&json!({ "storage_location": response }))),
+        Err(error) => Err(warp::reject::custom(error)),
     }
 }
 
@@ -587,6 +636,38 @@ pub async fn change_node_name_handler(
 
     match result {
         Ok(_) => Ok(warp::reply::json(&json!({"status": "success"}))),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/shinkai_backend_quota",
+    responses(
+        (status = 200, description = "Successfully checked Shinkai backend quota", body = QuotaResponse),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn shinkai_backend_quota_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    model_type: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiShinkaiBackendGetQuota {
+            bearer,
+            model_type,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
         Err(error) => Err(warp::reject::custom(error)),
     }
 }
@@ -1139,6 +1220,7 @@ pub async fn compute_and_send_quests_status_handler(
         modify_llm_provider_handler,
         change_node_name_handler,
         is_pristine_handler,
+        shinkai_backend_quota_handler,
         scan_ollama_models_handler,
         add_ollama_models_handler,
         stop_llm_handler,
@@ -1161,7 +1243,7 @@ pub async fn compute_and_send_quests_status_handler(
             ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
             NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
             APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError, Agent,
-            AddRegexPatternRequest)
+            AddRegexPatternRequest, QuotaResponse)
     ),
     tags(
         (name = "general", description = "General API endpoints")

@@ -1827,6 +1827,12 @@ impl Node {
                     let _ = Node::v2_api_get_job_config(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiGetJobProvider { bearer, job_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_job_provider(db_clone, bearer, job_id, res).await;
+                });
+            }
             NodeCommand::V2ApiRemoveLlmProvider {
                 bearer,
                 llm_provider_id,
@@ -1873,6 +1879,16 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiShinkaiBackendGetQuota {
+                bearer,
+                model_type,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_check_shinkai_backend_quota(db_clone, model_type, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiIsPristine { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
@@ -1892,10 +1908,20 @@ impl Node {
                     let _ = Node::v2_api_scan_ollama_models(db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiListAllShinkaiTools { bearer, res } => {
+            NodeCommand::V2ApiListAllShinkaiTools { bearer, category, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let tool_router_clone = self.tool_router.clone();
+                let node_name_clone = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_list_all_shinkai_tools(db_clone, bearer, res).await;
+                    let _ = Node::v2_api_list_all_shinkai_tools(
+                        db_clone,
+                        bearer,
+                        node_name_clone,
+                        category,
+                        tool_router_clone,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiListAllShinkaiToolsVersions { bearer, res } => {
@@ -2107,6 +2133,12 @@ impl Node {
                 let wallet_manager_clone = self.wallet_manager.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_list_wallets(db_clone, wallet_manager_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetStorageLocation { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_storage_location(db_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiRequestInvoice {
@@ -2975,9 +3007,11 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let node_name_clone = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_standalone_playground(
                         db_clone,
+                        node_name_clone,
                         bearer,
                         node_env,
                         code,
@@ -3045,6 +3079,42 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_tool_enabled(db_clone, bearer, tool_router_key, enabled, res).await;
+                });
+            }
+            NodeCommand::V2ApiCopyToolAssets {
+                bearer,
+                is_first_playground,
+                first_path,
+                is_second_playground,
+                second_path,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_copy_tool_assets(
+                        db_clone,
+                        bearer,
+                        node_env,
+                        is_first_playground,
+                        first_path,
+                        is_second_playground,
+                        second_path,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiCheckTool {
+                bearer,
+                code,
+                language,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+
+                tokio::spawn(async move {
+                    let _ = Node::check_tool(bearer, db_clone, code, language, res).await;
                 });
             }
             _ => (),
