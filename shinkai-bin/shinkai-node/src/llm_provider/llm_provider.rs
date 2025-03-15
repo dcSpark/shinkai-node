@@ -245,6 +245,22 @@ impl LLMProvider {
             LLMProviderInterface::LocalLLM(_local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
+            LLMProviderInterface::DeepSeek(deepseek) => {
+                deepseek
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                        self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
+                        merged_config,
+                        llm_stopper,
+                        self.db.clone(),
+                    )
+                    .await
+            },
             LLMProviderInterface::LocalRegex(local_regex) => {
                 local_regex
                     .call_api(
