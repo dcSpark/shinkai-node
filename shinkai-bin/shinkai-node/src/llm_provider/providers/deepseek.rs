@@ -17,8 +17,9 @@ use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{DeepSeek, LLMProviderInterface};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{DeepSeek, LLMProviderInterface, SerializedLLMProvider};
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::{WSUpdateHandler};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
@@ -169,14 +170,12 @@ mod tests {
     fn test_deepseek_serialized_provider() {
         let provider = SerializedLLMProvider {
             id: "test-id".to_string(),
-            name: "DeepSeek Test".to_string(),
+            full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/deepseek_test".to_string()).unwrap(),
             model: LLMProviderInterface::DeepSeek(DeepSeek {
                 model_type: "deepseek-chat".to_string(),
             }),
             api_key: Some("test-key".to_string()),
-            url: Some("https://api.deepseek.com".to_string()),
-            created_at: 0,
-            updated_at: 0,
+            external_url: Some("https://api.deepseek.com".to_string()),
         };
 
         if let LLMProviderInterface::DeepSeek(deepseek) = &provider.model {
