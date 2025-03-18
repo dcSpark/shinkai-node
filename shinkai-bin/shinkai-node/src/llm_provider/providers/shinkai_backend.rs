@@ -64,7 +64,11 @@ impl LLMService for ShinkaiBackend {
         // Check if model_type is not supported and log a warning
         if !matches!(
             self.model_type().to_uppercase().as_str(),
-            "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "FREE_TEXT_INFERENCE" | "CODE_GENERATOR"
+            "PREMIUM_TEXT_INFERENCE"
+                | "STANDARD_TEXT_INFERENCE"
+                | "FREE_TEXT_INFERENCE"
+                | "CODE_GENERATOR"
+                | "CODE_GENERATOR_NO_FEEDBACK"
         ) {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
@@ -117,7 +121,11 @@ impl LLMService for ShinkaiBackend {
         // Set up initial payload with appropriate token limit field based on model capabilities
         let model_type_to_use = if matches!(
             self.model_type().to_uppercase().as_str(),
-            "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "FREE_TEXT_INFERENCE" | "CODE_GENERATOR"
+            "PREMIUM_TEXT_INFERENCE"
+                | "STANDARD_TEXT_INFERENCE"
+                | "FREE_TEXT_INFERENCE"
+                | "CODE_GENERATOR"
+                | "CODE_GENERATOR_NO_FEEDBACK"
         ) {
             self.model_type.clone()
         } else {

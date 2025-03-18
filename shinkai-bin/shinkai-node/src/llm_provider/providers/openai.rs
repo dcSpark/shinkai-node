@@ -575,6 +575,7 @@ pub async fn handle_streaming_response(
                             || model == "STANDARD_TEXT_INFERENCE"
                             || model == "PREMIUM_TEXT_INFERENCE"
                             || model == "CODE_GENERATOR"
+                            || model == "CODE_GENERATOR_NO_FEEDBACK"
                     })
                 {
                     let error_msg = error_json
@@ -794,7 +795,8 @@ pub async fn handle_non_streaming_response(
                                    model == "FREE_TEXT_INFERENCE" ||
                                    model == "STANDARD_TEXT_INFERENCE" ||
                                    model == "PREMIUM_TEXT_INFERENCE" ||
-                                   model == "CODE_GENERATOR"
+                                   model == "CODE_GENERATOR" ||
+                                   model == "CODE_GENERATOR_NO_FEEDBACK"
                                }) {
                                 let error_msg = error_json.get("error")
                                     .and_then(|e| e.as_str())
