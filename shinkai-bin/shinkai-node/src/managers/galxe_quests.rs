@@ -425,7 +425,7 @@ pub async fn compute_return_for_days_quest(db: Arc<SqliteManager>, required_days
     let start_date = chrono::DateTime::parse_from_rfc3339("2025-02-08T00:00:00Z")
         .map_err(|e| format!("Failed to parse start date: {}", e))?
         .with_timezone(&chrono::Utc);
-    let end_date = chrono::DateTime::parse_from_rfc3339("2025-03-06T23:59:59Z")
+    let end_date = chrono::DateTime::parse_from_rfc3339("2025-04-18T23:59:59Z")
         .map_err(|e| format!("Failed to parse end date: {}", e))?
         .with_timezone(&chrono::Utc);
 
