@@ -49,7 +49,7 @@ use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader,
     tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use std::{
     env,
     fs::File,
@@ -3617,6 +3617,7 @@ LANGUAGE={env_language}
         db: Arc<SqliteManager>,
         code: String,
         language: CodeLanguage,
+        additional_headers: Option<HashMap<String, String>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -3635,10 +3636,18 @@ LANGUAGE={env_language}
 
         let warnings = match language {
             CodeLanguage::Typescript => {
-                let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
+                let mut support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
                     .await
                     .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-
+                // External additional headers can override the default support files
+                match additional_headers {
+                    Some(headers) => {
+                        for (key, value) in headers {
+                            support_files.insert(key, value);
+                        }
+                    }
+                    None => (),
+                }
                 let tool = DenoTool {
                     name: "".to_string(),
                     homepage: None,
@@ -3666,9 +3675,18 @@ LANGUAGE={env_language}
                 tool.check_code(code.clone(), support_files).await
             }
             CodeLanguage::Python => {
-                let support_files = generate_tool_definitions(tools, CodeLanguage::Python, db.clone(), false)
+                let mut support_files = generate_tool_definitions(tools, CodeLanguage::Python, db.clone(), false)
                     .await
                     .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                // External additional headers can override the default support files
+                match additional_headers {
+                    Some(headers) => {
+                        for (key, value) in headers {
+                            support_files.insert(key, value);
+                        }
+                    }
+                    None => (),
+                }
 
                 let tool: PythonTool = PythonTool {
                     version: "".to_string(),
