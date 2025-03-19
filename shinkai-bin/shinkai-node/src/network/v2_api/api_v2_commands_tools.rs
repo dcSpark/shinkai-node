@@ -1186,6 +1186,48 @@ impl Node {
         Ok(())
     }
 
+    async fn is_code_generator(
+        db: Arc<SqliteManager>,
+        job_id: &str,
+        identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    ) -> bool {
+        // Retrieve the job to get the llm_provider
+        let llm_provider = match db.get_job_with_options(job_id, false) {
+            Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
+            Err(_) => return false,
+        };
+
+        let main_identity = {
+            let identity_manager = identity_manager_clone.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(identity) => identity.clone(),
+                None => return false,
+            }
+        };
+
+        // Create a new job message
+        let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
+            Ok(name) => name,
+            Err(_) => return false,
+        };
+
+        match db.get_llm_provider(&llm_provider, &sender) {
+            Ok(llm_provider) => {
+                if let Some(llm_provider) = llm_provider {
+                    let provider = llm_provider.get_provider_string();
+                    let model = llm_provider.get_model_string();
+                    if provider == "shinkai-backend"
+                        && (model == "CODE_GENERATOR" || model == "CODE_GENERATOR_NO_FEEDBACK")
+                    {
+                        return true;
+                    }
+                }
+            }
+            Err(_) => return false,
+        };
+        return false;
+    }
+
     pub async fn generate_tool_implementation(
         bearer: String,
         db: Arc<SqliteManager>,
@@ -1208,8 +1250,24 @@ impl Node {
             return Ok(());
         }
         // Generate tool definitions
-        let tool_definitions = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await
-        {
+        let is_code_generator =
+            Self::is_code_generator(db.clone(), &job_message.job_id, identity_manager_clone.clone()).await;
+
+        println!("is_code_generator: {}", is_code_generator);
+        // If it's the code_generator - we get all the tools - as the code_generator decides which tools to use
+        let t = if is_code_generator {
+            let all_tool_headers = db.clone().get_all_tool_headers()?;
+            all_tool_headers
+                .into_iter()
+                .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
+                .filter(|tool| tool.is_ok())
+                .map(|tool| tool.unwrap())
+                .collect::<Vec<ToolRouterKey>>()
+        } else {
+            tools.clone()
+        };
+
+        let tool_definitions = match generate_tool_definitions(t, language.clone(), db.clone(), true).await {
             Ok(definitions) => definitions,
             Err(err) => {
                 let api_error = APIError {
