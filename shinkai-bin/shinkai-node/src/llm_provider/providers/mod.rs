@@ -15,6 +15,7 @@ use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 
 pub mod claude;
+pub mod deepseek;
 pub mod exo;
 pub mod gemini;
 pub mod groq;
