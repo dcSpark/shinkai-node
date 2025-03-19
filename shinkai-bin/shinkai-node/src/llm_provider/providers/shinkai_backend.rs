@@ -148,12 +148,24 @@ impl LLMService for ShinkaiBackend {
             })
         };
 
+        let job_id: String = match inbox_name.clone() {
+            Some(inbox_name) => {
+                if let Some(job_id) = inbox_name.get_job_id() {
+                    job_id
+                } else {
+                    format!("unknown {}", Uuid::new_v4().to_string())
+                }
+            }
+            None => format!("unknown {}", Uuid::new_v4().to_string()),
+        };
+        println!(">>>>>> job_id: {}", job_id);
         let headers = json!({
             "x-shinkai-version": env!("CARGO_PKG_VERSION"),
             "x-shinkai-identity": node_name,
             "x-shinkai-signature": signature,
             "x-shinkai-metadata": metadata,
             "x-shinkai-session-id": session_id,
+            "x-shinkai-job-id": job_id,
         });
 
         // Conditionally add functions to the payload if tools_json is not empty

@@ -529,6 +529,13 @@ pub async fn handle_streaming_response(
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
         .header(
+            "X-Shinkai-Job-Id",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-job-id").and_then(|v| v.as_str()))
+                .unwrap_or(""),
+        )
+        .header(
             "X-Shinkai-Version",
             headers
                 .as_ref()
@@ -730,6 +737,13 @@ pub async fn handle_non_streaming_response(
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
+        .header(
+            "X-Shinkai-Job-Id",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-job-id").and_then(|v| v.as_str()))
+                .unwrap_or(""),
+        )
         .header(
             "X-Shinkai-Version",
             headers
