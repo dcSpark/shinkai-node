@@ -3109,12 +3109,13 @@ impl Node {
                 bearer,
                 code,
                 language,
+                additional_headers,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
 
                 tokio::spawn(async move {
-                    let _ = Node::check_tool(bearer, db_clone, code, language, res).await;
+                    let _ = Node::check_tool(bearer, db_clone, code, language, additional_headers, res).await;
                 });
             }
             _ => (),

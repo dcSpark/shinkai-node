@@ -2250,6 +2250,7 @@ pub async fn copy_tool_assets_handler(
 pub struct ToolCheckRequest {
     code: String,
     language: CodeLanguage,
+    additional_headers: Option<HashMap<String, String>>,
 }
 
 #[utoipa::path(
@@ -2275,6 +2276,7 @@ pub async fn tool_check_handler(
             bearer,
             code: payload.code.clone(),
             language: payload.language,
+            additional_headers: payload.additional_headers,
             res: res_sender,
         })
         .await

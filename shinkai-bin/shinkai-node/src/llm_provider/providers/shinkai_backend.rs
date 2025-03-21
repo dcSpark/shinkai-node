@@ -64,7 +64,11 @@ impl LLMService for ShinkaiBackend {
         // Check if model_type is not supported and log a warning
         if !matches!(
             self.model_type().to_uppercase().as_str(),
-            "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "FREE_TEXT_INFERENCE"
+            "PREMIUM_TEXT_INFERENCE"
+                | "STANDARD_TEXT_INFERENCE"
+                | "FREE_TEXT_INFERENCE"
+                | "CODE_GENERATOR"
+                | "CODE_GENERATOR_NO_FEEDBACK"
         ) {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
@@ -117,7 +121,11 @@ impl LLMService for ShinkaiBackend {
         // Set up initial payload with appropriate token limit field based on model capabilities
         let model_type_to_use = if matches!(
             self.model_type().to_uppercase().as_str(),
-            "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "FREE_TEXT_INFERENCE"
+            "PREMIUM_TEXT_INFERENCE"
+                | "STANDARD_TEXT_INFERENCE"
+                | "FREE_TEXT_INFERENCE"
+                | "CODE_GENERATOR"
+                | "CODE_GENERATOR_NO_FEEDBACK"
         ) {
             self.model_type.clone()
         } else {
@@ -140,12 +148,24 @@ impl LLMService for ShinkaiBackend {
             })
         };
 
+        let job_id: String = match inbox_name.clone() {
+            Some(inbox_name) => {
+                if let Some(job_id) = inbox_name.get_job_id() {
+                    job_id
+                } else {
+                    format!("unknown {}", Uuid::new_v4().to_string())
+                }
+            }
+            None => format!("unknown {}", Uuid::new_v4().to_string()),
+        };
+        println!(">>>>>> job_id: {}", job_id);
         let headers = json!({
             "x-shinkai-version": env!("CARGO_PKG_VERSION"),
             "x-shinkai-identity": node_name,
             "x-shinkai-signature": signature,
             "x-shinkai-metadata": metadata,
             "x-shinkai-session-id": session_id,
+            "x-shinkai-job-id": job_id,
         });
 
         // Conditionally add functions to the payload if tools_json is not empty

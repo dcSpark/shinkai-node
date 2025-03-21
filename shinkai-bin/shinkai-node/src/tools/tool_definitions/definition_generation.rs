@@ -112,6 +112,7 @@ pub async fn generate_tool_definitions(
         return Ok(support_files);
     }
     let mut output = String::new();
+    let mut function_map: Vec<String> = Vec::new();
     let mut generated_names = HashSet::new();
 
     if !only_headers {
@@ -124,6 +125,11 @@ pub async fn generate_tool_definitions(
             }
         };
     }
+
+    let esc = match language {
+        CodeLanguage::Typescript => "//",
+        CodeLanguage::Python => "#",
+    };
 
     for tool_header in all_tools {
         let tool_data = match sqlite_manager.get_tool_by_key(&tool_header.tool_router_key) {
@@ -172,7 +178,9 @@ pub async fn generate_tool_definitions(
                     );
                     continue;
                 }
-                generated_names.insert(function_name);
+                generated_names.insert(function_name.clone());
+                let trk = ToolRouterKey::from_string(&tool_header.tool_router_key)?;
+                function_map.push(format!("{} {}", trk.to_string_without_version(), function_name));
                 output.push_str(&generate_typescript_definition(
                     tool_header,
                     tool_result,
@@ -192,7 +200,9 @@ pub async fn generate_tool_definitions(
                     );
                     continue;
                 }
-                generated_names.insert(function_name);
+                generated_names.insert(function_name.clone());
+                let trk = ToolRouterKey::from_string(&tool_header.tool_router_key)?;
+                function_map.push(format!("{} {}", trk.to_string_without_version(), function_name));
                 output.push_str(&generate_python_definition(
                     tool_header,
                     tool_result,
@@ -203,6 +213,23 @@ pub async fn generate_tool_definitions(
             }
         }
     }
+
+    // Add function map commented in code.
+    output = format!(
+        "{output}
+
+{esc}
+{esc} <tool_key_path_to_function_name>
+{}
+{esc} </tool_key_path_to_function_name>
+{esc}
+",
+        function_map
+            .iter()
+            .map(|f| format!("{esc} {}", f))
+            .collect::<Vec<String>>()
+            .join("\n")
+    );
 
     match language {
         CodeLanguage::Typescript => {

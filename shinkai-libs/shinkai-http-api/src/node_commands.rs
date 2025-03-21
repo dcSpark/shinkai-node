@@ -981,6 +981,7 @@ pub enum NodeCommand {
         bearer: String,
         code: String,
         language: CodeLanguage,
+        additional_headers: Option<HashMap<String, String>>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
