@@ -1463,7 +1463,7 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata =
+        let mut metadata =
             match tool_metadata_implementation_prompt(language.clone(), code, tools, identity_manager.clone()).await {
                 Ok(metadata) => metadata,
                 Err(err) => {
@@ -1478,6 +1478,17 @@ impl Node {
             is_hidden: Some(job.is_hidden()),
             associated_ui: None,
         };
+
+        let is_code_generator = Self::is_code_generator(db.clone(), &job_id, identity_manager.clone()).await;
+        if is_code_generator {
+            metadata = format!(
+                r"{}
+
+<job_id>{}-{}</job_id>
+",
+                metadata, node_name_clone.node_name, job_id
+            );
+        }
 
         match v2_create_and_send_job_message(
             bearer,
