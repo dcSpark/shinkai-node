@@ -1387,6 +1387,7 @@ impl Node {
                     provider.id.clone(),
                     "Repeat back the following message: dogcat. Just the word, no other words.".to_string(),
                     None,
+                    None, // paths parameter
                     db.clone(),
                     profile.extract_node().clone(),
                     identity_manager.clone(),

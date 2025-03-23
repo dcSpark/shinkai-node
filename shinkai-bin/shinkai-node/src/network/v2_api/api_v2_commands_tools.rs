@@ -1427,6 +1427,7 @@ impl Node {
             job.parent_agent_or_llm_provider_id.clone(),
             metadata,
             None,
+            None, // paths parameter
             db,
             node_name_clone,
             identity_manager,

@@ -84,6 +84,7 @@ async fn apply_prompt_over_fragment(prompt: String, bearer: String, llm_provider
         llm_provider,
         prompt,
         None,
+        None, // paths parameter
         db.clone(),
         node_name,
         identity_manager,

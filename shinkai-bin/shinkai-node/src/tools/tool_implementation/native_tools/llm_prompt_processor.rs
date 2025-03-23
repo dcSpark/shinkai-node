@@ -38,7 +38,8 @@ impl LlmPromptProcessorTool {
                 name: "Shinkai LLM Prompt Processor".to_string(),
                 description: r#"Tool for processing any prompt using an AI LLM. 
 Analyzing the input prompt and returning a string with the result of the prompt.
-This can be used to process complex requests, text analysis, text matching, text generation, and any other AI LLM task."#
+This can be used to process complex requests, text analysis, text matching, text generation, image processing, and any other AI LLM task.
+Supports injection of images by providing file paths."#
                     .to_string(),
                 tool_router_key: "local:::__official_shinkai:::shinkai_llm_prompt_processor".to_string(),
                 tool_type: "Rust".to_string(),
@@ -57,6 +58,13 @@ This can be used to process complex requests, text analysis, text matching, text
                         Property::new("string".to_string(), "Tool".to_string())
                     );
                     params.properties.insert("tools".to_string(), tools_property);
+                    
+                    // Add the optional paths array parameter
+                    let paths_property = Property::with_array_items(
+                        "List of file paths to be read and injected as images".to_string(),
+                        Property::new("string".to_string(), "Path".to_string())
+                    );
+                    params.properties.insert("paths".to_string(), paths_property);
                     
                     params
                 },
@@ -99,6 +107,12 @@ impl ToolExecutor for LlmPromptProcessorTool {
             None
         };
 
+        let paths = if let Some(paths_array) = parameters.get("paths").and_then(|v| v.as_array()) {
+            Some(paths_array.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<String>>())
+        } else {
+            None
+        };
+
         let response = v2_create_and_send_job_message(
             bearer.clone(),
             JobCreationInfo {
@@ -109,6 +123,7 @@ impl ToolExecutor for LlmPromptProcessorTool {
             llm_provider,
             content,
             tools,
+            paths,
             db_clone.clone(),
             node_name_clone,
             identity_manager_clone,

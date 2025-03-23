@@ -22,6 +22,7 @@ pub async fn v2_create_and_send_job_message(
     llm_provider: String,
     content: String,
     tools: Option<Vec<String>>,
+    paths: Option<Vec<String>>,
     db_clone: Arc<SqliteManager>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -91,6 +92,7 @@ pub async fn v2_create_and_send_job_message(
         job_id.clone(),
         content,
         tools,
+        paths,
         db_clone,
         node_name_clone,
         identity_manager_clone,
@@ -109,6 +111,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     job_id: String,
     content: String,
     tools: Option<Vec<String>>,
+    paths: Option<Vec<String>>,
     db_clone: Arc<SqliteManager>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -122,6 +125,21 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     if let Some(tools) = tools.clone() {
         println!("With tools: {:?}", tools);
     }
+    if let Some(paths) = paths.clone() {
+        println!("With paths: {:?}", paths);
+    }
+    
+    let fs_files_paths = match paths {
+        Some(path_strings) => {
+            path_strings.iter()
+                .map(|path| {
+                    shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath::from_string(path.clone())
+                })
+                .collect()
+        }
+        None => vec![],
+    };
+    
     let job_message = JobMessage {
         job_id: job_id.clone(),
         content,
@@ -131,7 +149,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         tools: tools.clone(),
         metadata: None,
         tool_key: None,
-        fs_files_paths: vec![],
+        fs_files_paths,
         job_filenames: vec![],
     };
 
