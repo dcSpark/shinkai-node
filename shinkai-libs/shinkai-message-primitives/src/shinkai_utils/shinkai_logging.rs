@@ -37,6 +37,7 @@ pub enum ShinkaiLogOption {
     Node,
     InternalAPI,
     Network,
+    Email,
     Tests,
 }
 
