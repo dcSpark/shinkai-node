@@ -1269,12 +1269,32 @@ impl Node {
 
         // If it's the code_generator - we get all the tools - as the code_generator decides which tools to use
         let tools = if is_code_generator {
+            // Only this list will be passed as valid functions to the code generator.
+            let valid_tool_list: Vec<String> = vec![
+                "local:::__official_shinkai:::shinkai_typescript_unsafe_processor shinkaiTypescriptUnsafeProcessor",
+                "local:::__official_shinkai:::shinkai_llm_map_reduce_processor shinkaiLlmMapReduceProcessor",
+                "local:::__official_shinkai:::shinkai_llm_prompt_processor shinkaiLlmPromptProcessor",
+                "local:::__official_shinkai:::x_twitter_post xTwitterPost",
+                "local:::__official_shinkai:::duckduckgo_search duckduckgoSearch",
+                "local:::__official_shinkai:::write_file_contents writeFileContents",
+                "local:::__official_shinkai:::x_twitter_search xTwitterSearch",
+                "local:::__official_shinkai:::read_file_contents readFileContents",
+                "local:::__official_shinkai:::download_pages downloadPages",
+            ]
+            .iter()
+            .map(|t| t.to_string())
+            .collect();
+            let user_tools: Vec<String> = tools.iter().map(|tools| tools.to_string_with_version()).collect();
             let all_tool_headers = db.clone().get_all_tool_headers()?;
             all_tool_headers
                 .into_iter()
                 .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
                 .filter(|tool| tool.is_ok())
                 .map(|tool| tool.unwrap())
+                .filter(|tool| {
+                    let t = tool.to_string_without_version();
+                    user_tools.contains(&t) || valid_tool_list.contains(&t)
+                })
                 .collect::<Vec<ToolRouterKey>>()
         } else {
             // If its a code-generation prompt, we only use the minimal number of tools
