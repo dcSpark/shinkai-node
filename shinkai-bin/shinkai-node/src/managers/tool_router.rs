@@ -25,6 +25,7 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
@@ -644,7 +645,16 @@ impl ToolRouter {
                 };
 
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
-                let tools = python_tool.tools.clone();
+                let tools: Vec<ToolRouterKey> = context
+                    .db()
+                    .clone()
+                    .get_all_tool_headers()?
+                    .into_iter()
+                    .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                        Ok(tool_router_key) => Some(tool_router_key),
+                        Err(_) => None,
+                    })
+                    .collect();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Python, self.sqlite_manager.clone(), false)
                         .await
@@ -771,7 +781,16 @@ impl ToolRouter {
                 };
 
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
-                let tools = deno_tool.tools.clone();
+                let tools: Vec<ToolRouterKey> = context
+                    .db()
+                    .clone()
+                    .get_all_tool_headers()?
+                    .into_iter()
+                    .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                        Ok(tool_router_key) => Some(tool_router_key),
+                        Err(_) => None,
+                    })
+                    .collect();
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
@@ -1118,7 +1137,16 @@ impl ToolRouter {
             .node_storage_path
             .clone()
             .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-        let tools = js_tool.clone().tools.clone();
+        let tools: Vec<ToolRouterKey> = self
+            .sqlite_manager
+            .clone()
+            .get_all_tool_headers()?
+            .into_iter()
+            .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                Ok(tool_router_key) => Some(tool_router_key),
+                Err(_) => None,
+            })
+            .collect();
         let app_id = format!("external_{}", uuid::Uuid::new_v4());
         let tool_id = shinkai_tool.tool_router_key().clone().to_string_without_version();
         let support_files =

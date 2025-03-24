@@ -922,7 +922,7 @@ impl Node {
     // ------------------------------------------------------------
     // TOOLS
     // ------------------------------------------------------------
-
+    // TODO Check if this is needed.
     pub async fn get_tool_definitions(
         bearer: String,
         db: Arc<SqliteManager>,
@@ -1097,6 +1097,8 @@ impl Node {
             return Ok(());
         }
 
+        // This is used only to generate example prompts.
+        // We only use the minimal number of tools to generate the prompts.
         let tool_definitions = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await
         {
             Ok(definitions) => definitions,
@@ -1148,7 +1150,16 @@ impl Node {
             }
         };
 
-        let library_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), false).await {
+        let all_tools: Vec<ToolRouterKey> = db
+            .clone()
+            .get_all_tool_headers()?
+            .into_iter()
+            .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                Ok(tool_router_key) => Some(tool_router_key),
+                Err(_) => None,
+            })
+            .collect();
+        let library_code = match generate_tool_definitions(all_tools, language.clone(), db.clone(), false).await {
             Ok(code) => code,
             Err(err) => {
                 let api_error = APIError {
@@ -1161,6 +1172,7 @@ impl Node {
             }
         };
 
+        // This is used to generate the headers for the tool prompt.
         let header_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await {
             Ok(code) => code,
             Err(err) => {
@@ -1254,8 +1266,9 @@ impl Node {
             Self::is_code_generator(db.clone(), &job_message.job_id, identity_manager_clone.clone()).await;
 
         println!("is_code_generator: {}", is_code_generator);
+
         // If it's the code_generator - we get all the tools - as the code_generator decides which tools to use
-        let t = if is_code_generator {
+        let tools = if is_code_generator {
             let all_tool_headers = db.clone().get_all_tool_headers()?;
             all_tool_headers
                 .into_iter()
@@ -1264,10 +1277,13 @@ impl Node {
                 .map(|tool| tool.unwrap())
                 .collect::<Vec<ToolRouterKey>>()
         } else {
+            // If its a code-generation prompt, we only use the minimal number of tools
+            // to generate the prompts.
             tools.clone()
         };
 
-        let tool_definitions = match generate_tool_definitions(t, language.clone(), db.clone(), true).await {
+        let tool_definitions = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await
+        {
             Ok(definitions) => definitions,
             Err(err) => {
                 let api_error = APIError {
@@ -3181,9 +3197,10 @@ impl Node {
                 message: e.to_string(),
             })?
             .into_iter()
-            .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
-            .filter(|tool| tool.is_ok())
-            .map(|tool| tool.unwrap())
+            .filter_map(|tool| match (ToolRouterKey::from_string(&tool.tool_router_key)) {
+                Ok(tool_router_key) => Some(tool_router_key),
+                Err(_) => None,
+            })
             .collect::<Vec<ToolRouterKey>>();
 
         println!("[Step 4] Updating shinkai-local-tools & shinkai-local-support files");
@@ -3635,14 +3652,14 @@ LANGUAGE={env_language}
             return Ok(());
         }
 
-        let tools = db
+        let tools: Vec<ToolRouterKey> = db
             .get_all_tool_headers()
-            .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?;
-        let tools = tools
+            .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
             .iter()
-            .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
-            .filter(|tool| tool.is_ok())
-            .map(|tool| tool.unwrap())
+            .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                Ok(tool_router_key) => Some(tool_router_key),
+                Err(_) => None,
+            })
             .collect();
 
         let warnings = match language {
