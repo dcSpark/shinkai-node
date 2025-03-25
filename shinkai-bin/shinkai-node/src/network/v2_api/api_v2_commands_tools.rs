@@ -1271,15 +1271,10 @@ impl Node {
         let tools = if is_code_generator {
             // Only this list will be passed as valid functions to the code generator.
             let valid_tool_list: Vec<String> = vec![
-                "local:::__official_shinkai:::shinkai_typescript_unsafe_processor",
-                "local:::__official_shinkai:::shinkai_llm_map_reduce_processor",
                 "local:::__official_shinkai:::shinkai_llm_prompt_processor",
                 "local:::__official_shinkai:::x_twitter_post",
                 "local:::__official_shinkai:::duckduckgo_search",
-                "local:::__official_shinkai:::write_file_contents",
                 "local:::__official_shinkai:::x_twitter_search",
-                "local:::__official_shinkai:::read_file_contents",
-                "local:::__official_shinkai:::download_pages",
             ]
             .iter()
             .map(|t| t.to_string())
