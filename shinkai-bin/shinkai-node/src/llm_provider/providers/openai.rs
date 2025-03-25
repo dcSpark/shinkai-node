@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -528,10 +528,45 @@ pub async fn handle_streaming_response(
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
-        .header("X-Shinkai-Version", headers.as_ref().and_then(|h| h.get("x-shinkai-version")).and_then(|v| v.as_str()).unwrap_or(""))
-        .header("X-Shinkai-Identity", headers.as_ref().and_then(|h| h.get("x-shinkai-identity")).and_then(|v| v.as_str()).unwrap_or(""))
-        .header("X-Shinkai-Signature", headers.as_ref().and_then(|h| h.get("x-shinkai-signature")).and_then(|v| v.as_str()).unwrap_or(""))
-        .header("X-Shinkai-Metadata", headers.as_ref().and_then(|h| h.get("x-shinkai-metadata")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header(
+            "X-Shinkai-Job-Id",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-job-id").and_then(|v| v.as_str()))
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Version",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-version"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Identity",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-identity"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Signature",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-signature"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Metadata",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-metadata"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
         .json(&payload)
         .send()
         .await?;
@@ -541,13 +576,17 @@ pub async fn handle_streaming_response(
         let error_text = res.text().await?;
         if let Ok(error_json) = serde_json::from_str::<JsonValue>(&error_text) {
             if let Some(code) = error_json.get("code").and_then(|c| c.as_str()) {
-                if code == "QUOTA_EXCEEDED" && 
-                   payload.get("model").and_then(|m| m.as_str()).map_or(false, |model| {
-                       model == "FREE_TEXT_INFERENCE" || 
-                       model == "STANDARD_TEXT_INFERENCE" || 
-                       model == "PREMIUM_TEXT_INFERENCE"
-                   }) {
-                    let error_msg = error_json.get("error")
+                if code == "QUOTA_EXCEEDED"
+                    && payload.get("model").and_then(|m| m.as_str()).map_or(false, |model| {
+                        model == "FREE_TEXT_INFERENCE"
+                            || model == "STANDARD_TEXT_INFERENCE"
+                            || model == "PREMIUM_TEXT_INFERENCE"
+                            || model == "CODE_GENERATOR"
+                            || model == "CODE_GENERATOR_NO_FEEDBACK"
+                    })
+                {
+                    let error_msg = error_json
+                        .get("error")
                         .and_then(|e| e.as_str())
                         .unwrap_or("Daily quota exceeded")
                         .to_string();
@@ -555,7 +594,9 @@ pub async fn handle_streaming_response(
                 }
             }
         }
-        return Err(LLMProviderError::LLMServiceUnexpectedError("Rate limit exceeded".to_string()));
+        return Err(LLMProviderError::LLMServiceUnexpectedError(
+            "Rate limit exceeded".to_string(),
+        ));
     }
 
     let mut stream = res.bytes_stream();
@@ -696,10 +737,45 @@ pub async fn handle_non_streaming_response(
         .post(url)
         .bearer_auth(api_key)
         .header("Content-Type", "application/json")
-        .header("X-Shinkai-Version", headers.as_ref().and_then(|h| h.get("x-shinkai-version")).and_then(|v| v.as_str()).unwrap_or(""))
-        .header("X-Shinkai-Identity", headers.as_ref().and_then(|h| h.get("x-shinkai-identity")).and_then(|v| v.as_str()).unwrap_or(""))
-        .header("X-Shinkai-Signature", headers.as_ref().and_then(|h| h.get("x-shinkai-signature")).and_then(|v| v.as_str()).unwrap_or(""))
-        .header("X-Shinkai-Metadata", headers.as_ref().and_then(|h| h.get("x-shinkai-metadata")).and_then(|v| v.as_str()).unwrap_or(""))
+        .header(
+            "X-Shinkai-Job-Id",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-job-id").and_then(|v| v.as_str()))
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Version",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-version"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Identity",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-identity"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Signature",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-signature"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Metadata",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-metadata"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
         .json(&payload)
         .send();
     let mut response_fut = Box::pin(response_fut);
@@ -722,17 +798,19 @@ pub async fn handle_non_streaming_response(
             },
             response = &mut response_fut => {
                 let res = response?;
-                
+
                 // Check for 429 status code
                 if res.status() == 429 {
                     let error_text = res.text().await?;
                     if let Ok(error_json) = serde_json::from_str::<JsonValue>(&error_text) {
                         if let Some(code) = error_json.get("code").and_then(|c| c.as_str()) {
-                            if code == "QUOTA_EXCEEDED" && 
+                            if code == "QUOTA_EXCEEDED" &&
                                payload.get("model").and_then(|m| m.as_str()).map_or(false, |model| {
-                                   model == "FREE_TEXT_INFERENCE" || 
-                                   model == "STANDARD_TEXT_INFERENCE" || 
-                                   model == "PREMIUM_TEXT_INFERENCE"
+                                   model == "FREE_TEXT_INFERENCE" ||
+                                   model == "STANDARD_TEXT_INFERENCE" ||
+                                   model == "PREMIUM_TEXT_INFERENCE" ||
+                                   model == "CODE_GENERATOR" ||
+                                   model == "CODE_GENERATOR_NO_FEEDBACK"
                                }) {
                                 let error_msg = error_json.get("error")
                                     .and_then(|e| e.as_str())
