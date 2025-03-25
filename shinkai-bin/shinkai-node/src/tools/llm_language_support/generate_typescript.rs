@@ -259,7 +259,7 @@ async function query_{}(query: string, params?: any[]){}",
             if generate_dts {
                 ";"
             } else {
-                " {\n    return shinkaiSqliteQueryExecutor(query, params)\n}"
+                " {\n    return shinkaiSqliteQueryExecutor({query, params})\n}"
             }
         ));
     }

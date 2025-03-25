@@ -301,7 +301,7 @@ pub fn generate_python_definition(
         if generate_pyi {
             python_output.push_str("    pass\n");
         } else {
-            python_output.push_str("    return shinkai_sqlite_query_executor(query, params)\n");
+            python_output.push_str("    return shinkai_sqlite_query_executor({'query': query, 'params': params})\n");
         }
     }
 

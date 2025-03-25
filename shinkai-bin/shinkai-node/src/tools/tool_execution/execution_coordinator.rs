@@ -328,7 +328,18 @@ pub async fn execute_tool_cmd(
                 .node_storage_path
                 .clone()
                 .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-            let support_files = generate_tool_definitions(python_tool.tools.clone(), CodeLanguage::Python, db, false)
+            let tools: Vec<ToolRouterKey> = db
+                .clone()
+                .get_all_tool_headers()
+                .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+                .into_iter()
+                .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                    Ok(tool_router_key) => Some(tool_router_key),
+                    Err(_) => None,
+                })
+                .collect();
+
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, db, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             python_tool
@@ -374,7 +385,18 @@ pub async fn execute_tool_cmd(
                 .node_storage_path
                 .clone()
                 .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-            let support_files = generate_tool_definitions(deno_tool.tools.clone(), CodeLanguage::Typescript, db, false)
+            let tools: Vec<ToolRouterKey> = db
+                .clone()
+                .get_all_tool_headers()
+                .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+                .into_iter()
+                .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                    Ok(tool_router_key) => Some(tool_router_key),
+                    Err(_) => None,
+                })
+                .collect();
+
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             deno_tool
@@ -420,6 +442,17 @@ pub async fn execute_code(
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
     // Route based on the prefix
+    let tools: Vec<ToolRouterKey> = db
+        .clone()
+        .get_all_tool_headers()
+        .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+        .into_iter()
+        .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+            Ok(tool_router_key) => Some(tool_router_key),
+            Err(_) => None,
+        })
+        .collect();
+
     match tool_type {
         DynamicToolType::DenoDynamic => {
             let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
@@ -487,6 +520,16 @@ pub async fn check_code(
     };
 
     eprintln!("[check_code] code_extracted: {}", code_extracted);
+    let tools: Vec<ToolRouterKey> = sqlite_manager
+        .clone()
+        .get_all_tool_headers()
+        .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+        .into_iter()
+        .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+            Ok(tool_router_key) => Some(tool_router_key),
+            Err(_) => None,
+        })
+        .collect();
 
     match tool_type {
         DynamicToolType::DenoDynamic => {

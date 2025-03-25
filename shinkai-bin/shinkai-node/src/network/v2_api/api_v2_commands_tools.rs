@@ -49,7 +49,7 @@ use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader,
     tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 use std::{
     env,
     fs::File,
@@ -922,7 +922,7 @@ impl Node {
     // ------------------------------------------------------------
     // TOOLS
     // ------------------------------------------------------------
-
+    // TODO Check if this is needed.
     pub async fn get_tool_definitions(
         bearer: String,
         db: Arc<SqliteManager>,
@@ -1097,6 +1097,8 @@ impl Node {
             return Ok(());
         }
 
+        // This is used only to generate example prompts.
+        // We only use the minimal number of tools to generate the prompts.
         let tool_definitions = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await
         {
             Ok(definitions) => definitions,
@@ -1148,7 +1150,16 @@ impl Node {
             }
         };
 
-        let library_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), false).await {
+        let all_tools: Vec<ToolRouterKey> = db
+            .clone()
+            .get_all_tool_headers()?
+            .into_iter()
+            .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                Ok(tool_router_key) => Some(tool_router_key),
+                Err(_) => None,
+            })
+            .collect();
+        let library_code = match generate_tool_definitions(all_tools, language.clone(), db.clone(), false).await {
             Ok(code) => code,
             Err(err) => {
                 let api_error = APIError {
@@ -1161,6 +1172,7 @@ impl Node {
             }
         };
 
+        // This is used to generate the headers for the tool prompt.
         let header_code = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await {
             Ok(code) => code,
             Err(err) => {
@@ -1186,6 +1198,48 @@ impl Node {
         Ok(())
     }
 
+    async fn is_code_generator(
+        db: Arc<SqliteManager>,
+        job_id: &str,
+        identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    ) -> bool {
+        // Retrieve the job to get the llm_provider
+        let llm_provider = match db.get_job_with_options(job_id, false) {
+            Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
+            Err(_) => return false,
+        };
+
+        let main_identity = {
+            let identity_manager = identity_manager_clone.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(identity) => identity.clone(),
+                None => return false,
+            }
+        };
+
+        // Create a new job message
+        let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
+            Ok(name) => name,
+            Err(_) => return false,
+        };
+
+        match db.get_llm_provider(&llm_provider, &sender) {
+            Ok(llm_provider) => {
+                if let Some(llm_provider) = llm_provider {
+                    let provider = llm_provider.get_provider_string();
+                    let model = llm_provider.get_model_string();
+                    if provider == "shinkai-backend"
+                        && (model == "CODE_GENERATOR" || model == "CODE_GENERATOR_NO_FEEDBACK")
+                    {
+                        return true;
+                    }
+                }
+            }
+            Err(_) => return false,
+        };
+        return false;
+    }
+
     pub async fn generate_tool_implementation(
         bearer: String,
         db: Arc<SqliteManager>,
@@ -1208,6 +1262,46 @@ impl Node {
             return Ok(());
         }
         // Generate tool definitions
+        let is_code_generator =
+            Self::is_code_generator(db.clone(), &job_message.job_id, identity_manager_clone.clone()).await;
+
+        println!("is_code_generator: {}", is_code_generator);
+
+        // If it's the code_generator - we get all the tools - as the code_generator decides which tools to use
+        let tools = if is_code_generator {
+            // Only this list will be passed as valid functions to the code generator.
+            let valid_tool_list: Vec<String> = vec![
+                "local:::__official_shinkai:::shinkai_typescript_unsafe_processor",
+                "local:::__official_shinkai:::shinkai_llm_map_reduce_processor",
+                "local:::__official_shinkai:::shinkai_llm_prompt_processor",
+                "local:::__official_shinkai:::x_twitter_post",
+                "local:::__official_shinkai:::duckduckgo_search",
+                "local:::__official_shinkai:::write_file_contents",
+                "local:::__official_shinkai:::x_twitter_search",
+                "local:::__official_shinkai:::read_file_contents",
+                "local:::__official_shinkai:::download_pages",
+            ]
+            .iter()
+            .map(|t| t.to_string())
+            .collect();
+            let user_tools: Vec<String> = tools.iter().map(|tools| tools.to_string_with_version()).collect();
+            let all_tool_headers = db.clone().get_all_tool_headers()?;
+            all_tool_headers
+                .into_iter()
+                .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
+                .filter(|tool| tool.is_ok())
+                .map(|tool| tool.unwrap())
+                .filter(|tool| {
+                    let t = tool.to_string_without_version();
+                    user_tools.contains(&t) || valid_tool_list.contains(&t)
+                })
+                .collect::<Vec<ToolRouterKey>>()
+        } else {
+            // If its a code-generation prompt, we only use the minimal number of tools
+            // to generate the prompts.
+            tools.clone()
+        };
+
         let tool_definitions = match generate_tool_definitions(tools.clone(), language.clone(), db.clone(), true).await
         {
             Ok(definitions) => definitions,
@@ -1405,7 +1499,7 @@ impl Node {
         };
 
         // Generate the implementation
-        let metadata =
+        let mut metadata =
             match tool_metadata_implementation_prompt(language.clone(), code, tools, identity_manager.clone()).await {
                 Ok(metadata) => metadata,
                 Err(err) => {
@@ -1420,6 +1514,17 @@ impl Node {
             is_hidden: Some(job.is_hidden()),
             associated_ui: None,
         };
+
+        let is_code_generator = Self::is_code_generator(db.clone(), &job_id, identity_manager.clone()).await;
+        if is_code_generator {
+            metadata = format!(
+                r"{}
+
+<job_id>{}-{}</job_id>
+",
+                metadata, node_name_clone.node_name, job_id
+            );
+        }
 
         match v2_create_and_send_job_message(
             bearer,
@@ -3112,9 +3217,10 @@ impl Node {
                 message: e.to_string(),
             })?
             .into_iter()
-            .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
-            .filter(|tool| tool.is_ok())
-            .map(|tool| tool.unwrap())
+            .filter_map(|tool| match (ToolRouterKey::from_string(&tool.tool_router_key)) {
+                Ok(tool_router_key) => Some(tool_router_key),
+                Err(_) => None,
+            })
             .collect::<Vec<ToolRouterKey>>();
 
         println!("[Step 4] Updating shinkai-local-tools & shinkai-local-support files");
@@ -3559,28 +3665,37 @@ LANGUAGE={env_language}
         db: Arc<SqliteManager>,
         code: String,
         language: CodeLanguage,
+        additional_headers: Option<HashMap<String, String>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        let tools = db
+        let tools: Vec<ToolRouterKey> = db
             .get_all_tool_headers()
-            .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?;
-        let tools = tools
+            .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
             .iter()
-            .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
-            .filter(|tool| tool.is_ok())
-            .map(|tool| tool.unwrap())
+            .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                Ok(tool_router_key) => Some(tool_router_key),
+                Err(_) => None,
+            })
             .collect();
 
         let warnings = match language {
             CodeLanguage::Typescript => {
-                let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
+                let mut support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
                     .await
                     .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-
+                // External additional headers can override the default support files
+                match additional_headers {
+                    Some(headers) => {
+                        for (key, value) in headers {
+                            support_files.insert(key, value);
+                        }
+                    }
+                    None => (),
+                }
                 let tool = DenoTool {
                     name: "".to_string(),
                     homepage: None,
@@ -3608,9 +3723,18 @@ LANGUAGE={env_language}
                 tool.check_code(code.clone(), support_files).await
             }
             CodeLanguage::Python => {
-                let support_files = generate_tool_definitions(tools, CodeLanguage::Python, db.clone(), false)
+                let mut support_files = generate_tool_definitions(tools, CodeLanguage::Python, db.clone(), false)
                     .await
                     .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                // External additional headers can override the default support files
+                match additional_headers {
+                    Some(headers) => {
+                        for (key, value) in headers {
+                            support_files.insert(key, value);
+                        }
+                    }
+                    None => (),
+                }
 
                 let tool: PythonTool = PythonTool {
                     version: "".to_string(),
