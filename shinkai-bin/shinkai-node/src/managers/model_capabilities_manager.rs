@@ -165,7 +165,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
-            LLMProviderInterface::DeepSeek(model) => Self::get_shared_capabilities(model.model_type.as_str()),
+            LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
             LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
         }
     }

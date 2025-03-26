@@ -1,10 +1,9 @@
-use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::deepseek_api::deepseek_prepare_messages;
 use super::LLMService;
-use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
+use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::openai::{
     add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
@@ -13,14 +12,12 @@ use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, Prom
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
-use serde_json::Value as JsonValue;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{DeepSeek, LLMProviderInterface, SerializedLLMProvider};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{DeepSeek, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::ws_types::{WSUpdateHandler};
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -50,7 +47,7 @@ impl LLMService for DeepSeek {
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
                 // Use the OpenAI message preparation since DeepSeek API is compatible
-                let result = openai_prepare_messages(&model, prompt)?;
+                let result = deepseek_prepare_messages(&model, prompt)?;
                 let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
@@ -61,7 +58,7 @@ impl LLMService for DeepSeek {
                 };
 
                 // Extract tools_json from the result
-                let tools_json = result.functions.unwrap_or_else(Vec::new);
+                let mut tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Print messages_json as a pretty JSON string
                 match serde_json::to_string_pretty(&messages_json) {
@@ -93,7 +90,14 @@ impl LLMService for DeepSeek {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
+                    let formatted_tools = tools_json.iter()
+                    .map(|tool| serde_json::json!({
+                        "type": "function",
+                        "function": tool
+                    }))
+                    .collect::<Vec<serde_json::Value>>();
+                    println!("deepseek tools_json: {:?}", formatted_tools);
+                    payload["tools"] = serde_json::Value::Array(formatted_tools);
                 }
 
                 // Only add options to payload for non-reasoning models
@@ -113,7 +117,7 @@ impl LLMService for DeepSeek {
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload_log).as_str(),
-                );
+                );          
 
                 if is_stream {
                     handle_streaming_response(
