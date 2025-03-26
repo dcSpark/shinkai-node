@@ -98,7 +98,8 @@ mod tests {
             model_type: "deepseek-chat".to_string(),
         });
 
-        let result = deepseek_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+        let session_id = Uuid::new_v4().to_string();
+        let result = deepseek_prepare_messages(&model, prompt, session_id).expect("Failed to prepare messages");
 
         // Verify that the messages are prepared correctly
         if let crate::managers::model_capabilities_manager::PromptResultEnum::Value(messages) = &result.messages {
