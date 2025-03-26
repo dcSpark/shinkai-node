@@ -161,7 +161,8 @@ mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
-
+    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    
     #[test]
     fn test_deepseek_provider_creation() {
         let deepseek = DeepSeek {
