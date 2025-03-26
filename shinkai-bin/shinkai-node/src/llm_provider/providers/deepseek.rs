@@ -47,7 +47,7 @@ impl LLMService for DeepSeek {
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
                 // Use the OpenAI message preparation since DeepSeek API is compatible
-                let result = deepseek_prepare_messages(&model, prompt)?;
+                let result = deepseek_prepare_messages(&model, prompt, session_id.clone())?;
                 let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
@@ -96,7 +96,6 @@ impl LLMService for DeepSeek {
                         "function": tool
                     }))
                     .collect::<Vec<serde_json::Value>>();
-                    println!("deepseek tools_json: {:?}", formatted_tools);
                     payload["tools"] = serde_json::Value::Array(formatted_tools);
                 }
 
@@ -162,7 +161,7 @@ mod tests {
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    
+
     #[test]
     fn test_deepseek_provider_creation() {
         let deepseek = DeepSeek {

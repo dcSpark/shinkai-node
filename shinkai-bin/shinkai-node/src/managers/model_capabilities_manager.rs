@@ -430,7 +430,7 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
-            LLMProviderInterface::DeepSeek(deepseek) => Self::get_max_tokens_for_model_type(&deepseek.model_type),
+            LLMProviderInterface::DeepSeek(_) => 64_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
@@ -578,13 +578,7 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             },
-            LLMProviderInterface::DeepSeek(deepseek) => {
-                if deepseek.model_type.starts_with("deepseek-reasoner") {
-                    8192
-                } else {
-                    4096
-                }
-            },
+            LLMProviderInterface::DeepSeek(deepseek) => 8192,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }

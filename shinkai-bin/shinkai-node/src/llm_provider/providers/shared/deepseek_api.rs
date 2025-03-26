@@ -18,6 +18,7 @@ pub use openai_api::{
 pub fn deepseek_prepare_messages(
     model: &LLMProviderInterface,
     prompt: Prompt,
+    session_id: String,
 ) -> Result<PromptResult, LLMProviderError> {
     let result = openai_api::openai_prepare_messages(model, prompt)?;
     let tools_json = result.functions.unwrap_or_else(Vec::new);
@@ -42,7 +43,7 @@ pub fn deepseek_prepare_messages(
                     if let Some(function_call) = message.get("function_call") {
                         new_message["tool_calls"] = serde_json::json!([{
                             "function": function_call,
-                            "id": function_call["name"].clone(),
+                            "id": function_call["id"].clone().as_str().unwrap_or(session_id.as_str()),
                             "type": "function"
                         }]);
                         if let Some(obj) = new_message.as_object_mut() {
@@ -52,7 +53,11 @@ pub fn deepseek_prepare_messages(
                 }
                 if message["role"] == "function" {
                     new_message["role"] = serde_json::Value::String("tool".to_string());
-                    new_message["tool_call_id"] = new_message["name"].clone();
+                    new_message["tool_call_id"] = if let Some(tool_call) = new_message.get("tool_call_id") {
+                        tool_call.clone()
+                    } else {
+                        serde_json::Value::String(session_id.clone())
+                    };
                 }
                 new_message
             }).collect();
