@@ -3,9 +3,10 @@ use ed25519_dalek::SigningKey;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
+
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -22,6 +23,8 @@ pub async fn v2_create_and_send_job_message(
     llm_provider: String,
     content: String,
     tools: Option<Vec<String>>,
+    fs_file_paths: Option<Vec<String>>,
+    job_filenames: Option<Vec<String>>,
     db_clone: Arc<SqliteManager>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -91,6 +94,8 @@ pub async fn v2_create_and_send_job_message(
         job_id.clone(),
         content,
         tools,
+        fs_file_paths,
+        job_filenames,
         db_clone,
         node_name_clone,
         identity_manager_clone,
@@ -109,6 +114,8 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     job_id: String,
     content: String,
     tools: Option<Vec<String>>,
+    fs_file_paths: Option<Vec<String>>,
+    job_filenames: Option<Vec<String>>,
     db_clone: Arc<SqliteManager>,
     node_name_clone: ShinkaiName,
     identity_manager_clone: Arc<Mutex<IdentityManager>>,
@@ -119,6 +126,7 @@ pub async fn v2_send_basic_job_message_for_existing_job(
 ) -> Result<(), APIError> {
     // Send message
     println!("Sending message to job: {}", job_id);
+    println!("--Content--: {}", content);
     if let Some(tools) = tools.clone() {
         println!("With tools: {:?}", tools);
     }
@@ -131,8 +139,11 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         tools: tools.clone(),
         metadata: None,
         tool_key: None,
-        fs_files_paths: vec![],
-        job_filenames: vec![],
+        fs_files_paths: fs_file_paths.unwrap_or_default()
+            .into_iter()
+            .map(|path| ShinkaiPath::new(&path))
+            .collect(),
+        job_filenames: job_filenames.unwrap_or_default(),
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);

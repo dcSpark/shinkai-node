@@ -1526,7 +1526,9 @@ impl Node {
             job_creation_info,
             job.parent_agent_or_llm_provider_id.clone(),
             metadata,
-            None,
+            None, // tools
+            None, // fs_file_paths
+            None, // job_filenames
             db,
             node_name_clone,
             identity_manager,

@@ -58,6 +58,12 @@ This can be used to process complex requests, text analysis, text matching, text
                     );
                     params.properties.insert("tools".to_string(), tools_property);
                     
+                    let image_paths_property = Property::with_array_items(
+                        "List of image file paths to be used with the prompt".to_string(),
+                        Property::new("string".to_string(), "Image path".to_string())
+                    );
+                    params.properties.insert("image_paths".to_string(), image_paths_property);
+ 
                     params
                 },
                 output_arg: ToolOutputArg {
@@ -99,6 +105,12 @@ impl ToolExecutor for LlmPromptProcessorTool {
             None
         };
 
+        let image_paths = if let Some(paths_array) = parameters.get("image_paths").and_then(|v| v.as_array()) {
+            Some(paths_array.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<String>>())
+        } else {
+            None
+        };
+
         let response = v2_create_and_send_job_message(
             bearer.clone(),
             JobCreationInfo {
@@ -109,6 +121,8 @@ impl ToolExecutor for LlmPromptProcessorTool {
             llm_provider,
             content,
             tools,
+            image_paths,
+            None,
             db_clone.clone(),
             node_name_clone,
             identity_manager_clone,
