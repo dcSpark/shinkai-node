@@ -420,7 +420,7 @@ impl GenericInferenceChain {
 
             // 2c. Check if the LLM provider is an agent
             let is_agent = match &llm_provider {
-                ProviderOrAgent::Agent(_) => true,
+                ProviderOrAgent::Agent(_) => false,
                 ProviderOrAgent::LLMProvider(_) => false,
             };
 
