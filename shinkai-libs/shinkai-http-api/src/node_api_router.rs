@@ -1,5 +1,6 @@
 use crate::api_v1;
 use crate::api_v2;
+use crate::api_sse;
 
 use super::node_commands::NodeCommand;
 use async_channel::Sender;
@@ -143,8 +144,18 @@ pub async fn run_api(
             .with(cors.clone()),
     );
 
+    let mcp_routes = warp::path("mcp").and(
+        api_sse::api_sse_routes::mcp_sse_routes()
+            .recover(handle_rejection)
+            .with(log)
+            .with(cors.clone()),
+    );
+
     // Combine all routes
-    let routes = v1_routes.or(v2_routes).with(log).with(cors);
+    let routes = v1_routes
+        .or(v2_routes)
+        .or(mcp_routes)
+        .with(log).with(cors);
 
     // Wrap the HTTP server in an async block that returns a Result
     let http_server = async {

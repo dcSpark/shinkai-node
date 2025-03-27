@@ -28,6 +28,13 @@ tokio-rustls = "0.23"
 rustls = "0.20"
 hyper = { version = "0.14.30", features = ["server"] }
 rustls-pemfile = "1.0.3"
+mcp_sdk_core = { package = "mcp-core", git = "https://github.com/modelcontextprotocol/rust-sdk.git", branch = "main" }
+mcp_sdk_server = { package = "mcp-server", git = "https://github.com/modelcontextprotocol/rust-sdk.git", branch = "main" }
+tokio-util = { version = "0.7.10", features = ["codec"] }
+uuid = { version = "1.7.0", features = ["v4"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+anyhow = { workspace = true }
 
 [dependencies.serde]
 workspace = true
