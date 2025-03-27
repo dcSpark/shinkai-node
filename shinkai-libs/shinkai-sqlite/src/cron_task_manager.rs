@@ -69,7 +69,7 @@ impl SqliteManager {
         }
     }
 
-    pub fn get_cron_task_by_llm_provider_id(&self, llm_provider_id: &str) -> Result<Option<CronTask>, SqliteManagerError> {
+    pub fn get_cron_tasks_by_llm_provider_id(&self, llm_provider_id: &str) -> Result<Vec<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT task_id, name, description, cron, created_at, last_modified, action, paused 
@@ -104,14 +104,15 @@ impl SqliteManager {
             }
         })?;
 
-        // Find the first matching task
+        // Collect all matching tasks
+        let mut matching_tasks = Vec::new();
         for task_result in cron_task_iter {
             if let Ok(Some(task)) = task_result {
-                return Ok(Some(task));
+                matching_tasks.push(task);
             }
         }
 
-        Ok(None)
+        Ok(matching_tasks)
     }
 
     pub fn update_cron_task(
