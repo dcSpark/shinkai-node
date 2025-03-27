@@ -1012,7 +1012,7 @@ impl Node {
 
         // Check if the llm_provider_id exists
         let llm_provider_exists = {
-            let exists = match db.get_llm_provider(&agent.agent_id, &requester_name) {
+            let exists = match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
                 Ok(Some(_)) => true,
                 _ => false,
             };
@@ -1250,7 +1250,7 @@ impl Node {
         match db.get_agent(&agent_id) {
             Ok(Some(mut agent)) => {
                 // Get cron tasks for this agent
-                match db.get_cron_tasks_by_llm_provider_id(&agent.llm_provider_id) {
+                match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
                     Ok(cron_tasks) => {
                         agent.cron_tasks = if cron_tasks.is_empty() {
                             None
