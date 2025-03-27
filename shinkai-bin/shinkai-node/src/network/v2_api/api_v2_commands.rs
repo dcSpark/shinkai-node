@@ -1212,6 +1212,7 @@ impl Node {
             config: partial_agent.get("config").map_or(existing_agent.config.clone(), |v| {
                 serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
             }),
+            cron_tasks: None,
             full_identity_name, // Set the constructed full identity name
         };
 
@@ -1246,7 +1247,11 @@ impl Node {
 
         // Retrieve the agent from the database
         match db.get_agent(&agent_id) {
-            Ok(Some(agent)) => {
+            Ok(Some(mut agent)) => {
+                // Get cron tasks for this agent
+                if let Ok(Some(cron_task)) = db.get_cron_task_by_llm_provider_id(&agent.agent_id) {
+                    agent.cron_tasks = Some(vec![cron_task]);
+                }
                 let _ = res.send(Ok(agent)).await;
             }
             Ok(None) => {
@@ -1282,7 +1287,13 @@ impl Node {
 
         // Retrieve all agents from the database
         match db.get_all_agents() {
-            Ok(agents) => {
+            Ok(mut agents) => {
+                // Get cron tasks for each agent
+                for agent in &mut agents {
+                    if let Ok(Some(cron_task)) = db.get_cron_task_by_llm_provider_id(&agent.agent_id) {
+                        agent.cron_tasks = Some(vec![cron_task]);
+                    }
+                }
                 let _ = res.send(Ok(agents)).await;
             }
             Err(err) => {

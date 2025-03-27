@@ -122,6 +122,7 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?,
+                cron_tasks: None,
             })
         })?;
 
@@ -178,6 +179,7 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?,
+                cron_tasks: None,
             })
         });
 
