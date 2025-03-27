@@ -123,7 +123,13 @@ impl LLMService for OpenAI {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    payload["functions"] = serde_json::Value::Array(tools_json.clone());
+                    let formatted_tools = tools_json.iter()
+                    .map(|tool| serde_json::json!({
+                        "type": "function",
+                        "function": tool
+                    }))
+                    .collect::<Vec<serde_json::Value>>();
+                    payload["tools"] = serde_json::Value::Array(formatted_tools);
                 }
 
                 // Only add options to payload for non-reasoning models
@@ -481,10 +487,30 @@ pub async fn parse_openai_stream_chunk(
                                     partial_fc.is_accumulating = true;
                                 }
                             }
+                            
+                            // handle tools_call
+                            if let Some(tool_calls) = delta.get("tool_calls") {
+                                if let Some(tool_calls_array) = tool_calls.as_array() {
+                                    if let Some(first_tool_call) = tool_calls_array.first() {
+                                        if let Some(function) = first_tool_call.get("function") {
+                                            if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
+                                                // If partial_fc already had a different name, finalize that first
+                                                if let Some(old_name) = &partial_fc.name {
+                                                    if !old_name.is_empty() && old_name != name {
+                                                        finalize_function_call_sync(partial_fc, function_calls, tools);
+                                                    }
+                                                }
+                                                partial_fc.name = Some(name.to_string());
+                                                partial_fc.is_accumulating = true;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // If finish_reason == "function_call", finalize the partial
-                        if finish_reason == "function_call" {
+                        if finish_reason == "function_call" || finish_reason == "tool_calls" {
                             finalize_function_call_sync(partial_fc, function_calls, tools);
                         } else if finish_reason == "stop" {
                             // If the user or model stops, we can finalize
@@ -865,29 +891,31 @@ pub async fn handle_non_streaming_response(
                             .join(" ");
 
                         let function_call: Option<FunctionCall> = data.choices.iter().find_map(|choice| {
-                            choice.message.function_call.clone().map(|fc| {
-                                let arguments = serde_json::from_str::<serde_json::Value>(&fc.arguments)
-                                    .ok()
-                                    .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
-                                    .unwrap_or_else(|| serde_json::Map::new());
+                            choice.message.tool_calls.as_ref().and_then(|tool_calls| {
+                                tool_calls.first().map(|tool_call| {
+                                    let arguments = serde_json::from_str::<serde_json::Value>(&tool_call.function.arguments)
+                                        .ok()
+                                        .and_then(|args_value: serde_json::Value| args_value.as_object().cloned())
+                                        .unwrap_or_else(|| serde_json::Map::new());
 
-                                // Extract tool_router_key
-                                let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                    tools_array.iter().find_map(|tool| {
-                                        if tool.get("name")?.as_str()? == fc.name {
-                                            tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                });
+                                    // Extract tool_router_key
+                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                        tools_array.iter().find_map(|tool| {
+                                            if tool.get("name")?.as_str()? == tool_call.function.name {
+                                                tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    });
 
-                                FunctionCall {
-                                    name: fc.name,
-                                    arguments,
-                                    tool_router_key,
-                                    response: None,
-                                }
+                                    FunctionCall {
+                                        name: tool_call.function.name.clone(),
+                                        arguments,
+                                        tool_router_key,
+                                        response: None,
+                                    }
+                                })
                             })
                         });
                         eprintln!("Function Call: {:?}", function_call);
@@ -1089,41 +1117,45 @@ async fn send_tool_ws_update(
 }
 
 pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) {
-    // Find the start of arguments value
-    let args_prefix = r#""function_call":{"arguments":""#;
-    if let Some(args_start_pos) = json_str.find(args_prefix) {
-        let content_start = args_start_pos + args_prefix.len();
+    // Find the start of arguments value - check both function_call and tool_calls prefixes
+    let function_call_prefix = r#""function_call":{"arguments":""#;
+    let tool_calls_prefix = r#""tool_calls":[{"index":0,"function":{"arguments":""#;
+    
+    let (prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
+        (function_call_prefix, args_start_pos + function_call_prefix.len())
+    } else if let Some(args_start_pos) = json_str.find(tool_calls_prefix) {
+        (tool_calls_prefix, args_start_pos + tool_calls_prefix.len())
+    } else {
+        return (None, json_str.to_string());
+    };
 
-        // Find the end of arguments value by looking for the closing quotes and braces
-        // We need to handle both cases: when it's just a piece of a JSON string and
-        // when it's a complete one
-        let mut content_end = None;
+    // Find the end of arguments value by looking for the closing quotes and braces
+    // We need to handle both cases: when it's just a piece of a JSON string and
+    // when it's a complete one
+    let mut content_end = None;
 
-        // First try to find the standard end pattern
-        if let Some(end_pos) = json_str[content_start..].find(r#""}}"#) {
-            content_end = Some(content_start + end_pos);
-        }
-        // If not found, look for just the closing quote
-        else if let Some(end_pos) = json_str[content_start..].find('"') {
-            content_end = Some(content_start + end_pos);
-        }
+    // First try to find the standard end pattern
+    if let Some(end_pos) = json_str[content_start..].find(r#""}}"#) {
+        content_end = Some(content_start + end_pos);
+    }
+    // If not found, look for just the closing quote
+    else if let Some(end_pos) = json_str[content_start..].find('"') {
+        content_end = Some(content_start + end_pos);
+    }
 
-        if let Some(content_end) = content_end {
-            // Extract the arguments content
-            let content = json_str[content_start..content_end].to_string();
+    if let Some(content_end) = content_end {
+        // Extract the arguments content
+        let content = json_str[content_start..content_end].to_string();
 
-            // Build the cleaned JSON by replacing the arguments content with empty string
-            let cleaned_json = format!(
-                "{}{}{}",
-                &json_str[..content_start], // everything up to the content
-                "",                         // empty string for arguments
-                &json_str[content_end..]    // everything after the content
-            );
+        // Build the cleaned JSON by replacing the arguments content with empty string
+        let cleaned_json = format!(
+            "{}{}{}",
+            &json_str[..content_start], // everything up to the content
+            "",                         // empty string for arguments
+            &json_str[content_end..]    // everything after the content
+        );
 
-            (Some(content), cleaned_json)
-        } else {
-            (None, json_str.to_string())
-        }
+        (Some(content), cleaned_json)
     } else {
         (None, json_str.to_string())
     }

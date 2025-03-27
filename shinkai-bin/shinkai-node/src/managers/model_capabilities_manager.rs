@@ -165,6 +165,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+            LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
             LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
         }
     }
@@ -230,6 +231,11 @@ impl ModelCapabilitiesManager {
                 "claude-3-haiku-20240307" => ModelCost::VeryCheap,
                 _ => ModelCost::Unknown,
             },
+            LLMProviderInterface::DeepSeek(deepseek) => match deepseek.model_type.as_str() {
+                "deepseek-chat" => ModelCost::Cheap,
+                "deepseek-reasoner" => ModelCost::GoodValue,
+                _ => ModelCost::Unknown,
+            },
             LLMProviderInterface::LocalRegex(_) => ModelCost::Free,
         }
     }
@@ -252,6 +258,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
             LLMProviderInterface::Claude(_) => ModelPrivacy::RemoteGreedy,
+            LLMProviderInterface::DeepSeek(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::LocalRegex(_) => ModelPrivacy::Local,
         }
     }
@@ -357,7 +364,11 @@ impl ModelCapabilitiesManager {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string = llama_prepare_messages(model, claude.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
-            }
+            },
+            LLMProviderInterface::DeepSeek(_) => {
+                let tiktoken_messages = openai_prepare_messages(model, prompt)?;
+                Ok(tiktoken_messages)
+            },
             LLMProviderInterface::LocalRegex(local_regex) => {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string =
@@ -419,6 +430,7 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
+            LLMProviderInterface::DeepSeek(_) => 64_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
@@ -565,7 +577,8 @@ impl ModelCapabilitiesManager {
                 } else {
                     4096
                 }
-            }
+            },
+            LLMProviderInterface::DeepSeek(deepseek) => 8192,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
@@ -723,7 +736,8 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("gemini-ultra-vision")
                     || model.model_type.starts_with("gemini-1.5")
                     || model.model_type.starts_with("gemini-2.0")
-            }
+            },
+            LLMProviderInterface::DeepSeek(_) => true,
             _ => false,
         }
     }
@@ -740,6 +754,9 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1") || ollama.model_type.starts_with("qwq")
+            },
+            LLMProviderInterface::DeepSeek(deepseek) => {
+                deepseek.model_type.starts_with("deepseek-reasoner")
             },
             _ => false,
         }
