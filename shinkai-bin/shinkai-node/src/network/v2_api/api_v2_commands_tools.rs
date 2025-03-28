@@ -1227,9 +1227,12 @@ impl Node {
             Ok(llm_provider) => {
                 if let Some(llm_provider) = llm_provider {
                     let provider = llm_provider.get_provider_string();
-                    let model = llm_provider.get_model_string();
+                    let model = llm_provider.get_model_string().to_lowercase();
+                    println!("provider: {}", provider);
+                    println!("model: {}", model);
+
                     if provider == "shinkai-backend"
-                        && (model == "CODE_GENERATOR" || model == "CODE_GENERATOR_NO_FEEDBACK")
+                        && (model == "code_generator" || model == "code_generator_no_feedback")
                     {
                         return true;
                     }
