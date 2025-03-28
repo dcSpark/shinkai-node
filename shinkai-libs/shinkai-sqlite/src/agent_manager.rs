@@ -122,6 +122,7 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?,
+                cron_tasks: None,
             })
         })?;
 
@@ -178,6 +179,7 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?,
+                cron_tasks: None,
             })
         });
 
@@ -265,6 +267,7 @@ mod tests {
             debug_mode: false,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -290,6 +293,7 @@ mod tests {
             debug_mode: false,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -317,6 +321,7 @@ mod tests {
             debug_mode: false,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
         let agent2 = Agent {
             agent_id: "test_agent2".to_string(),
@@ -330,6 +335,7 @@ mod tests {
             debug_mode: false,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -357,6 +363,7 @@ mod tests {
             debug_mode: false,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -384,6 +391,7 @@ mod tests {
             debug_mode: false,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -401,6 +409,7 @@ mod tests {
             debug_mode: true,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
 
         let result = db.update_agent(updated_agent.clone());
@@ -439,6 +448,7 @@ mod tests {
             debug_mode: false,
             config: None,
             scope: Default::default(),
+            cron_tasks: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
