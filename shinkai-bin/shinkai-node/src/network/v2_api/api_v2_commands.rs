@@ -46,6 +46,7 @@ use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalCom
 use std::time::Instant;
 use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -1212,6 +1213,7 @@ impl Node {
             config: partial_agent.get("config").map_or(existing_agent.config.clone(), |v| {
                 serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
             }),
+            cron_tasks: None,
             full_identity_name, // Set the constructed full identity name
         };
 
@@ -1246,7 +1248,20 @@ impl Node {
 
         // Retrieve the agent from the database
         match db.get_agent(&agent_id) {
-            Ok(Some(agent)) => {
+            Ok(Some(mut agent)) => {
+                // Get cron tasks for this agent
+                match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
+                    Ok(cron_tasks) => {
+                        agent.cron_tasks = if cron_tasks.is_empty() {
+                            None
+                        } else {
+                            Some(cron_tasks)
+                        };
+                    }
+                    Err(e) => {
+                        agent.cron_tasks = None;
+                    }
+                }
                 let _ = res.send(Ok(agent)).await;
             }
             Ok(None) => {
@@ -1282,7 +1297,22 @@ impl Node {
 
         // Retrieve all agents from the database
         match db.get_all_agents() {
-            Ok(agents) => {
+            Ok(mut agents) => {
+                // Get cron tasks for each agent
+                for agent in &mut agents {
+                    match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
+                        Ok(cron_tasks) => {
+                            agent.cron_tasks = if cron_tasks.is_empty() {
+                                None
+                            } else {
+                                Some(cron_tasks)
+                            };
+                        }
+                        Err(e) => {
+                            agent.cron_tasks = None;
+                        }
+                    }
+                }
                 let _ = res.send(Ok(agents)).await;
             }
             Err(err) => {

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
-    schemas::{job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey},
+    schemas::{job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey, crontab::CronTask},
     shinkai_utils::job_scope::MinimalJobScope,
 };
 
@@ -25,6 +25,7 @@ pub struct Agent {
     pub config: Option<JobConfig>,
     #[serde(default)]
     pub scope: MinimalJobScope,
+    pub cron_tasks: Option<Vec<CronTask>>,
 }
 
 #[cfg(test)]

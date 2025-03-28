@@ -69,6 +69,52 @@ impl SqliteManager {
         }
     }
 
+    pub fn get_cron_tasks_by_llm_provider_id(&self, llm_provider_id: &str) -> Result<Vec<CronTask>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT task_id, name, description, cron, created_at, last_modified, action, paused 
+             FROM cron_tasks",
+        )?;
+        let cron_task_iter = stmt.query_map([], |row| {
+            let action_json: String = row.get(6)?;
+            let action: CronTaskAction = serde_json::from_str(&action_json)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+            // Check if the action contains the matching llm_provider_id
+            let matches = match &action {
+                CronTaskAction::CreateJobWithConfigAndMessage { llm_provider, .. } => {
+                    llm_provider == llm_provider_id
+                }
+                _ => false,
+            };
+
+            if matches {
+                Ok(Some(CronTask {
+                    task_id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    cron: row.get(3)?,
+                    created_at: row.get(4)?,
+                    last_modified: row.get(5)?,
+                    action,
+                    paused: row.get(7)?,
+                }))
+            } else {
+                Ok(None)
+            }
+        })?;
+
+        // Collect all matching tasks
+        let mut matching_tasks = Vec::new();
+        for task_result in cron_task_iter {
+            if let Ok(Some(task)) = task_result {
+                matching_tasks.push(task);
+            }
+        }
+
+        Ok(matching_tasks)
+    }
+
     pub fn update_cron_task(
         &self,
         task_id: i64,
