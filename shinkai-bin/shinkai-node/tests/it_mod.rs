@@ -23,6 +23,7 @@ mod it {
     mod node_simple_ux_tests;
     mod performance_tests;
     mod planner_integration_tests;
+    mod simple_job_example_tests;
     mod utils;
     mod websocket_tests;
 
