@@ -737,3 +737,52 @@ pub async fn wait_for_default_tools(
 
     Ok(false) // Timeout reached without getting true
 }
+
+pub async fn wait_for_rust_tools(
+    node_commands_sender: Sender<NodeCommand>,
+    timeout_seconds: u64,
+) -> Result<u32, String> {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(timeout_seconds);
+    let retry_delay = std::time::Duration::from_millis(500);
+    let mut retry_count = 0;
+
+    while start.elapsed() < timeout {
+        tokio::time::sleep(retry_delay).await;
+
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
+            .await
+            .unwrap();
+
+        match res_receiver.recv().await {
+            Ok(result) => {
+                match result {
+                    Ok(has_tools) => {
+                        if has_tools {
+                            // Rust tools are installed, return the count of retries
+                            return Ok(retry_count);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error checking Rust tools installation: {:?}", e);
+                        return Err(format!("Error checking Rust tools installation: {:?}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                let error_msg = format!("Error receiving check result: {:?}", e);
+                eprintln!("{}", error_msg);
+                return Err(error_msg);
+            }
+        }
+
+        retry_count += 1;
+    }
+
+    Err(format!(
+        "Rust tools were not installed after {} seconds",
+        timeout_seconds
+    ))
+}
