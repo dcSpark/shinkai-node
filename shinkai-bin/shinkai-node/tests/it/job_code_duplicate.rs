@@ -337,7 +337,7 @@ fn tool_duplicate_tests() {
                     configurations_properties_a.get("type").unwrap().as_str().unwrap();
                 assert_eq!(configurations_properties_a_type, "string");
 
-                let configurations_properties_required = configurations_properties
+                let configurations_required = configurations
                     .get("required")
                     .unwrap()
                     .as_array()
@@ -345,7 +345,7 @@ fn tool_duplicate_tests() {
                     .iter()
                     .map(|v| v.as_str().unwrap())
                     .collect::<Vec<&str>>();
-                eprintln!("Required: {:?}", configurations_properties_required);
+                eprintln!("Required: {:?}", configurations_required);
 
                 let description = metadata.get("description").unwrap().as_str().unwrap();
                 eprintln!("Description: {:?}", description);
@@ -389,7 +389,7 @@ fn tool_duplicate_tests() {
                 assert!(prompt_type.to_string().contains("string"));
                 assert_eq!(prompt_type, "string");
 
-                let properties_required = properties
+                let parameters_required = parameters
                     .get("required")
                     .unwrap()
                     .as_array()
@@ -397,18 +397,18 @@ fn tool_duplicate_tests() {
                     .iter()
                     .map(|v| v.as_str().unwrap())
                     .collect::<Vec<&str>>();
-                eprintln!("Required: {:?}", properties_required);
-                assert!(properties_required.contains(&"prompt"));
+                eprintln!("Required: {:?}", parameters_required);
+                assert!(parameters_required.contains(&"prompt"));
 
-                let result = prompt.get("result").unwrap().as_object().unwrap();
+                let result = metadata.get("result").unwrap().as_object().unwrap();
                 eprintln!("Result: {:?}", result);
 
                 let properties = result.get("properties").unwrap().as_object().unwrap();
                 eprintln!("Properties: {:?}", properties);
 
-                let properties_type = properties.get("type").unwrap().as_str().unwrap();
-                eprintln!("Type: {:?}", properties_type);
-                assert!(properties_type.to_string().contains("object"));
+                let properties_result_type = properties.get("result").unwrap().get("type").unwrap().as_str().unwrap();
+                eprintln!("Type: {:?}", properties_result_type);
+                assert!(properties_result_type.to_string().contains("string"));
 
                 let runner = metadata.get("runner").unwrap().as_str().unwrap();
                 eprintln!("Runner: {:?}", runner);
@@ -420,17 +420,19 @@ fn tool_duplicate_tests() {
                 let sql_tables = metadata.get("sqlTables").unwrap().as_array().unwrap();
                 eprintln!("SQL Tables: {:?}", sql_tables);
 
-                let tool_set = metadata.get("tool_set").unwrap().as_object().unwrap();
+                let tool_set = metadata.get("tool_set");
                 eprintln!("Tool set: {:?}", tool_set);
+                assert!(tool_set.is_none() || tool_set.unwrap().is_null());
 
-                let tools = tool_set.get("tools").unwrap().as_array().unwrap();
+                let tools = metadata.get("tools").unwrap().as_array().unwrap();
                 eprintln!("Tools: {:?}", tools);
 
-                let version = tool_set.get("version").unwrap().as_str().unwrap();
+                let version = metadata.get("version").unwrap().as_str().unwrap();
                 eprintln!("Version: {:?}", version);
 
-                let oauth = metadata.get("oauth").unwrap().as_object().unwrap();
+                let oauth = metadata.get("oauth");
                 eprintln!("OAuth: {:?}", oauth);
+                assert!(oauth.is_none() || oauth.unwrap().is_null());
 
                 let operating_system = metadata
                     .get("operating_system")
