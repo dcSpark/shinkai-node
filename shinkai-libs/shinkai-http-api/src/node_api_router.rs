@@ -145,7 +145,7 @@ pub async fn run_api(
     );
 
     let mcp_routes = warp::path("mcp").and(
-        api_sse::api_sse_routes::mcp_sse_routes()
+        api_sse::api_sse_routes::mcp_sse_routes(node_commands_sender.clone(), node_name.clone())
             .recover(handle_rejection)
             .with(log)
             .with(cors.clone()),
