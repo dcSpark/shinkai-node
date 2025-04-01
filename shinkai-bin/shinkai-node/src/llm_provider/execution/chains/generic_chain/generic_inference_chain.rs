@@ -12,7 +12,7 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use shinkai_fs::shinkai_file_manager::{FileInfo, ShinkaiFileManager};
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
@@ -445,7 +445,7 @@ impl GenericInferenceChain {
             // Only proceed with tool selection if either:
             // - Tools are allowed by configuration AND the LLM provider has tool capabilities
             // - OR it's an agent with available tools
-            if can_use_tools && tools_allowed || is_agent_with_tools {
+            if (can_use_tools || is_agent_with_tools) && tools_allowed {
                 // CASE 2.1: If using an Agent, get its specifically configured tools
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
                     for tool in &agent.tools {
