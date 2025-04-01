@@ -332,7 +332,17 @@ impl GenericInferenceChain {
                 }
             }
         } else if let Some(forced_tools) = force_tools_scope.clone() {
-            // CASE 2: No specific tool selected but force_tools_scope is provided
+            // CASE 2: force_tools_scope is provided - This takes precedence over automatic tool selection
+            // force_tools_scope allows explicit specification of which tools should be available,
+            // provided as a Vec<String> of tool names. For each tool name:
+            // 1. First tries exact name match
+            // 2. If exact match fails, performs both:
+            //    - Full-text search (FTS) for exact keyword matches
+            //    - Vector search for semantic similarity (confidence threshold 0.2)
+            // 3. Combines results prioritizing:
+            //    - FTS exact matches first
+            //    - Then high-confidence vector search matches
+            // 4. Returns error if no matches found for a forced tool
             if let Some(tool_router) = &tool_router {
                 for tool_name in forced_tools {
                     match tool_router.get_tool_by_name(&tool_name).await {
@@ -465,7 +475,7 @@ impl GenericInferenceChain {
                     // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
                         let results = tool_router
-                            .combined_tool_search(&user_message.clone(), 4, false, true)
+                            .combined_tool_search(&user_message.clone(), 7, false, true)
                             .await;
 
                         match results {
