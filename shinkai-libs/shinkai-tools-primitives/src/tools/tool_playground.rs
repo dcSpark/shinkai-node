@@ -136,9 +136,9 @@ where
         let ToolConfig::BasicConfig(basic) = config;
         let mut property = HashMap::new();
         property.insert("description", basic.description.clone());
-        if let Some(type_name) = &basic.type_name {
-            property.insert("type", type_name.clone());
-        }
+        // If type_name is None, default to "string"
+        let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+        property.insert("type", type_value);
         properties.insert(basic.key_name.clone(), property);
 
         if basic.required {
