@@ -418,9 +418,9 @@ impl GenericInferenceChain {
             // specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
 
-            // 2c. Check if the LLM provider is an agent
-            let is_agent = match &llm_provider {
-                ProviderOrAgent::Agent(_) => false,
+            // 2c. Check if the LLM provider is an agent with tools
+            let is_agent_with_tools = match &llm_provider {
+                ProviderOrAgent::Agent(agent) => !agent.tools.is_empty(),
                 ProviderOrAgent::LLMProvider(_) => false,
             };
 
@@ -432,10 +432,10 @@ impl GenericInferenceChain {
             )
             .await;
 
-            // Only proceed with tool selection if both conditions are met:
-            // - Tools are allowed by configuration
-            // - The LLM provider has tool capabilities
-            if can_use_tools && tools_allowed || is_agent {
+            // Only proceed with tool selection if either:
+            // - Tools are allowed by configuration AND the LLM provider has tool capabilities
+            // - OR it's an agent with available tools
+            if can_use_tools && tools_allowed || is_agent_with_tools {
                 // CASE 2.1: If using an Agent, get its specifically configured tools
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
                     for tool in &agent.tools {

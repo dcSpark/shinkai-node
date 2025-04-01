@@ -1,9 +1,9 @@
-use std::fs::File;
-use std::io::Write;
-use std::{env, sync::Arc};
 use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
+use std::fs::File;
+use std::io::Write;
+use std::{env, sync::Arc};
 use tokio::fs;
 use zip::{write::FileOptions, ZipWriter};
 
@@ -33,8 +33,8 @@ use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use crate::llm_provider::providers::shinkai_backend::check_quota;
+use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
@@ -42,11 +42,11 @@ use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 
+use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use std::time::Instant;
 use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -297,7 +297,9 @@ impl Node {
             Some(val) => Some(val),
             None => Some("storage".to_string()),
         };
-        let base_path = tokio::fs::canonicalize(node_storage_path.as_ref().unwrap()).await.unwrap();
+        let base_path = tokio::fs::canonicalize(node_storage_path.as_ref().unwrap())
+            .await
+            .unwrap();
         let _ = res.send(Ok(base_path.to_string_lossy().to_string())).await;
 
         Ok(())
@@ -1252,11 +1254,7 @@ impl Node {
                 // Get cron tasks for this agent
                 match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
                     Ok(cron_tasks) => {
-                        agent.cron_tasks = if cron_tasks.is_empty() {
-                            None
-                        } else {
-                            Some(cron_tasks)
-                        };
+                        agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
                     }
                     Err(e) => {
                         agent.cron_tasks = None;
@@ -1302,11 +1300,7 @@ impl Node {
                 for agent in &mut agents {
                     match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
                         Ok(cron_tasks) => {
-                            agent.cron_tasks = if cron_tasks.is_empty() {
-                                None
-                            } else {
-                                Some(cron_tasks)
-                            };
+                            agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
                         }
                         Err(e) => {
                             agent.cron_tasks = None;
