@@ -570,9 +570,21 @@ impl GenericInferenceChain {
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
-                return Err(LLMProviderError::MaxIterationsReached(
-                    "Maximum iterations reached".to_string(),
-                ));
+                let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
+                let max_iterations_message = format!(
+                    "Maximum iterations ({}) reached. Process stopped after {} tool calls.",
+                    max_iterations,
+                    tool_calls_history.len()
+                );
+
+                let inference_result = InferenceChainResult::with_full_details(
+                    max_iterations_message,
+                    None,
+                    answer_duration_ms,
+                    Some(tool_calls_history.clone()),
+                );
+
+                return Ok(inference_result);
             }
 
             // 4) Call LLM

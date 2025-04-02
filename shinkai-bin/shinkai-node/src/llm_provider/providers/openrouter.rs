@@ -83,11 +83,6 @@ impl LLMService for OpenRouter {
                 // Extract tools_json from the result
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
-
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
@@ -329,7 +324,12 @@ async fn handle_streaming_response(
         }
     }
 
-    Ok(LLMInferenceResponse::new(response_text, json!({}), function_calls, None))
+    Ok(LLMInferenceResponse::new(
+        response_text,
+        json!({}),
+        function_calls,
+        None,
+    ))
 }
 
 async fn handle_non_streaming_response(

@@ -2,7 +2,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::llm_cancellable_request::make_cancellable_request;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
+    ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse
 };
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
@@ -19,7 +19,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -83,11 +83,6 @@ impl LLMService for Ollama {
             // Extract tools_json from the result
             let tools_json = messages_result.functions.unwrap_or_else(Vec::new);
 
-            match serde_json::to_string_pretty(&tools_json) {
-                Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-            };
-
             let mut payload = json!({
                 "model": self.model_type,
                 "messages": messages_json,
@@ -99,7 +94,8 @@ impl LLMService for Ollama {
             // Modify payload to add options if needed
             add_options_to_payload(&mut payload, config.as_ref(), &model, messages_result.tokens_used);
 
-            // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true, then we need to remove to remove it
+            // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true,
+            // then we need to remove to remove it
             if is_stream {
                 if self.model_type.starts_with("minicpm-v") {
                     payload.as_object_mut().unwrap().remove("stream");
@@ -277,12 +273,7 @@ async fn process_stream(
                 }
 
                 // Return early
-                return Ok(LLMInferenceResponse::new(
-                    response_text,
-                    json!({}),
-                    Vec::new(),
-                    None,
-                ));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
             }
         }
 
@@ -499,7 +490,7 @@ async fn handle_non_streaming_response(
             result = &mut response_future => {
                 let res = result?;
                 let response_body = res.text().await?;
-                
+
                 // First check if it's an error response
                 if let Ok(error_response) = serde_json::from_str::<serde_json::Value>(&response_body) {
                     if let Some(error_msg) = error_response.get("error").and_then(|e| e.as_str()) {
