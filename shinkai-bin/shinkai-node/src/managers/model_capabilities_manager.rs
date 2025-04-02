@@ -414,12 +414,13 @@ impl ModelCapabilitiesManager {
                 0
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type() == "PREMIUM_TEXT_INFERENCE"
-                    || shinkai_backend.model_type() == "PREMIUM_VISION_INFERENCE"
-                {
-                    128_000
-                } else {
-                    32_000
+                match shinkai_backend.model_type().as_str() {
+                    "FREE_TEXT_INFERENCE" => 128_000, // gpt-4o-mini
+                    "STANDARD_TEXT_INFERENCE" => 128_000, // gpt-4o
+                    "PREMIUM_TEXT_INFERENCE" => 200_000, // claude-3.5-sonnet
+                    "CODE_GENERATOR" => 128_000, // doesn't really matter since codegen handles the context window
+                    "CODE_GENERATOR_NO_FEEDBACK" => 128_000, // doesn't really matter since codegen handles the context window
+                    _ => 128_000, // default to gpt-4o-mini (FREE_TEXT_INFERENCE)
                 }
             }
             LLMProviderInterface::Gemini(_) => 1_000_000,
