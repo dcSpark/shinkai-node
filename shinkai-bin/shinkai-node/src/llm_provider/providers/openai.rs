@@ -593,6 +593,14 @@ pub async fn handle_streaming_response(
                 .and_then(|v| v.as_str())
                 .unwrap_or(""),
         )
+        .header(
+            "X-Shinkai-Session-Id",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-session-id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )        
         .json(&payload)
         .send()
         .await?;
@@ -799,6 +807,14 @@ pub async fn handle_non_streaming_response(
             headers
                 .as_ref()
                 .and_then(|h| h.get("x-shinkai-metadata"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        )
+        .header(
+            "X-Shinkai-Session-Id",
+            headers
+                .as_ref()
+                .and_then(|h| h.get("x-shinkai-session-id"))
                 .and_then(|v| v.as_str())
                 .unwrap_or(""),
         )
