@@ -301,7 +301,7 @@ async fn process_stream(
                             ShinkaiLogLevel::Error,
                             format!("Ollama API Error: {}", error_msg).as_str(),
                         );
-                        return Err(LLMProviderError::APIError(error_msg.to_string()));
+                        return Err(LLMProviderError::APIError(format!("Ollama has failed to process the request: {}", error_msg)));
                     }
                 }
 
@@ -508,7 +508,7 @@ async fn handle_non_streaming_response(
                             ShinkaiLogLevel::Error,
                             format!("Ollama API Error: {}", error_msg).as_str(),
                         );
-                        return Err(LLMProviderError::APIError(error_msg.to_string()));
+                        return Err(LLMProviderError::APIError(format!("Ollama has failed to process the request: {}", error_msg)));
                     }
                 }
 
