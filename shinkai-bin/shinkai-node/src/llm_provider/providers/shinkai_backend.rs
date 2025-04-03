@@ -95,17 +95,6 @@ impl LLMService for ShinkaiBackend {
         // Extract tools_json from the result
         let tools_json = result.functions.unwrap_or_else(Vec::new);
 
-        // Print messages_json as a pretty JSON string
-        match serde_json::to_string_pretty(&messages_json) {
-            Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-            Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-        };
-
-        match serde_json::to_string_pretty(&tools_json) {
-            Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-            Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-        };
-
         // Get the node's signature public key from the database
         let (node_name, node_signature_public_key) = _db
             .query_row(

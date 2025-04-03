@@ -16,12 +16,8 @@ use shinkai_message_primitives::schemas::ws_types::WidgetMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        job_config::JobConfig,
-        llm_providers::serialized_llm_provider::{Claude, LLMProviderInterface},
-        prompts::Prompt,
-    },
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::{Claude, LLMProviderInterface}, prompts::Prompt
+    }, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -29,7 +25,7 @@ use uuid::Uuid;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall;
 use crate::llm_provider::{
-    error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper,
+    error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
@@ -89,17 +85,6 @@ impl LLMService for Claude {
                         tool
                     })
                     .collect::<Vec<JsonValue>>();
-
-                // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
-
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -469,132 +454,132 @@ async fn handle_non_streaming_response(
 
     loop {
         tokio::select! {
-                _ = interval.tick() => {
-                    if let Some(ref inbox_name) = inbox_name {
-                        if llm_stopper.should_stop(&inbox_name.to_string()) {
-                            eprintln!("LLM job stopped by user request");
-                            llm_stopper.reset(&inbox_name.to_string());
+            _ = interval.tick() => {
+                if let Some(ref inbox_name) = inbox_name {
+                    if llm_stopper.should_stop(&inbox_name.to_string()) {
+                        eprintln!("LLM job stopped by user request");
+                        llm_stopper.reset(&inbox_name.to_string());
 
-                            return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
-                        }
-                    }
-                },
-                response = &mut response_fut => {
-                    let res = response?;
-
-                    // Check if it's an error response
-                    if !res.status().is_success() {
-                        let error_json: serde_json::Value = res.json().await?;
-                        if let Some(error) = error_json.get("error") {
-                            let error_message = error.get("message")
-                                .and_then(|m| m.as_str())
-                                .unwrap_or("Unknown error");
-                            return Err(LLMProviderError::APIError(error_message.to_string()));
-                        }
-                        return Err(LLMProviderError::APIError("Unknown error occurred".to_string()));
-                    }
-
-                    let response_body = res.text().await?;
-                    let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
-
-                    if let Some(content) = response_json.get("content") {
-                        let mut response_text = String::new();
-                        let mut function_calls = Vec::new();
-
-                        for content_block in content.as_array().unwrap_or(&vec![]) {
-                            if let Some(content_type) = content_block.get("type") {
-                                match content_type.as_str().unwrap_or("") {
-                                    "text" => {
-                                        if let Some(text) = content_block.get("text") {
-                                            response_text.push_str(text.as_str().unwrap_or(""));
-                                        }
-                                    }
-                                    "tool_use" => {
-                                        let name = content_block["name"].as_str().unwrap_or_default().to_string();
-                                        let arguments = content_block.get("input")
-                                                    .and_then(|args_value| args_value.as_object().cloned())
-                                                    .unwrap_or_else(|| serde_json::Map::new());
-
-                                        // Search for the tool_router_key in the tools array
-                                        let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                                            tools_array.iter().find_map(|tool| {
-                                                if tool.get("name")?.as_str()? == name {
-                                                    tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
-                                                } else {
-                                                    None
-                                                }
-                                            })
-                                        });
-
-                                        let function_call = FunctionCall {
-                                            name,
-                                            arguments,
-                                            tool_router_key,
-                                            response: None,
-                                        };
-
-                                        function_calls.push(function_call.clone());
-
-                                        eprintln!("Function Call: {:?}", function_call);
-
-                                        // Send WS message if a function call is detected
-                                        if let Some(ref manager) = ws_manager_trait {
-                                            if let Some(ref inbox_name) = inbox_name {
-                                                let m = manager.lock().await;
-                                                let inbox_name_string = inbox_name.to_string();
-
-                                                // Serialize FunctionCall to JSON value
-                                                let function_call_json = serde_json::to_value(&function_call)
-                                                    .unwrap_or_else(|_| serde_json::json!({}));
-
-                                                // Prepare ToolMetadata
-                                                let tool_metadata = ToolMetadata {
-                                                    tool_name: function_call.name.clone(),
-                                                    tool_router_key: None,
-                                                    args: function_call_json
-                                                        .as_object()
-                                                        .cloned()
-                                                        .unwrap_or_default(),
-                                                    result: None,
-                                                    status: ToolStatus {
-                                                        type_: ToolStatusType::Running,
-                                                        reason: None,
-                                                    },
-                                                };
-
-                                                let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
-
-                                                let _ = m
-                                                    .queue_message(
-                                                        WSTopic::Inbox,
-                                                        inbox_name_string,
-                                                        serde_json::to_string(&function_call)
-                                                            .unwrap_or_else(|_| "{}".to_string()),
-                                                        ws_message_type,
-                                                        true,
-                                                    )
-                                                    .await;
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-
-                        break Ok(LLMInferenceResponse::new(
-                            response_text,
-                            json!({}),
-                            function_calls,
-                            None,
-                        ));
-                    } else {
-                        break Err(LLMProviderError::UnexpectedResponseFormat(
-                            "No content field in message".to_string(),
-                        ));
+                        return Ok(LLMInferenceResponse::new("".to_string(), json!({}), Vec::new(), None));
                     }
                 }
+            },
+            response = &mut response_fut => {
+                let res = response?;
+
+                // Check if it's an error response
+                if !res.status().is_success() {
+                    let error_json: serde_json::Value = res.json().await?;
+                    if let Some(error) = error_json.get("error") {
+                        let error_message = error.get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Unknown error");
+                        return Err(LLMProviderError::APIError(error_message.to_string()));
+                    }
+                    return Err(LLMProviderError::APIError("Unknown error occurred".to_string()));
+                }
+
+                let response_body = res.text().await?;
+                let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
+
+                if let Some(content) = response_json.get("content") {
+                    let mut response_text = String::new();
+                    let mut function_calls = Vec::new();
+
+                    for content_block in content.as_array().unwrap_or(&vec![]) {
+                        if let Some(content_type) = content_block.get("type") {
+                            match content_type.as_str().unwrap_or("") {
+                                "text" => {
+                                    if let Some(text) = content_block.get("text") {
+                                        response_text.push_str(text.as_str().unwrap_or(""));
+                                    }
+                                }
+                                "tool_use" => {
+                                    let name = content_block["name"].as_str().unwrap_or_default().to_string();
+                                    let arguments = content_block.get("input")
+                                                .and_then(|args_value| args_value.as_object().cloned())
+                                                .unwrap_or_else(|| serde_json::Map::new());
+
+                                    // Search for the tool_router_key in the tools array
+                                    let tool_router_key = tools.as_ref().and_then(|tools_array| {
+                                        tools_array.iter().find_map(|tool| {
+                                            if tool.get("name")?.as_str()? == name {
+                                                tool.get("tool_router_key").and_then(|key| key.as_str().map(|s| s.to_string()))
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    });
+
+                                    let function_call = FunctionCall {
+                                        name,
+                                        arguments,
+                                        tool_router_key,
+                                        response: None,
+                                    };
+
+                                    function_calls.push(function_call.clone());
+
+                                    eprintln!("Function Call: {:?}", function_call);
+
+                                    // Send WS message if a function call is detected
+                                    if let Some(ref manager) = ws_manager_trait {
+                                        if let Some(ref inbox_name) = inbox_name {
+                                            let m = manager.lock().await;
+                                            let inbox_name_string = inbox_name.to_string();
+
+                                            // Serialize FunctionCall to JSON value
+                                            let function_call_json = serde_json::to_value(&function_call)
+                                                .unwrap_or_else(|_| serde_json::json!({}));
+
+                                            // Prepare ToolMetadata
+                                            let tool_metadata = ToolMetadata {
+                                                tool_name: function_call.name.clone(),
+                                                tool_router_key: None,
+                                                args: function_call_json
+                                                    .as_object()
+                                                    .cloned()
+                                                    .unwrap_or_default(),
+                                                result: None,
+                                                status: ToolStatus {
+                                                    type_: ToolStatusType::Running,
+                                                    reason: None,
+                                                },
+                                            };
+
+                                            let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+
+                                            let _ = m
+                                                .queue_message(
+                                                    WSTopic::Inbox,
+                                                    inbox_name_string,
+                                                    serde_json::to_string(&function_call)
+                                                        .unwrap_or_else(|_| "{}".to_string()),
+                                                    ws_message_type,
+                                                    true,
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    break Ok(LLMInferenceResponse::new(
+                        response_text,
+                        json!({}),
+                        function_calls,
+                        None,
+                    ));
+                } else {
+                    break Err(LLMProviderError::UnexpectedResponseFormat(
+                        "No content field in message".to_string(),
+                    ));
+                }
             }
+        }
     }
 }
 

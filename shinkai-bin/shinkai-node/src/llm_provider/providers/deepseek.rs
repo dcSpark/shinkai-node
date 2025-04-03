@@ -6,7 +6,7 @@ use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::openai::{
-    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
+    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload
 };
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
@@ -60,17 +60,6 @@ impl LLMService for DeepSeek {
                 // Extract tools_json from the result
                 let mut tools_json = result.functions.unwrap_or_else(Vec::new);
 
-                // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
-
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
-
                 // Set up initial payload with appropriate token limit field based on model capabilities
                 let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
                     json!({
@@ -90,12 +79,15 @@ impl LLMService for DeepSeek {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    let formatted_tools = tools_json.iter()
-                    .map(|tool| serde_json::json!({
-                        "type": "function",
-                        "function": tool
-                    }))
-                    .collect::<Vec<serde_json::Value>>();
+                    let formatted_tools = tools_json
+                        .iter()
+                        .map(|tool| {
+                            serde_json::json!({
+                                "type": "function",
+                                "function": tool
+                            })
+                        })
+                        .collect::<Vec<serde_json::Value>>();
                     payload["tools"] = serde_json::Value::Array(formatted_tools);
                 }
 
@@ -116,7 +108,7 @@ impl LLMService for DeepSeek {
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload_log).as_str(),
-                );          
+                );
 
                 if is_stream {
                     handle_streaming_response(
@@ -159,8 +151,8 @@ impl LLMService for DeepSeek {
 mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
     #[test]
     fn test_deepseek_provider_creation() {

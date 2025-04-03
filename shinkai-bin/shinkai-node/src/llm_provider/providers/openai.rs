@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -93,17 +93,6 @@ impl LLMService for OpenAI {
                 // Extract tools_json from the result
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
 
-                // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
-
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
-
                 // Set up initial payload with appropriate token limit field based on model capabilities
                 let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
                     json!({
@@ -123,12 +112,15 @@ impl LLMService for OpenAI {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    let formatted_tools = tools_json.iter()
-                    .map(|tool| serde_json::json!({
-                        "type": "function",
-                        "function": tool
-                    }))
-                    .collect::<Vec<serde_json::Value>>();
+                    let formatted_tools = tools_json
+                        .iter()
+                        .map(|tool| {
+                            serde_json::json!({
+                                "type": "function",
+                                "function": tool
+                            })
+                        })
+                        .collect::<Vec<serde_json::Value>>();
                     payload["tools"] = serde_json::Value::Array(formatted_tools);
                 }
 
@@ -487,7 +479,7 @@ pub async fn parse_openai_stream_chunk(
                                     partial_fc.is_accumulating = true;
                                 }
                             }
-                            
+
                             // handle tools_call
                             if let Some(tool_calls) = delta.get("tool_calls") {
                                 if let Some(tool_calls_array) = tool_calls.as_array() {
@@ -1136,7 +1128,7 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
     // Find the start of arguments value - check both function_call and tool_calls prefixes
     let function_call_prefix = r#""function_call":{"arguments":""#;
     let tool_calls_prefix = r#""tool_calls":[{"index":0,"function":{"arguments":""#;
-    
+
     let (prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
         (function_call_prefix, args_start_pos + function_call_prefix.len())
     } else if let Some(args_start_pos) = json_str.find(tool_calls_prefix) {
