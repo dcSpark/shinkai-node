@@ -414,12 +414,13 @@ impl ModelCapabilitiesManager {
                 0
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type() == "PREMIUM_TEXT_INFERENCE"
-                    || shinkai_backend.model_type() == "PREMIUM_VISION_INFERENCE"
-                {
-                    128_000
-                } else {
-                    128_000
+                match shinkai_backend.model_type().as_str() {
+                    "FREE_TEXT_INFERENCE" => 128_000,
+                    "STANDARD_TEXT_INFERENCE" => 128_000,
+                    "PREMIUM_TEXT_INFERENCE" => 200_000,
+                    "CODE_GENERATOR" => 128_000,
+                    "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
+                    _ => 128_000,
                 }
             }
             LLMProviderInterface::Gemini(_) => 1_000_000,

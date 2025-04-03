@@ -501,7 +501,7 @@ impl Node {
                                 let upload_file_content = "You can upload your files here in the 'My Files (Private)' folder.\n\nThey will be processed and made searchable automatically.".as_bytes().to_vec();
                                 let _ = ShinkaiFileManager::write_file_to_fs(upload_file_path, upload_file_content);
 
-                                let welcome_message = "Welcome to Shinkai! You can ask me anything!\n\nI'm your AI assistant, and I'm here to help you with any tasks you need. Feel free to:\n- Ask questions\n- Request code help\n- Get explanations\n- And much more!\n\nWhat would you like to work on? \n\nActivate actions (tools) to perform tasks.";
+                                let welcome_message = include_str!("../../../../../files/shinkai_welcome.md");
 
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                                     job_id.to_string(),
