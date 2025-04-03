@@ -9,6 +9,7 @@ utoipa = "4.2.3"
 utoipa-swagger-ui = "7.1.0"
 chrono = { workspace = true }
 bytes = "1.10.1"
+async-trait = "0.1.75"
 warp = { version = "0.3.7", features = ["compression-gzip", "tls"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
@@ -23,6 +24,8 @@ reqwest = { workspace = true, features = [
     "blocking",
     "stream",
 ] }
+tokio-stream = "0.1.10"
+rand = "0.9.0"
 tokio = { workspace = true, features = ["full"] }
 tokio-rustls = "0.23"
 rustls = "0.20"

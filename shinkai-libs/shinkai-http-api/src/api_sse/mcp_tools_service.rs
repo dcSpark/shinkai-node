@@ -1,9 +1,29 @@
 use async_channel::Sender;
 use std::sync::{Arc, RwLock};
 use crate::node_commands::NodeCommand;
-use rmcp::{ServerHandler, model::{ServerInfo, Implementation, ProtocolVersion, ServerCapabilities, Tool, InitializeRequestParam, InitializeResult, ClientRequest, ErrorData}, service::RequestContext, tool, RoleServer};
+use rmcp::{ServerHandler, model::{
+    ServerInfo,
+    Implementation,
+    ProtocolVersion,
+    ServerCapabilities,
+    Tool,
+    InitializeRequestParam,
+    InitializeResult,
+    ClientRequest,
+    ErrorData,
+    PaginatedRequestParam,
+    ListPromptsResult,
+    ListResourcesResult,
+    ListToolsResult,
+},
+    service::RequestContext, tool,
+    RoleServer,
+    ServiceError as McpError,
+};
 use serde_json::{Value, Map};
 use std::borrow::Cow;
+use async_trait::async_trait;
+use std::future::{self, Future};
 
 #[derive(Clone)]
 pub struct McpToolsService {
@@ -84,8 +104,8 @@ impl McpToolsService {
 
         // Update the cache
         *self.tools_cache.write()
-            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock: {:?}", e))? = mcp_tools;
-
+            .map_err(|e| anyhow::anyhow!("Failed to acquire write lock: {:?}", e))? = mcp_tools.clone();
+        tracing::info!("Updated tools cache with {} tools", mcp_tools.len());
         Ok(())
     }
 
@@ -146,12 +166,14 @@ impl McpToolsService {
     }
 }
 
-#[tool(tool_box)]
 impl ServerHandler for McpToolsService {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: ProtocolVersion::default(),
-            capabilities: ServerCapabilities::default(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tool_list_changed()
+                .build(),
             server_info: Implementation {
                 name: "Shinkai MCP Server".to_string(),
                 version: "1.0.0".to_string(),
@@ -160,19 +182,61 @@ impl ServerHandler for McpToolsService {
         }
     }
 
-    async fn initialize(&self, param: InitializeRequestParam, _ctx: RequestContext<RoleServer>) -> Result<InitializeResult, ErrorData> {
+    fn initialize(
+        &self,
+        param: InitializeRequestParam,
+        _ctx: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<InitializeResult, ErrorData>> + Send + '_ {
         tracing::info!("Handling initialize request with protocol version: {:?}", param.protocol_version);
         
-        // Return our server capabilities
-        Ok(InitializeResult {
+        // Wrap existing logic in std::future::ready
+        let result = InitializeResult {
             protocol_version: ProtocolVersion::default(),
-            capabilities: ServerCapabilities::default(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_tool_list_changed()
+                .build(),
             server_info: Implementation {
                 name: "Shinkai MCP Server".to_string(),
                 version: "1.0.0".to_string(),
             },
             instructions: Some(format!("Shinkai Node {} command interface", self.node_name)),
-        })
+        };
+        
+        future::ready(Ok(result))
+    }
+
+    fn list_prompts(
+        &self,
+        _request: PaginatedRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListPromptsResult, ErrorData>> + Send + '_ {
+        // Use ErrorData and ListPromptsResult::default()
+        future::ready(Ok(ListPromptsResult::default())) 
+    }
+
+    fn list_resources(
+        &self,
+        _request: PaginatedRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListResourcesResult, ErrorData>> + Send + '_ {
+         // Use ErrorData and ListResourcesResult::default()
+        future::ready(Ok(ListResourcesResult::default()))
+    }
+
+    fn list_tools(
+        &self,
+        _request: PaginatedRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
+        tracing::debug!("Handling list_tools request");
+        let tools_from_cache = self.list_tools();
+        let result = ListToolsResult {
+            tools: tools_from_cache,
+            next_cursor: None,
+        };
+        tracing::debug!("Responding to list_tools with {} tools", result.tools.len());
+        future::ready(Ok(result))
     }
 }
 

@@ -1,38 +1,42 @@
-use crate::api_sse::api_sse_handlers::{sse_handler, post_event_handler, McpState, IoError, PayloadTooLarge};
+use crate::api_sse::api_sse_handlers::{sse_handler, post_event_handler, McpState, IoError, PayloadTooLarge, SessionExpired};
 use crate::api_sse::mcp_tools_service::McpToolsService;
 use crate::node_commands::NodeCommand;
 use async_channel::Sender;
 use std::sync::Arc;
 use warp::{http::StatusCode, Filter, Rejection, Reply};
-use rmcp::{ServiceExt, RoleServer};
 
 /// Handle rejections from the routes
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
+    let status;
+    let message;
+
     if err.is_not_found() {
-        tracing::warn!("SSE route rejection: Resource not found");
-        Ok(warp::reply::with_status(
-            "Session not found",
-            StatusCode::NOT_FOUND,
-        ))
-    } else if let Some(_) = err.find::<PayloadTooLarge>() {
-        tracing::warn!("SSE route rejection: Payload too large");
-        Ok(warp::reply::with_status(
-            "Payload too large",
-            StatusCode::PAYLOAD_TOO_LARGE,
-        ))
-    } else if let Some(_) = err.find::<IoError>() {
-        tracing::error!("SSE route rejection: IO error occurred");
-        Ok(warp::reply::with_status(
-            "Internal server error",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ))
+        status = StatusCode::NOT_FOUND;
+        message = "Resource not found".to_string();
+        tracing::warn!("SSE route rejection: {}", message);
+    } else if err.find::<PayloadTooLarge>().is_some() {
+        status = StatusCode::PAYLOAD_TOO_LARGE;
+        message = "Payload too large".to_string();
+        tracing::warn!("SSE route rejection: {}", message);
+    } else if err.find::<IoError>().is_some() {
+        status = StatusCode::INTERNAL_SERVER_ERROR;
+        message = "Internal server error".to_string();
+        tracing::error!("SSE route rejection: {}", message);
+    } else if err.find::<SessionExpired>().is_some() {
+        status = StatusCode::NOT_FOUND; // Or perhaps GONE (410)
+        message = "Session not found or expired".to_string();
+        tracing::warn!("SSE route rejection: {}", message);
+    } else if let Some(e) = err.find::<warp::reject::MethodNotAllowed>() {
+         status = StatusCode::METHOD_NOT_ALLOWED;
+         message = format!("Method not allowed: {}", e);
+         tracing::warn!("SSE route rejection: {}", message);
     } else {
-        tracing::error!(rejection = ?err, "SSE route unknown rejection type");
-        Ok(warp::reply::with_status(
-            "Unknown error occurred",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ))
+        status = StatusCode::INTERNAL_SERVER_ERROR;
+        message = "Unknown error occurred".to_string();
+        tracing::error!(rejection = ?err, "SSE route unknown rejection type: {}", message);
     }
+
+    Ok(warp::reply::with_status(warp::reply::json(&serde_json::json!({ "error": message })), status))
 }
 
 /// Create the Warp routes for MCP SSE endpoints
@@ -44,7 +48,8 @@ pub fn mcp_sse_routes(
     
     // Create the tools service
     let tools_service = Arc::new(McpToolsService::new(node_commands_sender, node_name));
-    
+    tools_service.update_tools_cache();
+
     // Create the state
     let state = Arc::new(McpState::new());
     tracing::info!("Created MCP state and tools service");
@@ -52,6 +57,7 @@ pub fn mcp_sse_routes(
     // SSE endpoint
     let sse = warp::path("sse")
         .and(warp::get())
+        .and(warp::header::headers_cloned())
         .and(with_state(state.clone()))
         .and(with_tools_service(tools_service.clone()))
         .and_then(sse_handler);
@@ -91,7 +97,7 @@ fn with_tools_service(
 }
 
 /// Query parameter for the session ID
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct SessionQuery {
     #[serde(rename = "sessionId")]
     pub session_id: String,
