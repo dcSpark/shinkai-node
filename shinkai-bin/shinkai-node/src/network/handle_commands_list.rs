@@ -246,6 +246,12 @@ impl Node {
                     let _ = Node::v2_api_import_agent(db_clone, bearer, url, node_name, signing_secret_key, res).await;
                 });
             }
+            NodeCommand::V2ApiImportAgentZip { bearer, file_data, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_agent_zip(db_clone, bearer, file_data, res).await;
+                });
+            }            
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
                 let db_clone = self.db.clone();
                 let node_name_clone = self.node_name.clone();
