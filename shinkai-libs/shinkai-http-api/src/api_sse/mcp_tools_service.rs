@@ -73,8 +73,7 @@ impl McpToolsService {
 
         // Send the command to get all tools
         self.node_commands_sender
-            .send(NodeCommand::V2ApiListAllShinkaiTools {
-                bearer: "debug".to_string(), // Consider making this dynamic if needed
+            .send(NodeCommand::V2ApiListAllMcpShinkaiTools {
                 category: None,
                 res: tx,
             })
@@ -169,8 +168,7 @@ impl McpToolsService {
 
         // Send the command to execute the tool
         match self.node_commands_sender
-            .send(NodeCommand::V2ApiExecuteTool {
-                bearer: "debug".to_string(), 
+            .send(NodeCommand::V2ApiExecuteMcpTool {
                 tool_router_key, // Use the passed-in key
                 parameters,
                 tool_id: "".to_string(),

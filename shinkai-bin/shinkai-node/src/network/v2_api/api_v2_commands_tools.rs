@@ -358,8 +358,10 @@ impl Node {
                 let mut tool_groups: HashMap<String, Vec<ShinkaiToolHeader>> = HashMap::new();
 
                 for tool in tools {
-                    let tool_router_key = tool.tool_router_key.clone();
-                    tool_groups.entry(tool_router_key).or_default().push(tool);
+                    if tool.mcp_enabled.unwrap_or(false) {
+                        let tool_router_key = tool.tool_router_key.clone();
+                        tool_groups.entry(tool_router_key).or_default().push(tool);
+                    }
                 }
 
                 // For each group, keep only the tool with the highest version
@@ -438,25 +440,22 @@ impl Node {
                                 // Use O(1) lookup with HashSet
                                 latest_tools
                                     .into_iter()
-                                    .filter(|tool| default_keys.contains(&tool.tool_router_key) && tool.mcp_enabled.unwrap_or(false))
+                                    .filter(|tool| default_keys.contains(&tool.tool_router_key))
                                     .collect()
                             } else {
                                 // Fallback if ToolRouter not provided
                                 latest_tools
-                                    .into_iter()
-                                    .filter(|tool| tool.mcp_enabled.unwrap_or(false))
-                                    .collect()
                             }
                         }
                         "system" => latest_tools
                             .into_iter()
-                            .filter(|tool| matches!(tool.tool_type.to_lowercase().as_str(), "rust") && tool.mcp_enabled.unwrap_or(false))
+                            .filter(|tool| matches!(tool.tool_type.to_lowercase().as_str(), "rust"))
                             .collect(),
                         "my_tools" => {
                             let node_name_string = node_name.get_node_name_string();
                             latest_tools
                                 .into_iter()
-                                .filter(|tool| tool.author.starts_with("localhost.") || tool.author == node_name_string && tool.mcp_enabled.unwrap_or(false))
+                                .filter(|tool| tool.author.starts_with("localhost.") || tool.author == node_name_string)
                                 .collect()
                         }
                         _ => latest_tools, // If an unknown category is provided, return all tools
@@ -464,8 +463,10 @@ impl Node {
                 } else {
                     latest_tools
                 };
-
-                let t = filtered_tools.iter().map(|tool| json!(tool)).collect();
+                let t = filtered_tools.iter()
+                    .filter(|tool| tool.mcp_enabled.unwrap_or(false))
+                    .map(|tool| json!(tool))
+                    .collect();
                 let _ = res.send(Ok(t)).await;
                 Ok(())
             }
