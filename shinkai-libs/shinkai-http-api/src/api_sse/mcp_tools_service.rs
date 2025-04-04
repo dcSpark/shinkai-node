@@ -200,48 +200,6 @@ impl McpToolsService {
             Err(e) => Err(format!("Failed to receive tool response: {:?}", e)),
         }
     }
-
-    // This function now receives the user-facing tool_name
-    async fn run_tool(
-        &self, 
-        tool_name: String, 
-        params: Value
-    ) -> Result<String, String> {
-        tracing::debug!(
-            target: "mcp_tools_service",
-            "run_tool helper received: tool_name(display)='{}', params={}", // Log display name
-            tool_name,
-            json_to_string(&params).unwrap_or_else(|e| format!("<failed to serialize params: {}>", e))
-        );
-        
-        // --- Look up the tool_router_key from the map ---
-        let tool_router_key = {
-            let map_guard = TOOL_NAME_TO_KEY_MAP.read().map_err(|_| "Failed to acquire read lock for TOOL_NAME_TO_KEY_MAP".to_string())?;
-            map_guard.get(&tool_name).cloned()
-        };
-
-        let final_result = match tool_router_key {
-            Some(key) => {
-                // Found the key, proceed to execute
-                tracing::debug!(target: "mcp_tools_service", "Found tool_router_key '{}' for name '{}'", key, tool_name);
-                self.execute_shinkai_tool(key, params).await // Pass the key
-            }
-            None => {
-                // Key not found for the given name
-                tracing::error!(target: "mcp_tools_service", "Could not find tool_router_key for tool name: {}", tool_name);
-                Err(format!("Internal mapping error: tool key not found for name {}", tool_name))
-            }
-        };
-                
-        tracing::debug!(
-            target: "mcp_tools_service",
-            "run_tool helper final result for name '{}': {:?}", // Log using display name
-            tool_name,
-            final_result
-        );
-        
-        final_result
-    }
 }
 
 impl ServerHandler for McpToolsService {
@@ -309,49 +267,46 @@ impl ServerHandler for McpToolsService {
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
         async move {
-            tracing::debug!(target: "mcp_tools_service", "Handling call_tool request: name='{}'", request.name);
+            let tool_name = request.name.to_string(); // Get the requested tool name (e.g., "network__echo")
+            tracing::debug!(target: "mcp_tools_service", "Handling call_tool request for name='{}'", tool_name);
 
-            // Check if the request is for our proxy tool
-            if request.name == "run_tool" {
-                // Extract arguments for the run_tool helper function
-                let arguments = request.arguments.ok_or_else(|| {
-                    tracing::warn!("Missing arguments for run_tool call");
-                    McpError::invalid_params("Missing arguments object for run_tool", None)
-                })?;
-                
-                let tool_name = arguments.get("tool_name")
-                    .and_then(Value::as_str)
-                    .map(String::from)
-                    .ok_or_else(|| {
-                        tracing::warn!("Missing or invalid 'tool_name' string in run_tool arguments");
-                        McpError::invalid_params("Missing or invalid 'tool_name' string in arguments", Some(Value::Object(arguments.clone())))
-                    })?;
+            // Extract arguments directly for the target tool
+            let arguments = request.arguments.ok_or_else(|| {
+                tracing::warn!("Missing arguments for tool call: {}", tool_name);
+                McpError::invalid_params(format!("Missing arguments object for tool '{}'", tool_name), None)
+            })?;
+
+            // --- Look up the tool_router_key from the map using the request.name ---
+            let tool_router_key = {
+                let map_guard = TOOL_NAME_TO_KEY_MAP.read()
+                    .map_err(|_| McpError::internal_error("Failed to acquire read lock for TOOL_NAME_TO_KEY_MAP", None))?;
+                map_guard.get(&tool_name).cloned()
+            };
+
+            match tool_router_key {
+                Some(key) => {
+                    // Found the key, proceed to execute directly
+                    tracing::debug!(target: "mcp_tools_service", "Found tool_router_key '{}' for name '{}'", key, tool_name);
                     
-                let params = arguments.get("params")
-                    .cloned()
-                    .ok_or_else(|| {
-                        tracing::warn!("Missing 'params' in run_tool arguments");
-                        McpError::invalid_params("Missing 'params' in arguments", Some(Value::Object(arguments.clone())))
-                    })?;
-
-                // Call the actual run_tool helper method
-                match self.run_tool(tool_name, params).await {
-                    Ok(output_str) => {
-                        tracing::debug!("call_tool: run_tool successful, result: {}", output_str);
-                        // Convert successful String output to CallToolResult using Content::text
-                        Ok(CallToolResult::success(vec![Content::text(output_str)]))
-                    },
-                    Err(err_str) => {
-                        tracing::error!("call_tool: run_tool failed: {}", err_str);
-                        // Convert error String to McpError (e.g., internal error)
-                        Err(McpError::internal_error(format!("Tool execution failed: {}", err_str), None))
+                    // Convert arguments JsonObject into the Value expected by execute_shinkai_tool
+                    let params_value = Value::Object(arguments); 
+                    
+                    match self.execute_shinkai_tool(key, params_value).await {
+                        Ok(output_str) => {
+                            tracing::debug!("call_tool: execution successful for '{}', result: {}", tool_name, output_str);
+                            Ok(CallToolResult::success(vec![Content::text(output_str)]))
+                        },
+                        Err(err_str) => {
+                            tracing::error!("call_tool: execution failed for '{}': {}", tool_name, err_str);
+                            Err(McpError::internal_error(format!("Tool '{}' execution failed: {}", tool_name, err_str), None))
+                        }
                     }
                 }
-            } else {
-                // Handle calls for tool names other than "run_tool" if needed, or return error
-                tracing::warn!("Received call_tool request for unsupported tool name: {}", request.name);
-                // Use invalid_params to include the specific tool name in the error message
-                Err(McpError::invalid_params(format!("Unsupported tool name via call_tool: {}", request.name), None)) 
+                None => {
+                    // Key not found for the given name
+                    tracing::error!(target: "mcp_tools_service", "Could not find tool_router_key for tool name: {}", tool_name);
+                    Err(McpError::invalid_params(format!("Tool '{}' not found or mapping missing", tool_name), None))
+                }
             }
         }
     }
