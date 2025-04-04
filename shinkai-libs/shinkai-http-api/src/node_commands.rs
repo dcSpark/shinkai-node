@@ -247,6 +247,11 @@ pub enum NodeCommand {
         url: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiImportAgentZip {
+        bearer: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiExportAgent {
         bearer: String,
         agent_id: String,
