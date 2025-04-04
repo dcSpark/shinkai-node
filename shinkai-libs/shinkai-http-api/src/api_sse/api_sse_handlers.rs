@@ -6,17 +6,19 @@ use futures::{Stream, sink::SinkExt, Sink};
 use futures::StreamExt as FuturesStreamExt;
 use futures::TryStreamExt;
 use rmcp::{
-    model::{ClientJsonRpcMessage, JsonRpcError, JsonRpcMessage, RequestId, ServerJsonRpcMessage, InitializeRequestParam},
+    model::{ClientJsonRpcMessage, JsonRpcError, JsonRpcMessage, RequestId, ServerJsonRpcMessage, InitializeRequestParam, JsonRpcResponse, ErrorData, ClientRequest, ServerResult},
     service::{Peer, RoleServer, ServiceExt, serve_directly},
     ServerHandler,
 };
-use serde_json::Value;
+use serde_json::{Value, json, Map};
 use tokio::{sync::{mpsc, RwLock}, time::Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use warp::{http::{Response, StatusCode}, reject, Rejection, Reply};
 
-use crate::api_sse::mcp_tools_service::McpToolsService;
+use crate::api_sse::mcp_tools_service::{McpToolsService, TOOLS_CACHE};
 use tokio_stream::StreamExt as TokioStreamExt;
+use crate::node_commands::NodeCommand;
+use async_channel::Sender;
 
 // Custom rejection types
 #[derive(Debug)]
@@ -328,29 +330,162 @@ pub async fn post_event_handler(
     state: Arc<McpState>,
 ) -> Result<impl Reply> {
     let body_str = String::from_utf8_lossy(&body);
-    tracing::debug!("Received message for session {}: {}", session_id, body_str);
+    tracing::debug!("Received raw message for session {}: {}", session_id, body_str);
 
-    // Parse the message
-    let client_message: ClientJsonRpcMessage = match serde_json::from_slice(&body) {
-        Ok(msg) => msg,
+    // 1. Deserialize into generic Value first
+    let mut generic_value: Value = match serde_json::from_slice(&body) {
+        Ok(val) => val,
         Err(e) => {
-            tracing::warn!("Failed to parse message for session {}: {}", session_id, e);
-            
-            // Return a JSON-RPC error
+            tracing::warn!("Failed initial parse for session {}: {}", session_id, e);
             let error = JsonRpcError {
                 jsonrpc: Default::default(),
-                id: RequestId::String("error".into()),
+                id: RequestId::String("parse_error".into()), // Use a generic ID
                 error: rmcp::model::ErrorData::parse_error(
-                    format!("Invalid JSON-RPC: {}", e),
+                    format!("Invalid JSON: {}", e),
                     Some(Value::String(body_str.to_string())),
                 ),
             };
-            
             return Ok(warp::reply::json(&error).into_response());
         }
     };
 
-    // Forward the message to the MCP service
+    // Keep original request ID if present
+    let original_id = generic_value.get("id").cloned().unwrap_or(Value::Null);
+
+    // 2. Check if it's a tools/call that needs transformation
+    let mut needs_forwarding = true;
+    if generic_value.get("method").and_then(Value::as_str) == Some("tools/call") {
+        if let Some(params_map) = generic_value.get("params").and_then(Value::as_object) {
+            // Try getting tool name using standard "tool_name" or client's "name"
+            let tool_name_val_opt = params_map.get("tool_name").or_else(|| params_map.get("name"));
+            // Try getting inner params using standard "params" or client's "arguments"
+            let inner_params_val_opt = params_map.get("params").or_else(|| params_map.get("arguments"));
+
+            if let (Some(tool_name_val), Some(inner_params_val)) = (tool_name_val_opt, inner_params_val_opt) {
+                if let Some(original_tool_name) = tool_name_val.as_str() {
+                    if original_tool_name != "run_tool" { // Not already the proxy call
+                        let tools_cache = TOOLS_CACHE.read().expect("Failed to read tools cache");
+                        if tools_cache.iter().any(|t| t.name == original_tool_name) {
+                            // 3. Transform the value back to use method: "tools/call" with name/arguments in params
+                            tracing::debug!("Transforming direct tool call '{}' back to tools/call format for session {}", original_tool_name, session_id);
+                            let transformed_params = json!({
+                                "name": "run_tool",
+                                "arguments": {
+                                    "tool_name": original_tool_name,
+                                    "params": inner_params_val.clone() // Use the extracted inner params
+                                }
+                            });
+                            
+                            // Replace params in the mutable generic_value
+                            if let Some(obj) = generic_value.as_object_mut() {
+                                // Ensure outer method remains "tools/call"
+                                obj.insert("method".to_string(), Value::String("tools/call".to_string())); 
+                                obj.insert("params".to_string(), transformed_params);
+                                tracing::debug!("Transformed generic value (reverted): {:?}", generic_value);
+                            } else {
+                                // Should not happen if initial parsing succeeded, but handle defensively
+                                tracing::error!("Transformed value is unexpectedly not a JSON object");
+                                let req_id = serde_json::from_value(original_id.clone()).unwrap_or_else(|_| RequestId::String("transform_error".into()));
+                                let error = JsonRpcError {
+                                    jsonrpc: Default::default(),
+                                    id: req_id,
+                                    error: rmcp::model::ErrorData::internal_error(
+                                        "Failed to reconstruct JSON during transformation",
+                                        None,
+                                    ),
+                                };
+                                needs_forwarding = false;
+                                return Ok(warp::reply::json(&error).into_response());
+                            }
+                        } else {
+                            // Tool not found in cache - return error directly
+                            tracing::warn!("Direct tool call for unknown tool '{}' received for session {}", original_tool_name, session_id);
+                            let req_id = serde_json::from_value(original_id.clone()).unwrap_or_else(|_| RequestId::String("unknown_tool_error".into()));
+                            let error = JsonRpcError {
+                                jsonrpc: Default::default(),
+                                id: req_id,
+                                error: rmcp::model::ErrorData::invalid_params(
+                                    format!("Tool '{}' not found in cache", original_tool_name),
+                                    None,
+                                ),
+                            };
+                            needs_forwarding = false;
+                            return Ok(warp::reply::json(&error).into_response());
+                        }
+                    } 
+                    // else: It's already a run_tool call, no transformation needed, just proceed.
+                } else {
+                     // Handle case where tool_name/name is not a string
+                     tracing::warn!("Tool name value is not a string in tools/call params: {:?}", tool_name_val);
+                     let req_id = serde_json::from_value(original_id.clone()).unwrap_or_else(|_| RequestId::String("tool_name_not_string_error".into()));
+                     let error = JsonRpcError {
+                         jsonrpc: Default::default(),
+                         id: req_id,
+                         error: rmcp::model::ErrorData::invalid_params(
+                             "Value for 'tool_name' or 'name' must be a string",
+                             Some(Value::Object(params_map.clone())),
+                         ),
+                     };
+                     needs_forwarding = false;
+                     return Ok(warp::reply::json(&error).into_response());
+                }
+            } else {
+                // Handle case where mandatory keys (tool_name/name or params/arguments) are missing
+                tracing::warn!("Missing 'tool_name'/'name' or 'params'/'arguments' in tools/call params: {:?}", params_map);
+                let req_id = serde_json::from_value(original_id.clone()).unwrap_or_else(|_| RequestId::String("missing_params_error".into()));
+                let error = JsonRpcError {
+                    jsonrpc: Default::default(),
+                    id: req_id,
+                    error: rmcp::model::ErrorData::invalid_params(
+                        "Missing 'tool_name'/'name' or 'params'/'arguments' in tools/call",
+                        Some(Value::Object(params_map.clone())), 
+                    ),
+                };
+                needs_forwarding = false;
+                return Ok(warp::reply::json(&error).into_response());
+            }
+        } else {
+             // Handle case where "params" is not an object or is missing
+             tracing::warn!("'params' field is not an object or is missing in tools/call request: {:?}", generic_value.get("params"));
+             let req_id = serde_json::from_value(original_id.clone()).unwrap_or_else(|_| RequestId::String("params_not_object_error".into()));
+             let error = JsonRpcError {
+                 jsonrpc: Default::default(),
+                 id: req_id,
+                 error: rmcp::model::ErrorData::invalid_params(
+                     "'params' field must be an object for tools/call",
+                     generic_value.get("params").cloned(),
+                 ),
+             };
+             needs_forwarding = false;
+             return Ok(warp::reply::json(&error).into_response());
+        }
+    }
+
+    if !needs_forwarding {
+        // Error already handled and returned
+        return Ok(warp::reply::with_status(warp::reply::json(&serde_json::json!({ "error": "Request processing failed" })), StatusCode::BAD_REQUEST).into_response());
+    }
+
+    // 4. Attempt to deserialize the final value into ClientJsonRpcMessage
+    let client_message: ClientJsonRpcMessage = match serde_json::from_value(generic_value) {
+        Ok(msg) => msg,
+        Err(e) => {
+            tracing::warn!("Failed final parse after potential transform for session {}: {}", session_id, e);
+            // Attempt to deserialize original_id, fallback to a string ID
+            let req_id = serde_json::from_value(original_id).unwrap_or_else(|_| RequestId::String("final_parse_error".into()));
+            let error = JsonRpcError {
+                jsonrpc: Default::default(),
+                id: req_id,
+                error: rmcp::model::ErrorData::invalid_request(
+                    format!("Invalid JSON-RPC structure after transform: {}", e),
+                    None, 
+                ),
+            };
+            return Ok(warp::reply::json(&error).into_response());
+        }
+    };
+
+    // 5. Forward the message to the MCP service
     let service_tx = state.get_service_transport(&session_id).await.ok_or_else(|| {
         tracing::warn!("Transport not found for session: {}", session_id);
         reject::not_found()

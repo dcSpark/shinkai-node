@@ -46,20 +46,27 @@ pub fn mcp_sse_routes(
 ) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     tracing::info!("Setting up MCP SSE routes with node name: {}", node_name);
     
-    // Create the tools service
-    let tools_service = Arc::new(McpToolsService::new(node_commands_sender, node_name));
-    tools_service.update_tools_cache();
+    // Create the tools service (used by sse_handler)
+    let tools_service = Arc::new(McpToolsService::new(node_commands_sender.clone(), node_name.clone()));
+    // Clone the Arc before moving it into the async block
+    let tools_service_for_cache = tools_service.clone(); 
+    // Update the cache immediately (can also be updated periodically or on demand)
+    tokio::spawn(async move {
+        if let Err(e) = tools_service_for_cache.update_tools_cache().await {
+            tracing::error!("Initial tools cache update failed: {:?}", e);
+        }
+    });
 
     // Create the state
     let state = Arc::new(McpState::new());
-    tracing::info!("Created MCP state and tools service");
+    tracing::info!("Created MCP state");
     
     // SSE endpoint
     let sse = warp::path("sse")
         .and(warp::get())
         .and(warp::header::headers_cloned())
         .and(with_state(state.clone()))
-        .and(with_tools_service(tools_service.clone()))
+        .and(with_tools_service(tools_service.clone())) // sse_handler needs the service instance
         .and_then(sse_handler);
     tracing::info!("Set up GET /sse endpoint for SSE connections");
 
@@ -73,7 +80,7 @@ pub fn mcp_sse_routes(
         })
         .and(warp::body::content_length_limit(1024 * 1024 * 4))
         .and(warp::body::bytes())
-        .and(with_state(state.clone()))
+        .and(with_state(state.clone())) // post_event_handler only needs state
         .and_then(post_event_handler);
     tracing::info!("Set up POST /sse endpoint for client messages");
 
@@ -89,7 +96,7 @@ fn with_state(
     warp::any().map(move || state.clone())
 }
 
-/// Helper to pass the tools service to handlers
+/// Helper to pass the tools service to handlers (only needed by sse_handler now)
 fn with_tools_service(
     service: Arc<McpToolsService>,
 ) -> impl Filter<Extract = (Arc<McpToolsService>,), Error = std::convert::Infallible> + Clone {
