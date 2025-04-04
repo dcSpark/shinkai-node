@@ -173,7 +173,6 @@ impl McpToolsService {
                 parameters,
                 tool_id: "".to_string(),
                 app_id: "".to_string(),
-                llm_provider: "llama3_1_8b".to_string(), 
                 extra_config: Map::new(),
                 mounts: None,
                 res: tx,

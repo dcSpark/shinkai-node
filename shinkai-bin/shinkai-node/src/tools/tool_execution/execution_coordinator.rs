@@ -431,7 +431,6 @@ pub async fn execute_mcp_tool_cmd(
     parameters: Map<String, Value>,
     tool_id: String,
     app_id: String,
-    llm_provider: String,
     extra_config: Vec<ToolConfig>,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
@@ -447,6 +446,13 @@ pub async fn execute_mcp_tool_cmd(
     if !tool.is_mcp_enabled() {
         return Err(ToolError::ExecutionError("Tool is not MCP enabled".to_string()));
     }
+
+    let first_llm_provider = db.get_all_llm_providers()
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get llm providers: {}", e)))?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ToolError::ExecutionError("No LLM providers found".to_string()))?;
+    let llm_provider = first_llm_provider.id.to_string();
     execute_tool_cmd(
         bearer,
         node_name,
