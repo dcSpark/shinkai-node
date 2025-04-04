@@ -700,6 +700,10 @@ pub enum NodeCommand {
         category: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiListAllMcpShinkaiTools {
+        category: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiListAllShinkaiToolsVersions {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
@@ -968,6 +972,16 @@ pub enum NodeCommand {
     },
     V2ApiExecuteTool {
         bearer: String,
+        tool_router_key: String,
+        parameters: Map<String, Value>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        extra_config: Map<String, Value>,
+        mounts: Option<Vec<String>>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExecuteMcpTool {
         tool_router_key: String,
         parameters: Map<String, Value>,
         tool_id: String,

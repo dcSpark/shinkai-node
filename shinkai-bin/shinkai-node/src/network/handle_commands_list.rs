@@ -1924,6 +1924,21 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiListAllMcpShinkaiTools { category, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let tool_router_clone = self.tool_router.clone();
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_all_mcp_shinkai_tools(
+                        db_clone,
+                        node_name_clone,
+                        category,
+                        tool_router_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiListAllShinkaiToolsVersions { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
@@ -2391,6 +2406,45 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::execute_tool(
                         bearer,
+                        node_name,
+                        db_clone,
+                        tool_router_key,
+                        parameters,
+                        tool_id,
+                        app_id,
+                        llm_provider,
+                        extra_config,
+                        identity_manager,
+                        job_manager,
+                        encryption_secret_key,
+                        encryption_public_key,
+                        signing_secret_key,
+                        mounts,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiExecuteMcpTool {
+                tool_router_key,
+                parameters,
+                tool_id,
+                app_id,
+                llm_provider,
+                extra_config,
+                mounts,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name = self.node_name.clone();
+                let job_manager = self.job_manager.clone().unwrap();
+                let identity_manager = self.identity_manager.clone();
+                let encryption_secret_key = self.encryption_secret_key.clone();
+                let encryption_public_key = self.encryption_public_key;
+                let signing_secret_key = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::execute_mcp_tool(
                         node_name,
                         db_clone,
                         tool_router_key,

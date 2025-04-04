@@ -4,7 +4,7 @@ use crate::{
     network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd},
+        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd, execute_mcp_tool_cmd},
         tool_generation::v2_create_and_send_job_message,
         tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
     },
@@ -333,6 +333,147 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to list tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_list_all_mcp_shinkai_tools(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        category: Option<String>,
+        tool_router: Option<Arc<ToolRouter>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+
+        let _bearer = Self::get_bearer_token(db.clone(), &res).await?;
+
+        // List all tools
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                // Group tools by their base key (without version)
+                use std::collections::HashMap;
+                let mut tool_groups: HashMap<String, Vec<ShinkaiToolHeader>> = HashMap::new();
+
+                for tool in tools {
+                    let tool_router_key = tool.tool_router_key.clone();
+                    tool_groups.entry(tool_router_key).or_default().push(tool);
+                }
+
+                // For each group, keep only the tool with the highest version
+                let mut latest_tools = Vec::new();
+                for (_, mut group) in tool_groups {
+                    if group.len() == 1 {
+                        latest_tools.push(group.pop().unwrap());
+                    } else {
+                        // Sort by version in descending order
+                        group.sort_by(|a, b| {
+                            let a_version = IndexableVersion::from_string(&a.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            let b_version = IndexableVersion::from_string(&b.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            b_version.cmp(&a_version)
+                        });
+
+                        // Take the first one (highest version)
+                        latest_tools.push(group.remove(0));
+                    }
+                }
+
+                // Filter by category if provided
+                // Downloaded -> anything else
+                // Default Tools -> is default
+                // System Tools -> Rust tools
+                // My Tools -> author localhost.* or author == MY_ID
+                let filtered_tools = if let Some(category) = category {
+                    match category.to_lowercase().as_str() {
+                        "downloaded" => {
+                            // Get default tool keys as a HashSet for O(1) lookups if ToolRouter is provided
+                            let default_tool_keys = if let Some(router) = &tool_router {
+                                Some(router.get_default_tool_router_keys_as_set().await)
+                            } else {
+                                None
+                            };
+
+                            let node_name_string = node_name.get_node_name_string();
+
+                            latest_tools
+                                .into_iter()
+                                .filter(|tool| {
+                                    // If tool is not mcp enabled, return false
+                                    if !tool.mcp_enabled.unwrap_or(false) {
+                                        return false;
+                                    }
+                                    // Not default
+                                    let is_not_default = if let Some(default_keys) = &default_tool_keys {
+                                        !default_keys.contains(&tool.tool_router_key)
+                                    } else {
+                                        true // If we can't determine default tools, assume it's not default
+                                    };
+
+                                    // Author doesn't start with "localhost."
+                                    let is_not_localhost = !tool.author.starts_with("localhost.");
+
+                                    // Author is not the same as node_name.get_node_name_string()
+                                    let is_not_node_name = tool.author != node_name_string;
+
+                                    // Not a Rust tool
+                                    let is_not_rust = !matches!(tool.tool_type.to_lowercase().as_str(), "rust");
+
+                                    is_not_default && is_not_localhost && is_not_node_name && is_not_rust
+                                })
+                                .collect()
+                        }
+                        "default" => {
+                            // Get default tool keys as a HashSet for O(1) lookups if ToolRouter is provided
+                            let default_tool_keys = if let Some(router) = &tool_router {
+                                Some(router.get_default_tool_router_keys_as_set().await)
+                            } else {
+                                None
+                            };
+
+                            if let Some(default_keys) = &default_tool_keys {
+                                // Use O(1) lookup with HashSet
+                                latest_tools
+                                    .into_iter()
+                                    .filter(|tool| default_keys.contains(&tool.tool_router_key) && tool.mcp_enabled.unwrap_or(false))
+                                    .collect()
+                            } else {
+                                // Fallback if ToolRouter not provided
+                                latest_tools
+                                    .into_iter()
+                                    .filter(|tool| tool.mcp_enabled.unwrap_or(false))
+                                    .collect()
+                            }
+                        }
+                        "system" => latest_tools
+                            .into_iter()
+                            .filter(|tool| matches!(tool.tool_type.to_lowercase().as_str(), "rust") && tool.mcp_enabled.unwrap_or(false))
+                            .collect(),
+                        "my_tools" => {
+                            let node_name_string = node_name.get_node_name_string();
+                            latest_tools
+                                .into_iter()
+                                .filter(|tool| tool.author.starts_with("localhost.") || tool.author == node_name_string && tool.mcp_enabled.unwrap_or(false))
+                                .collect()
+                        }
+                        _ => latest_tools, // If an unknown category is provided, return all tools
+                    }
+                } else {
+                    latest_tools
+                };
+
+                let t = filtered_tools.iter().map(|tool| json!(tool)).collect();
+                let _ = res.send(Ok(t)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list mcp tools: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
@@ -1016,6 +1157,62 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn execute_mcp_tool(
+        node_name: ShinkaiName, // No Bearer token needed because this is an internal tool
+        db: Arc<SqliteManager>,
+        tool_router_key: String,
+        parameters: Map<String, Value>,
+        tool_id: String,
+        app_id: String,
+        llm_provider: String,
+        extra_config: Map<String, Value>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+        mounts: Option<Vec<String>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let bearer = Self::get_bearer_token(db.clone(), &res).await?;
+        // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
+        let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
+        let result = execute_mcp_tool_cmd(
+            bearer,
+            node_name,
+            db,
+            tool_router_key,
+            parameters,
+            tool_id,
+            app_id,
+            llm_provider,
+            tool_configs,
+            identity_manager,
+            job_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+            mounts,
+        )
+        .await;
+
+        match result {
+            Ok(result) => {
+                let _ = res.send(Ok(result)).await;
+            }
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error executing tool: {}", e),
+                    }))
+                    .await;
+            }
+        }
         Ok(())
     }
 
