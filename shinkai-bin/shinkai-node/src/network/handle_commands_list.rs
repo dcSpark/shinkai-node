@@ -3081,6 +3081,17 @@ impl Node {
                     let _ = Node::v2_api_set_tool_enabled(db_clone, bearer, tool_router_key, enabled, res).await;
                 });
             }
+            NodeCommand::V2ApiSetToolMcpEnabled {
+                bearer,
+                tool_router_key,
+                mcp_enabled,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_tool_mcp_enabled(db_clone, bearer, tool_router_key, mcp_enabled, res).await;
+                });
+            }
             NodeCommand::V2ApiCopyToolAssets {
                 bearer,
                 is_first_playground,

@@ -28,6 +28,7 @@ pub struct DenoTool {
     pub homepage: Option<String>,
     pub author: String,
     pub version: String,
+    pub mcp_enabled: Option<bool>,
     pub js_code: String,
     #[serde(default)]
     #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]

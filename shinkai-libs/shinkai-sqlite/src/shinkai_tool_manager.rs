@@ -51,6 +51,7 @@ impl SqliteManager {
 
         // Determine if the tool can be enabled
         let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
+        let mcp_enabled = tool_clone.is_mcp_enabled();
         if tool_clone.is_enabled() && !tool_clone.can_be_enabled() {
             tool_clone.disable();
         }
@@ -85,8 +86,9 @@ impl SqliteManager {
                 version,
                 is_enabled,
                 on_demand_price,
-                is_network
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                is_network,
+                mcp_enabled
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 tool_clone.name(),
                 tool_clone.description(),
@@ -100,6 +102,7 @@ impl SqliteManager {
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
+                mcp_enabled as i32,
             ],
         )?;
 
@@ -462,8 +465,9 @@ impl SqliteManager {
                 version = ?9,
                 is_enabled = ?10,
                 on_demand_price = ?11,
-                is_network = ?12
-             WHERE rowid = ?13",
+                is_network = ?12,
+                mcp_enabled = ?13
+             WHERE rowid = ?14",
             params![
                 tool.name(),
                 tool.description(),
@@ -477,7 +481,8 @@ impl SqliteManager {
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
-                rowid
+                tool.is_mcp_enabled() as i32,
+                rowid,
             ],
         )?;
 

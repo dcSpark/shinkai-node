@@ -17,7 +17,6 @@ use warp::{http::{Response, StatusCode}, reject, Rejection, Reply};
 
 use crate::api_sse::mcp_tools_service::{McpToolsService, TOOLS_CACHE};
 use tokio_stream::StreamExt as TokioStreamExt;
-use crate::node_commands::NodeCommand;
 use async_channel::Sender;
 
 // Custom rejection types

@@ -27,6 +27,7 @@ pub struct PythonTool {
     pub name: String,
     pub homepage: Option<String>,
     pub author: String,
+    pub mcp_enabled: Option<bool>,
     pub py_code: String,
     #[serde(default)]
     #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]

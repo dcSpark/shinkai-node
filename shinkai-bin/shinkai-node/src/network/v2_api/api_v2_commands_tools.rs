@@ -631,6 +631,7 @@ impl Node {
                     input_args: payload.metadata.parameters.clone(),
                     output_arg: ToolOutputArg { json: "".to_string() },
                     activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    mcp_enabled: Some(false),
                     embedding: None,
                     result: payload.metadata.result,
                     sql_tables: Some(payload.metadata.sql_tables),
@@ -658,6 +659,7 @@ impl Node {
                     input_args: payload.metadata.parameters.clone(),
                     output_arg: ToolOutputArg { json: "".to_string() },
                     activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    mcp_enabled: Some(false),
                     embedding: None,
                     result: payload.metadata.result,
                     sql_tables: Some(payload.metadata.sql_tables),
@@ -3528,6 +3530,61 @@ LANGUAGE={env_language}
         Ok(())
     }
 
+    pub async fn v2_api_set_tool_mcp_enabled(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        mcp_enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        // Get the tool first to verify it exists
+        match db.get_tool_by_key(&tool_router_key) {
+            Ok(mut tool) => {
+                if mcp_enabled {
+                    tool.enable_mcp();
+                } else {
+                    tool.disable_mcp();
+                }
+
+                // Save the updated tool
+                match db.update_tool(tool).await {
+                    Ok(_) => {
+                        let response = json!({
+                            "tool_router_key": tool_router_key,
+                            "mcp_enabled": mcp_enabled,
+                            "success": true
+                        });
+                        let _ = res.send(Ok(response)).await;
+                    }
+                    Err(e) => {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: 500,
+                                error: "Failed to update tool".to_string(),
+                                message: format!("Failed to update tool: {}", e),
+                            }))
+                            .await;
+                    }
+                }
+            }
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: 404,
+                        error: "Tool not found".to_string(),
+                        message: format!("Tool with key '{}' not found", tool_router_key),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn v2_api_copy_tool_assets(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -3697,6 +3754,7 @@ LANGUAGE={env_language}
                     name: "".to_string(),
                     homepage: None,
                     author: "".to_string(),
+                    mcp_enabled: Some(false),
                     version: "".to_string(),
                     js_code: code.clone(),
                     tools: vec![],
@@ -3738,6 +3796,7 @@ LANGUAGE={env_language}
                     name: "".to_string(),
                     homepage: None,
                     author: "".to_string(),
+                    mcp_enabled: Some(false),
                     py_code: code.clone(),
                     tools: vec![],
                     config: vec![],

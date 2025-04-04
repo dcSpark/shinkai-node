@@ -1295,6 +1295,12 @@ pub enum NodeCommand {
         enabled: bool,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiSetToolMcpEnabled {
+        bearer: String,
+        tool_router_key: String,
+        mcp_enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiCopyToolAssets {
         bearer: String,
         is_first_playground: bool,
