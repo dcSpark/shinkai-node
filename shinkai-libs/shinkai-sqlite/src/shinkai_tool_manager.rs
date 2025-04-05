@@ -1661,6 +1661,7 @@ mod tests {
             author: "Author 3".to_string(),
             description: "An enabled network tool".to_string(),
             version: "0.1".to_string(),
+            mcp_enabled: Some(false),
             provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
             usage_type: usage_type.clone(),
             activated: true,

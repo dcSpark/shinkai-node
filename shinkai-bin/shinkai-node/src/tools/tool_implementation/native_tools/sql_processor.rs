@@ -266,6 +266,7 @@ mod tests {
         let rust_tool = RustTool {
             name: sql_processor_tool.tool.name.clone(),
             description: sql_processor_tool.tool.description.clone(),
+            mcp_enabled: sql_processor_tool.tool.mcp_enabled.clone(),
             input_args: sql_processor_tool.tool.input_args.clone(),
             output_arg: sql_processor_tool.tool.output_arg.clone(),
             tool_embedding: sql_processor_tool.tool_embedding.clone(),

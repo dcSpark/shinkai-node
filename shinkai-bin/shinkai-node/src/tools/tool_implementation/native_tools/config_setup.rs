@@ -344,6 +344,7 @@ mod tests {
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),
                 version: "1.0.0".to_string(),
+                mcp_enabled: Some(false),
                 js_code: "console.log('test');".to_string(),
                 tools: vec![],
                 config: vec![
