@@ -459,3 +459,29 @@ impl futures::Sink<ServerJsonRpcMessage> for McpTransport {
         std::task::Poll::Ready(Ok(()))
     }
 }
+
+pub async fn update_tools_cache_handler(
+    tools_service: Arc<McpToolsService>,
+) -> Result<impl Reply> {
+    tracing::info!("Received request to update tools cache");
+    match tools_service.update_tools_cache().await {
+        Ok(_) => {
+            tracing::info!("Tools cache updated successfully via API call");
+            let success_response = warp::reply::json(&json!({
+                "status": "success",
+                "message": "Tools cache update triggered successfully."
+            }));
+            Ok(warp::reply::with_status(success_response, StatusCode::OK))
+        }
+        Err(e) => {
+            tracing::error!("Failed to update tools cache via API call: {:?}", e);
+            let error_response = warp::reply::json(&json!({
+                "status": "error",
+                "message": "Failed to update tools cache.",
+                "details": e.to_string()
+            }));
+            // Return 500 Internal Server Error
+            Ok(warp::reply::with_status(error_response, StatusCode::INTERNAL_SERVER_ERROR))
+        }
+    }
+}

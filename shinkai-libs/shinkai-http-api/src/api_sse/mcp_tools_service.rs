@@ -199,6 +199,7 @@ impl McpToolsService {
     }
 }
 
+#[async_trait]
 impl ServerHandler for McpToolsService {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
@@ -313,26 +314,42 @@ impl ServerHandler for McpToolsService {
         _request: PaginatedRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        tracing::debug!("Handling list_tools request (run_tool definition removed)");
-        let tools_from_cache = self.list_tools(); // Get dynamic tools only
+        async move {
+            // This is implemented in an async block to avoid blocking the main thread,
+            // and to ensure that the cache is updated before reading it.
+            // If performance issues arise, just return the cached list instead. And consider other cache update strategies.
+            tracing::debug!("Handling list_tools request, attempting cache update first.");
 
-        // Remove the manual addition of run_tool
-        /*
-        if let Value::Object(schema_map) = run_tool_schema {
-             ...
-            tools_from_cache.push(run_tool_def); 
-            ...
-        } else {
-            ...
+            // 1. Attempt to update the cache before reading
+            match self.update_tools_cache().await {
+                Ok(_) => {
+                    tracing::debug!("Tools cache updated successfully before listing.");
+                }
+                Err(e) => {
+                    // Log the error, but decide if you want to fail the request
+                    // or return potentially stale data. Failing seems more correct
+                    // if the update is intended to be part of the operation.
+                    tracing::error!("Failed to update tools cache during list_tools: {:?}", e);
+                    // Convert the anyhow::Error to McpError::internal_error
+                    return Err(McpError::internal_error(
+                        format!("Failed to update tool cache before listing: {}", e),
+                        None // No specific data to add here
+                    ));
+                }
+            }
+
+            // 2. Read the potentially updated cache
+            // self.list_tools() reads the static cache, which should now be updated.
+            let tools_from_cache = self.list_tools();
+
+            // 3. Construct the result
+            let result = ListToolsResult {
+                tools: tools_from_cache,
+                next_cursor: None,
+            };
+            tracing::debug!("Responding to list_tools with {} tools after cache update attempt.", result.tools.len());
+            Ok(result) // Return Ok with the ListToolsResult
         }
-        */
-       
-        let result = ListToolsResult {
-            tools: tools_from_cache,
-            next_cursor: None,
-        };
-        tracing::debug!("Responding to list_tools with {} tools", result.tools.len());
-        future::ready(Ok(result))
     }
 }
 

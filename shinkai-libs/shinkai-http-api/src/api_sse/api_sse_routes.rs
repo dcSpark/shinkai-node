@@ -1,4 +1,6 @@
-use crate::api_sse::api_sse_handlers::{sse_handler, post_event_handler, McpState, IoError, PayloadTooLarge, SessionExpired};
+use crate::api_sse::api_sse_handlers::{
+    sse_handler, post_event_handler, update_tools_cache_handler,
+    McpState, IoError, PayloadTooLarge, SessionExpired};
 use crate::api_sse::mcp_tools_service::McpToolsService;
 use crate::node_commands::NodeCommand;
 use async_channel::Sender;
@@ -84,9 +86,17 @@ pub fn mcp_sse_routes(
         .and_then(post_event_handler);
     tracing::info!("Set up POST /sse endpoint for client messages");
 
+    let update_cache_route = warp::path("update_tools_cache")
+        .and(warp::post()) // Use POST for actions
+        .and(with_tools_service(tools_service.clone())) // Inject the service
+        .and_then(update_tools_cache_handler);
+    tracing::info!("Set up POST /update_tools_cache endpoint");
+
     // Combine the routes and add rejection handling
     tracing::info!("MCP SSE routes configured successfully");
-    sse.or(post_event).recover(handle_rejection)
+    sse.or(post_event)
+        .or(update_cache_route)
+        .recover(handle_rejection)
 }
 
 /// Helper to pass the state to handlers
