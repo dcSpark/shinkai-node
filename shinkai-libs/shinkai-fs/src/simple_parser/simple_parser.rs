@@ -107,9 +107,9 @@ impl SimpleParser {
             SupportedFileType::Md => LocalFileParser::process_md_file(file_buffer, max_node_text_size),
             SupportedFileType::Pdf => LocalFileParser::process_pdf_file(file_buffer, max_node_text_size),
             SupportedFileType::Docx => LocalFileParser::process_docx_file(file_buffer, max_node_text_size),
+            SupportedFileType::Xlsx => LocalFileParser::process_xlsx_file(file_buffer, max_node_text_size),
+            SupportedFileType::Xls => LocalFileParser::process_xls_file(file_buffer, max_node_text_size),
             _ => Err(ShinkaiFsError::UnsupportedFileType(file_type.to_string())),
-            // SupportedFileType::Xlsx | SupportedFileType::Xls => LocalFileParser::process_xlsx_file(file_buffer,
-            // max_node_text_size),
         }
     }
 }
