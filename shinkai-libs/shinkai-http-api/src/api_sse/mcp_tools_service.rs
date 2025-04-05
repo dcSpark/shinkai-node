@@ -10,7 +10,6 @@ use rmcp::{ServerHandler, model::{
     Tool,
     InitializeRequestParam,
     InitializeResult,
-    ClientRequest,
     ErrorData,
     PaginatedRequestParam,
     ListPromptsResult,
@@ -20,11 +19,11 @@ use rmcp::{ServerHandler, model::{
     CallToolRequestParam,
     CallToolResult,
 },
-    service::RequestContext, tool,
+    service::RequestContext,
     RoleServer,
     model::ErrorData as McpError,
 };
-use serde_json::{Value, Map, to_string as json_to_string};
+use serde_json::{Value, Map};
 use std::borrow::Cow;
 use async_trait::async_trait;
 use std::future::{self, Future};

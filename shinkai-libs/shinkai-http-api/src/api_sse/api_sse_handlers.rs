@@ -1,23 +1,21 @@
-use std::{collections::HashMap, convert::Infallible, sync::Arc, task::Poll};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use std::pin::Pin;
 use bytes::Bytes;
 use rand::random;
-use futures::{Stream, sink::SinkExt, Sink};
+use futures::{Stream};
 use futures::StreamExt as FuturesStreamExt;
 use futures::TryStreamExt;
 use rmcp::{
-    model::{ClientJsonRpcMessage, JsonRpcError, JsonRpcMessage, RequestId, ServerJsonRpcMessage, InitializeRequestParam, JsonRpcResponse, ErrorData, ClientRequest, ServerResult},
-    service::{Peer, RoleServer, ServiceExt, serve_directly},
-    ServerHandler,
+    model::{ClientJsonRpcMessage, JsonRpcError, RequestId, ServerJsonRpcMessage, InitializeRequestParam},
+    service::{serve_directly},
 };
-use serde_json::{Value, json, Map};
+use serde_json::{Value, json};
 use tokio::{sync::{mpsc, RwLock}, time::Duration};
 use tokio_stream::wrappers::ReceiverStream;
 use warp::{http::{Response, StatusCode}, reject, Rejection, Reply};
 
-use crate::api_sse::mcp_tools_service::{McpToolsService, TOOLS_CACHE};
+use crate::api_sse::mcp_tools_service::McpToolsService;
 use tokio_stream::StreamExt as TokioStreamExt;
-use async_channel::Sender;
 
 // Custom rejection types
 #[derive(Debug)]
@@ -40,8 +38,6 @@ type SessionId = String;
 pub struct SessionInfo {
     /// Sender channel for messages to the client
     pub client_sender: mpsc::Sender<ServerJsonRpcMessage>,
-    /// Authorization token from the client
-    pub auth_token: Option<String>,
     /// Creation timestamp
     pub created_at: std::time::SystemTime,
 }
@@ -79,15 +75,14 @@ impl McpState {
     }
 
     /// Register a new session with client sender and auth token
-    pub async fn register_session(&self, session_id: &str, sender: ClientSender, auth_token: Option<String>) {
+    pub async fn register_session(&self, session_id: &str, sender: ClientSender) {
         let mut sessions = self.sessions.write().await;
         sessions.insert(session_id.to_string(), SessionInfo {
             client_sender: sender,
-            auth_token: auth_token.clone(),
             created_at: std::time::SystemTime::now(),
         });
         
-        tracing::debug!("Registered session: {} with auth: {}", session_id, auth_token.is_some());
+        tracing::debug!("Registered session: {}", session_id);
     }
 
     /// Remove a session
@@ -116,21 +111,6 @@ impl McpState {
     pub async fn get_session_info(&self, session_id: &str) -> Option<SessionInfo> {
         let sessions = self.sessions.read().await;
         sessions.get(session_id).cloned()
-    }
-    
-    /// Get sessions by auth token
-    pub async fn get_sessions_by_auth_token(&self, auth_token: &str) -> Vec<String> {
-        let sessions = self.sessions.read().await;
-        sessions
-            .iter()
-            .filter_map(|(id, info)| {
-                if info.auth_token.as_deref() == Some(auth_token) {
-                    Some(id.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
     }
     
     /// Get the ping interval
@@ -195,29 +175,11 @@ fn generate_session_id() -> String {
     format!("{:016x}", random::<u128>())
 }
 
-/// Extract authorization token from headers
-fn extract_auth_token(headers: &warp::http::HeaderMap) -> Option<String> {
-    headers.get(warp::http::header::AUTHORIZATION)
-        .and_then(|value| {
-            let value_str = value.to_str().ok()?;
-            if value_str.starts_with("Bearer ") {
-                Some(value_str[7..].to_string())
-            } else {
-                Some(value_str.to_string())
-            }
-        })
-}
-
-/// Handle SSE connections
 /// Handle SSE connections
 pub async fn sse_handler(
-    headers: warp::http::HeaderMap,
     state: Arc<McpState>,
     tools_service: Arc<McpToolsService>,
 ) -> Result<impl Reply> {
-    // Extract auth token from headers
-    let auth_token = extract_auth_token(&headers);
-    tracing::debug!("Auth token present: {}", auth_token.is_some());
     
     // Generate a unique session ID
     let session_id = generate_session_id();
@@ -228,7 +190,7 @@ pub async fn sse_handler(
     let (service_tx, service_rx) = mpsc::channel::<ClientJsonRpcMessage>(64);
 
     // Register the session with auth token in state
-    state.register_session(&session_id, client_tx.clone(), auth_token.clone()).await;
+    state.register_session(&session_id, client_tx.clone()).await;
     
     // Also register the service transport
     state.register_service_transport(&session_id, service_tx).await;
@@ -239,7 +201,6 @@ pub async fn sse_handler(
         service_rx: ReceiverStream::new(service_rx),
         client_tx,
         state: state.clone(),
-        auth_token,
     };
 
     let session_id_clone = session_id.clone();
@@ -332,7 +293,7 @@ pub async fn post_event_handler(
     tracing::debug!("Received raw message for session {}: {}", session_id, body_str);
 
     // 1. Deserialize into generic Value first
-    let mut generic_value: Value = match serde_json::from_slice(&body) {
+    let generic_value: Value = match serde_json::from_slice(&body) {
         Ok(val) => val,
         Err(e) => {
             tracing::warn!("Failed initial parse for session {}: {}", session_id, e);
@@ -391,7 +352,6 @@ pub struct McpTransport {
     service_rx: ReceiverStream<ClientJsonRpcMessage>,
     client_tx: mpsc::Sender<ServerJsonRpcMessage>,
     state: Arc<McpState>,
-    auth_token: Option<String>,
 }
 
 impl Stream for McpTransport {

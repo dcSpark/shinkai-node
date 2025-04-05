@@ -66,7 +66,6 @@ pub fn mcp_sse_routes(
     // SSE endpoint
     let sse = warp::path("sse")
         .and(warp::get())
-        .and(warp::header::headers_cloned())
         .and(with_state(state.clone()))
         .and(with_tools_service(tools_service.clone())) // sse_handler needs the service instance
         .and_then(sse_handler);

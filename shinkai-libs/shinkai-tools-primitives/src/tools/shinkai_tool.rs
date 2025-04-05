@@ -563,6 +563,7 @@ mod tests {
             name: "Shinkai: Download Pages".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
+            mcp_enabled: Some(false),
             input_args: Parameters::new(),
             output_arg: ToolOutputArg { json: "".to_string() },
             config: vec![],
@@ -645,6 +646,7 @@ mod tests {
             name: "shinkai__download_website".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             description: tool_definition.description.clone(),
             input_args: input_args.clone(),
             output_arg: ToolOutputArg {
