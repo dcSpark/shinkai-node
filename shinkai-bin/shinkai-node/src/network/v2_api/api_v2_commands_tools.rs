@@ -18,44 +18,26 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
+    }
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-    },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
+    }, shinkai_message::shinkai_message_schemas::JobMessage
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    parameters::Parameters,
-    python_tools::PythonTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
 };
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolHeader,
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 use std::{collections::HashMap, path::PathBuf};
 use std::{
-    env,
-    fs::File,
-    io::{Read, Write},
-    sync::Arc,
-    time::Instant,
+    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -1425,9 +1407,12 @@ impl Node {
             Ok(llm_provider) => {
                 if let Some(llm_provider) = llm_provider {
                     let provider = llm_provider.get_provider_string();
-                    let model = llm_provider.get_model_string();
+                    let model = llm_provider.get_model_string().to_lowercase();
+                    println!("provider: {}", provider);
+                    println!("model: {}", model);
+
                     if provider == "shinkai-backend"
-                        && (model == "CODE_GENERATOR" || model == "CODE_GENERATOR_NO_FEEDBACK")
+                        && (model == "code_generator" || model == "code_generator_no_feedback")
                     {
                         return true;
                     }
@@ -1856,8 +1841,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_api_tool_implementation_code_update(
-        bearer: String,
+    async fn update_job_with_code(
         db: Arc<SqliteManager>,
         job_id: String,
         code: String,
@@ -1866,34 +1850,18 @@ impl Node {
         node_encryption_sk: EncryptionStaticKey,
         node_encryption_pk: EncryptionPublicKey,
         node_signing_sk: SigningKey,
-        res: Sender<Result<Value, APIError>>,
-    ) -> Result<(), NodeError> {
-        // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
-            return Ok(());
-        }
-
-        // Plan
-        // Create the user message and add it
-        // The user message should be something like: "Update the code to: <code>"
-
-        // Create the AI message and add it
-        // Updated code: <code>
-        // Done
-
+    ) -> Result<(), APIError> {
         // Get the main identity from the identity manager
         let main_identity = {
             let identity_manager = identity_manager.lock().await;
             match identity_manager.get_main_identity() {
                 Some(identity) => identity.clone(),
                 None => {
-                    let api_error = APIError {
+                    return Err(APIError {
                         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                         error: "Internal Server Error".to_string(),
                         message: "Failed to get main identity".to_string(),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    });
                 }
             }
         };
@@ -1902,13 +1870,11 @@ impl Node {
         let llm_provider = match db.get_job_with_options(&job_id, false) {
             Ok(job) => job.parent_agent_or_llm_provider_id.clone(),
             Err(err) => {
-                let api_error = APIError {
+                return Err(APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to retrieve job: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                });
             }
         };
 
@@ -1916,13 +1882,11 @@ impl Node {
         let sender = match ShinkaiName::new(main_identity.get_full_identity_name()) {
             Ok(name) => name,
             Err(err) => {
-                let api_error = APIError {
+                return Err(APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to create sender name: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                });
             }
         };
 
@@ -1934,13 +1898,11 @@ impl Node {
         ) {
             Ok(name) => name,
             Err(err) => {
-                let api_error = APIError {
+                return Err(APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to create recipient name: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                });
             }
         };
 
@@ -1969,13 +1931,11 @@ impl Node {
         ) {
             Ok(message) => message,
             Err(err) => {
-                let api_error = APIError {
+                return Err(APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to create Shinkai message: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                });
             }
         };
 
@@ -1983,13 +1943,11 @@ impl Node {
         let add_message_result = db.add_message_to_job_inbox(&job_id, &shinkai_message, None, None).await;
 
         if let Err(err) = add_message_result {
-            let api_error = APIError {
+            return Err(APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
                 message: format!("Failed to add Shinkai message to job inbox: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
+            });
         }
 
         // Create the AI message
@@ -2014,18 +1972,56 @@ impl Node {
             .await;
 
         if let Err(err) = add_ai_message_result {
-            let api_error = APIError {
+            return Err(APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
                 message: format!("Failed to add AI message to job inbox: {}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
+            });
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_tool_implementation_code_update(
+        bearer: String,
+        db: Arc<SqliteManager>,
+        job_id: String,
+        code: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        node_name: ShinkaiName,
+        node_encryption_sk: EncryptionStaticKey,
+        node_encryption_pk: EncryptionPublicKey,
+        node_signing_sk: SigningKey,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        // Send success response
-        let response = json!({ "status": "success", "message": "Code update operation successful" });
-        let _ = res.send(Ok(response)).await;
+        // Update the job with the code using the helper function
+        let update_result = Self::update_job_with_code(
+            db.clone(),
+            job_id.clone(),
+            code.clone(),
+            identity_manager.clone(),
+            node_name.clone(),
+            node_encryption_sk.clone(),
+            node_encryption_pk.clone(),
+            node_signing_sk.clone(),
+        )
+        .await;
+
+        // Send success or error response
+        match update_result {
+            Ok(_) => {
+                let response = json!({ "status": "success", "message": "Code update operation successful" });
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
         Ok(())
     }
@@ -2938,7 +2934,7 @@ impl Node {
         new_tool.update_author(node_name.node_name.clone());
 
         // Try to get the original playground tool, or create one from the tool data
-        let new_playground = match db.get_tool_playground(&tool_key_path) {
+        let (new_playground, is_new_playground) = match db.get_tool_playground(&tool_key_path) {
             Ok(playground) => {
                 let mut new_playground = playground.clone();
                 new_playground.metadata.name = new_tool.name();
@@ -2956,21 +2952,50 @@ impl Node {
                 .await?;
                 new_playground.job_id_history = vec![];
                 new_playground.tool_router_key = Some(new_tool.tool_router_key().to_string_without_version());
-                new_playground
+                (new_playground, false)
             }
             Err(_) => {
                 // Create a new playground from the tool data
                 let output = new_tool.output_arg();
                 let output_json = output.json;
-                let result: ToolResult = ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]);
-                println!("output_json: {:?} | result: {:?}", output_json, result);
+                // Attempt to parse the output_json into a meaningful result
+                let result: ToolResult = if !output_json.is_empty() {
+                    match serde_json::from_str::<serde_json::Value>(&output_json) {
+                        Ok(value) => {
+                            // Extract type from the value if possible
+                            let result_type = if value.is_object() {
+                                "object"
+                            } else if value.is_array() {
+                                "array"
+                            } else if value.is_string() {
+                                "string"
+                            } else if value.is_number() {
+                                "number"
+                            } else if value.is_boolean() {
+                                "boolean"
+                            } else {
+                                "object"
+                            };
 
-                ToolPlayground {
-                    language: match original_tool {
-                        ShinkaiTool::Deno(_, _) => CodeLanguage::Typescript,
-                        ShinkaiTool::Python(_, _) => CodeLanguage::Python,
-                        _ => CodeLanguage::Typescript, // Default to typescript for other types
-                    },
+                            ToolResult::new(result_type.to_string(), value, vec![])
+                        }
+                        Err(_) => ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    }
+                } else {
+                    // Default to a basic object result when we can't extract anything meaningful
+                    ToolResult::new("object".to_string(), serde_json::Value::Null, vec![])
+                };
+
+                // Properly extract metadata from the original tool
+                let language = match original_tool {
+                    ShinkaiTool::Deno(_, _) => CodeLanguage::Typescript,
+                    ShinkaiTool::Python(_, _) => CodeLanguage::Python,
+                    _ => CodeLanguage::Typescript, // Default to typescript for other types
+                };
+
+                // Create playground with properly extracted metadata
+                let playground = ToolPlayground {
+                    language,
                     metadata: ToolPlaygroundMetadata {
                         name: new_tool.name(),
                         homepage: new_tool.get_homepage(),
@@ -2995,8 +3020,8 @@ impl Node {
                         node_name.clone(),
                         identity_manager.clone(),
                         job_manager.clone(),
-                        bearer,
-                        llm_provider.id,
+                        bearer.clone(),
+                        llm_provider.id.clone(),
                         encryption_secret_key.clone(),
                         encryption_public_key.clone(),
                         signing_secret_key.clone(),
@@ -3005,23 +3030,45 @@ impl Node {
                     job_id_history: vec![],
                     code: new_tool.get_code(),
                     assets: new_tool.get_assets(),
-                }
+                };
+
+                (playground, true)
             }
         };
 
-        // Add the new tool to the database
         // Add the new tool to the database
         let new_tool = db.add_tool(new_tool).await.map_err(|_| APIError {
             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             error: "Internal Server Error".to_string(),
             message: "Failed to add duplicated tool".to_string(),
         })?;
+
         // Add the new playground tool
         db.set_tool_playground(&new_playground).map_err(|_| APIError {
             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             error: "Internal Server Error".to_string(),
             message: "Failed to add duplicated playground tool".to_string(),
         })?;
+
+        // If we created a new playground (tool_playground was not found), initialize the job with code
+        if is_new_playground {
+            // Update the job with an initial message containing the code
+            if let Err(e) = Self::update_job_with_code(
+                db.clone(),
+                new_playground.job_id.clone(),
+                new_playground.code.clone(),
+                identity_manager.clone(),
+                node_name.clone(),
+                encryption_secret_key.clone(),
+                encryption_public_key.clone(),
+                signing_secret_key.clone(),
+            )
+            .await
+            {
+                eprintln!("Failed to update job with initial code: {:?}", e);
+                // Continue anyway since this is not critical
+            }
+        }
 
         // Return the new tool's router key
         let response = json!({

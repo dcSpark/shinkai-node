@@ -12,7 +12,7 @@ use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use shinkai_fs::shinkai_file_manager::{FileInfo, ShinkaiFileManager};
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
@@ -273,7 +273,26 @@ impl GenericInferenceChain {
         // Process image files from merged paths, folders and scope
         let additional_image_files =
             Self::process_image_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
-        image_files.extend(additional_image_files);
+        
+        // Deduplicate image files based on filename (case insensitive)
+        let mut deduplicated_files = HashMap::new();
+        for (path, content) in image_files.iter().chain(additional_image_files.iter()) {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            if !deduplicated_files.contains_key(&filename) {
+                deduplicated_files.insert(filename, (path.clone(), content.clone()));
+            }
+        }
+        
+        // Convert back to original format with full paths
+        image_files = deduplicated_files.into_iter()
+            .map(|(_, (path, content))| (path, content))
+            .collect();
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("start_generic_inference_chain> image files: {:?}", image_files.keys()),
+        );
 
         if !scope_is_empty
             || !merged_fs_files_paths.is_empty()
@@ -332,7 +351,17 @@ impl GenericInferenceChain {
                 }
             }
         } else if let Some(forced_tools) = force_tools_scope.clone() {
-            // CASE 2: No specific tool selected but force_tools_scope is provided
+            // CASE 2: force_tools_scope is provided - This takes precedence over automatic tool selection
+            // force_tools_scope allows explicit specification of which tools should be available,
+            // provided as a Vec<String> of tool names. For each tool name:
+            // 1. First tries exact name match
+            // 2. If exact match fails, performs both:
+            //    - Full-text search (FTS) for exact keyword matches
+            //    - Vector search for semantic similarity (confidence threshold 0.2)
+            // 3. Combines results prioritizing:
+            //    - FTS exact matches first
+            //    - Then high-confidence vector search matches
+            // 4. Returns error if no matches found for a forced tool
             if let Some(tool_router) = &tool_router {
                 for tool_name in forced_tools {
                     match tool_router.get_tool_by_name(&tool_name).await {
@@ -418,9 +447,9 @@ impl GenericInferenceChain {
             // specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
 
-            // 2c. Check if the LLM provider is an agent
-            let is_agent = match &llm_provider {
-                ProviderOrAgent::Agent(_) => false,
+            // 2c. Check if the LLM provider is an agent with tools
+            let is_agent_with_tools = match &llm_provider {
+                ProviderOrAgent::Agent(agent) => !agent.tools.is_empty(),
                 ProviderOrAgent::LLMProvider(_) => false,
             };
 
@@ -432,10 +461,10 @@ impl GenericInferenceChain {
             )
             .await;
 
-            // Only proceed with tool selection if both conditions are met:
-            // - Tools are allowed by configuration
-            // - The LLM provider has tool capabilities
-            if can_use_tools && tools_allowed || is_agent {
+            // Only proceed with tool selection if either:
+            // - Tools are allowed by configuration AND the LLM provider has tool capabilities
+            // - OR it's an agent with available tools
+            if (can_use_tools || is_agent_with_tools) && tools_allowed {
                 // CASE 2.1: If using an Agent, get its specifically configured tools
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
                     for tool in &agent.tools {
@@ -465,7 +494,7 @@ impl GenericInferenceChain {
                     // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
                         let results = tool_router
-                            .combined_tool_search(&user_message.clone(), 4, false, true)
+                            .combined_tool_search(&user_message.clone(), 7, false, true)
                             .await;
 
                         match results {
@@ -539,6 +568,7 @@ impl GenericInferenceChain {
             merged_fs_folder_paths.clone(),
         )?;
 
+        println!("Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files", user_message, image_files.keys(), additional_files);
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
             custom_system_prompt.clone(),
@@ -560,9 +590,21 @@ impl GenericInferenceChain {
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
-                return Err(LLMProviderError::MaxIterationsReached(
-                    "Maximum iterations reached".to_string(),
-                ));
+                let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
+                let max_iterations_message = format!(
+                    "Maximum iterations ({}) reached. Process stopped after {} tool calls.",
+                    max_iterations,
+                    tool_calls_history.len()
+                );
+
+                let inference_result = InferenceChainResult::with_full_details(
+                    max_iterations_message,
+                    None,
+                    answer_duration_ms,
+                    Some(tool_calls_history.clone()),
+                );
+
+                return Ok(inference_result);
             }
 
             // 4) Call LLM
@@ -851,6 +893,14 @@ impl GenericInferenceChain {
                 folder_path.path.clone(),
             ));
         }
+
+        // Deduplicate files based on filename (case insensitive)
+        let mut seen_filenames = std::collections::HashSet::new();
+        additional_files.retain(|path| {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            seen_filenames.insert(filename)
+        });
+
         Ok(additional_files)
     }
 }

@@ -144,19 +144,13 @@ impl ModelCapabilitiesManager {
                 _ => vec![],
             },
             LLMProviderInterface::LocalLLM(_) => vec![],
-            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
-                    vec![ModelCapability::TextInference]
-                }
-                "gpt-vision"
-                | "gpt-4-vision-preview"
-                | "gp4o"
-                | "gpt-4o"
-                | "PREMIUM_VISION_INFERENCE"
-                | "gpt-4o-mini" => {
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().to_uppercase().as_str() {
+                "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_TEXT_INFERENCE" => {
                     vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
                 }
-                "dall-e" => vec![ModelCapability::ImageGeneration],
+                "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => {
+                    vec![ModelCapability::TextInference]
+                }
                 _ => vec![],
             },
             LLMProviderInterface::Ollama(model) => Self::get_shared_capabilities(model.model_type().as_str()),
@@ -173,6 +167,9 @@ impl ModelCapabilitiesManager {
     fn get_shared_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
+            model_type if model_type.starts_with("llama3.2-vision") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             model_type if model_type.starts_with("llava") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -414,12 +411,13 @@ impl ModelCapabilitiesManager {
                 0
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
-                if shinkai_backend.model_type() == "PREMIUM_TEXT_INFERENCE"
-                    || shinkai_backend.model_type() == "PREMIUM_VISION_INFERENCE"
-                {
-                    128_000
-                } else {
-                    32_000
+                match shinkai_backend.model_type().as_str() {
+                    "FREE_TEXT_INFERENCE" => 128_000,
+                    "STANDARD_TEXT_INFERENCE" => 128_000,
+                    "PREMIUM_TEXT_INFERENCE" => 200_000,
+                    "CODE_GENERATOR" => 128_000,
+                    "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
+                    _ => 128_000,
                 }
             }
             LLMProviderInterface::Gemini(_) => 1_000_000,
@@ -542,9 +540,20 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for LocalLLM
                 4096
             }
-            LLMProviderInterface::ShinkaiBackend(_) => {
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 // Fill in the appropriate logic for ShinkaiBackend
-                4096
+                match shinkai_backend.model_type().as_str() {
+                    "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
+                        16384
+                    }
+                    "PREMIUM_TEXT_INFERENCE" => {
+                        8192
+                    }
+                    "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => {
+                        16384
+                    }
+                    _ => 16384,
+                }
             }
             LLMProviderInterface::Ollama(_) => {
                 // Fill in the appropriate logic for Ollama
@@ -572,13 +581,16 @@ impl ModelCapabilitiesManager {
                 }
             }
             LLMProviderInterface::Claude(claude) => {
-                if claude.model_type.starts_with("claude-3-5-sonnet") {
+                if claude.model_type.starts_with("claude-3-5-sonnet")
+                    || claude.model_type.starts_with("claude-3-7-sonnet")
+                    || claude.model_type.starts_with("claude-3-5-haiku")
+                {
                     8192
                 } else {
                     4096
                 }
             },
-            LLMProviderInterface::DeepSeek(deepseek) => 8192,
+            LLMProviderInterface::DeepSeek(_) => 8192,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
     }
@@ -757,6 +769,9 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::DeepSeek(deepseek) => {
                 deepseek.model_type.starts_with("deepseek-reasoner")
+            },
+            LLMProviderInterface::Claude(claude) => {
+                claude.model_type.starts_with("claude-3-7-sonnet")
             },
             _ => false,
         }

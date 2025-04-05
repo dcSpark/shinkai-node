@@ -14,7 +14,7 @@ use shinkai_sqlite::SqliteManager;
 
 use super::super::error::LLMProviderError;
 use super::openai::{
-    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload,
+    add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload
 };
 use super::shared::openai_api::openai_prepare_messages;
 use super::LLMService;
@@ -24,7 +24,7 @@ use serde_json::json;
 use serde_json::{self};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, ShinkaiBackend,
+    LLMProviderInterface, ShinkaiBackend
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tokio::sync::Mutex;
@@ -94,17 +94,6 @@ impl LLMService for ShinkaiBackend {
 
         // Extract tools_json from the result
         let tools_json = result.functions.unwrap_or_else(Vec::new);
-
-        // Print messages_json as a pretty JSON string
-        match serde_json::to_string_pretty(&messages_json) {
-            Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-            Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-        };
-
-        match serde_json::to_string_pretty(&tools_json) {
-            Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-            Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-        };
 
         // Get the node's signature public key from the database
         let (node_name, node_signature_public_key) = _db
