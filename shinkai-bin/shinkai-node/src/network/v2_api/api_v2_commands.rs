@@ -108,6 +108,33 @@ impl Node {
         }
     }
 
+    pub async fn get_bearer_token<T>(
+        db: Arc<SqliteManager>,
+        res: &Sender<Result<T, APIError>>,
+    ) -> Result<String, NodeError> {
+        let api_key = match env::var("API_V2_KEY") {
+            Ok(api_key) => api_key,
+            Err(_) => {
+                // If the environment variable is not set, read from the database
+                match db.read_api_v2_key() {
+                    Ok(Some(api_key)) => api_key,
+                    Ok(None) | Err(_) => {
+                        let api_error = APIError {
+                            code: StatusCode::UNAUTHORIZED.as_u16(),
+                            error: "Unauthorized".to_string(),
+                            message: "Invalid bearer token".to_string(),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Err(NodeError {
+                            message: "Invalid bearer token".to_string(),
+                        });
+                    }
+                }
+            }
+        };
+        Ok(api_key)
+    }
+
     pub fn convert_shinkai_message_to_v2_chat_message(
         shinkai_message: ShinkaiMessage,
     ) -> Result<V2ChatMessage, NodeError> {
