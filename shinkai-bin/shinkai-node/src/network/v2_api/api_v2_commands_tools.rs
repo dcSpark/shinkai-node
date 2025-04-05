@@ -3736,6 +3736,7 @@ LANGUAGE={env_language}
                     tool.enable();
                 } else {
                     tool.disable();
+                    tool.disable_mcp();
                 }
 
                 // Save the updated tool
