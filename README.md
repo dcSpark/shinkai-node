@@ -16,7 +16,7 @@ More In Depth Codebase Documentation (Mutable.ai): [https://wiki.mutable.ai/dcSp
 
 ### Prerequisites
 
-- Rust version >= 1.81 (required for `std::fs::exists` functionality)
+- Rust version >= 1.85 (required for `std::fs::exists` functionality)
 
 Please refer to the installation instructions for your operating system:
 
