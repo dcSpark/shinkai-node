@@ -76,18 +76,99 @@ impl LocalFileParser {
 mod tests {
     use super::*;
     use crate::test_utils::testing_create_tempdir_and_set_env_var;
+    use std::fs;
+    use std::path::Path;
 
-    fn create_mock_buffer() -> Vec<u8> {
-        Vec::new()
+    fn read_test_file(filename: &str) -> Vec<u8> {
+        let path = Path::new("src/test_data").join(filename);
+        fs::read(path).expect(&format!("Failed to read test file: {}", filename))
     }
 
     #[test]
-    #[ignore] // Ignore this test as it requires an actual XLS file
+    fn test_process_xlsx_file() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+        
+        let buffer = read_test_file("test.xlsx");
+        let max_node_text_size = 1024;
+        
+        let result = LocalFileParser::process_xlsx_file(buffer, max_node_text_size);
+        
+        assert!(result.is_ok());
+        let text_groups = result.unwrap();
+        
+        assert!(!text_groups.is_empty());
+        
+        let combined_text = text_groups.iter().map(|tg| &tg.text).collect::<Vec<_>>().join("\n");
+        assert!(combined_text.contains("header1|header2"));
+        assert!(combined_text.contains("value1|value2"));
+        assert!(combined_text.contains("value3|value4"));
+        assert!(combined_text.contains("value5|value6"));
+    }
+
+    #[test]
     fn test_process_xls_file() {
-        let buffer = create_mock_buffer();
+        let _dir = testing_create_tempdir_and_set_env_var();
+        
+        let buffer = read_test_file("test.xls");
         let max_node_text_size = 1024;
         
         let result = LocalFileParser::process_xls_file(buffer, max_node_text_size);
-        assert!(result.is_err());
+        
+        assert!(result.is_ok());
+        let text_groups = result.unwrap();
+        
+        assert!(!text_groups.is_empty());
+        
+        let combined_text = text_groups.iter().map(|tg| &tg.text).collect::<Vec<_>>().join("\n");
+        assert!(combined_text.contains("header1|header2"));
+        assert!(combined_text.contains("value1|value2"));
+        assert!(combined_text.contains("value3|value4"));
+        assert!(combined_text.contains("value5|value6"));
+    }
+
+    #[test]
+    fn test_parse_xlsx() {
+        let buffer = read_test_file("test.xlsx");
+        
+        let result = LocalFileParser::parse_xlsx(&buffer);
+        
+        assert!(result.is_ok());
+        let lines = result.unwrap();
+        
+        assert_eq!(lines.len(), 4); // Header + 3 data rows
+        
+        assert_eq!(lines[0], "header1|header2");
+        assert_eq!(lines[1], "value1|value2");
+        assert_eq!(lines[2], "value3|value4");
+        assert_eq!(lines[3], "value5|value6");
+    }
+
+    #[test]
+    fn test_parse_xls() {
+        let buffer = read_test_file("test.xls");
+        
+        let result = LocalFileParser::parse_xls(&buffer);
+        
+        assert!(result.is_ok());
+        let lines = result.unwrap();
+        
+        assert_eq!(lines.len(), 4); // Header + 3 data rows
+        
+        assert_eq!(lines[0], "header1|header2");
+        assert_eq!(lines[1], "value1|value2");
+        assert_eq!(lines[2], "value3|value4");
+        assert_eq!(lines[3], "value5|value6");
+    }
+
+    #[test]
+    fn test_empty_buffer() {
+        let buffer = Vec::new();
+        let max_node_text_size = 1024;
+        
+        let result_xlsx = LocalFileParser::process_xlsx_file(buffer.clone(), max_node_text_size);
+        let result_xls = LocalFileParser::process_xls_file(buffer, max_node_text_size);
+        
+        assert!(result_xlsx.is_err());
+        assert!(result_xls.is_err());
     }
 }
