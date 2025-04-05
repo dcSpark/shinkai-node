@@ -98,7 +98,7 @@ mod tests {
         
         assert!(!text_groups.is_empty());
         
-        let combined_text = text_groups.iter().map(|tg| &tg.text).collect::<Vec<_>>().join("\n");
+        let combined_text = text_groups.iter().map(|tg| tg.text.as_str()).collect::<Vec<_>>().join("\n");
         assert!(combined_text.contains("header1|header2"));
         assert!(combined_text.contains("value1|value2"));
         assert!(combined_text.contains("value3|value4"));
@@ -119,7 +119,7 @@ mod tests {
         
         assert!(!text_groups.is_empty());
         
-        let combined_text = text_groups.iter().map(|tg| &tg.text).collect::<Vec<_>>().join("\n");
+        let combined_text = text_groups.iter().map(|tg| tg.text.as_str()).collect::<Vec<_>>().join("\n");
         assert!(combined_text.contains("header1|header2"));
         assert!(combined_text.contains("value1|value2"));
         assert!(combined_text.contains("value3|value4"));
