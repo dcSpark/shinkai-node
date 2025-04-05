@@ -51,6 +51,7 @@ impl SqliteManager {
 
         // Determine if the tool can be enabled
         let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
+        let mcp_enabled = tool_clone.is_mcp_enabled();
         if tool_clone.is_enabled() && !tool_clone.can_be_enabled() {
             tool_clone.disable();
         }
@@ -85,8 +86,9 @@ impl SqliteManager {
                 version,
                 is_enabled,
                 on_demand_price,
-                is_network
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                is_network,
+                mcp_enabled
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 tool_clone.name(),
                 tool_clone.description(),
@@ -100,6 +102,7 @@ impl SqliteManager {
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
+                mcp_enabled as i32,
             ],
         )?;
 
@@ -462,8 +465,9 @@ impl SqliteManager {
                 version = ?9,
                 is_enabled = ?10,
                 on_demand_price = ?11,
-                is_network = ?12
-             WHERE rowid = ?13",
+                is_network = ?12,
+                mcp_enabled = ?13
+             WHERE rowid = ?14",
             params![
                 tool.name(),
                 tool.description(),
@@ -477,7 +481,8 @@ impl SqliteManager {
                 is_enabled as i32,
                 on_demand_price,
                 is_network as i32,
-                rowid
+                tool.is_mcp_enabled() as i32,
+                rowid,
             ],
         )?;
 
@@ -969,6 +974,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1044,6 +1050,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 1".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno 1!');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1069,6 +1076,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 2".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno 2!');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1094,6 +1102,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 3".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno 3!');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1156,6 +1165,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Tool 1');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1181,6 +1191,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Tool 2');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1206,6 +1217,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 3".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Tool 3');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1298,6 +1310,7 @@ mod tests {
             homepage: None,
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1347,6 +1360,7 @@ mod tests {
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Author 1".to_string(),
                 version: "1.0.0".to_string(),
+                mcp_enabled: Some(false),
                 js_code: "console.log('Tool 1');".to_string(),
                 tools: vec![],
                 config: vec![],
@@ -1371,6 +1385,7 @@ mod tests {
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Author 2".to_string(),
                 version: "1.0.0".to_string(),
+                mcp_enabled: Some(false),
                 js_code: "console.log('Tool 2');".to_string(),
                 tools: vec![],
                 config: vec![],
@@ -1395,6 +1410,7 @@ mod tests {
                 homepage: None,
                 author: "Author 3".to_string(),
                 version: "1.0.0".to_string(),
+                mcp_enabled: Some(false),
                 js_code: "console.log('Tool 3');".to_string(),
                 tools: vec![],
                 config: vec![],
@@ -1461,6 +1477,7 @@ mod tests {
             name: "Enabled Test Tool".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             author: "Author 1".to_string(),
             js_code: "console.log('Enabled');".to_string(),
             tools: vec![],
@@ -1487,6 +1504,7 @@ mod tests {
             homepage: None,
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Disabled');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1579,6 +1597,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Enabled Non-Network');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1604,6 +1623,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Disabled Non-Network');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1641,6 +1661,7 @@ mod tests {
             author: "Author 3".to_string(),
             description: "An enabled network tool".to_string(),
             version: "0.1".to_string(),
+            mcp_enabled: Some(false),
             provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
             usage_type: usage_type.clone(),
             activated: true,
@@ -1737,6 +1758,7 @@ mod tests {
             name: "Tool One".to_string(),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Tool 1');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1762,6 +1784,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Tool 2');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1787,6 +1810,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 3".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Tool 3');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1872,6 +1896,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Version Author".to_string(),
             version: "1.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Version 1');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1897,6 +1922,7 @@ mod tests {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Version Author".to_string(),
             version: "2.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('Version 2');".to_string(),
             tools: vec![],
             config: vec![],
@@ -1988,6 +2014,7 @@ mod tests {
             homepage: Some("http://example.com".to_string()),
             author: "Test Author".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('v1');".to_string(),
             tools: vec![],
             config: vec![ToolConfig::BasicConfig(BasicConfig {
@@ -2025,6 +2052,7 @@ mod tests {
             homepage: Some("http://example.com".to_string()),
             author: "Test Author".to_string(),
             version: "2.0.0".to_string(),
+            mcp_enabled: Some(false),
             js_code: "console.log('v2');".to_string(),
             tools: vec![],
             config: vec![ToolConfig::BasicConfig(BasicConfig {
@@ -2091,6 +2119,7 @@ mod tests {
             homepage: Some("http://example.com".to_string()),
             author: "Test Author".to_string(),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             py_code: "print('v1')".to_string(),
             tools: vec![],
             config: vec![ToolConfig::BasicConfig(BasicConfig {
@@ -2126,6 +2155,7 @@ mod tests {
             homepage: Some("http://example.com".to_string()),
             author: "Test Author".to_string(),
             version: "2.0.0".to_string(),
+            mcp_enabled: Some(false),
             py_code: "print('v2')".to_string(),
             tools: vec![],
             config: vec![ToolConfig::BasicConfig(BasicConfig {

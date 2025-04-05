@@ -98,6 +98,7 @@ impl SqliteManager {
 
         // Initialize tables in the persistent database
         Self::initialize_tables(&conn)?;
+        Self::migrate_tables(&conn)?;
 
         // Create a connection pool for the in-memory database
         let fts_manager = SqliteConnectionManager::memory();
@@ -181,6 +182,11 @@ impl SqliteManager {
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
         Self::initialize_embedding_model_type_table(conn)?;
+        Ok(())
+    }
+
+    fn migrate_tables(conn: &rusqlite::Connection) -> Result<()> {
+        Self::migrate_tools_table(conn)?;
         Ok(())
     }
 
@@ -508,7 +514,7 @@ impl SqliteManager {
     }
 
     fn initialize_tools_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
+        let result = conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
@@ -522,13 +528,34 @@ impl SqliteManager {
                 is_enabled INTEGER NOT NULL,
                 on_demand_price REAL,
                 is_network INTEGER NOT NULL,
+                mcp_enabled INTEGER,
                 PRIMARY KEY(tool_key, version)
             );",
             [],
         )?;
-
+        println!("shinkai_tools table created");
         // The index is automatically created by the PRIMARY KEY constraint
 
+        Ok(())
+    }
+
+    fn migrate_tools_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if the mcp_enabled column already exists
+        let columns = conn.prepare("PRAGMA table_info(shinkai_tools)")?
+            .query_map([], |row| {
+                let name: String = row.get(1)?;
+                Ok(name)
+            })?
+            .collect::<Result<Vec<String>, _>>()?;
+        
+        // Only add the column if it doesn't exist
+        if !columns.contains(&"mcp_enabled".to_string()) {
+            conn.execute(
+                "ALTER TABLE shinkai_tools ADD COLUMN mcp_enabled INTEGER",
+                [],
+            )?;
+        }
+        
         Ok(())
     }
 

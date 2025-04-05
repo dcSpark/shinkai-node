@@ -326,6 +326,7 @@ fn micropayment_flow_test() {
                 description: "Echoes the input message".to_string(),
                 tool_router_key: test_local_tool_key_name.to_string(),
                 tool_type: "JS".to_string(),
+                mcp_enabled: Some(false),
                 formatted_tool_summary_for_ui:
                     "Tool Name: network__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message"
                         .to_string(),
@@ -494,6 +495,7 @@ fn micropayment_flow_test() {
                     author: shinkai_tool_header.author.clone(),
                     description: shinkai_tool_header.description.clone(),
                     version: shinkai_tool_header.version.clone(),
+                    mcp_enabled: shinkai_tool_header.mcp_enabled.clone(),
                     provider: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
                     usage_type: shinkai_tool_offering.usage_type.clone(),
                     activated: shinkai_tool_header.enabled,

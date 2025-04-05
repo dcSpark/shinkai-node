@@ -49,6 +49,7 @@ Example usage:
                 author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
+                mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
                     params.add_property("tool_router_key".to_string(), "string".to_string(), "The tool_router_key of the tool to update".to_string(), true);
@@ -343,6 +344,7 @@ mod tests {
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),
                 version: "1.0.0".to_string(),
+                mcp_enabled: Some(false),
                 js_code: "console.log('test');".to_string(),
                 tools: vec![],
                 config: vec![

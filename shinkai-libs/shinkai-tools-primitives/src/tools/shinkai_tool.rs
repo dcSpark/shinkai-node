@@ -51,6 +51,7 @@ pub struct ShinkaiToolHeader {
     pub author: String,
     pub version: String,
     pub enabled: bool,
+    pub mcp_enabled: Option<bool>,
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub config: Option<Vec<ToolConfig>>,
@@ -80,6 +81,7 @@ impl ShinkaiTool {
             author: self.author(),
             version: self.version(),
             enabled: self.is_enabled(),
+            mcp_enabled: Some(self.is_mcp_enabled()),
             input_args: self.input_args(),
             output_arg: self.output_arg(),
             config: self.get_js_tool_config().cloned(),
@@ -384,6 +386,16 @@ impl ShinkaiTool {
         }
     }
 
+    /// Check if the tool is enabled for MCP
+    pub fn is_mcp_enabled(&self) -> bool {
+        match self {
+            ShinkaiTool::Rust(tool, _) => tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Network(tool, _) => tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Deno(tool, _) => tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Python(tool, _) => tool.mcp_enabled.unwrap_or(false),
+        }
+    }
+
     /// Enable the tool
     pub fn enable(&mut self) {
         match self {
@@ -394,6 +406,15 @@ impl ShinkaiTool {
         }
     }
 
+    pub fn enable_mcp(&mut self) {
+        match self {
+            ShinkaiTool::Rust(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Network(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Deno(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Python(tool, _) => tool.mcp_enabled = Some(true),
+        }
+    }
+
     /// Disable the tool
     pub fn disable(&mut self) {
         match self {
@@ -401,6 +422,15 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled = false,
             ShinkaiTool::Deno(_, enabled) => *enabled = false,
             ShinkaiTool::Python(_, enabled) => *enabled = false,
+        }
+    }
+
+    pub fn disable_mcp(&mut self) {
+        match self {
+            ShinkaiTool::Rust(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Network(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Deno(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Python(tool, _) => tool.mcp_enabled = Some(false),
         }
     }
 
@@ -430,6 +460,13 @@ impl ShinkaiTool {
             ShinkaiTool::Deno(deno_tool, _) => deno_tool.check_required_config_fields(),
             ShinkaiTool::Python(_, _) => true,
         }
+    }
+
+    pub fn can_be_mcp_enabled(&self) -> bool {
+        if !self.is_enabled() || self.is_mcp_enabled() {
+            return false;
+        }
+        true
     }
 
     /// Convert to json
@@ -526,6 +563,7 @@ mod tests {
             name: "Shinkai: Download Pages".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
+            mcp_enabled: Some(false),
             input_args: Parameters::new(),
             output_arg: ToolOutputArg { json: "".to_string() },
             config: vec![],
@@ -608,6 +646,7 @@ mod tests {
             name: "shinkai__download_website".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             description: tool_definition.description.clone(),
             input_args: input_args.clone(),
             output_arg: ToolOutputArg {

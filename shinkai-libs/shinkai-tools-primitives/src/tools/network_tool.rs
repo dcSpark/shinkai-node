@@ -11,6 +11,7 @@ pub struct NetworkTool {
     pub description: String,
     pub version: String,
     pub author: String,
+    pub mcp_enabled: Option<bool>,
     pub provider: ShinkaiName,
     pub usage_type: UsageType, // includes pricing
     pub activated: bool,
@@ -52,6 +53,7 @@ impl NetworkTool {
             output_arg,
             embedding,
             restrictions,
+            mcp_enabled: Some(false),
         }
     }
 

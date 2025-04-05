@@ -3,3 +3,4 @@ pub mod node_commands;
 pub mod node_api_router;
 pub mod api_v1;
 pub mod api_v2;
+pub mod api_sse;

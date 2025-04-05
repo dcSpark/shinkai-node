@@ -66,6 +66,7 @@ SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DES
                 author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
+                mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
                     params.add_property("query".to_string(), "string".to_string(), "The SQL query to execute".to_string(), true);
@@ -265,6 +266,7 @@ mod tests {
         let rust_tool = RustTool {
             name: sql_processor_tool.tool.name.clone(),
             description: sql_processor_tool.tool.description.clone(),
+            mcp_enabled: sql_processor_tool.tool.mcp_enabled.clone(),
             input_args: sql_processor_tool.tool.input_args.clone(),
             output_arg: sql_processor_tool.tool.output_arg.clone(),
             tool_embedding: sql_processor_tool.tool_embedding.clone(),

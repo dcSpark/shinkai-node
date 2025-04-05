@@ -143,6 +143,7 @@ fn tool_duplicate_tests() {
                     homepage: Some("http://127.0.0.1/index.html".to_string()),
                     author: "@@node1_test.sep-shinkai".to_string(),
                     version: "1.0.0".to_string(),
+                    mcp_enabled: Some(false),
                     js_code: "console.log('Hello, Deno 1!');".to_string(),
                     tools: vec![ToolRouterKey::from_string(
                         "local:::__official_shinkai:::shinkai_llm_prompt_processor",
