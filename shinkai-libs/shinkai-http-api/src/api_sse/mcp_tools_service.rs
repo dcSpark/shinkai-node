@@ -102,15 +102,16 @@ impl McpToolsService {
                     // Convert schema to the map expected by rmcp::model::Tool
                     if let Value::Object(schema_map) = input_schema_val {
                         // Create the rmcp::model::Tool for the cache
+                        let tool_name = name.clone().replace(' ', "_").to_lowercase().chars().filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_').collect::<String>();
                         let mcp_tool = Tool {
-                            name: Cow::Owned(name.clone()), // Clone name for the Tool struct
+                            name: Cow::Owned(tool_name.clone()),
                             description: Cow::Owned(description),
                             input_schema: Arc::new(schema_map),
                         };
                         mcp_tools_list.push(mcp_tool);
 
                         // Add entry to the temporary name->key map
-                        name_to_key_temp_map.insert(name, key); // Move name into the map key
+                        name_to_key_temp_map.insert(tool_name.clone(), key); // Move name into the map key
 
                     } else {
                         tracing::warn!("Skipping tool due to invalid input_args schema: {:?}", tool_json.get("name"));
