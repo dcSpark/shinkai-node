@@ -47,28 +47,57 @@ impl LocalFileParser {
 
     fn parse_xls(buffer: &[u8]) -> Result<Vec<String>, ShinkaiFsError> {
         let cursor = Cursor::new(buffer);
-        let mut workbook = Xls::new(cursor).map_err(|_| ShinkaiFsError::FailedXLSParsing)?;
-        
-        if let Some(sheet_name) = workbook.sheet_names().first().cloned() {
-            let range = workbook.worksheet_range(&sheet_name)
-                .map_err(|_| ShinkaiFsError::FailedXLSParsing)?;
-            
-            let mut result = Vec::new();
-            for row in range.rows() {
-                let row_string = row.iter()
-                    .map(|cell| cell.to_string())
-                    .collect::<Vec<_>>()
-                    .join("|");
+        let xls_result = Xls::new(cursor).and_then(|mut workbook| {
+            if let Some(sheet_name) = workbook.sheet_names().first().cloned() {
+                let range = workbook.worksheet_range(&sheet_name)?;
                 
-                if !row_string.is_empty() {
-                    result.push(row_string);
+                let mut result = Vec::new();
+                for row in range.rows() {
+                    let row_string = row.iter()
+                        .map(|cell| cell.to_string())
+                        .collect::<Vec<_>>()
+                        .join("|");
+                    
+                    if !row_string.is_empty() {
+                        result.push(row_string);
+                    }
                 }
+                
+                Ok(result)
+            } else {
+                Ok(Vec::new())
             }
-            
-            Ok(result)
-        } else {
-            Ok(Vec::new())
+        });
+        
+        if xls_result.is_err() {
+            let cursor = Cursor::new(buffer);
+            return Xlsx::new(cursor)
+                .map_err(|_| ShinkaiFsError::FailedXLSParsing)
+                .and_then(|mut workbook| {
+                    if let Some(sheet_name) = workbook.sheet_names().first().cloned() {
+                        let range = workbook.worksheet_range(&sheet_name)
+                            .map_err(|_| ShinkaiFsError::FailedXLSParsing)?;
+                        
+                        let mut result = Vec::new();
+                        for row in range.rows() {
+                            let row_string = row.iter()
+                                .map(|cell| cell.to_string())
+                                .collect::<Vec<_>>()
+                                .join("|");
+                            
+                            if !row_string.is_empty() {
+                                result.push(row_string);
+                            }
+                        }
+                        
+                        Ok(result)
+                    } else {
+                        Ok(Vec::new())
+                    }
+                });
         }
+        
+        xls_result.map_err(|_| ShinkaiFsError::FailedXLSParsing)
     }
 }
 
