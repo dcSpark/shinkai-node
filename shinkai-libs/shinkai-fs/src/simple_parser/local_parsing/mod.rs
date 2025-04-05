@@ -5,5 +5,6 @@ pub mod json_parsing;
 pub mod md_parsing;
 pub mod pdf_parsing;
 pub mod txt_parsing;
+pub mod xlsx_parsing;
 
 pub struct LocalFileParser {}
