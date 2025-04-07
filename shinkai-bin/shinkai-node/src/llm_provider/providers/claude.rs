@@ -323,6 +323,7 @@ async fn handle_streaming_response(
                                     arguments,
                                     tool_router_key,
                                     response: None,
+                                    index: function_calls.len() as u64,
                                 };
 
                                 function_calls.push(function_call.clone());
@@ -348,6 +349,7 @@ async fn handle_streaming_response(
                                                 type_: ToolStatusType::Running,
                                                 reason: None,
                                             },
+                                            index: function_call.index,
                                         };
 
                                         let ws_message_type =
@@ -374,8 +376,8 @@ async fn handle_streaming_response(
                                     let inbox_name_string = inbox_name.to_string();
                                     let metadata = WSMetadata {
                                         id: Some(session_id.clone()),
-                                        is_done: processed_chunk.is_done,
-                                        done_reason: if processed_chunk.is_done {
+                                        is_done: function_calls.is_empty() && processed_chunk.is_done,
+                                        done_reason: if function_calls.is_empty() && processed_chunk.is_done {
                                             processed_chunk.done_reason.clone()
                                         } else {
                                             None
@@ -531,6 +533,7 @@ async fn handle_non_streaming_response(
                                             arguments,
                                             tool_router_key,
                                             response: None,
+                                            index: function_calls.len() as u64,
                                         };
 
                                         function_calls.push(function_call.clone());
@@ -560,6 +563,7 @@ async fn handle_non_streaming_response(
                                                         type_: ToolStatusType::Running,
                                                         reason: None,
                                                     },
+                                                    index: function_call.index,
                                                 };
 
                                                 let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
