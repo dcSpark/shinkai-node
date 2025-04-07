@@ -1,7 +1,14 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools}, tool_execution::execution_coordinator::{execute_code, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::{tool_router::ToolRouter, IdentityManager},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd, execute_mcp_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 use async_channel::Sender;
 use chrono::Utc;
@@ -315,6 +322,148 @@ impl Node {
         }
     }
 
+    pub async fn v2_api_list_all_mcp_shinkai_tools(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        category: Option<String>,
+        tool_router: Option<Arc<ToolRouter>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+
+        let _bearer = Self::get_bearer_token(db.clone(), &res).await?;
+
+        // List all tools
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                // Group tools by their base key (without version)
+                use std::collections::HashMap;
+                let mut tool_groups: HashMap<String, Vec<ShinkaiToolHeader>> = HashMap::new();
+
+                for tool in tools {
+                    if tool.mcp_enabled.unwrap_or(false) {
+                        let tool_router_key = tool.tool_router_key.clone();
+                        tool_groups.entry(tool_router_key).or_default().push(tool);
+                    }
+                }
+
+                // For each group, keep only the tool with the highest version
+                let mut latest_tools = Vec::new();
+                for (_, mut group) in tool_groups {
+                    if group.len() == 1 {
+                        latest_tools.push(group.pop().unwrap());
+                    } else {
+                        // Sort by version in descending order
+                        group.sort_by(|a, b| {
+                            let a_version = IndexableVersion::from_string(&a.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            let b_version = IndexableVersion::from_string(&b.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            b_version.cmp(&a_version)
+                        });
+
+                        // Take the first one (highest version)
+                        latest_tools.push(group.remove(0));
+                    }
+                }
+
+                // Filter by category if provided
+                // Downloaded -> anything else
+                // Default Tools -> is default
+                // System Tools -> Rust tools
+                // My Tools -> author localhost.* or author == MY_ID
+                let filtered_tools = if let Some(category) = category {
+                    match category.to_lowercase().as_str() {
+                        "downloaded" => {
+                            // Get default tool keys as a HashSet for O(1) lookups if ToolRouter is provided
+                            let default_tool_keys = if let Some(router) = &tool_router {
+                                Some(router.get_default_tool_router_keys_as_set().await)
+                            } else {
+                                None
+                            };
+
+                            let node_name_string = node_name.get_node_name_string();
+
+                            latest_tools
+                                .into_iter()
+                                .filter(|tool| {
+                                    // If tool is not mcp enabled, return false
+                                    if !tool.mcp_enabled.unwrap_or(false) {
+                                        return false;
+                                    }
+                                    // Not default
+                                    let is_not_default = if let Some(default_keys) = &default_tool_keys {
+                                        !default_keys.contains(&tool.tool_router_key)
+                                    } else {
+                                        true // If we can't determine default tools, assume it's not default
+                                    };
+
+                                    // Author doesn't start with "localhost."
+                                    let is_not_localhost = !tool.author.starts_with("localhost.");
+
+                                    // Author is not the same as node_name.get_node_name_string()
+                                    let is_not_node_name = tool.author != node_name_string;
+
+                                    // Not a Rust tool
+                                    let is_not_rust = !matches!(tool.tool_type.to_lowercase().as_str(), "rust");
+
+                                    is_not_default && is_not_localhost && is_not_node_name && is_not_rust
+                                })
+                                .collect()
+                        }
+                        "default" => {
+                            // Get default tool keys as a HashSet for O(1) lookups if ToolRouter is provided
+                            let default_tool_keys = if let Some(router) = &tool_router {
+                                Some(router.get_default_tool_router_keys_as_set().await)
+                            } else {
+                                None
+                            };
+
+                            if let Some(default_keys) = &default_tool_keys {
+                                // Use O(1) lookup with HashSet
+                                latest_tools
+                                    .into_iter()
+                                    .filter(|tool| default_keys.contains(&tool.tool_router_key))
+                                    .collect()
+                            } else {
+                                // Fallback if ToolRouter not provided
+                                latest_tools
+                            }
+                        }
+                        "system" => latest_tools
+                            .into_iter()
+                            .filter(|tool| matches!(tool.tool_type.to_lowercase().as_str(), "rust"))
+                            .collect(),
+                        "my_tools" => {
+                            let node_name_string = node_name.get_node_name_string();
+                            latest_tools
+                                .into_iter()
+                                .filter(|tool| tool.author.starts_with("localhost.") || tool.author == node_name_string)
+                                .collect()
+                        }
+                        _ => latest_tools, // If an unknown category is provided, return all tools
+                    }
+                } else {
+                    latest_tools
+                };
+                let t = filtered_tools.iter()
+                    .filter(|tool| tool.mcp_enabled.unwrap_or(false))
+                    .map(|tool| json!(tool))
+                    .collect();
+                let _ = res.send(Ok(t)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list mcp tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
     pub async fn v2_api_set_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -606,6 +755,7 @@ impl Node {
                     input_args: payload.metadata.parameters.clone(),
                     output_arg: ToolOutputArg { json: "".to_string() },
                     activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    mcp_enabled: Some(false),
                     embedding: None,
                     result: payload.metadata.result,
                     sql_tables: Some(payload.metadata.sql_tables),
@@ -633,6 +783,7 @@ impl Node {
                     input_args: payload.metadata.parameters.clone(),
                     output_arg: ToolOutputArg { json: "".to_string() },
                     activated: false, // TODO: maybe we want to add this as an option in the UI?
+                    mcp_enabled: Some(false),
                     embedding: None,
                     result: payload.metadata.result,
                     sql_tables: Some(payload.metadata.sql_tables),
@@ -989,6 +1140,60 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn execute_mcp_tool(
+        node_name: ShinkaiName, // No Bearer token needed because this is an internal tool
+        db: Arc<SqliteManager>,
+        tool_router_key: String,
+        parameters: Map<String, Value>,
+        tool_id: String,
+        app_id: String,
+        extra_config: Map<String, Value>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+        mounts: Option<Vec<String>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let bearer = Self::get_bearer_token(db.clone(), &res).await?;
+        // Convert extra_config to Vec<ToolConfig> using basic_config_from_value
+        let tool_configs = ToolConfig::basic_config_from_value(&Value::Object(extra_config));
+        let result = execute_mcp_tool_cmd(
+            bearer,
+            node_name,
+            db,
+            tool_router_key,
+            parameters,
+            tool_id,
+            app_id,
+            tool_configs,
+            identity_manager,
+            job_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+            mounts,
+        )
+        .await;
+
+        match result {
+            Ok(result) => {
+                let _ = res.send(Ok(result)).await;
+            }
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Error executing tool: {}", e),
+                    }))
+                    .await;
+            }
+        }
         Ok(())
     }
 
@@ -3531,6 +3736,7 @@ LANGUAGE={env_language}
                     tool.enable();
                 } else {
                     tool.disable();
+                    tool.disable_mcp();
                 }
 
                 // Save the updated tool
@@ -3539,6 +3745,61 @@ LANGUAGE={env_language}
                         let response = json!({
                             "tool_router_key": tool_router_key,
                             "enabled": enabled,
+                            "success": true
+                        });
+                        let _ = res.send(Ok(response)).await;
+                    }
+                    Err(e) => {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: 500,
+                                error: "Failed to update tool".to_string(),
+                                message: format!("Failed to update tool: {}", e),
+                            }))
+                            .await;
+                    }
+                }
+            }
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: 404,
+                        error: "Tool not found".to_string(),
+                        message: format!("Tool with key '{}' not found", tool_router_key),
+                    }))
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_set_tool_mcp_enabled(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        mcp_enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        // Get the tool first to verify it exists
+        match db.get_tool_by_key(&tool_router_key) {
+            Ok(mut tool) => {
+                if mcp_enabled {
+                    tool.enable_mcp();
+                } else {
+                    tool.disable_mcp();
+                }
+
+                // Save the updated tool
+                match db.update_tool(tool).await {
+                    Ok(_) => {
+                        let response = json!({
+                            "tool_router_key": tool_router_key,
+                            "mcp_enabled": mcp_enabled,
                             "success": true
                         });
                         let _ = res.send(Ok(response)).await;
@@ -3737,6 +3998,7 @@ LANGUAGE={env_language}
                     name: "".to_string(),
                     homepage: None,
                     author: "".to_string(),
+                    mcp_enabled: Some(false),
                     version: "".to_string(),
                     js_code: code.clone(),
                     tools: vec![],
@@ -3778,6 +4040,7 @@ LANGUAGE={env_language}
                     name: "".to_string(),
                     homepage: None,
                     author: "".to_string(),
+                    mcp_enabled: Some(false),
                     py_code: code.clone(),
                     tools: vec![],
                     config: vec![],

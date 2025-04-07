@@ -423,6 +423,56 @@ pub async fn execute_tool_cmd(
     }
 }
 
+pub async fn execute_mcp_tool_cmd(
+    bearer: String,
+    node_name: ShinkaiName,
+    db: Arc<SqliteManager>,
+    tool_router_key: String,
+    parameters: Map<String, Value>,
+    tool_id: String,
+    app_id: String,
+    extra_config: Vec<ToolConfig>,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager: Arc<Mutex<JobManager>>,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
+    signing_secret_key: SigningKey,
+    mounts: Option<Vec<String>>,
+) -> Result<Value, ToolError> {
+    let tool = db
+        .get_tool_by_key(&tool_router_key)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
+
+    if !tool.is_mcp_enabled() {
+        return Err(ToolError::ExecutionError("Tool is not MCP enabled".to_string()));
+    }
+
+    let first_llm_provider = db.get_all_llm_providers()
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get llm providers: {}", e)))?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ToolError::ExecutionError("No LLM providers found".to_string()))?;
+    let llm_provider = first_llm_provider.id.to_string();
+    execute_tool_cmd(
+        bearer,
+        node_name,
+        db,
+        tool_router_key,
+        parameters,
+        tool_id,
+        app_id,
+        llm_provider,
+        extra_config,
+        identity_manager,
+        job_manager,
+        encryption_secret_key,
+        encryption_public_key,
+        signing_secret_key,
+        mounts,
+    )
+    .await
+}
+
 pub async fn execute_code(
     tool_type: DynamicToolType,
     code: String,

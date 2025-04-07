@@ -31,13 +31,14 @@ pub async fn execute_python_tool(
     runner: Option<RunnerType>,
     operating_system: Option<Vec<OperatingSystem>>,
 ) -> Result<Value, ToolError> {
-    // Create a minimal DenoTool instance
+    // Create a minimal PythonTool instance
     let tool = PythonTool {
         name: "python_runtime".to_string(),
         homepage: None,
         version: "1.0.0".to_string(),
         author: "@@official.shinkai".to_string(),
         py_code: code,
+        mcp_enabled: Some(false),
         tools: vec![],
         config: extra_config.clone(),
         description: "Python runtime execution".to_string(),

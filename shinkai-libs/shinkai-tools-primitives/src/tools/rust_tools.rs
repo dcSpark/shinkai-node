@@ -33,6 +33,7 @@ pub struct RustTool {
     pub output_arg: ToolOutputArg,
     pub tool_embedding: Option<Vec<f32>>,
     pub tool_router_key: String,
+    pub mcp_enabled: Option<bool>,
 }
 
 impl RustTool {
@@ -51,6 +52,7 @@ impl RustTool {
             output_arg,
             tool_embedding,
             tool_router_key,
+            mcp_enabled: Some(false),
         }
     }
 
@@ -77,6 +79,7 @@ impl RustTool {
             output_arg: header.output_arg.clone(),
             tool_embedding: None, // Assuming no embedding is provided in the header
             tool_router_key: header.tool_router_key.clone(),
+            mcp_enabled: header.mcp_enabled,
         })
     }
 }
