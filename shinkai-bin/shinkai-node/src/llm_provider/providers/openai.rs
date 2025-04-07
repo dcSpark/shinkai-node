@@ -390,7 +390,7 @@ pub async fn parse_openai_stream_chunk(
                     Some(inbox_name.clone()),
                     session_id,
                     "".to_string(),
-                    false,
+                    function_calls.is_empty(),
                     None,
                 )
                 .await?;
