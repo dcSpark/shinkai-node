@@ -230,6 +230,14 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(compute_and_send_quests_status_handler);
 
+    // Route for setting preferences
+    let set_preferences_route = warp::path("set_preferences")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json::<HashMap<String, serde_json::Value>>())
+        .and_then(set_preferences_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -259,6 +267,7 @@ pub fn general_routes(
         .or(add_regex_pattern_route)
         .or(compute_quests_status_route)
         .or(compute_and_send_quests_status_route)
+        .or(set_preferences_route)
 }
 
 #[derive(Deserialize)]
@@ -1331,6 +1340,41 @@ pub async fn compute_and_send_quests_status_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/set_preferences",
+    request_body = inline(HashMap<String, serde_json::Value>),
+    responses(
+        (status = 200, description = "Preferences set successfully", body = String),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn set_preferences_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: HashMap<String, serde_json::Value>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    sender
+        .send(NodeCommand::V2ApiSetPreferences {
+            bearer,
+            payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1364,6 +1408,7 @@ pub async fn compute_and_send_quests_status_handler(
         add_regex_pattern_handler,
         compute_quests_status_handler,
         compute_and_send_quests_status_handler,
+        set_preferences_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
