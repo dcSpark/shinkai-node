@@ -247,6 +247,11 @@ pub enum NodeCommand {
         url: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiImportAgentZip {
+        bearer: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiExportAgent {
         bearer: String,
         agent_id: String,
@@ -700,6 +705,10 @@ pub enum NodeCommand {
         category: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiListAllMcpShinkaiTools {
+        category: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiListAllShinkaiToolsVersions {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
@@ -973,6 +982,15 @@ pub enum NodeCommand {
         tool_id: String,
         app_id: String,
         llm_provider: String,
+        extra_config: Map<String, Value>,
+        mounts: Option<Vec<String>>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExecuteMcpTool {
+        tool_router_key: String,
+        parameters: Map<String, Value>,
+        tool_id: String,
+        app_id: String,
         extra_config: Map<String, Value>,
         mounts: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
@@ -1293,6 +1311,12 @@ pub enum NodeCommand {
         bearer: String,
         tool_router_key: String,
         enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetToolMcpEnabled {
+        bearer: String,
+        tool_router_key: String,
+        mcp_enabled: bool,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiCopyToolAssets {

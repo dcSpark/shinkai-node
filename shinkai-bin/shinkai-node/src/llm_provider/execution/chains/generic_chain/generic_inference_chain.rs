@@ -273,7 +273,26 @@ impl GenericInferenceChain {
         // Process image files from merged paths, folders and scope
         let additional_image_files =
             Self::process_image_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
-        image_files.extend(additional_image_files);
+        
+        // Deduplicate image files based on filename (case insensitive)
+        let mut deduplicated_files = HashMap::new();
+        for (path, content) in image_files.iter().chain(additional_image_files.iter()) {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            if !deduplicated_files.contains_key(&filename) {
+                deduplicated_files.insert(filename, (path.clone(), content.clone()));
+            }
+        }
+        
+        // Convert back to original format with full paths
+        image_files = deduplicated_files.into_iter()
+            .map(|(_, (path, content))| (path, content))
+            .collect();
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("start_generic_inference_chain> image files: {:?}", image_files.keys()),
+        );
 
         if !scope_is_empty
             || !merged_fs_files_paths.is_empty()
@@ -549,6 +568,7 @@ impl GenericInferenceChain {
             merged_fs_folder_paths.clone(),
         )?;
 
+        println!("Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files", user_message, image_files.keys(), additional_files);
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
             custom_system_prompt.clone(),
@@ -570,9 +590,21 @@ impl GenericInferenceChain {
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
-                return Err(LLMProviderError::MaxIterationsReached(
-                    "Maximum iterations reached".to_string(),
-                ));
+                let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
+                let max_iterations_message = format!(
+                    "Maximum iterations ({}) reached. Process stopped after {} tool calls.",
+                    max_iterations,
+                    tool_calls_history.len()
+                );
+
+                let inference_result = InferenceChainResult::with_full_details(
+                    max_iterations_message,
+                    None,
+                    answer_duration_ms,
+                    Some(tool_calls_history.clone()),
+                );
+
+                return Ok(inference_result);
             }
 
             // 4) Call LLM
@@ -862,6 +894,14 @@ impl GenericInferenceChain {
                 folder_path.path.clone(),
             ));
         }
+
+        // Deduplicate files based on filename (case insensitive)
+        let mut seen_filenames = std::collections::HashSet::new();
+        additional_files.retain(|path| {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            seen_filenames.insert(filename)
+        });
+
         Ok(additional_files)
     }
 }

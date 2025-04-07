@@ -44,6 +44,7 @@ This can be used to process complex requests, text analysis, text matching, text
                 author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
+                mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
                     params.add_property("prompt".to_string(), "string".to_string(), "The prompt to apply over the data".to_string(), true);
