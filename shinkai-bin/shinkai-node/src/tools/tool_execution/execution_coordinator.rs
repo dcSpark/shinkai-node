@@ -447,11 +447,47 @@ pub async fn execute_mcp_tool_cmd(
         return Err(ToolError::ExecutionError("Tool is not MCP enabled".to_string()));
     }
 
-    let first_llm_provider = db.get_all_llm_providers()
-        .map_err(|e| ToolError::ExecutionError(format!("Failed to get llm providers: {}", e)))?
-        .into_iter()
-        .next()
-        .ok_or_else(|| ToolError::ExecutionError("No LLM providers found".to_string()))?;
+    // Try to get the default LLM provider from preferences
+    let preferences_llm_provider_result = match db.get_preference::<String>("default_llm_provider") {
+        Ok(Some(provider_id)) => {
+            // HARDCODED MAIN PROFILE NAME
+            let profile_name = ShinkaiName::new(format!("{}/main/agent/mcp_default", node_name.get_node_name_string())).unwrap();
+            match db.get_llm_provider(&provider_id, &profile_name) {
+                Ok(Some(provider)) => {
+                    // Successfully found the preferred provider
+                    Ok(provider)
+                }
+                Ok(None) => {
+                    // Preference ID exists but provider doesn't, trigger fallback
+                    Err("Preference provider not found in DB")
+                }
+                Err(e) => {
+                    // Error fetching preferred provider, trigger fallback
+                    eprintln!("Error fetching preferred provider: {}", e);
+                    Err("Error fetching preferred provider")
+                }
+            }
+        }
+        Ok(None) => {
+            // Preference not set, trigger fallback
+            Err("Preference not set")
+        }
+        Err(e) => {
+            // Error getting preference, trigger fallback
+            Err("Error getting preference")
+        }
+    };
+
+    // Use the preferred provider if found, otherwise execute the fallback logic
+    let first_llm_provider = preferences_llm_provider_result.or_else(|_reason| {
+        // Fallback: Get the first provider from the list
+        db.get_all_llm_providers()
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to get llm providers: {}", e)))?
+            .into_iter()
+            .next()
+            .ok_or_else(|| ToolError::ExecutionError("No LLM providers found".to_string()))
+    })?;
+
     let llm_provider = first_llm_provider.id.to_string();
     execute_tool_cmd(
         bearer,
