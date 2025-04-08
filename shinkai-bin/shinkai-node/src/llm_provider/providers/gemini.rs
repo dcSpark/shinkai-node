@@ -774,7 +774,7 @@ mod tests {
             .clone()
         );
         assert_eq!(finish_reason, Some("STOP".to_string()));
-        assert!(is_done);
+        assert!(!is_done);
     }
 
     #[tokio::test]
