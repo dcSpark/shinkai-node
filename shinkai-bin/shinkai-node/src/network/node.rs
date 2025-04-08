@@ -1426,10 +1426,20 @@ impl Node {
     ) {
         // Handle validation
         let mut len_buffer = [0u8; 4];
-        {
+        let read_result = {
             let mut reader = reader.lock().await;
-            reader.read_exact(&mut len_buffer).await.unwrap();
+            reader.read_exact(&mut len_buffer).await
+        };
+        
+        if let Err(e) = read_result {
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                &format!("Failed to read validation data length: {}", e),
+            );
+            return;
         }
+        
         let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
 
         let mut buffer = vec![0u8; validation_data_len];
@@ -1439,7 +1449,17 @@ impl Node {
         };
         match res {
             Ok(_) => {
-                let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
+                let validation_data = match String::from_utf8(buffer) {
+                    Ok(s) => s.trim().to_string(),
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to convert validation data to string: {}", e),
+                        );
+                        return;
+                    }
+                };
 
                 // Sign the validation data
                 let signature = signing_key.sign(validation_data.as_bytes());
@@ -1458,40 +1478,109 @@ impl Node {
                 let total_len_bytes = (total_len as u32).to_be_bytes();
                 {
                     let mut writer = writer.lock().await;
-                    writer.write_all(&total_len_bytes).await.unwrap();
+                    if let Err(e) = writer.write_all(&total_len_bytes).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write total length: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the length of the public key
                     let public_key_len_bytes = public_key_len.to_be_bytes();
-                    writer.write_all(&public_key_len_bytes).await.unwrap();
+                    if let Err(e) = writer.write_all(&public_key_len_bytes).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write public key length: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the public key
-                    writer.write_all(public_key_hex.as_bytes()).await.unwrap();
+                    if let Err(e) = writer.write_all(public_key_hex.as_bytes()).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write public key: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the length of the signed validation data
                     let signature_len_bytes = signature_len.to_be_bytes();
-                    writer.write_all(&signature_len_bytes).await.unwrap();
+                    if let Err(e) = writer.write_all(&signature_len_bytes).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write signature length: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the signed validation data
                     match writer.write_all(signature_hex.as_bytes()).await {
-                        Ok(_) => eprintln!("Sent signed validation data and public key back to server"),
-                        Err(e) => eprintln!("Failed to send signed validation data: {}", e),
+                        Ok(_) => shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Info,
+                            "Sent signed validation data and public key back to server",
+                        ),
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to send signed validation data: {}", e),
+                            );
+                            return;
+                        }
                     }
                 }
 
                 // Wait for the server to validate the signature
                 let mut len_buffer = [0u8; 4];
-                {
+                let read_result = {
                     let mut reader = reader.lock().await;
-                    reader.read_exact(&mut len_buffer).await.unwrap();
+                    reader.read_exact(&mut len_buffer).await
+                };
+                
+                if let Err(e) = read_result {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to read response length: {}", e),
+                    );
+                    return;
                 }
+                
                 let response_len = u32::from_be_bytes(len_buffer) as usize;
 
                 let mut response_buffer = vec![0u8; response_len];
-                {
+                let read_result = {
                     let mut reader = reader.lock().await;
-                    reader.read_exact(&mut response_buffer).await.unwrap();
+                    reader.read_exact(&mut response_buffer).await
+                };
+                
+                if let Err(e) = read_result {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to read response: {}", e),
+                    );
+                    return;
                 }
-                let response = String::from_utf8(response_buffer).unwrap();
+                
+                let response = match String::from_utf8(response_buffer) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to convert response to string: {}", e),
+                        );
+                        return;
+                    }
+                };
 
                 // Assert the validation response
                 if response != "Validation successful" {
@@ -1502,7 +1591,13 @@ impl Node {
                     );
                 }
             }
-            Err(e) => eprintln!("Failed to read validation data: {}", e),
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to read validation data: {}", e),
+                );
+            }
         }
     }
 
