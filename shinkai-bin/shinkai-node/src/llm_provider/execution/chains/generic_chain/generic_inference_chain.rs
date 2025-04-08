@@ -851,6 +851,7 @@ impl GenericInferenceChain {
                         type_: ToolStatusType::Complete,
                         reason: None,
                     },
+                    index: function_response.function_call.index,
                 };
 
                 let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));

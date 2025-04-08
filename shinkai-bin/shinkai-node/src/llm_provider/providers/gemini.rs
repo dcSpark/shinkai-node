@@ -288,7 +288,7 @@ async fn process_chunk(
     // Remove trailing square bracket if it exists
     if buffer.ends_with(']') {
         buffer.pop();
-        *is_done = true; // Set is_done to true if buffer ends with ']'
+        *is_done = function_calls.is_empty(); // Set is_done to true if buffer ends with ']'
     }
 
     // Add a trailing ']' to make it a valid JSON array
@@ -435,6 +435,7 @@ async fn process_function_call(
         tool_router_key: function_call.args.get("tool_router_key")
             .and_then(|key| key.as_str().map(|s| s.to_string())),
         response: None,
+        index: function_calls.len() as u64,
     };
     function_calls.push(fc.clone());
 
@@ -457,6 +458,7 @@ async fn process_function_call(
                     type_: ToolStatusType::Running,
                     reason: None,
                 },
+                index: fc.index,
             };
 
             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
@@ -772,7 +774,7 @@ mod tests {
             .clone()
         );
         assert_eq!(finish_reason, Some("STOP".to_string()));
-        assert!(is_done);
+        assert!(!is_done);
     }
 
     #[tokio::test]

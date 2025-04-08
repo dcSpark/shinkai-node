@@ -728,6 +728,12 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")
+                    || model.model_type.starts_with("qwen-qwq-32b")
+                    || model.model_type.starts_with("qwen-2.5-coder-32b")
+                    || model.model_type.starts_with("qwen-2.5-32b")
+                    || model.model_type.starts_with("deepseek-r1-distill-qwen-32b")
+                    || model.model_type.starts_with("deepseek-r1-distill-llama-70b")
+                    || model.model_type.starts_with("llama-3.3-70b-versatile")
             }
             LLMProviderInterface::OpenRouter(model) => {
                 model.model_type.starts_with("llama-3.2")

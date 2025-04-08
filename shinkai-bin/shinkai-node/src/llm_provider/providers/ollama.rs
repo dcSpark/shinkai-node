@@ -332,6 +332,7 @@ async fn process_stream(
                                     arguments: arguments.clone(),
                                     tool_router_key,
                                     response: None,
+                                    index: final_function_calls.len() as u64,
                                 };
 
                                 final_function_calls.push(function_call.clone());
@@ -358,6 +359,7 @@ async fn process_stream(
                                                 type_: ToolStatusType::Running,
                                                 reason: None,
                                             },
+                                            index: function_call.index,
                                         };
 
                                         let ws_message_type =
@@ -387,17 +389,16 @@ async fn process_stream(
                             if let Some(ref inbox_name) = inbox_name {
                                 let m = manager.lock().await;
                                 let inbox_name_string = inbox_name.to_string();
-
                                 let metadata = WSMetadata {
                                     id: Some(session_id.clone()),
-                                    is_done: data.done,
-                                    done_reason: if data.done { data.done_reason.clone() } else { None },
-                                    total_duration: if data.done {
+                                    is_done: final_function_calls.is_empty() && data.done,
+                                    done_reason: if final_function_calls.is_empty() && data.done { data.done_reason.clone() } else { None },
+                                    total_duration: if final_function_calls.is_empty() && data.done {
                                         data.total_duration.map(|d| d as u64)
                                     } else {
                                         None
                                     },
-                                    eval_count: if data.done {
+                                    eval_count: if final_function_calls.is_empty() && data.done {
                                         data.eval_count.map(|c| c as u64)
                                     } else {
                                         None
@@ -511,7 +512,7 @@ async fn handle_non_streaming_response(
                             let mut function_calls = Vec::new();
 
                             if let Some(tool_calls) = message.get("tool_calls").and_then(|tc| tc.as_array()) {
-                                for tool_call in tool_calls {
+                                for (index, tool_call) in tool_calls.iter().enumerate() {
                                     if let Some(function) = tool_call.get("function") {
                                         if let (Some(name), Some(arguments)) = (
                                             function.get("name").and_then(|n| n.as_str()),
@@ -533,6 +534,7 @@ async fn handle_non_streaming_response(
                                                 arguments: arguments.clone(),
                                                 tool_router_key,
                                                 response: None,
+                                                index: index as u64,
                                             };
 
                                             function_calls.push(function_call.clone());
@@ -553,6 +555,7 @@ async fn handle_non_streaming_response(
                                                             type_: ToolStatusType::Running,
                                                             reason: None,
                                                         },
+                                                        index: function_call.index,
                                                     };
 
                                                     let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));

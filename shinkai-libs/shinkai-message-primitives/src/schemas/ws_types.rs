@@ -93,6 +93,7 @@ pub struct ToolMetadata {
     pub args: serde_json::Map<String, serde_json::Value>,
     pub result: Option<serde_json::Value>,
     pub status: ToolStatus,
+    pub index: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

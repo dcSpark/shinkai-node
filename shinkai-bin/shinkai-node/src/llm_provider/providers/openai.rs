@@ -239,6 +239,7 @@ fn finalize_function_call_sync(
                 arguments: fc_arguments,
                 tool_router_key,
                 response: None,
+                index: function_calls.len() as u64,
             };
             function_calls.push(new_function_call);
         }
@@ -381,7 +382,7 @@ pub async fn parse_openai_stream_chunk(
                     Some(inbox_name.clone()),
                     session_id,
                     "".to_string(),
-                    true,
+                    function_calls.is_empty(),
                     None,
                 )
                 .await?;
@@ -922,6 +923,8 @@ pub async fn handle_non_streaming_response(
                                         arguments,
                                         tool_router_key,
                                         response: None,
+                                        // Here we set 0 because it's just processing the first tool_call
+                                        index: 0,
                                     }
                                 })
                             })
@@ -953,6 +956,7 @@ pub async fn handle_non_streaming_response(
                                             type_: ToolStatusType::Running,
                                             reason: None,
                                         },
+                                        index: function_call.index,
                                     };
 
                                     let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
@@ -1101,6 +1105,7 @@ async fn send_tool_ws_update(
                     type_: ToolStatusType::Running,
                     reason: None,
                 },
+                index: function_call.index,
             };
 
             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));

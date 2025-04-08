@@ -230,6 +230,7 @@ async fn handle_streaming_response(
                                                 arguments: fc_arguments.clone(),
                                                 tool_router_key,
                                                 response: None,
+                                                index: function_calls.len() as u64,
                                             });
                                         }
                                     }
@@ -432,6 +433,7 @@ async fn handle_non_streaming_response(
                                     arguments,
                                     tool_router_key, // Include tool_router_key
                                     response: None,
+                                    index: 0,
                                 }
                             })
                         });

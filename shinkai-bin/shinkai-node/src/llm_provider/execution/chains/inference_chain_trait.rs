@@ -391,6 +391,7 @@ pub struct FunctionCall {
     pub arguments: serde_json::Map<String, serde_json::Value>,
     pub tool_router_key: Option<String>,
     pub response: Option<String>,
+    pub index: u64,
 }
 
 impl FunctionCall {
