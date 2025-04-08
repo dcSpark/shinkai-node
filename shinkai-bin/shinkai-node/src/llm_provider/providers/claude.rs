@@ -518,6 +518,7 @@ async fn handle_non_streaming_response(
                                         arguments,
                                         tool_router_key,
                                         response: None,
+                                        index: function_calls.len() as u64,
                                     };
 
                                     function_calls.push(function_call.clone());
@@ -547,6 +548,7 @@ async fn handle_non_streaming_response(
                                                     type_: ToolStatusType::Running,
                                                     reason: None,
                                                 },
+                                                index: function_call.index,
                                             };
 
                                             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
