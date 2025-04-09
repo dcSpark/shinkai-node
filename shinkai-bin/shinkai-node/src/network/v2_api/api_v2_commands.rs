@@ -48,6 +48,7 @@ use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalCom
 use std::time::Instant;
 use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use std::collections::HashMap;
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -2085,6 +2086,39 @@ impl Node {
                 };
                 let _ = res.send(Err(api_error)).await;
             }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_set_preferences(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        payload: HashMap<String, serde_json::Value>,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut errors = vec![];
+        for (key, value) in payload {
+            if let Err(e) = db.set_preference(&key, &value, None) {
+                errors.push(format!("Failed to set preference '{}': {}", key, e));
+            }
+        }
+
+        if errors.is_empty() {
+            let _ = res.send(Ok("Preferences set successfully".to_string())).await;
+        } else {
+            let error_message = errors.join("; ");
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: error_message,
+            };
+            let _ = res.send(Err(api_error)).await;
         }
 
         Ok(())

@@ -1327,4 +1327,9 @@ pub enum NodeCommand {
         second_path: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiSetPreferences {
+        bearer: String,
+        payload: HashMap<String, serde_json::Value>,
+        res: Sender<Result<String, APIError>>,
+    },
 }
