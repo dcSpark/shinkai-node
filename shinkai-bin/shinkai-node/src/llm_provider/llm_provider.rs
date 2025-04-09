@@ -43,7 +43,11 @@ impl LLMProvider {
         db: Arc<SqliteManager>,
     ) -> Self {
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(300)) // 5 min TTFT
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .tcp_keepalive(std::time::Duration::from_secs(120))
+            .http2_keep_alive_interval(std::time::Duration::from_secs(60))
+            .http2_keep_alive_timeout(std::time::Duration::from_secs(20))
+            .http2_keep_alive_while_idle(true)
             .build()
             .unwrap();
         Self {
