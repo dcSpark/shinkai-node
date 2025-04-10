@@ -182,7 +182,7 @@ mod tests {
             input_args,
             output_arg,
             vec![],
-            RunnerType::Node,
+            RunnerType::Any,
             vec![OperatingSystem::Linux],
             None,
             None,
