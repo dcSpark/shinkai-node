@@ -2,8 +2,10 @@ use super::parameters::{Parameters, Property};
 use super::tool_config::{OAuth, ToolConfig};
 use super::tool_output_arg::ToolOutputArg;
 use super::tool_types::{OperatingSystem, RunnerType};
+use super::error::ToolError;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AgentTool {
@@ -23,7 +25,7 @@ pub struct AgentTool {
     pub runner: RunnerType,
     pub operating_system: Vec<OperatingSystem>,
     pub tool_set: Option<String>,
-    pub oauth: Option<OAuth>,
+    pub oauth: Option<Vec<OAuth>>,
 }
 
 impl AgentTool {
@@ -40,7 +42,7 @@ impl AgentTool {
         operating_system: Vec<OperatingSystem>,
         tool_set: Option<String>,
         homepage: Option<String>,
-        oauth: Option<OAuth>,
+        oauth: Option<Vec<OAuth>>,
     ) -> Self {
         AgentTool {
             version,
@@ -116,10 +118,10 @@ impl AgentTool {
         is_test: bool,
         tool_name: Option<String>,
         additional_files: Option<Vec<String>>,
-    ) -> Result<serde_json::Value, super::tool_error::ToolError> {
+    ) -> Result<serde_json::Value, ToolError> {
         let prompt = function_args["prompt"]
             .as_str()
-            .ok_or_else(|| super::tool_error::ToolError::ExecutionError("Missing prompt parameter".to_string()))?
+            .ok_or_else(|| ToolError::ExecutionError("Missing prompt parameter".to_string()))?
             .to_string();
         
         let images = function_args.get("images").and_then(|v| {
