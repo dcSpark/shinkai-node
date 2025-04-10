@@ -3198,6 +3198,18 @@ impl Node {
                     ).await;
                 });
             }
+            NodeCommand::V2ApiCallAgentWithPrompt { bearer, agent_id, prompt, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_clone = self.clone();
+                tokio::spawn(async move {
+                    let _ = node_clone.v2_api_call_agent_with_prompt(
+                        bearer,
+                        agent_id,
+                        prompt,
+                        res
+                    ).await;
+                });
+            }
             _ => (),
         }
     }

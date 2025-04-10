@@ -13,8 +13,10 @@ use shinkai_message_primitives::{
         job::{ForkedJob, JobLike},
         job_config::JobConfig,
         llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider},
+        prompts::Prompt,
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
         smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox},
+        subprompts::SubPromptType,
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData},
@@ -35,6 +37,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
     llm_provider::job_manager::JobManager,
+    llm_provider::llm_stopper::LLMStopper,
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
 };
@@ -1922,6 +1925,81 @@ impl Node {
 
         // Send success response
         let _ = res.send(Ok("Messages added successfully".to_string())).await;
+
+        Ok(())
+    }
+
+    pub async fn v2_api_call_agent_with_prompt(
+        &self,
+        bearer: String,
+        agent_id: String,
+        prompt: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, self.db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let providers_and_agents = match JobManager::get_all_agents_and_llm_providers(self.db.clone()).await {
+            Ok(providers) => providers,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get agents: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let agent = providers_and_agents
+            .iter()
+            .find(|p| p.get_id().to_lowercase() == agent_id.to_lowercase());
+
+        if agent.is_none() {
+            let api_error = APIError {
+                code: StatusCode::NOT_FOUND.as_u16(),
+                error: "Not Found".to_string(),
+                message: format!("Agent with ID {} not found", agent_id),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let agent = agent.unwrap().clone();
+
+        let mut filled_prompt = Prompt::new();
+        
+        let system_prompt = "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string();
+        filled_prompt.add_content(system_prompt, SubPromptType::System, 98);
+        
+        filled_prompt.add_content(prompt, SubPromptType::UserLastMessage, 100);
+
+        let llm_stopper = Arc::new(LLMStopper::new());
+        
+        match JobManager::inference_with_llm_provider(
+            agent,
+            filled_prompt,
+            None, // inbox_name
+            None, // ws_manager_trait
+            None, // config
+            llm_stopper,
+            self.db.clone(),
+        ).await {
+            Ok(response) => {
+                let _ = res.send(Ok(response.content)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get response from agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
 
         Ok(())
     }

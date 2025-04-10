@@ -1332,4 +1332,10 @@ pub enum NodeCommand {
         payload: HashMap<String, serde_json::Value>,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiCallAgentWithPrompt {
+        bearer: String,
+        agent_id: String,
+        prompt: String,
+        res: Sender<Result<String, APIError>>,
+    },
 }
