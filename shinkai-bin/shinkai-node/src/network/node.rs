@@ -1430,7 +1430,7 @@ impl Node {
             let mut reader = reader.lock().await;
             reader.read_exact(&mut len_buffer).await
         };
-        
+
         if let Err(e) = read_result {
             shinkai_log(
                 ShinkaiLogOption::Node,
@@ -1439,7 +1439,7 @@ impl Node {
             );
             return;
         }
-        
+
         let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
 
         let mut buffer = vec![0u8; validation_data_len];
@@ -1543,7 +1543,7 @@ impl Node {
                     let mut reader = reader.lock().await;
                     reader.read_exact(&mut len_buffer).await
                 };
-                
+
                 if let Err(e) = read_result {
                     shinkai_log(
                         ShinkaiLogOption::Node,
@@ -1552,7 +1552,7 @@ impl Node {
                     );
                     return;
                 }
-                
+
                 let response_len = u32::from_be_bytes(len_buffer) as usize;
 
                 let mut response_buffer = vec![0u8; response_len];
@@ -1560,7 +1560,7 @@ impl Node {
                     let mut reader = reader.lock().await;
                     reader.read_exact(&mut response_buffer).await
                 };
-                
+
                 if let Err(e) = read_result {
                     shinkai_log(
                         ShinkaiLogOption::Node,
@@ -1569,7 +1569,7 @@ impl Node {
                     );
                     return;
                 }
-                
+
                 let response = match String::from_utf8(response_buffer) {
                     Ok(s) => s,
                     Err(e) => {
@@ -1619,8 +1619,8 @@ impl Node {
     fn create_default_llm_providers(node_name: &ShinkaiName) -> Vec<SerializedLLMProvider> {
         vec![
             SerializedLLMProvider {
-                id: "free_shinkai".to_string(),
-                full_identity_name: ShinkaiName::new(format!("{}/main/agent/free_shinkai", node_name.full_name))
+                id: "shinkai_free_trial".to_string(),
+                full_identity_name: ShinkaiName::new(format!("{}/main/agent/shinkai_free_trial", node_name.full_name))
                     .unwrap(),
                 external_url: Some("https://api.shinkai.com/inference".to_string()),
                 api_key: None,
