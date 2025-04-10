@@ -842,6 +842,70 @@ impl ToolRouter {
                     function_call,
                 });
             }
+            ShinkaiTool::Agent(agent_tool, _is_enabled) => {
+                let prompt = function_args["prompt"].as_str().ok_or_else(|| {
+                    LLMProviderError::FunctionExecutionError("Missing prompt parameter".to_string())
+                })?;
+                
+                let images = function_args.get("images").and_then(|v| {
+                    if v.is_array() {
+                        Some(v.as_array().unwrap().iter()
+                            .filter_map(|img| img.as_str().map(|s| s.to_string()))
+                            .collect::<Vec<String>>())
+                    } else {
+                        None
+                    }
+                });
+                
+                let session_id = function_args.get("session_id").and_then(|v| v.as_str().map(|s| s.to_string()));
+                
+                let job_manager = match &self.job_manager {
+                    Some(jm) => jm.clone(),
+                    None => return Err(LLMProviderError::FunctionExecutionError(
+                        "Job manager is not available".to_string(),
+                    )),
+                };
+                
+                // Get app_id from Cron UI if present, otherwise use job_id
+                let app_id = match context.full_job().associated_ui().as_ref() {
+                    Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
+                    _ => context.full_job().job_id().to_string(),
+                };
+                
+                let function_config = shinkai_tool.get_config_from_env();
+                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+                
+                let node_env = fetch_node_environment();
+                let node_storage_path = node_env
+                    .node_storage_path
+                    .clone()
+                    .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
+                
+                let result = if let Some(session_id) = session_id {
+                    serde_json::json!({
+                        "result": "Agent executed with existing session",
+                        "session_id": session_id,
+                        "prompt": prompt,
+                        "images": images,
+                    })
+                } else {
+                    let new_session_id = format!("session_{}", uuid::Uuid::new_v4());
+                    serde_json::json!({
+                        "result": "New agent session created",
+                        "session_id": new_session_id,
+                        "prompt": prompt,
+                        "images": images,
+                    })
+                };
+                
+                let result_str = serde_json::to_string(&result)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                
+                return Ok(ToolCallFunctionResponse {
+                    response: result_str,
+                    function_call,
+                });
+            }
             ShinkaiTool::Network(network_tool, _is_enabled) => {
                 eprintln!("network tool with name {:?}", network_tool.name);
 
