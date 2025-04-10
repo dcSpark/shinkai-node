@@ -20,3 +20,4 @@ anyhow = { workspace = true }
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 serde = { workspace = true, features = ["derive"] }
 base64 = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
