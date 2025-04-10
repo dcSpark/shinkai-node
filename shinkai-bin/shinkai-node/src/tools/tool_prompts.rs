@@ -174,7 +174,8 @@ class OUTPUT:
     pass
 
 async def run(config: CONFIG, inputs: INPUTS) -> OUTPUT:
-    output = Output()
+    output = OUTPUT()
+    # ouput.key1 = value1
     return output
   ```
   * Update CONFIG, INPUTS and OUTPUT as follows but with the correct members to correcly implement the input_command tag.
@@ -207,6 +208,7 @@ class OUTPUT:
   * Write only valid {language} code, so the complete printed code can be directly executed.
   * Only if required any additional notes, comments or explanation lines should be prefixed with # character.
   * Write a single implementation file, only one typescript code block.
+  * When building the return OUTPUT, assign fields with dots as `output = OUTPUT()\nouput.key1 = value1` because the OUTPUT class does not have a constructor.
   * Implements the code in {language} for the following input_command tag
 </agent_code_implementation>
 
