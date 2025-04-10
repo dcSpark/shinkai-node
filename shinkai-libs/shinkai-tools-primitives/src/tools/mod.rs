@@ -1,3 +1,4 @@
+pub mod agent_tools;
 pub mod deno_tools;
 pub mod deprecated_argument;
 pub mod error;
