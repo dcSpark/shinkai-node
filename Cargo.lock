@@ -7206,6 +7206,7 @@ dependencies = [
  "shinkai_message_primitives",
  "shinkai_tools_runner",
  "tokio",
+ "uuid 1.11.0",
 ]
 
 [[package]]
