@@ -1989,7 +1989,7 @@ impl Node {
             db.clone(),
         ).await {
             Ok(response) => {
-                let _ = res.send(Ok(response.content)).await;
+                let _ = res.send(Ok(response.response_string)).await;
             }
             Err(err) => {
                 let api_error = APIError {
