@@ -3199,9 +3199,10 @@ impl Node {
                 });
             }
             NodeCommand::V2ApiCallAgentWithPrompt { bearer, agent_id, prompt, res } => {
-                let node_clone = self.clone();
+                let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = node_clone.v2_api_call_agent_with_prompt(
+                    let _ = Node::v2_api_call_agent_with_prompt(
+                        db_clone,
                         bearer,
                         agent_id,
                         prompt,

@@ -1930,18 +1930,18 @@ impl Node {
     }
 
     pub async fn v2_api_call_agent_with_prompt(
-        &self,
+        db: Arc<SqliteManager>,
         bearer: String,
         agent_id: String,
         prompt: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
-        if Self::validate_bearer_token(&bearer, self.db.clone(), &res).await.is_err() {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        let providers_and_agents = match JobManager::get_all_agents_and_llm_providers(self.db.clone()).await {
+        let providers_and_agents = match JobManager::get_all_agents_and_llm_providers(db.clone()).await {
             Ok(providers) => providers,
             Err(err) => {
                 let api_error = APIError {
@@ -1986,7 +1986,7 @@ impl Node {
             None, // ws_manager_trait
             None, // config
             llm_stopper,
-            self.db.clone(),
+            db.clone(),
         ).await {
             Ok(response) => {
                 let _ = res.send(Ok(response.response_string)).await;
