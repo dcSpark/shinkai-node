@@ -170,6 +170,36 @@ async fn handle_streaming_response(
         .send()
         .await?;
 
+    // Check if it's an error response
+    if !res.status().is_success() {
+        let error_json: serde_json::Value = res.json().await?;
+        if let Some(error) = error_json.get("error") {
+            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+        }
+        return Err(LLMProviderError::APIError("AI Provider API Error: Unknown error occurred".to_string()));
+    }
+
+    // Check content type to determine if it's a stream
+    let content_type = res.headers().get("content-type").and_then(|v| v.to_str().ok());
+    let is_stream = match content_type {
+        Some(ct) => {
+            ct.contains("text/event-stream")
+                || (ct.contains("application/json") && res.headers().contains_key("transfer-encoding"))
+        }
+        None => false,
+    };
+
+    if !is_stream {
+        // Handle as regular JSON response
+        let response_json: serde_json::Value = res.json().await?;
+        if let Some(error) = response_json.get("error") {
+            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+        }
+        return Err(LLMProviderError::APIError("AI Provider API Error: Expected streaming response but received regular JSON".to_string()));
+    }        
+
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
     let mut buffer = String::new();
