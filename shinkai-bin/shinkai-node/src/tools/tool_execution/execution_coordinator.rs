@@ -269,6 +269,7 @@ pub async fn execute_tool_cmd(
     parameters: Map<String, Value>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     llm_provider: String,
     extra_config: Vec<ToolConfig>,
     identity_manager: Arc<Mutex<IdentityManager>>,
@@ -309,6 +310,7 @@ pub async fn execute_tool_cmd(
                 llm_provider.clone(),
                 app_id.clone(),
                 tool_id.clone(),
+                agent_id.clone(),
                 tool_router_key.clone(),
                 "".to_string(), // TODO Pass data from the API
                 &python_tool.oauth,
@@ -367,6 +369,7 @@ pub async fn execute_tool_cmd(
                 llm_provider.clone(),
                 app_id.clone(),
                 tool_id.clone(),
+                agent_id.clone(),
                 tool_router_key.clone(),
                 "".to_string(), // TODO Pass data from the API
                 &deno_tool.oauth,
@@ -431,6 +434,7 @@ pub async fn execute_mcp_tool_cmd(
     parameters: Map<String, Value>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     extra_config: Vec<ToolConfig>,
     identity_manager: Arc<Mutex<IdentityManager>>,
     job_manager: Arc<Mutex<JobManager>>,
@@ -451,7 +455,8 @@ pub async fn execute_mcp_tool_cmd(
     let preferences_llm_provider_result = match db.get_preference::<String>("default_llm_provider") {
         Ok(Some(provider_id)) => {
             // HARDCODED MAIN PROFILE NAME
-            let profile_name = ShinkaiName::new(format!("{}/main/agent/mcp_default", node_name.get_node_name_string())).unwrap();
+            let profile_name =
+                ShinkaiName::new(format!("{}/main/agent/mcp_default", node_name.get_node_name_string())).unwrap();
             match db.get_llm_provider(&provider_id, &profile_name) {
                 Ok(Some(provider)) => {
                     // Successfully found the preferred provider
@@ -497,6 +502,7 @@ pub async fn execute_mcp_tool_cmd(
         parameters,
         tool_id,
         app_id,
+        agent_id,
         llm_provider,
         extra_config,
         identity_manager,
@@ -519,6 +525,7 @@ pub async fn execute_code(
     db: Arc<SqliteManager>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     llm_provider: String,
     bearer: String,
     node_name: ShinkaiName,
@@ -553,6 +560,7 @@ pub async fn execute_code(
                 oauth.clone(),
                 tool_id,
                 app_id,
+                agent_id,
                 llm_provider,
                 support_files,
                 code,
@@ -575,6 +583,7 @@ pub async fn execute_code(
                 oauth.clone(),
                 tool_id,
                 app_id,
+                agent_id,
                 llm_provider,
                 support_files,
                 code,

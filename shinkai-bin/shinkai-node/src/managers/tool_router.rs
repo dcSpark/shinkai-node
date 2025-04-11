@@ -629,6 +629,12 @@ impl ToolRouter {
         unique_files.extend(additional_files.into_iter());
         let all_files: Vec<_> = unique_files.into_iter().collect();
 
+        let agent_id = if let ProviderOrAgent::Agent(agent) = context.agent() {
+            Some(agent.clone().agent_id)
+        } else {
+            None
+        };
+
         match shinkai_tool {
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
@@ -661,12 +667,12 @@ impl ToolRouter {
                     generate_tool_definitions(tools, CodeLanguage::Python, self.sqlite_manager.clone(), false)
                         .await
                         .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
-
                 let envs = generate_execution_environment(
                     context.db(),
                     context.agent().clone().get_id().to_string(),
                     tool_id.clone(),
                     app_id.clone(),
+                    agent_id,
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     app_id.clone(),
                     &python_tool.oauth,
@@ -803,6 +809,7 @@ impl ToolRouter {
                     context.agent().clone().get_id().to_string(),
                     app_id.clone(),
                     tool_id.clone(),
+                    agent_id,
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     app_id.clone(),
                     &deno_tool.oauth,
@@ -1167,6 +1174,7 @@ impl ToolRouter {
             "".to_string(),
             format!("xid-{}", app_id),
             format!("xid-{}", tool_id),
+            None,
             shinkai_tool.tool_router_key().clone().to_string_without_version(),
             // TODO: Pass data from the API
             "".to_string(),
