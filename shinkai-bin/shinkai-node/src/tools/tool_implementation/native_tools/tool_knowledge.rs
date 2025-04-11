@@ -3,6 +3,7 @@ use shinkai_message_primitives::schemas::subprompts::SubPrompt;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::Parameters;
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
 use std::sync::Arc;
 
@@ -82,6 +83,7 @@ impl ToolExecutor for KnowledgeTool {
         _signing_secret_key_clone: SigningKey,
         parameters: &Map<String, Value>,
         _llm_provider: String,
+        _configs: &Vec<ToolConfig>,
     ) -> Result<Value, ToolError> {
         // TODO: define parameters (job: check and direct inbox_id: missing)
         // TODO: how do we use app_id here? is it linked to a job somehow?

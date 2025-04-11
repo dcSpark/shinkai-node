@@ -1,5 +1,6 @@
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::{shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -218,6 +219,7 @@ impl ToolExecutor for TypescriptUnsafeProcessorTool {
         _signing_secret_key_clone: SigningKey,
         parameters: &Map<String, Value>,
         llm_provider: String,
+        _configs: &Vec<ToolConfig>,
     ) -> Result<Value, ToolError> {
         let profile_name = ShinkaiName::from_node_and_profile_names(node_name.node_name, "main".to_string())
             .map_err(|e| ToolError::ExecutionError(format!("Failed to get profile name: {}", e)))?;

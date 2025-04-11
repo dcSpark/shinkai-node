@@ -219,6 +219,7 @@ async fn select_tool_router_key_from_intent(
         signing_secret_key_clone,
         &parameters,
         llm_provider,
+        &vec![],
     )
     .await?;
 
@@ -263,6 +264,7 @@ impl ToolExecutor for ConfigSetupTool {
         signing_secret_key_clone: SigningKey,
         parameters: &Map<String, Value>,
         llm_provider: String,
+        _configs: &Vec<ToolConfig>,
     ) -> Result<Value, ToolError> {
         let tool_router_key = parameters
             .get("tool_router_key")

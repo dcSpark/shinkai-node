@@ -1,6 +1,7 @@
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::{
     error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
 };
@@ -93,6 +94,7 @@ impl ToolExecutor for LlmPromptProcessorTool {
         signing_secret_key_clone: SigningKey,
         parameters: &Map<String, Value>,
         llm_provider: String,
+        _configs: &Vec<ToolConfig>,
     ) -> Result<Value, ToolError> {
         let content = parameters
             .get("prompt")

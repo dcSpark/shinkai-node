@@ -284,7 +284,7 @@ pub async fn execute_tool_cmd(
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
 
     match tool {
-        ShinkaiTool::Rust(_, _) => {
+        ShinkaiTool::Rust(rust_tool, _) => {
             try_to_execute_rust_tool(
                 &tool_router_key,
                 parameters,
@@ -300,6 +300,7 @@ pub async fn execute_tool_cmd(
                 encryption_secret_key,
                 encryption_public_key,
                 signing_secret_key,
+                &rust_tool.config
             )
             .await
         }

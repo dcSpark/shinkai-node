@@ -34,6 +34,7 @@ pub async fn try_to_execute_rust_tool(
     encryption_secret_key: EncryptionStaticKey,
     encryption_public_key: EncryptionPublicKey,
     signing_secret_key: SigningKey,
+    configs: &Vec<ToolConfig>,
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
 
@@ -53,6 +54,7 @@ pub async fn try_to_execute_rust_tool(
                 signing_secret_key,
                 &parameters,
                 llm_provider,
+                configs,
             )
             .await
         }
@@ -70,6 +72,7 @@ pub async fn try_to_execute_rust_tool(
                 signing_secret_key,
                 &parameters,
                 llm_provider,
+                configs,
             )
             .await
         }
@@ -87,6 +90,7 @@ pub async fn try_to_execute_rust_tool(
                 signing_secret_key,
                 &parameters,
                 llm_provider,
+                configs,
             )
             .await
         }
@@ -104,6 +108,7 @@ pub async fn try_to_execute_rust_tool(
                 signing_secret_key,
                 &parameters,
                 llm_provider,
+                configs,
             )
             .await
         }
@@ -121,6 +126,7 @@ pub async fn try_to_execute_rust_tool(
                 signing_secret_key,
                 &parameters,
                 llm_provider,
+                configs,
             )
             .await
         }
@@ -138,6 +144,7 @@ pub async fn try_to_execute_rust_tool(
                 signing_secret_key,
                 &parameters,
                 llm_provider,
+                configs,
             )
             .await
         }

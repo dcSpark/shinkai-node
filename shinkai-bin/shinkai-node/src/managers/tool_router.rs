@@ -377,6 +377,7 @@ impl ToolRouter {
                 tool.output_arg,
                 None,
                 tool.tool_router_key,
+                tool.config.unwrap_or_default(),
             );
 
             let _ = match self.sqlite_manager.get_tool_by_key(&rust_tool.tool_router_key) {
@@ -756,6 +757,7 @@ impl ToolRouter {
                     self.encryption_secret_key.clone(),
                     self.encryption_public_key.clone(),
                     self.signing_secret_key.clone(),
+                    &rust_tool.config,
                 )
                 .await?;
 

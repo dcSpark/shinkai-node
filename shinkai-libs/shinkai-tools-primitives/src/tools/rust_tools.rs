@@ -6,6 +6,7 @@ use crate::tools::error::ToolError;
 
 use super::parameters::Parameters;
 use super::shinkai_tool::ShinkaiToolHeader;
+use super::tool_config::ToolConfig;
 use super::tool_output_arg::ToolOutputArg;
 
 #[derive(Debug)]
@@ -34,6 +35,7 @@ pub struct RustTool {
     pub tool_embedding: Option<Vec<f32>>,
     pub tool_router_key: String,
     pub mcp_enabled: Option<bool>,
+    pub config: Vec<ToolConfig>,
 }
 
 impl RustTool {
@@ -44,6 +46,7 @@ impl RustTool {
         output_arg: ToolOutputArg,
         tool_embedding: Option<Vec<f32>>,
         tool_router_key: String,
+        config: Vec<ToolConfig>,
     ) -> Self {
         Self {
             name: utils::clean_string(&name),
@@ -53,6 +56,7 @@ impl RustTool {
             tool_embedding,
             tool_router_key,
             mcp_enabled: Some(false),
+            config,
         }
     }
 
@@ -80,6 +84,7 @@ impl RustTool {
             tool_embedding: None, // Assuming no embedding is provided in the header
             tool_router_key: header.tool_router_key.clone(),
             mcp_enabled: header.mcp_enabled,
+            config: header.config.clone().unwrap_or_default(),
         })
     }
 }

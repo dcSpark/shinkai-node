@@ -2,6 +2,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::utils::count_tokens_from_message_llama3;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::parameters::{Parameters, Property};
+use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::{
     error::ToolError, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg,
 };
@@ -437,6 +438,7 @@ impl ToolExecutor for LlmMapReduceProcessorTool {
         signing_secret_key: SigningKey,
         parameters: &Map<String, Value>,
         llm_provider: String,
+        _configs: &Vec<ToolConfig>,
     ) -> Result<Value, ToolError> {
         // Extract the user request and the long text.
         let prompt = parameters
