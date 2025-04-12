@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::openai_api_deprecated::{openai_prepare_messages_deprecated, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -70,7 +70,7 @@ impl LLMService for OpenRouter {
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
                 // Note: we can use prepare_messages directly or we could have called ModelCapabilitiesManager
-                let result = openai_prepare_messages(&model, prompt)?;
+                let result = openai_prepare_messages_deprecated(&model, prompt)?;
                 let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
@@ -231,6 +231,8 @@ async fn handle_streaming_response(
                                                 tool_router_key,
                                                 response: None,
                                                 index: function_calls.len() as u64,
+                                                id: None,
+                                                call_type: Some("function".to_string()),
                                             });
                                         }
                                     }
@@ -431,9 +433,11 @@ async fn handle_non_streaming_response(
                                 FunctionCall {
                                     name: fc.name,
                                     arguments,
-                                    tool_router_key, // Include tool_router_key
+                                    tool_router_key,
                                     response: None,
                                     index: 0,
+                                    id: None,
+                                    call_type: Some("function".to_string()),
                                 }
                             })
                         });

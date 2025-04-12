@@ -106,7 +106,10 @@ pub struct Usage {
     total_time: Option<f64>,
 }
 
-pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> Result<PromptResult, LLMProviderError> {
+pub fn openai_prepare_messages_deprecated(
+    model: &LLMProviderInterface,
+    prompt: Prompt,
+) -> Result<PromptResult, LLMProviderError> {
     let mut prompt = prompt.clone();
 
     // If this is a reasoning model, filter out system prompts before any processing
@@ -201,6 +204,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     };
 
     // Flatten the tools array to extract functions directly
+    // TODO: this is to support the old functions format. We need to update it to tools
     let tools_vec = match tools_json {
         serde_json::Value::Array(arr) => arr
             .into_iter()
@@ -210,17 +214,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                     map.remove("functions")
                         .and_then(|functions| {
                             if let serde_json::Value::Array(funcs) = functions {
-                                Some(
-                                    funcs
-                                        .into_iter()
-                                        .map(|func| {
-                                            serde_json::json!({
-                                                "type": "function",
-                                                "function": func
-                                            })
-                                        })
-                                        .collect::<Vec<_>>(),
-                                )
+                                Some(funcs)
                             } else {
                                 None
                             }
@@ -229,6 +223,92 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                 } else {
                     vec![]
                 }
+            })
+            .collect(),
+        _ => vec![],
+    };
+
+    Ok(PromptResult {
+        messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
+        functions: Some(tools_vec),
+        remaining_output_tokens,
+        tokens_used: used_tokens,
+    })
+}
+
+pub fn openai_prepare_messages_gemini(
+    model: &LLMProviderInterface,
+    prompt: Prompt,
+) -> Result<PromptResult, LLMProviderError> {
+    let max_input_tokens = ModelCapabilitiesManager::get_max_input_tokens(model);
+
+    // Generate the messages and filter out images
+    let chat_completion_messages = prompt.generate_llm_messages(
+        Some(max_input_tokens),
+        Some("function".to_string()),
+        &ModelCapabilitiesManager::num_tokens_from_llama3,
+    )?;
+
+    // Get a more accurate estimate of the number of used tokens
+    let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
+    // Calculate the remaining output tokens available
+    let remaining_output_tokens = ModelCapabilitiesManager::get_remaining_output_tokens(model, used_tokens);
+
+    // Separate messages into those with a valid role and those without
+    let (messages_with_role, tools): (Vec<_>, Vec<_>) = chat_completion_messages
+        .into_iter()
+        .partition(|message| message.role.is_some());
+
+    // Convert messages to serde Value
+    let messages_json = serde_json::to_value(messages_with_role)?;
+
+    // Convert tools to the new Gemini format
+    let tools_vec: Vec<serde_json::Value> = tools
+        .into_iter()
+        .flat_map(|tool| {
+            tool.functions.unwrap_or_default().into_iter().map(|function| {
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": function.name.chars()
+                            .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+                            .collect::<String>()
+                            .to_lowercase(),
+                        "description": function.description,
+                        "parameters": function.parameters
+                    }
+                })
+            })
+        })
+        .collect();
+
+    // Process messages similar to the original function
+    let messages_vec = match messages_json {
+        serde_json::Value::Array(arr) => arr
+            .into_iter()
+            .map(|mut message| {
+                let images = message.get("images").cloned();
+                let text = message.get("content").cloned();
+
+                if let Some(serde_json::Value::Array(images_array)) = images {
+                    let mut content = vec![];
+                    if let Some(text) = text {
+                        content.push(serde_json::json!({"type": "text", "text": text}));
+                    }
+                    for image in images_array {
+                        if let serde_json::Value::String(image_str) = image {
+                            if let Some(image_type) = shared_model_logic::get_image_type(&image_str) {
+                                content.push(serde_json::json!({
+                                    "type": "image_url",
+                                    "image_url": {"url": format!("data:image/{};base64,{}", image_type, image_str)}
+                                }));
+                            }
+                        }
+                    }
+                    message["content"] = serde_json::json!(content);
+                    message.as_object_mut().unwrap().remove("images");
+                }
+                message
             })
             .collect(),
         _ => vec![],
@@ -284,7 +364,7 @@ mod tests {
         let model = SerializedLLMProvider::mock_provider().model;
 
         // Call the openai_prepare_messages function
-        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+        let result = openai_prepare_messages_deprecated(&model, prompt).expect("Failed to prepare messages");
 
         // Define the expected messages and functions
         let expected_messages = json!([
@@ -540,7 +620,7 @@ mod tests {
         let model = SerializedLLMProvider::mock_provider_with_reasoning().model;
 
         // Process the prompt
-        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+        let result = openai_prepare_messages_deprecated(&model, prompt).expect("Failed to prepare messages");
 
         // Extract the messages from the result
         let messages = match &result.messages {
@@ -556,75 +636,5 @@ mod tests {
             let role = message["role"].as_str().unwrap();
             assert_eq!(role, "user", "All remaining messages should be user messages");
         }
-    }
-
-    #[test]
-    fn test_openai_tools_format() {
-        let sub_prompts = vec![
-            SubPrompt::Content(
-                SubPromptType::AvailableTool,
-                serde_json::json!({
-                    "name": "get_weather",
-                    "description": "Get the current weather in a given location",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "The city and state, e.g., San Francisco, CA"
-                            },
-                            "unit": {
-                                "type": "string",
-                                "description": "The temperature unit to use",
-                                "enum": ["celsius", "fahrenheit"]
-                            }
-                        },
-                        "required": ["location"]
-                    }
-                })
-                .to_string(),
-                98,
-            ),
-            SubPrompt::Content(SubPromptType::User, "What's the weather like?".to_string(), 100),
-        ];
-
-        let mut prompt = Prompt::new();
-        prompt.add_sub_prompts(sub_prompts);
-
-        // Use the mock provider
-        let model = SerializedLLMProvider::mock_provider().model;
-
-        // Call the openai_prepare_messages function
-        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
-
-        // Verify the tools format
-        let tools = result.functions.unwrap();
-        assert_eq!(tools.len(), 1);
-
-        let tool = &tools[0];
-        let expected_tool = serde_json::json!({
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get the current weather in a given location",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state, e.g., San Francisco, CA"
-                        },
-                        "unit": {
-                            "type": "string",
-                            "description": "The temperature unit to use",
-                            "enum": ["celsius", "fahrenheit"]
-                        }
-                    },
-                    "required": ["location"]
-                }
-            }
-        });
-
-        assert_eq!(tool, &expected_tool);
     }
 }
