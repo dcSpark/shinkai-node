@@ -389,7 +389,7 @@ impl Prompt {
                         new_message.function_call = Some(DetailedFunctionCall {
                             name: name.to_string(),
                             arguments,
-                            id: Some(call_id),
+                            id: if call_id.is_empty() { None } else { Some(call_id) },
                         });
                     }
                     current_length +=
