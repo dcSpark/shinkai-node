@@ -126,18 +126,6 @@ impl LLMService for OpenAI {
                 match serde_json::to_string_pretty(&payload) {
                     Ok(pretty_json) => {
                         eprintln!("cURL Payload: {}", pretty_json);
-
-                        // Also write to file
-                        let path = std::path::Path::new("shinkai_payloads.json");
-                        match std::fs::OpenOptions::new().create(true).append(true).open(path) {
-                            Ok(mut file) => {
-                                use std::io::Write;
-                                if let Err(e) = writeln!(file, "{}", pretty_json) {
-                                    eprintln!("Failed to write payload to file: {:?}", e);
-                                }
-                            }
-                            Err(e) => eprintln!("Failed to open payload file: {:?}", e),
-                        }
                     }
                     Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                 };
@@ -208,36 +196,21 @@ fn finalize_function_call_sync(
                 .replace(r#"\""#, "\"") // Unescape quotes
                 .to_string();
 
-            eprintln!("[DEBUG] Cleaned arguments: '{}'", cleaned_args);
-
             // Attempt to parse the accumulated arguments
             let fc_arguments = if cleaned_args.is_empty() {
-                eprintln!("[DEBUG] Arguments are empty, using empty map");
                 serde_json::Map::new()
             } else {
                 // Try to parse as is first
                 let parse_result = if cleaned_args.starts_with('{') {
-                    eprintln!("[DEBUG] Parsing JSON object as-is");
                     serde_json::from_str::<JsonValue>(&cleaned_args)
                 } else {
                     // If it doesn't start with '{', wrap it
-                    eprintln!("[DEBUG] Wrapping and parsing: {{{}}}", cleaned_args);
                     serde_json::from_str::<JsonValue>(&format!("{{{}}}", cleaned_args))
                 };
 
                 match parse_result {
-                    Ok(value) => {
-                        eprintln!("[DEBUG] Successfully parsed to: {:?}", value);
-                        value.as_object().cloned().unwrap_or_else(|| {
-                            eprintln!("[DEBUG] Failed to convert value to object: {:?}", value);
-                            serde_json::Map::new()
-                        })
-                    }
-                    Err(e) => {
-                        eprintln!("[DEBUG] Failed to parse arguments: {}", e);
-                        eprintln!("[DEBUG] Arguments string was: {}", cleaned_args);
-                        serde_json::Map::new()
-                    }
+                    Ok(value) => value.as_object().cloned().unwrap_or_else(|| serde_json::Map::new()),
+                    Err(e) => serde_json::Map::new(),
                 }
             };
 
@@ -266,7 +239,6 @@ fn finalize_function_call_sync(
                 id: Some(id),
                 call_type: partial_fc.call_type.clone(),
             };
-            eprintln!("[DEBUG] Added new function call: {:?}", new_function_call);
             function_calls.push(new_function_call);
         }
     }
@@ -516,20 +488,12 @@ pub async fn parse_openai_stream_chunk(
                             // Handle tool_calls (new format)
                             if let Some(tool_calls) = delta.get("tool_calls") {
                                 if let Some(tool_calls_array) = tool_calls.as_array() {
-                                    eprintln!("[DEBUG] Processing {} tool calls", tool_calls_array.len());
                                     // Process each tool call in the array instead of just the first one
                                     for tool_call in tool_calls_array {
                                         if let Some(function) = tool_call.get("function") {
                                             if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
                                                 let new_id = tool_call.get("id").and_then(|id| id.as_str());
                                                 let index = tool_call.get("index").and_then(|i| i.as_u64());
-
-                                                eprintln!(
-                                                    "[DEBUG] Found tool call: name={}, id={:?}, index={:?}",
-                                                    name, new_id, index
-                                                );
-                                                eprintln!("[DEBUG] Current partial_fc: name={:?}, id={:?}, is_accumulating={}", 
-                                                          partial_fc.name, partial_fc.id, partial_fc.is_accumulating);
 
                                                 // If partial_fc is in use, check both name and ID before continuing
                                                 if partial_fc.is_accumulating {
@@ -540,23 +504,13 @@ pub async fn parse_openai_stream_chunk(
                                                         _ => false,
                                                     };
 
-                                                    eprintln!(
-                                                        "[DEBUG] Comparison: same_name={}, same_id={}",
-                                                        same_name, same_id
-                                                    );
-
                                                     // Finalize if either name changed or ID changed
                                                     if !(same_name && same_id) {
-                                                        eprintln!("[DEBUG] Finalizing due to name/id change");
                                                         finalize_function_call_sync(partial_fc, function_calls, tools);
                                                     }
                                                 }
 
                                                 // Now start or continue a partial FC
-                                                eprintln!(
-                                                    "[DEBUG] Starting/continuing partial FC: name={}, id={:?}",
-                                                    name, new_id
-                                                );
                                                 partial_fc.name = Some(name.to_string());
                                                 partial_fc.is_accumulating = true;
 
@@ -573,25 +527,14 @@ pub async fn parse_openai_stream_chunk(
 
                                                 // If this tool call has arguments, process them
                                                 if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
-                                                    eprintln!("[DEBUG] Got arguments chunk: '{}'", args);
-
-                                                    // Only clear if we truly are at the first chunk of a new function
-                                                    // call
-                                                    if partial_fc.arguments.is_empty() && args.starts_with('{') {
-                                                        partial_fc.arguments.clear();
-                                                        eprintln!("[DEBUG] Cleared arguments for new function call");
-                                                    }
-
                                                     partial_fc.arguments.push_str(args);
-                                                    eprintln!("[DEBUG] Updated arguments: '{}'", partial_fc.arguments);
 
-                                                    // Check if we have a complete JSON object
+                                                    // Check if the accumulated arguments form a valid JSON object
                                                     if partial_fc.arguments.starts_with('{')
                                                         && partial_fc.arguments.ends_with('}')
                                                     {
                                                         match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
                                                             Ok(_) => {
-                                                                eprintln!("[DEBUG] Valid JSON detected, finalizing function call");
                                                                 finalize_function_call_sync(
                                                                     partial_fc,
                                                                     function_calls,
@@ -599,7 +542,6 @@ pub async fn parse_openai_stream_chunk(
                                                                 );
                                                             }
                                                             Err(e) => {
-                                                                eprintln!("[DEBUG] Not yet valid JSON: {}", e);
                                                                 // Continue accumulating
                                                             }
                                                         }
