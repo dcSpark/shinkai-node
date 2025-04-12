@@ -6,9 +6,7 @@ use serde_json::Value;
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 use super::{
-    llm_message::{DetailedFunctionCall, LlmMessage},
-    shinkai_fs::ShinkaiFileChunkCollection,
-    subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType},
+    llm_message::{DetailedFunctionCall, LlmMessage}, shinkai_fs::ShinkaiFileChunkCollection, subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType}
 };
 
 #[derive(Debug)]
@@ -45,9 +43,11 @@ impl From<serde_json::Error> for PromptError {
 pub struct Prompt {
     /// Sub-prompts that make up this prompt
     pub sub_prompts: Vec<SubPrompt>,
-    /// The lowest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
+    /// The lowest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating
+    /// priorities.
     pub lowest_priority: u8,
-    /// The highest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
+    /// The highest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for
+    /// updating priorities.
     pub highest_priority: u8,
 }
 
@@ -401,6 +401,10 @@ impl Prompt {
                     if let Some(function_call) = content.get("function_call") {
                         if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
                             new_message.name = Some(name.to_string());
+                        }
+                        // Note: This is a hacky way to get the call_id from the function_call
+                        if let Some(call_id) = function_call.get("call_id").and_then(|c| c.as_str()) {
+                            new_message.name = Some(call_id.to_string());
                         }
                     }
                     new_message.content = content.get("response").and_then(|r| r.as_str()).map(|r| r.to_string());

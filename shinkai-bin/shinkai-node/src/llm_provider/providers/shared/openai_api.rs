@@ -126,6 +126,15 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
+    eprintln!("Chat Completion Messages: {:?}", chat_completion_messages);
+
+    /*
+    input.push({                               // append result message
+        type: "function_call_output",
+        call_id: toolCall.call_id,
+        output: result.toString()
+    });
+    */
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
@@ -175,6 +184,24 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .map(|mut message| {
                 let images = message.get("images").cloned();
                 let text = message.get("content").cloned();
+                let role = message.get("role").cloned();
+                let name = message.get("name").cloned();
+
+                // Transform function response messages to the new format
+                if let (
+                    Some(serde_json::Value::String(role_str)),
+                    Some(serde_json::Value::String(content)),
+                    Some(serde_json::Value::String(name_str)),
+                ) = (&role, &text, &name)
+                {
+                    if role_str == "function" {
+                        message["content"] = serde_json::json!({
+                            "type": "function_call_output",
+                            "call_id": name_str,
+                            "output": content
+                        });
+                    }
+                }
 
                 if let Some(serde_json::Value::Array(images_array)) = images {
                     let mut content = vec![];
@@ -627,4 +654,66 @@ mod tests {
 
         assert_eq!(tool, &expected_tool);
     }
+
+    // #[test]
+    // fn test_function_response_format() {
+    //     let sub_prompts = vec![
+    //         SubPrompt::Content(SubPromptType::System, "You are a helpful assistant".to_string(), 98),
+    //         SubPrompt::Content(SubPromptType::User, "Search for Steam Deck videos".to_string(), 100),
+    //         SubPrompt::Content(
+    //             SubPromptType::FunctionCall,
+    //             serde_json::json!({
+    //                 "name": "youtube_search_api",
+    //                 "arguments": "{\"searchQuery\":\"steam deck\"}"
+    //             })
+    //             .to_string(),
+    //             50,
+    //         ),
+    //         SubPrompt::Content(
+    //             SubPromptType::FunctionResponse,
+    //             "best video about steam deck is https://youtube.com/123123".to_string(),
+    //             100,
+    //         ),
+    //     ];
+
+    //     let mut prompt = Prompt::new();
+    //     prompt.add_sub_prompts(sub_prompts);
+
+    //     // Use the mock provider
+    //     let model = SerializedLLMProvider::mock_provider().model;
+
+    //     // Call the openai_prepare_messages function
+    //     let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+
+    //     // Extract the messages from the result
+    //     let messages = match &result.messages {
+    //         PromptResultEnum::Value(value) => value.as_array().unwrap().clone(),
+    //         _ => panic!("Expected Value variant"),
+    //     };
+
+    //     // Find the function response message
+    //     let function_message = messages
+    //         .iter()
+    //         .find(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("function"))
+    //         .expect("Function message not found");
+
+    //     // Verify it has the expected structure
+    //     let content = function_message.get("content").expect("Content field not found");
+    //     assert!(content.is_object(), "Content should be an object");
+    //     assert_eq!(
+    //         content.get("type").and_then(|t| t.as_str()),
+    //         Some("function_call_output"),
+    //         "Type should be function_call_output"
+    //     );
+    //     assert_eq!(
+    //         content.get("call_id").and_then(|c| c.as_str()),
+    //         Some("youtube_search_api"),
+    //         "call_id should match function name"
+    //     );
+    //     assert_eq!(
+    //         content.get("output").and_then(|o| o.as_str()),
+    //         Some("best video about steam deck is https://youtube.com/123123"),
+    //         "Output should contain the function response text"
+    //     );
+    // }
 }

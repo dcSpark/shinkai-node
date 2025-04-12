@@ -273,7 +273,7 @@ impl GenericInferenceChain {
         // Process image files from merged paths, folders and scope
         let additional_image_files =
             Self::process_image_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
-        
+
         // Deduplicate image files based on filename (case insensitive)
         let mut deduplicated_files = HashMap::new();
         for (path, content) in image_files.iter().chain(additional_image_files.iter()) {
@@ -282,9 +282,10 @@ impl GenericInferenceChain {
                 deduplicated_files.insert(filename, (path.clone(), content.clone()));
             }
         }
-        
+
         // Convert back to original format with full paths
-        image_files = deduplicated_files.into_iter()
+        image_files = deduplicated_files
+            .into_iter()
             .map(|(_, (path, content))| (path, content))
             .collect();
 
@@ -568,7 +569,12 @@ impl GenericInferenceChain {
             merged_fs_folder_paths.clone(),
         )?;
 
-        println!("Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files", user_message, image_files.keys(), additional_files);
+        println!(
+            "Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files",
+            user_message,
+            image_files.keys(),
+            additional_files
+        );
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
             custom_system_prompt.clone(),
@@ -635,7 +641,7 @@ impl GenericInferenceChain {
 
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
-                let mut last_function_response = None;
+                let mut function_responses = Vec::new();
                 let mut should_retry = false;
 
                 for function_call in response.function_calls {
@@ -701,6 +707,13 @@ impl GenericInferenceChain {
                                     function_call_with_error.response = Some(error_msg.clone());
                                     tool_calls_history.push(function_call_with_error);
 
+                                    // Store the error response to be included in the next prompt
+                                    function_responses.push(ToolCallFunctionResponse {
+                                        function_call: function_call.clone(),
+                                        response: error_msg.clone(),
+                                    });
+
+                                    // TODO: we need to agregate errors and correct responses instead of single them out
                                     // Update prompt with error information for retry
                                     filled_prompt = JobPromptGenerator::generic_inference_prompt(
                                         db.clone(),
@@ -712,10 +725,10 @@ impl GenericInferenceChain {
                                         None,
                                         Some(full_job.step_history.clone()),
                                         tools.clone(),
-                                        Some(ToolCallFunctionResponse {
+                                        Some(vec![ToolCallFunctionResponse {
                                             function_call: function_call.clone(),
                                             response: error_msg.clone(),
-                                        }),
+                                        }]),
                                         full_job.job_id.clone(),
                                         additional_files.clone(),
                                     )
@@ -757,8 +770,8 @@ impl GenericInferenceChain {
                     )
                     .await;
 
-                    // Store the last function response to use in the next prompt
-                    last_function_response = Some(function_response);
+                    // Store all function responses to use in the next prompt
+                    function_responses.push(function_response);
                 }
 
                 let additional_files = Self::get_additional_files(
@@ -774,7 +787,7 @@ impl GenericInferenceChain {
                     continue;
                 }
 
-                // 7) Call LLM again with the response (for formatting)
+                // Call LLM again with all responses
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
                     db.clone(),
                     custom_system_prompt.clone(),
@@ -785,7 +798,7 @@ impl GenericInferenceChain {
                     None,
                     Some(full_job.step_history.clone()),
                     tools.clone(),
-                    last_function_response,
+                    Some(function_responses),
                     full_job.job_id.clone(),
                     additional_files,
                 )
