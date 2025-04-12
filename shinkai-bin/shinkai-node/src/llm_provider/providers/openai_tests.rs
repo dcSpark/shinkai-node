@@ -237,6 +237,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
 
         // Verify the function calls
         assert_eq!(function_calls.len(), 2);
+        eprintln!("Function Calls: {:?}", function_calls);
 
         // Verify first function call
         let fc1 = &function_calls[0];
@@ -245,7 +246,10 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
         assert_eq!(fc1.id, Some("call_pv0MOGlxgvBQlk3j6BFOg85Z".to_string()));
         assert_eq!(fc1.call_type, Some("function".to_string()));
 
-        let expected_args1 = serde_json::json!({});
+        let expected_args1 = serde_json::json!({
+            "location": "San Francisco, CA",
+            "unit": "Celsius"
+        });
         assert_eq!(serde_json::to_value(&fc1.arguments).unwrap(), expected_args1);
 
         // Verify second function call
@@ -255,10 +259,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
         assert_eq!(fc2.id, Some("call_nf6JwIChkn3z0iuCy7QWWo4M".to_string()));
         assert_eq!(fc2.call_type, Some("function".to_string()));
 
-        let expected_args2 = serde_json::json!({
-            "location": "San Francisco, CA",
-            "unit": "Celsius"
-        });
+        let expected_args2 = serde_json::json!({});
         assert_eq!(serde_json::to_value(&fc2.arguments).unwrap(), expected_args2);
 
         // Verify no response text since content was null
