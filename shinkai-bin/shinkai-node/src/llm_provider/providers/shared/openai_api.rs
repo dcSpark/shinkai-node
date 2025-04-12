@@ -257,6 +257,53 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         _ => vec![],
     };
 
+    // Build a new merged_messages array, collecting all tool_calls from assistant messages
+    let mut merged_messages: Vec<serde_json::Value> = Vec::new();
+    let mut first_assistant_toolcalls_index: Option<usize> = None;
+    let mut accumulated_tool_calls: Vec<serde_json::Value> = Vec::new();
+
+    for message in messages_vec {
+        let role = message.get("role").and_then(|v| v.as_str());
+        let maybe_tool_calls = message.get("tool_calls");
+
+        // Is this an assistant message that already has a "tool_calls" array?
+        let is_assistant_with_calls =
+            role == Some("assistant") && maybe_tool_calls.is_some() && maybe_tool_calls.unwrap().is_array();
+
+        if is_assistant_with_calls {
+            // If it's the first assistant-with-tool_calls message we've seen,
+            // push it to merged_messages and remember its index.
+            if first_assistant_toolcalls_index.is_none() {
+                first_assistant_toolcalls_index = Some(merged_messages.len());
+                merged_messages.push(message.clone()); // we will replace its tool_calls later
+            }
+            // Either way, accumulate this message's tool_calls
+            if let Some(serde_json::Value::Array(tc)) = maybe_tool_calls {
+                accumulated_tool_calls.extend(tc.clone());
+            }
+            // Note: do NOT push the message again here
+        } else {
+            // Any other message (including user, system, or assistant w/o tool_calls) –
+            // just push it directly into the final conversation flow
+            merged_messages.push(message);
+        }
+    }
+
+    // Finally, if we ever found an assistant-with-tool_calls,
+    // set that single message's tool_calls to the entire accumulated array.
+    if let Some(idx) = first_assistant_toolcalls_index {
+        if let Some(msg) = merged_messages.get_mut(idx) {
+            if let Some(obj) = msg.as_object_mut() {
+                obj.insert(
+                    "tool_calls".to_string(),
+                    serde_json::Value::Array(accumulated_tool_calls),
+                );
+                // Usually you'll want the content to be null in that combined message.
+                obj.insert("content".to_string(), serde_json::Value::Null);
+            }
+        }
+    }
+
     // Flatten the tools array to extract functions directly
     let tools_vec = match tools_json {
         serde_json::Value::Array(arr) => arr
@@ -292,7 +339,7 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
     };
 
     Ok(PromptResult {
-        messages: PromptResultEnum::Value(serde_json::Value::Array(messages_vec)),
+        messages: PromptResultEnum::Value(serde_json::Value::Array(merged_messages)),
         functions: Some(tools_vec),
         remaining_output_tokens,
         tokens_used: used_tokens,
@@ -743,19 +790,42 @@ mod tests {
     }
 
     #[test]
-    fn test_assistant_function_call_to_tool_calls_conversion() {
-        // Create a prompt with an assistant message using function_call
+    fn test_merge_assistant_tool_calls() {
+        // Create a prompt with multiple consecutive FunctionCall sub-prompts
         let mut prompt = Prompt::new();
         prompt.add_sub_prompts(vec![
             SubPrompt::Content(SubPromptType::System, "You are a helpful assistant".to_string(), 100),
-            SubPrompt::Content(SubPromptType::User, "Search for: steam deck".to_string(), 90),
+            SubPrompt::Content(
+                SubPromptType::User,
+                "Search for videos about steam deck".to_string(),
+                90,
+            ),
             SubPrompt::FunctionCall(
                 SubPromptType::Assistant,
                 serde_json::json!({
-                    "name": "youtube_search_api",
-                    "arguments": "{\"searchQuery\":\"steam deck\"}"
+                    "call_id": "call_ZkgL3ICnH7wfpurcoipeKgJe",
+                    "name": "youtube_transcript_fetcher",
+                    "arguments": "{\"url\":\"https://www.youtube.com/watch?v=CQU7i0Gsffw\"}"
                 }),
                 80,
+            ),
+            SubPrompt::FunctionCall(
+                SubPromptType::Assistant,
+                serde_json::json!({
+                    "call_id": "call_b9PeqXFq81UATmjmvw0CAp8v",
+                    "name": "youtube_transcript_fetcher",
+                    "arguments": "{\"url\":\"https://www.youtube.com/watch?v=96DWMkjR1jo\"}"
+                }),
+                75,
+            ),
+            SubPrompt::FunctionCall(
+                SubPromptType::Assistant,
+                serde_json::json!({
+                    "call_id": "call_BJRhdBUuvay1dprkZQiTa3lp",
+                    "name": "youtube_transcript_fetcher",
+                    "arguments": "{\"url\":\"https://www.youtube.com/watch?v=xRo7XUjqEcA\"}"
+                }),
+                70,
             ),
         ]);
 
@@ -771,28 +841,87 @@ mod tests {
             _ => panic!("Expected Value variant"),
         };
 
-        // Find the assistant message with the function call
-        let assistant_message = messages
+        // Find all assistant messages
+        let assistant_messages: Vec<_> = messages
             .iter()
-            .find(|msg| {
-                msg.get("role").and_then(|r| r.as_str()) == Some("assistant") && msg.get("function_call").is_some()
-            })
-            .expect("Assistant message with function_call not found");
+            .filter(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("assistant"))
+            .collect();
 
-        // Check that it also has tool_calls
-        assert!(
-            assistant_message.get("tool_calls").is_some(),
-            "Assistant message should have tool_calls"
+        // Verify there's only one assistant message (they were merged)
+        assert_eq!(
+            assistant_messages.len(),
+            1,
+            "Expected only 1 assistant message after merging"
         );
 
-        let tool_calls = assistant_message.get("tool_calls").unwrap().as_array().unwrap();
-        assert_eq!(tool_calls.len(), 1, "Should have one tool call");
-
-        let function = tool_calls[0].get("function").unwrap();
+        // Verify the assistant message has 3 tool calls
+        let tool_calls = assistant_messages[0]
+            .get("tool_calls")
+            .and_then(|tc| tc.as_array())
+            .unwrap();
         assert_eq!(
-            function.get("name").unwrap(),
-            "youtube_search_api",
-            "Function name should match"
+            tool_calls.len(),
+            3,
+            "Expected 3 tool calls in the merged assistant message"
+        );
+
+        // Verify the tool calls have the correct function names and arguments
+        let function_names: Vec<String> = tool_calls
+            .iter()
+            .filter_map(|tc| {
+                tc.get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|n| n.as_str())
+                    .map(String::from)
+            })
+            .collect();
+
+        assert_eq!(function_names.len(), 3, "Expected 3 function names");
+        assert!(
+            function_names.iter().all(|name| name == "youtube_transcript_fetcher"),
+            "All function names should be 'youtube_transcript_fetcher'"
+        );
+
+        // Extract the URLs from the arguments - more safely
+        let urls: Vec<String> = tool_calls
+            .iter()
+            .filter_map(|tc| {
+                tc.get("function")
+                    .and_then(|f| f.get("arguments"))
+                    .and_then(|a| a.as_str())
+                    .and_then(|args_str| {
+                        // Handle double-encoded JSON: first remove outer quotes if present
+                        let cleaned_str = if args_str.starts_with("\"") && args_str.ends_with("\"") {
+                            // Remove outer quotes and unescape inner content
+                            let inner = &args_str[1..args_str.len() - 1];
+                            // Replace escaped quotes and backslashes
+                            inner.replace("\\\"", "\"").replace("\\\\", "\\")
+                        } else {
+                            args_str.to_string()
+                        };
+
+                        // Now parse the properly formatted JSON
+                        serde_json::from_str::<serde_json::Value>(&cleaned_str).ok()
+                    })
+                    .and_then(|args_json| {
+                        // Extract the URL value
+                        args_json.get("url").and_then(|url| url.as_str()).map(String::from)
+                    })
+            })
+            .collect();
+
+        assert_eq!(urls.len(), 3, "Expected 3 URLs");
+        assert!(
+            urls.contains(&"https://www.youtube.com/watch?v=CQU7i0Gsffw".to_string()),
+            "URLs should contain the first video URL"
+        );
+        assert!(
+            urls.contains(&"https://www.youtube.com/watch?v=96DWMkjR1jo".to_string()),
+            "URLs should contain the second video URL"
+        );
+        assert!(
+            urls.contains(&"https://www.youtube.com/watch?v=xRo7XUjqEcA".to_string()),
+            "URLs should contain the third video URL"
         );
     }
 }
