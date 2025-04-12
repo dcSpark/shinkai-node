@@ -701,35 +701,100 @@ mod tests {
         // Call the openai_prepare_messages function
         let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
 
-        // Verify the tools format
-        let tools = result.functions.unwrap();
-        assert_eq!(tools.len(), 1);
+        // Extract messages to verify the tool content is included as a message
+        let messages = match &result.messages {
+            PromptResultEnum::Value(value) => value.as_array().unwrap(),
+            _ => panic!("Expected Value variant"),
+        };
 
-        let tool = &tools[0];
-        let expected_tool = serde_json::json!({
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get the current weather in a given location",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state, e.g., San Francisco, CA"
-                        },
-                        "unit": {
-                            "type": "string",
-                            "description": "The temperature unit to use",
-                            "enum": ["celsius", "fahrenheit"]
-                        }
+        // Check that we have two messages (tool and user)
+        assert_eq!(messages.len(), 2);
+
+        // First message should be the tool definition
+        let tool_message = &messages[0];
+        assert_eq!(tool_message["role"], "tool");
+
+        // Second message should be the user question
+        let user_message = &messages[1];
+        assert_eq!(user_message["role"], "user");
+        assert_eq!(user_message["content"], "What's the weather like?");
+
+        // Add a new test to verify the parsing of the new OpenAI response format with tool_calls
+        let response_text = r#"{
+            "id": "chatcmpl-BLFYlP20FFM59in39QKADGQc2i48k",
+            "object": "chat.completion",
+            "created": 1744404399,
+            "model": "gpt-4o-2024-08-06",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [
+                            {
+                                "id": "call_8Q4Ojyqmex2ifIn0Mno6o39e",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": "{\"location\":\"San Francisco, CA\"}"
+                                }
+                            }
+                        ],
+                        "refusal": null,
+                        "annotations": []
                     },
-                    "required": ["location"]
+                    "logprobs": null,
+                    "finish_reason": "tool_calls"
                 }
-            }
-        });
+            ],
+            "usage": {
+                "prompt_tokens": 92,
+                "completion_tokens": 18,
+                "total_tokens": 110,
+                "prompt_tokens_details": {
+                    "cached_tokens": 0,
+                    "audio_tokens": 0
+                },
+                "completion_tokens_details": {
+                    "reasoning_tokens": 0,
+                    "audio_tokens": 0,
+                    "accepted_prediction_tokens": 0,
+                    "rejected_prediction_tokens": 0
+                }
+            },
+            "service_tier": "default",
+            "system_fingerprint": "fp_22890b9c0a"
+        }"#;
 
-        assert_eq!(tool, &expected_tool);
+        // Deserialize the JSON string to OpenAIResponse
+        let response: OpenAIResponse = serde_json::from_str(response_text).expect("Failed to deserialize");
+
+        // Verify basic response fields
+        assert_eq!(response.id.clone().unwrap(), "chatcmpl-BLFYlP20FFM59in39QKADGQc2i48k");
+        assert_eq!(response.object, "chat.completion");
+        assert_eq!(response.created, 1744404399);
+        assert_eq!(response.system_fingerprint, Some("fp_22890b9c0a".to_string()));
+
+        // Verify choices
+        assert_eq!(response.choices.len(), 1);
+        let choice = &response.choices[0];
+        assert_eq!(choice.index, 0);
+        assert_eq!(choice.finish_reason, Some("tool_calls".to_string()));
+
+        // Verify tool calls
+        let message = &choice.message;
+        assert_eq!(message.role, "assistant");
+        assert!(message.content.is_none());
+
+        let tool_calls = message.tool_calls.as_ref().expect("Should have tool_calls");
+        assert_eq!(tool_calls.len(), 1);
+
+        let tool_call = &tool_calls[0];
+        assert_eq!(tool_call.id, "call_8Q4Ojyqmex2ifIn0Mno6o39e");
+        assert_eq!(tool_call.call_type, "function");
+        assert_eq!(tool_call.function.name, "get_weather");
+        assert_eq!(tool_call.function.arguments, "{\"location\":\"San Francisco, CA\"}");
     }
 
     #[test]
