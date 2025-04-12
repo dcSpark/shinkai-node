@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
     use super::super::openai::parse_openai_stream_chunk;
+    use super::super::openai::PartialFunctionCall;
     use serde_json;
     use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-    use std::collections::HashMap;
     use std::sync::Arc;
     use tokio;
     use tokio::sync::Mutex;
@@ -13,7 +13,13 @@ mod tests {
         let mut buffer = String::new();
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
-        let mut partial_calls = HashMap::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+            id: None,
+            call_type: None,
+        };
         let tools = Some(vec![serde_json::json!({
             "name": "youtube_search_api",
             "tool_router_key": "test_router"
@@ -46,7 +52,7 @@ data: [DONE]"#,
                 &mut buffer,
                 &mut response_text,
                 &mut function_calls,
-                &mut partial_calls,
+                &mut partial_fc,
                 &tools,
                 &ws_manager,
                 None,
@@ -76,7 +82,13 @@ data: [DONE]"#,
         let mut buffer = String::new();
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
-        let mut partial_calls = HashMap::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+            id: None,
+            call_type: None,
+        };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
 
@@ -143,7 +155,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
                 &mut buffer,
                 &mut response_text,
                 &mut function_calls,
-                &mut partial_calls,
+                &mut partial_fc,
                 &tools,
                 &ws_manager,
                 None,
@@ -166,7 +178,13 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
         let mut buffer = String::new();
         let mut response_text = String::new();
         let mut function_calls = Vec::new();
-        let mut partial_calls = HashMap::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+            id: None,
+            call_type: None,
+        };
         let tools = Some(vec![
             serde_json::json!({
                 "name": "getCurrentTemperature",
@@ -207,7 +225,7 @@ data: {"id":"chatcmpl-BLGOkzXc864uH3CZxRW9stxqzlpOl","object":"chat.completion.c
                 &mut buffer,
                 &mut response_text,
                 &mut function_calls,
-                &mut partial_calls,
+                &mut partial_fc,
                 &tools,
                 &ws_manager,
                 None,

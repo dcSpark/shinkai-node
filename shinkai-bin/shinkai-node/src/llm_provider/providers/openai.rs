@@ -54,6 +54,8 @@ pub struct PartialFunctionCall {
     pub name: Option<String>,
     pub arguments: String,
     pub is_accumulating: bool, // Track if we're currently accumulating a function call
+    pub id: Option<String>,
+    pub call_type: Option<String>,
 }
 
 #[async_trait]
@@ -112,16 +114,7 @@ impl LLMService for OpenAI {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    let formatted_tools = tools_json
-                        .iter()
-                        .map(|tool| {
-                            serde_json::json!({
-                                "type": "function",
-                                "function": tool
-                            })
-                        })
-                        .collect::<Vec<serde_json::Value>>();
-                    payload["tools"] = serde_json::Value::Array(formatted_tools);
+                    payload["tools"] = serde_json::Value::Array(tools_json.clone());
                 }
 
                 // Only add options to payload for non-reasoning models
@@ -234,12 +227,17 @@ fn finalize_function_call_sync(
             });
 
             // Build and add to the function_calls vector
+            // Use provided ID if available, otherwise generate one
+            let id = partial_fc.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+
             let new_function_call = FunctionCall {
                 name: name.clone(),
                 arguments: fc_arguments,
                 tool_router_key,
                 response: None,
                 index: function_calls.len() as u64,
+                id: Some(id),
+                call_type: partial_fc.call_type.clone(),
             };
             function_calls.push(new_function_call);
         }
@@ -249,6 +247,8 @@ fn finalize_function_call_sync(
     partial_fc.name = None;
     partial_fc.arguments.clear();
     partial_fc.is_accumulating = false;
+    partial_fc.id = None;
+    partial_fc.call_type = None;
 }
 
 pub async fn parse_openai_stream_chunk(
@@ -481,7 +481,7 @@ pub async fn parse_openai_stream_chunk(
                                 }
                             }
 
-                            // handle tools_call
+                            // Handle tool_calls (new format)
                             if let Some(tool_calls) = delta.get("tool_calls") {
                                 if let Some(tool_calls_array) = tool_calls.as_array() {
                                     if let Some(first_tool_call) = tool_calls_array.first() {
@@ -495,6 +495,18 @@ pub async fn parse_openai_stream_chunk(
                                                 }
                                                 partial_fc.name = Some(name.to_string());
                                                 partial_fc.is_accumulating = true;
+
+                                                // Store tool call ID if present
+                                                if let Some(id) = first_tool_call.get("id").and_then(|id| id.as_str()) {
+                                                    partial_fc.id = Some(id.to_string());
+                                                }
+
+                                                // Store call_type if present (defaults to "function" elsewhere)
+                                                if let Some(call_type) =
+                                                    first_tool_call.get("type").and_then(|t| t.as_str())
+                                                {
+                                                    partial_fc.call_type = Some(call_type.to_string());
+                                                }
                                             }
                                         }
                                     }
@@ -593,7 +605,7 @@ pub async fn handle_streaming_response(
                 .and_then(|h| h.get("x-shinkai-session-id"))
                 .and_then(|v| v.as_str())
                 .unwrap_or(""),
-        )        
+        )
         .json(&payload)
         .send()
         .await?;
@@ -635,6 +647,8 @@ pub async fn handle_streaming_response(
         name: None,
         arguments: String::new(),
         is_accumulating: false,
+        id: None,
+        call_type: None,
     };
 
     while let Some(item) = stream.next().await {
@@ -923,8 +937,9 @@ pub async fn handle_non_streaming_response(
                                         arguments,
                                         tool_router_key,
                                         response: None,
-                                        // Here we set 0 because it's just processing the first tool_call
                                         index: 0,
+                                        id: Some(tool_call.id.clone()),
+                                        call_type: Some(tool_call.call_type.clone()),
                                     }
                                 })
                             })
@@ -1134,7 +1149,7 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
     let function_call_prefix = r#""function_call":{"arguments":""#;
     let tool_calls_prefix = r#""tool_calls":[{"index":0,"function":{"arguments":""#;
 
-    let (prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
+    let (_prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
         (function_call_prefix, args_start_pos + function_call_prefix.len())
     } else if let Some(args_start_pos) = json_str.find(tool_calls_prefix) {
         (tool_calls_prefix, args_start_pos + tool_calls_prefix.len())
@@ -1187,6 +1202,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1232,6 +1249,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "test_function",
@@ -1295,6 +1314,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
 
@@ -1378,6 +1399,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
 
@@ -1468,6 +1491,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "shinkai_tool_config_updater",
@@ -1604,6 +1629,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "duckduckgo_search",
@@ -1780,6 +1807,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1824,6 +1853,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "stagehand_runner",
