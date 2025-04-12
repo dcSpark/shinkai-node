@@ -124,7 +124,21 @@ impl LLMService for OpenAI {
 
                 // Print payload as a pretty JSON string
                 match serde_json::to_string_pretty(&payload) {
-                    Ok(pretty_json) => eprintln!("cURL Payload: {}", pretty_json),
+                    Ok(pretty_json) => {
+                        eprintln!("cURL Payload: {}", pretty_json);
+
+                        // Also write to file
+                        let path = std::path::Path::new("shinkai_payloads.json");
+                        match std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                            Ok(mut file) => {
+                                use std::io::Write;
+                                if let Err(e) = writeln!(file, "{}", pretty_json) {
+                                    eprintln!("Failed to write payload to file: {:?}", e);
+                                }
+                            }
+                            Err(e) => eprintln!("Failed to open payload file: {:?}", e),
+                        }
+                    }
                     Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                 };
 
@@ -182,6 +196,11 @@ fn finalize_function_call_sync(
 ) {
     if let Some(ref name) = partial_fc.name {
         if !name.is_empty() {
+            eprintln!(
+                "[DEBUG] Finalizing function call: name={}, id={:?}, arguments='{}'",
+                name, partial_fc.id, partial_fc.arguments
+            );
+
             // Clean up the arguments string and unescape quotes
             let cleaned_args = partial_fc
                 .arguments
@@ -189,26 +208,34 @@ fn finalize_function_call_sync(
                 .replace(r#"\""#, "\"") // Unescape quotes
                 .to_string();
 
+            eprintln!("[DEBUG] Cleaned arguments: '{}'", cleaned_args);
+
             // Attempt to parse the accumulated arguments
             let fc_arguments = if cleaned_args.is_empty() {
+                eprintln!("[DEBUG] Arguments are empty, using empty map");
                 serde_json::Map::new()
             } else {
                 // Try to parse as is first
                 let parse_result = if cleaned_args.starts_with('{') {
+                    eprintln!("[DEBUG] Parsing JSON object as-is");
                     serde_json::from_str::<JsonValue>(&cleaned_args)
                 } else {
                     // If it doesn't start with '{', wrap it
+                    eprintln!("[DEBUG] Wrapping and parsing: {{{}}}", cleaned_args);
                     serde_json::from_str::<JsonValue>(&format!("{{{}}}", cleaned_args))
                 };
 
                 match parse_result {
-                    Ok(value) => value.as_object().cloned().unwrap_or_else(|| {
-                        eprintln!("Failed to convert value to object: {:?}", value);
-                        serde_json::Map::new()
-                    }),
+                    Ok(value) => {
+                        eprintln!("[DEBUG] Successfully parsed to: {:?}", value);
+                        value.as_object().cloned().unwrap_or_else(|| {
+                            eprintln!("[DEBUG] Failed to convert value to object: {:?}", value);
+                            serde_json::Map::new()
+                        })
+                    }
                     Err(e) => {
-                        eprintln!("Failed to parse arguments: {}", e);
-                        eprintln!("Arguments string was: {}", cleaned_args);
+                        eprintln!("[DEBUG] Failed to parse arguments: {}", e);
+                        eprintln!("[DEBUG] Arguments string was: {}", cleaned_args);
                         serde_json::Map::new()
                     }
                 }
@@ -239,11 +266,13 @@ fn finalize_function_call_sync(
                 id: Some(id),
                 call_type: partial_fc.call_type.clone(),
             };
+            eprintln!("[DEBUG] Added new function call: {:?}", new_function_call);
             function_calls.push(new_function_call);
         }
     }
 
     // Clear partial so we can accumulate a new function call in subsequent chunks
+    eprintln!("[DEBUG] Clearing partial function call");
     partial_fc.name = None;
     partial_fc.arguments.clear();
     partial_fc.is_accumulating = false;
@@ -470,7 +499,8 @@ pub async fn parse_openai_stream_chunk(
                             // If there's function_call
                             if let Some(fc) = delta.get("function_call") {
                                 if let Some(name) = fc.get("name").and_then(|n| n.as_str()) {
-                                    // If partial_fc already had a different name, finalize that first
+                                    // We don't have IDs in the legacy function_call format, but we still check for name
+                                    // changes
                                     if let Some(old_name) = &partial_fc.name {
                                         if !old_name.is_empty() && old_name != name {
                                             finalize_function_call_sync(partial_fc, function_calls, tools);
@@ -478,34 +508,102 @@ pub async fn parse_openai_stream_chunk(
                                     }
                                     partial_fc.name = Some(name.to_string());
                                     partial_fc.is_accumulating = true;
+                                    // Legacy function_call format doesn't have IDs, so we clear it
+                                    partial_fc.id = None;
                                 }
                             }
 
                             // Handle tool_calls (new format)
                             if let Some(tool_calls) = delta.get("tool_calls") {
                                 if let Some(tool_calls_array) = tool_calls.as_array() {
-                                    if let Some(first_tool_call) = tool_calls_array.first() {
-                                        if let Some(function) = first_tool_call.get("function") {
+                                    eprintln!("[DEBUG] Processing {} tool calls", tool_calls_array.len());
+                                    // Process each tool call in the array instead of just the first one
+                                    for tool_call in tool_calls_array {
+                                        if let Some(function) = tool_call.get("function") {
                                             if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
-                                                // If partial_fc already had a different name, finalize that first
-                                                if let Some(old_name) = &partial_fc.name {
-                                                    if !old_name.is_empty() && old_name != name {
+                                                let new_id = tool_call.get("id").and_then(|id| id.as_str());
+                                                let index = tool_call.get("index").and_then(|i| i.as_u64());
+
+                                                eprintln!(
+                                                    "[DEBUG] Found tool call: name={}, id={:?}, index={:?}",
+                                                    name, new_id, index
+                                                );
+                                                eprintln!("[DEBUG] Current partial_fc: name={:?}, id={:?}, is_accumulating={}", 
+                                                          partial_fc.name, partial_fc.id, partial_fc.is_accumulating);
+
+                                                // If partial_fc is in use, check both name and ID before continuing
+                                                if partial_fc.is_accumulating {
+                                                    let same_name = partial_fc.name.as_deref() == Some(name);
+                                                    let same_id = match (partial_fc.id.as_deref(), new_id) {
+                                                        (Some(old_id), Some(nid)) => old_id == nid,
+                                                        (None, None) => true,
+                                                        _ => false,
+                                                    };
+
+                                                    eprintln!(
+                                                        "[DEBUG] Comparison: same_name={}, same_id={}",
+                                                        same_name, same_id
+                                                    );
+
+                                                    // Finalize if either name changed or ID changed
+                                                    if !(same_name && same_id) {
+                                                        eprintln!("[DEBUG] Finalizing due to name/id change");
                                                         finalize_function_call_sync(partial_fc, function_calls, tools);
                                                     }
                                                 }
+
+                                                // Now start or continue a partial FC
+                                                eprintln!(
+                                                    "[DEBUG] Starting/continuing partial FC: name={}, id={:?}",
+                                                    name, new_id
+                                                );
                                                 partial_fc.name = Some(name.to_string());
                                                 partial_fc.is_accumulating = true;
 
-                                                // Store tool call ID if present
-                                                if let Some(id) = first_tool_call.get("id").and_then(|id| id.as_str()) {
+                                                // Set the ID of the current tool call
+                                                if let Some(id) = new_id {
                                                     partial_fc.id = Some(id.to_string());
                                                 }
 
-                                                // Store call_type if present (defaults to "function" elsewhere)
-                                                if let Some(call_type) =
-                                                    first_tool_call.get("type").and_then(|t| t.as_str())
+                                                // Store call_type if present
+                                                if let Some(call_type) = tool_call.get("type").and_then(|t| t.as_str())
                                                 {
                                                     partial_fc.call_type = Some(call_type.to_string());
+                                                }
+
+                                                // If this tool call has arguments, process them
+                                                if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
+                                                    eprintln!("[DEBUG] Got arguments chunk: '{}'", args);
+
+                                                    // Only clear if we truly are at the first chunk of a new function
+                                                    // call
+                                                    if partial_fc.arguments.is_empty() && args.starts_with('{') {
+                                                        partial_fc.arguments.clear();
+                                                        eprintln!("[DEBUG] Cleared arguments for new function call");
+                                                    }
+
+                                                    partial_fc.arguments.push_str(args);
+                                                    eprintln!("[DEBUG] Updated arguments: '{}'", partial_fc.arguments);
+
+                                                    // Check if we have a complete JSON object
+                                                    if partial_fc.arguments.starts_with('{')
+                                                        && partial_fc.arguments.ends_with('}')
+                                                    {
+                                                        match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
+                                                            Ok(_) => {
+                                                                eprintln!("[DEBUG] Valid JSON detected, finalizing function call");
+                                                                finalize_function_call_sync(
+                                                                    partial_fc,
+                                                                    function_calls,
+                                                                    tools,
+                                                                );
+                                                            }
+                                                            Err(e) => {
+                                                                eprintln!("[DEBUG] Not yet valid JSON: {}", e);
+                                                                // Continue accumulating
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1147,16 +1245,28 @@ async fn send_tool_ws_update(
 pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) {
     // Find the start of arguments value - check both function_call and tool_calls prefixes
     let function_call_prefix = r#""function_call":{"arguments":""#;
-    let tool_calls_prefix = r#""tool_calls":[{"index":0,"function":{"arguments":""#;
+    // Remove the ":0" part to match any index
+    let tool_calls_prefix = r#""tool_calls":[{"index":"#;
 
-    let (_prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
+    let (prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
         (function_call_prefix, args_start_pos + function_call_prefix.len())
     } else if let Some(args_start_pos) = json_str.find(tool_calls_prefix) {
-        (tool_calls_prefix, args_start_pos + tool_calls_prefix.len())
+        // Since we changed the prefix, we need to find where the actual arguments start
+        let remaining = &json_str[args_start_pos + tool_calls_prefix.len()..];
+        if let Some(args_part) = remaining.find(r#","function":{"arguments":""#) {
+            // Add offset to get to the end of the arguments prefix
+            let args_prefix_end =
+                args_start_pos + tool_calls_prefix.len() + args_part + r#","function":{"arguments":""#.len();
+            (tool_calls_prefix, args_prefix_end)
+        } else {
+            // If we can't find the arguments part, return without extracting
+            return (None, json_str.to_string());
+        }
     } else {
         return (None, json_str.to_string());
     };
 
+    // Rest of the function remains unchanged
     // Find the end of arguments value by looking for the closing quotes and braces
     // We need to handle both cases: when it's just a piece of a JSON string and
     // when it's a complete one
