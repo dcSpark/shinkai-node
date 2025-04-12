@@ -293,7 +293,8 @@ impl SheetUIInferenceChain {
             None,
             full_job.job_id.clone(),
             vec![],
-        ).await;
+        )
+        .await;
 
         let mut iteration_count = 0;
         loop {
@@ -439,10 +440,11 @@ impl SheetUIInferenceChain {
                     summary_node_text.clone(),
                     Some(full_job.step_history.clone()),
                     tools.clone(),
-                    last_function_response,
+                    last_function_response.map(|resp| vec![resp]),
                     full_job.job_id.clone(),
                     vec![],
-                ).await;
+                )
+                .await;
             } else {
                 // No more function calls required, return the final response
                 return Ok(response.response_string);

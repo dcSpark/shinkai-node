@@ -307,6 +307,8 @@ async fn handle_streaming_response(
                                     tool_router_key,
                                     response: None,
                                     index: function_calls.len() as u64,
+                                    id: None,
+                                    call_type: Some("function".to_string()),
                                 };
 
                                 function_calls.push(function_call.clone());
@@ -517,6 +519,8 @@ async fn handle_non_streaming_response(
                                         tool_router_key,
                                         response: None,
                                         index: function_calls.len() as u64,
+                                        id: None,
+                                        call_type: Some("function".to_string()),
                                     };
 
                                     function_calls.push(function_call.clone());

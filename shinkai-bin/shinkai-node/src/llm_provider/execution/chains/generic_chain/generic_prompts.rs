@@ -28,7 +28,7 @@ impl JobPromptGenerator {
         _summary_text: Option<String>,
         job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
-        function_call: Option<ToolCallFunctionResponse>,
+        function_calls: Option<Vec<ToolCallFunctionResponse>>,
         job_id: String,
         additional_files: Vec<String>,
     ) -> Prompt {
@@ -141,20 +141,22 @@ impl JobPromptGenerator {
             prompt.add_omni(content, image_files, SubPromptType::UserLastMessage, 100);
         }
 
-        // If function_call exists, it means that the LLM requested a function call and we need to send the response
-        // back
-        if let Some(function_call) = function_call {
-            // Convert FunctionCall to Value
-            let function_call_value = json!({
-                "name": function_call.function_call.name,
-                "arguments": function_call.function_call.arguments
-            });
+        // Process function calls and their responses if they exist
+        if let Some(function_calls) = function_calls {
+            for function_call in function_calls {
+                // Convert FunctionCall to Value
+                let function_call_value = json!({
+                    "name": function_call.function_call.name,
+                    "call_id": function_call.function_call.id,
+                    "arguments": function_call.function_call.arguments
+                });
 
-            // We add the assistant request to the prompt
-            prompt.add_function_call(function_call_value, 100);
+                // We add the assistant request to the prompt
+                prompt.add_function_call(function_call_value, 100);
 
-            // We add the function response to the prompt
-            prompt.add_function_call_response(serde_json::to_value(function_call).unwrap(), 100);
+                // We add the function response to the prompt
+                prompt.add_function_call_response(serde_json::to_value(function_call).unwrap(), 100);
+            }
         }
 
         // eprintln!("prompt after adding function call: {:?}", prompt);

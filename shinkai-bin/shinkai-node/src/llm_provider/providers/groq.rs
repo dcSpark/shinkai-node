@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{MessageContent, OpenAIResponse};
+use super::shared::openai_api_deprecated::{MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -19,7 +19,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Groq, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -326,6 +326,8 @@ async fn handle_streaming_response(
                                                                         tool_router_key,
                                                                         response: None,
                                                                         index: function_calls.len() as u64,
+                                                                        id: None,
+                                                                        call_type: Some("function".to_string()),
                                                                     };
                                                                     function_calls.push(function_call.clone());
 
@@ -601,6 +603,8 @@ async fn handle_non_streaming_response(
                                         tool_router_key,
                                         response: None,
                                         index: index as u64,
+                                        id: None,
+                                        call_type: Some("function".to_string()),
                                     });
                                 }
                             }

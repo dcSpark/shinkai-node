@@ -292,7 +292,10 @@ async fn process_stream(
                             ShinkaiLogLevel::Error,
                             format!("Ollama API Error: {}", error_msg).as_str(),
                         );
-                        return Err(LLMProviderError::APIError(format!("Ollama has failed to process the request: {}", error_msg)));
+                        return Err(LLMProviderError::APIError(format!(
+                            "Ollama has failed to process the request: {}",
+                            error_msg
+                        )));
                     }
                 }
 
@@ -333,6 +336,8 @@ async fn process_stream(
                                     tool_router_key,
                                     response: None,
                                     index: final_function_calls.len() as u64,
+                                    id: None,
+                                    call_type: Some("function".to_string()),
                                 };
 
                                 final_function_calls.push(function_call.clone());
@@ -392,7 +397,11 @@ async fn process_stream(
                                 let metadata = WSMetadata {
                                     id: Some(session_id.clone()),
                                     is_done: final_function_calls.is_empty() && data.done,
-                                    done_reason: if final_function_calls.is_empty() && data.done { data.done_reason.clone() } else { None },
+                                    done_reason: if final_function_calls.is_empty() && data.done {
+                                        data.done_reason.clone()
+                                    } else {
+                                        None
+                                    },
                                     total_duration: if final_function_calls.is_empty() && data.done {
                                         data.total_duration.map(|d| d as u64)
                                     } else {
@@ -535,6 +544,8 @@ async fn handle_non_streaming_response(
                                                 tool_router_key,
                                                 response: None,
                                                 index: index as u64,
+                                                id: None,
+                                                call_type: Some("function".to_string()),
                                             };
 
                                             function_calls.push(function_call.clone());

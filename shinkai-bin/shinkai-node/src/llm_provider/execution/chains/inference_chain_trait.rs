@@ -392,6 +392,9 @@ pub struct FunctionCall {
     pub tool_router_key: Option<String>,
     pub response: Option<String>,
     pub index: u64,
+    pub id: Option<String>,
+    #[serde(rename = "type")]
+    pub call_type: Option<String>,
 }
 
 impl FunctionCall {
