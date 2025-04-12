@@ -8,6 +8,7 @@ use serde_json::{self};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
+use uuid::Uuid;
 
 use super::shared_model_logic;
 
@@ -37,7 +38,7 @@ pub struct GroqInfo {
     id: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ToolCall {
     pub id: String,
     #[serde(rename = "type")]
@@ -79,13 +80,16 @@ impl Serialize for OpenAIApiMessage {
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_struct("OpenAIApiMessage", 3)?;
+        let mut map = serializer.serialize_struct("OpenAIApiMessage", 4)?;
         map.serialize_field("role", &self.role)?;
         if let Some(content) = &self.content {
             map.serialize_field("content", content)?;
         }
         if let Some(function_call) = &self.function_call {
             map.serialize_field("function_call", function_call)?;
+        }
+        if let Some(tool_calls) = &self.tool_calls {
+            map.serialize_field("tool_calls", tool_calls)?;
         }
         map.end()
     }
@@ -126,15 +130,9 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         Some("function".to_string()),
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
-    eprintln!("Chat Completion Messages: {:?}", chat_completion_messages);
 
-    /*
-    input.push({                               // append result message
-        type: "function_call_output",
-        call_id: toolCall.call_id,
-        output: result.toString()
-    });
-    */
+    // TODO: Remove this
+    eprintln!("Chat Completion Messages: {:?}", chat_completion_messages);
 
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
@@ -184,24 +182,6 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
             .map(|mut message| {
                 let images = message.get("images").cloned();
                 let text = message.get("content").cloned();
-                let role = message.get("role").cloned();
-                let name = message.get("name").cloned();
-
-                // Transform function response messages to the new format
-                if let (
-                    Some(serde_json::Value::String(role_str)),
-                    Some(serde_json::Value::String(content)),
-                    Some(serde_json::Value::String(name_str)),
-                ) = (&role, &text, &name)
-                {
-                    if role_str == "function" {
-                        message["content"] = serde_json::json!({
-                            "type": "function_call_output",
-                            "call_id": name_str,
-                            "output": content
-                        });
-                    }
-                }
 
                 if let Some(serde_json::Value::Array(images_array)) = images {
                     let mut content = vec![];
@@ -221,6 +201,56 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
                     message["content"] = serde_json::json!(content);
                     message.as_object_mut().unwrap().remove("images");
                 }
+
+                // Convert function role to tool format
+                if message.get("role") == Some(&serde_json::Value::String("function".to_string())) {
+                    // Get the function name to use as tool_call_id
+                    let tool_call_id = message
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    // Create new message in tool format
+                    let mut new_message = serde_json::Map::new();
+                    new_message.insert("role".to_string(), serde_json::Value::String("tool".to_string()));
+                    new_message.insert("tool_call_id".to_string(), serde_json::Value::String(tool_call_id));
+
+                    // Copy content to the new message
+                    if let Some(content) = message.get("content") {
+                        new_message.insert("content".to_string(), content.clone());
+                    }
+
+                    return serde_json::Value::Object(new_message);
+                }
+
+                // Convert function_call to tool_calls format if needed
+                if message.get("role") == Some(&serde_json::Value::String("assistant".to_string()))
+                    && message.get("function_call").is_some()
+                    && message.get("tool_calls").is_none()
+                {
+                    if let Some(function_call) = message.get("function_call").cloned() {
+                        // Extract the id
+                        let call_id = function_call.get("id").and_then(|n| n.as_str()).unwrap_or("unknown");
+
+                        // Generate the complete tool calls structure
+                        let tool_calls = serde_json::json!([
+                            {
+                                "id": call_id,
+                                "type": "function",
+                                "function": function_call
+                            }
+                        ]);
+
+                        // Add tool_calls to the message and set content to null
+                        if let Some(obj) = message.as_object_mut() {
+                            obj.insert("tool_calls".to_string(), tool_calls);
+                            obj.insert("content".to_string(), serde_json::Value::Null);
+                            obj.remove("function_call");
+                        }
+                    }
+                }
+
                 message
             })
             .collect(),
@@ -655,65 +685,114 @@ mod tests {
         assert_eq!(tool, &expected_tool);
     }
 
-    // #[test]
-    // fn test_function_response_format() {
-    //     let sub_prompts = vec![
-    //         SubPrompt::Content(SubPromptType::System, "You are a helpful assistant".to_string(), 98),
-    //         SubPrompt::Content(SubPromptType::User, "Search for Steam Deck videos".to_string(), 100),
-    //         SubPrompt::Content(
-    //             SubPromptType::FunctionCall,
-    //             serde_json::json!({
-    //                 "name": "youtube_search_api",
-    //                 "arguments": "{\"searchQuery\":\"steam deck\"}"
-    //             })
-    //             .to_string(),
-    //             50,
-    //         ),
-    //         SubPrompt::Content(
-    //             SubPromptType::FunctionResponse,
-    //             "best video about steam deck is https://youtube.com/123123".to_string(),
-    //             100,
-    //         ),
-    //     ];
+    #[test]
+    fn test_function_to_tool_response_conversion() {
+        // Create a prompt with a function call response
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(vec![
+            SubPrompt::Content(SubPromptType::System, "You are a helpful assistant".to_string(), 100),
+            SubPrompt::Content(SubPromptType::User, "Search for: steam deck".to_string(), 90),
+            SubPrompt::FunctionCall(
+                SubPromptType::Assistant,
+                serde_json::json!({
+                    "name": "youtube_search_api",
+                    "arguments": "{\"searchQuery\":\"steam deck\"}"
+                }),
+                80,
+            ),
+            SubPrompt::FunctionCallResponse(
+                SubPromptType::Function,
+                serde_json::json!({
+                    "function_call": {
+                        "name": "youtube_search_api"
+                    },
+                    "response": "best video about steam deck is https://youtube.com/123123"
+                }),
+                70,
+            ),
+        ]);
 
-    //     let mut prompt = Prompt::new();
-    //     prompt.add_sub_prompts(sub_prompts);
+        // Use the mock provider
+        let model = SerializedLLMProvider::mock_provider().model;
 
-    //     // Use the mock provider
-    //     let model = SerializedLLMProvider::mock_provider().model;
+        // Call the openai_prepare_messages function
+        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
 
-    //     // Call the openai_prepare_messages function
-    //     let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+        // Extract the messages
+        let messages = match &result.messages {
+            PromptResultEnum::Value(value) => value.as_array().unwrap(),
+            _ => panic!("Expected Value variant"),
+        };
 
-    //     // Extract the messages from the result
-    //     let messages = match &result.messages {
-    //         PromptResultEnum::Value(value) => value.as_array().unwrap().clone(),
-    //         _ => panic!("Expected Value variant"),
-    //     };
+        // Find the function response message (now converted to tool format)
+        let tool_message = messages
+            .iter()
+            .find(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("tool"))
+            .expect("Tool message not found");
 
-    //     // Find the function response message
-    //     let function_message = messages
-    //         .iter()
-    //         .find(|msg| msg.get("role").and_then(|r| r.as_str()) == Some("function"))
-    //         .expect("Function message not found");
+        // Verify it has the correct format
+        assert_eq!(tool_message.get("role").and_then(|r| r.as_str()), Some("tool"));
+        assert_eq!(
+            tool_message.get("tool_call_id").and_then(|id| id.as_str()),
+            Some("youtube_search_api")
+        );
+        assert_eq!(
+            tool_message.get("content").and_then(|c| c.as_str()),
+            Some("best video about steam deck is https://youtube.com/123123")
+        );
+    }
 
-    //     // Verify it has the expected structure
-    //     let content = function_message.get("content").expect("Content field not found");
-    //     assert!(content.is_object(), "Content should be an object");
-    //     assert_eq!(
-    //         content.get("type").and_then(|t| t.as_str()),
-    //         Some("function_call_output"),
-    //         "Type should be function_call_output"
-    //     );
-    //     assert_eq!(
-    //         content.get("call_id").and_then(|c| c.as_str()),
-    //         Some("youtube_search_api"),
-    //         "call_id should match function name"
-    //     );
-    //     assert_eq!(
-    //         content.get("output").and_then(|o| o.as_str()),
-    //         Some("best video about steam deck is https://youtube.com/123123"),
-    //         "Output should contain the function response text"
-    //     );
-    // }
+    #[test]
+    fn test_assistant_function_call_to_tool_calls_conversion() {
+        // Create a prompt with an assistant message using function_call
+        let mut prompt = Prompt::new();
+        prompt.add_sub_prompts(vec![
+            SubPrompt::Content(SubPromptType::System, "You are a helpful assistant".to_string(), 100),
+            SubPrompt::Content(SubPromptType::User, "Search for: steam deck".to_string(), 90),
+            SubPrompt::FunctionCall(
+                SubPromptType::Assistant,
+                serde_json::json!({
+                    "name": "youtube_search_api",
+                    "arguments": "{\"searchQuery\":\"steam deck\"}"
+                }),
+                80,
+            ),
+        ]);
+
+        // Use the mock provider
+        let model = SerializedLLMProvider::mock_provider().model;
+
+        // Call the openai_prepare_messages function
+        let result = openai_prepare_messages(&model, prompt).expect("Failed to prepare messages");
+
+        // Extract the messages
+        let messages = match &result.messages {
+            PromptResultEnum::Value(value) => value.as_array().unwrap(),
+            _ => panic!("Expected Value variant"),
+        };
+
+        // Find the assistant message with the function call
+        let assistant_message = messages
+            .iter()
+            .find(|msg| {
+                msg.get("role").and_then(|r| r.as_str()) == Some("assistant") && msg.get("function_call").is_some()
+            })
+            .expect("Assistant message with function_call not found");
+
+        // Check that it also has tool_calls
+        assert!(
+            assistant_message.get("tool_calls").is_some(),
+            "Assistant message should have tool_calls"
+        );
+
+        let tool_calls = assistant_message.get("tool_calls").unwrap().as_array().unwrap();
+        assert_eq!(tool_calls.len(), 1, "Should have one tool call");
+
+        let function = tool_calls[0].get("function").unwrap();
+        assert_eq!(
+            function.get("name").unwrap(),
+            "youtube_search_api",
+            "Function name should match"
+        );
+    }
 }

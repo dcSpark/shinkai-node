@@ -144,15 +144,17 @@ impl ModelCapabilitiesManager {
                 _ => vec![],
             },
             LLMProviderInterface::LocalLLM(_) => vec![],
-            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().to_uppercase().as_str() {
-                "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_TEXT_INFERENCE" => {
-                    vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
+                match shinkai_backend.model_type().to_uppercase().as_str() {
+                    "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_TEXT_INFERENCE" => {
+                        vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
+                    }
+                    "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => {
+                        vec![ModelCapability::TextInference]
+                    }
+                    _ => vec![],
                 }
-                "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => {
-                    vec![ModelCapability::TextInference]
-                }
-                _ => vec![],
-            },
+            }
             LLMProviderInterface::Ollama(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Exo(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
@@ -361,11 +363,11 @@ impl ModelCapabilitiesManager {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string = llama_prepare_messages(model, claude.clone().model_type, prompt, total_tokens)?;
                 Ok(messages_string)
-            },
+            }
             LLMProviderInterface::DeepSeek(_) => {
                 let tiktoken_messages = openai_prepare_messages(model, prompt)?;
                 Ok(tiktoken_messages)
-            },
+            }
             LLMProviderInterface::LocalRegex(local_regex) => {
                 let total_tokens = Self::get_max_tokens(model);
                 let messages_string =
@@ -410,16 +412,14 @@ impl ModelCapabilitiesManager {
                 // Fill in the appropriate logic for LocalLLM
                 0
             }
-            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
-                match shinkai_backend.model_type().as_str() {
-                    "FREE_TEXT_INFERENCE" => 128_000,
-                    "STANDARD_TEXT_INFERENCE" => 128_000,
-                    "PREMIUM_TEXT_INFERENCE" => 200_000,
-                    "CODE_GENERATOR" => 128_000,
-                    "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
-                    _ => 128_000,
-                }
-            }
+            LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
+                "FREE_TEXT_INFERENCE" => 128_000,
+                "STANDARD_TEXT_INFERENCE" => 128_000,
+                "PREMIUM_TEXT_INFERENCE" => 200_000,
+                "CODE_GENERATOR" => 128_000,
+                "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
+                _ => 128_000,
+            },
             LLMProviderInterface::Gemini(_) => 1_000_000,
             LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
@@ -543,15 +543,9 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 // Fill in the appropriate logic for ShinkaiBackend
                 match shinkai_backend.model_type().as_str() {
-                    "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => {
-                        16384
-                    }
-                    "PREMIUM_TEXT_INFERENCE" => {
-                        8192
-                    }
-                    "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => {
-                        16384
-                    }
+                    "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" => 16384,
+                    "PREMIUM_TEXT_INFERENCE" => 8192,
+                    "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => 16384,
                     _ => 16384,
                 }
             }
@@ -589,7 +583,7 @@ impl ModelCapabilitiesManager {
                 } else {
                     4096
                 }
-            },
+            }
             LLMProviderInterface::DeepSeek(_) => 8192,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
@@ -754,7 +748,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("gemini-ultra-vision")
                     || model.model_type.starts_with("gemini-1.5")
                     || model.model_type.starts_with("gemini-2.0")
-            },
+            }
             LLMProviderInterface::DeepSeek(_) => true,
             _ => false,
         }
@@ -772,13 +766,9 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1") || ollama.model_type.starts_with("qwq")
-            },
-            LLMProviderInterface::DeepSeek(deepseek) => {
-                deepseek.model_type.starts_with("deepseek-reasoner")
-            },
-            LLMProviderInterface::Claude(claude) => {
-                claude.model_type.starts_with("claude-3-7-sonnet")
-            },
+            }
+            LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
+            LLMProviderInterface::Claude(claude) => claude.model_type.starts_with("claude-3-7-sonnet"),
             _ => false,
         }
     }
@@ -830,6 +820,7 @@ mod tests {
             function_call: None,
             functions: None,
             images: None,
+            tool_calls: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
         let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
@@ -850,6 +841,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("bot".to_string()),
@@ -858,6 +850,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
         ];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -878,6 +871,7 @@ mod tests {
             function_call: None,
             functions: None,
             images: None,
+            tool_calls: None,
         }];
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
         let num_tokens_llama3 = ModelCapabilitiesManager::num_tokens_from_llama3(&messages);
@@ -898,6 +892,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -906,6 +901,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -914,6 +910,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -922,6 +919,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -930,6 +928,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
         ];
 
@@ -976,6 +975,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             })
             .collect();
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);
@@ -1000,6 +1000,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -1008,6 +1009,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("system".to_string()),
@@ -1016,6 +1018,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
         ];
 
@@ -1327,6 +1330,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             }];
 
         let num_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&messages);

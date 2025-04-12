@@ -372,15 +372,24 @@ impl Prompt {
                         function_call: None,
                         functions: None,
                         images: None,
+                        tool_calls: None,
                     };
 
                     if let Some(name) = content.get("name").and_then(|n| n.as_str()) {
                         let arguments = content
                             .get("arguments")
                             .map_or_else(|| "".to_string(), |args| args.to_string());
+
+                        let call_id = content
+                            .get("call_id")
+                            .and_then(|id| id.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
                         new_message.function_call = Some(DetailedFunctionCall {
                             name: name.to_string(),
                             arguments,
+                            id: Some(call_id),
                         });
                     }
                     current_length +=
@@ -396,14 +405,16 @@ impl Prompt {
                         function_call: None,
                         functions: None,
                         images: None,
+                        tool_calls: None,
                     };
 
                     if let Some(function_call) = content.get("function_call") {
                         if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
                             new_message.name = Some(name.to_string());
                         }
-                        // Note: This is a hacky way to get the call_id from the function_call
-                        if let Some(call_id) = function_call.get("call_id").and_then(|c| c.as_str()) {
+
+                        // Hack to make the tool call id available to the LLM if id is present
+                        if let Some(call_id) = function_call.get("id").and_then(|c| c.as_str()) {
                             new_message.name = Some(call_id.to_string());
                         }
                     }
@@ -421,6 +432,7 @@ impl Prompt {
                         function_call: None,
                         functions: None,
                         images: None,
+                        tool_calls: None,
                     });
                 }
                 SubPrompt::Omni(prompt_type, _, _, _) => {
@@ -465,6 +477,7 @@ impl Prompt {
                 function_call: None,
                 functions: None,
                 images: last_user_message.and_then(|msg| msg.images),
+                tool_calls: None,
             };
             current_length += token_counter(&[combined_message.clone()]);
             tiktoken_messages.push(combined_message);
