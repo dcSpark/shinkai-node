@@ -125,11 +125,6 @@ pub async fn v2_send_basic_job_message_for_existing_job(
     signing_secret_key_clone: SigningKey,
 ) -> Result<(), APIError> {
     // Send message
-    println!("Sending message to job: {}", job_id);
-    println!("--Content--: {}", content);
-    if let Some(tools) = tools.clone() {
-        println!("With tools: {:?}", tools);
-    }
     let job_message = JobMessage {
         job_id: job_id.clone(),
         content,
@@ -139,7 +134,8 @@ pub async fn v2_send_basic_job_message_for_existing_job(
         tools: tools.clone(),
         metadata: None,
         tool_key: None,
-        fs_files_paths: fs_file_paths.unwrap_or_default()
+        fs_files_paths: fs_file_paths
+            .unwrap_or_default()
             .into_iter()
             .map(|path| ShinkaiPath::new(&path))
             .collect(),

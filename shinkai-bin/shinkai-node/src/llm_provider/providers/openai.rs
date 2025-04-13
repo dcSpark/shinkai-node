@@ -122,10 +122,11 @@ impl LLMService for OpenAI {
                     add_options_to_payload(&mut payload, config.as_ref());
                 }
 
-                // Print payload as a pretty JSON string
+                // Print payload as a pretty JSON string and log to file if enabled
                 match serde_json::to_string_pretty(&payload) {
                     Ok(pretty_json) => {
                         eprintln!("cURL Payload: {}", pretty_json);
+                        let _ = log_request_to_file(&payload);
                     }
                     Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                 };
@@ -244,7 +245,6 @@ fn finalize_function_call_sync(
     }
 
     // Clear partial so we can accumulate a new function call in subsequent chunks
-    eprintln!("[DEBUG] Clearing partial function call");
     partial_fc.name = None;
     partial_fc.arguments.clear();
     partial_fc.is_accumulating = false;
@@ -655,9 +655,13 @@ pub async fn handle_streaming_response(
         let error_json: serde_json::Value = res.json().await?;
         if let Some(error) = error_json.get("error") {
             let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+            return Err(LLMProviderError::APIError(
+                "AI Provider API Error: ".to_string() + error_message,
+            ));
         }
-        return Err(LLMProviderError::APIError("AI Provider API Error: Unknown error occurred".to_string()));
+        return Err(LLMProviderError::APIError(
+            "AI Provider API Error: Unknown error occurred".to_string(),
+        ));
     }
 
     // Check content type to determine if it's a stream
@@ -675,11 +679,14 @@ pub async fn handle_streaming_response(
         let response_json: serde_json::Value = res.json().await?;
         if let Some(error) = response_json.get("error") {
             let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+            return Err(LLMProviderError::APIError(
+                "AI Provider API Error: ".to_string() + error_message,
+            ));
         }
-        return Err(LLMProviderError::APIError("AI Provider API Error: Expected streaming response but received regular JSON".to_string()));
-    }        
-
+        return Err(LLMProviderError::APIError(
+            "AI Provider API Error: Expected streaming response but received regular JSON".to_string(),
+        ));
+    }
 
     // Check for 429 status code
     if res.status() == 429 {
@@ -768,7 +775,14 @@ pub async fn handle_streaming_response(
                     }
                 }
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
+                // Create the response object
+                let response =
+                    LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), None);
+
+                // Log the response if LOG_REQUESTS is enabled
+                log_response_to_file(&response_text, &function_calls, true);
+
+                return Ok(response);
             }
         }
 
@@ -825,12 +839,13 @@ pub async fn handle_streaming_response(
         }
     }
 
-    Ok(LLMInferenceResponse::new(
-        response_text,
-        json!({}),
-        function_calls,
-        None,
-    ))
+    // Create the response object
+    let response = LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), None);
+
+    // Log the response if LOG_REQUESTS is enabled
+    log_response_to_file(&response_text, &function_calls, false);
+
+    Ok(response)
 }
 
 pub async fn handle_non_streaming_response(
@@ -2090,4 +2105,73 @@ mod tests {
         });
         assert_eq!(arguments, expected_args);
     }
+}
+
+/// Log the response to a file if LOG_REQUESTS environment variable is set to true
+fn log_response_to_file(response_text: &str, function_calls: &Vec<FunctionCall>, stopped_by_user: bool) {
+    if std::env::var("LOG_REQUESTS").unwrap_or_else(|_| "false".to_string()) == "true" {
+        use chrono::Utc;
+        use std::fs::OpenOptions;
+        use std::io::Write;
+
+        let now = Utc::now();
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%.3fZ");
+        let log_header = format!("\n\n### Response ({})\n", timestamp);
+
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("openai_requests.log") {
+            // Create a JSON representation of the response manually
+            let mut response_data = json!({
+                "text": response_text,
+                "function_calls": function_calls
+            });
+
+            if stopped_by_user {
+                response_data["stopped_by_user"] = json!(true);
+            }
+
+            if let Ok(response_json) = serde_json::to_string_pretty(&response_data) {
+                if let Err(e) = writeln!(file, "{}{}", log_header, response_json) {
+                    eprintln!("Failed to write response to log file: {:?}", e);
+                }
+            } else {
+                if let Err(e) = writeln!(file, "{}Failed to create response JSON", log_header) {
+                    eprintln!("Failed to write to log file: {:?}", e);
+                }
+            }
+        } else {
+            eprintln!("Failed to open log file for response logging");
+        }
+    }
+}
+
+/// Log the request payload to a file if LOG_REQUESTS environment variable is set to true
+fn log_request_to_file(payload: &JsonValue) -> Result<(), String> {
+    if std::env::var("LOG_REQUESTS").unwrap_or_else(|_| "false".to_string()) == "true" {
+        use chrono::Utc;
+        use std::fs::OpenOptions;
+        use std::io::Write;
+
+        let now = Utc::now();
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%.3fZ");
+        let log_header = format!("\n\n### Request ({})\n", timestamp);
+
+        match serde_json::to_string_pretty(payload) {
+            Ok(pretty_json) => {
+                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("openai_requests.log") {
+                    if let Err(e) = writeln!(file, "{}{}", log_header, pretty_json) {
+                        eprintln!("Failed to write to log file: {:?}", e);
+                        return Err(format!("Failed to write to log file: {:?}", e));
+                    }
+                } else {
+                    eprintln!("Failed to open log file");
+                    return Err("Failed to open log file".to_string());
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to serialize payload: {:?}", e);
+                return Err(format!("Failed to serialize payload: {:?}", e));
+            }
+        }
+    }
+    Ok(())
 }
