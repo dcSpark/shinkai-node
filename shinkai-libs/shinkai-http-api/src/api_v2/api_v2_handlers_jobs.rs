@@ -189,6 +189,13 @@ pub fn job_routes(
         .and(warp::query::<GetJobProviderRequest>())
         .and_then(get_job_provider_handler);
 
+    let call_agent_route = warp::path("call_agent")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json::<CallAgentRequest>())
+        .and_then(call_agent_handler);
+
     create_job_route
         .or(job_message_route)
         .or(get_last_messages_route)
@@ -211,6 +218,7 @@ pub fn job_routes(
         .or(export_messages_from_inbox_route)
         .or(add_messages_god_mode_route)
         .or(get_job_provider_route)
+        .or(call_agent_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -294,6 +302,12 @@ pub struct GetAllSmartInboxesRequest {
     pub limit: Option<usize>,
     pub offset: Option<String>,
     pub show_hidden: Option<bool>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CallAgentRequest {
+    pub agent_id: String,
+    pub prompt: String,
 }
 
 #[utoipa::path(
@@ -1319,6 +1333,43 @@ pub async fn get_job_provider_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/call_agent",
+    request_body = CallAgentRequest,
+    responses(
+        (status = 200, description = "Agent called successfully, returns agent response", body = String),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 404, description = "Agent not found", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn call_agent_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: CallAgentRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    node_commands_sender
+        .send(NodeCommand::V2ApiCallAgentWithPrompt {
+            bearer,
+            agent_id: payload.agent_id,
+            prompt: payload.prompt,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1340,6 +1391,7 @@ pub async fn get_job_provider_handler(
         get_tooling_logs_handler,
         fork_job_messages_handler,
         remove_job_handler,
+        call_agent_handler,
     ),
     components(
         schemas(AddFileToFolder, V2SmartInbox, APIChangeJobAgentRequest, CreateJobRequest, JobConfig,
@@ -1348,7 +1400,8 @@ pub async fn get_job_provider_handler(
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, MinimalJobScope, CallbackAction, ShinkaiName,
             LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest, ExportInboxMessagesFormat, ExportInboxMessagesRequest,
             ShinkaiSubidentityType, OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
-            SheetJobAction, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)
+            SheetJobAction, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest,
+            CallAgentRequest)
     ),
     tags(
         (name = "jobs", description = "Job API endpoints")
