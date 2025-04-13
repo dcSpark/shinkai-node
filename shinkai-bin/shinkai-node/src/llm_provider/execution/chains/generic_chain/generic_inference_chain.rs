@@ -575,6 +575,10 @@ impl GenericInferenceChain {
             image_files.keys(),
             additional_files
         );
+
+        // We'll keep a record of *every* function call + response across all iterations:
+        let mut all_function_responses = Vec::new();
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
             custom_system_prompt.clone(),
@@ -641,7 +645,7 @@ impl GenericInferenceChain {
 
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
-                let mut function_responses = Vec::new();
+                let mut iteration_function_responses = Vec::new();
                 let mut should_retry = false;
 
                 for function_call in response.function_calls {
@@ -708,12 +712,11 @@ impl GenericInferenceChain {
                                     tool_calls_history.push(function_call_with_error);
 
                                     // Store the error response to be included in the next prompt
-                                    function_responses.push(ToolCallFunctionResponse {
+                                    iteration_function_responses.push(ToolCallFunctionResponse {
                                         function_call: function_call.clone(),
                                         response: error_msg.clone(),
                                     });
 
-                                    // TODO: we need to agregate errors and correct responses instead of single them out
                                     // Update prompt with error information for retry
                                     filled_prompt = JobPromptGenerator::generic_inference_prompt(
                                         db.clone(),
@@ -725,10 +728,14 @@ impl GenericInferenceChain {
                                         None,
                                         Some(full_job.step_history.clone()),
                                         tools.clone(),
-                                        Some(vec![ToolCallFunctionResponse {
-                                            function_call: function_call.clone(),
-                                            response: error_msg.clone(),
-                                        }]),
+                                        // Pass all function responses (including the error) to keep context
+                                        Some(
+                                            all_function_responses
+                                                .iter()
+                                                .chain(iteration_function_responses.iter())
+                                                .cloned()
+                                                .collect(),
+                                        ),
                                         full_job.job_id.clone(),
                                         additional_files.clone(),
                                     )
@@ -771,7 +778,7 @@ impl GenericInferenceChain {
                     .await;
 
                     // Store all function responses to use in the next prompt
-                    function_responses.push(function_response);
+                    iteration_function_responses.push(function_response);
                 }
 
                 let additional_files = Self::get_additional_files(
@@ -787,7 +794,10 @@ impl GenericInferenceChain {
                     continue;
                 }
 
-                // Call LLM again with all responses
+                // Add this iteration's responses to our cumulative collection
+                all_function_responses.extend(iteration_function_responses);
+
+                // Call LLM again with ALL responses from all iterations
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
                     db.clone(),
                     custom_system_prompt.clone(),
@@ -798,7 +808,7 @@ impl GenericInferenceChain {
                     None,
                     Some(full_job.step_history.clone()),
                     tools.clone(),
-                    Some(function_responses),
+                    Some(all_function_responses.clone()),
                     full_job.job_id.clone(),
                     additional_files,
                 )
