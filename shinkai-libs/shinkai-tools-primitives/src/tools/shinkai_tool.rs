@@ -4,18 +4,17 @@ use crate::tools::error::ToolError;
 use crate::tools::rust_tools::RustTool;
 use serde_json::{self, Value};
 
+use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion,
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
+    indexable_version::IndexableVersion, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}
 };
 
 use super::tool_config::OAuth;
 use super::tool_playground::{SqlQuery, SqlTable};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
-    deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
-    tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
+    deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
 
 pub type IsEnabled = bool;
@@ -27,6 +26,7 @@ pub enum ShinkaiTool {
     Network(NetworkTool, IsEnabled),
     Deno(DenoTool, IsEnabled),
     Python(PythonTool, IsEnabled),
+    Agent(Agent, IsEnabled),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -97,6 +97,11 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => (n.provider.to_string(), n.author.to_string(), n.name.clone()),
             ShinkaiTool::Deno(d, _) => ("local".to_string(), d.author.clone(), d.name.clone()),
             ShinkaiTool::Python(p, _) => ("local".to_string(), p.author.clone(), p.name.clone()),
+            ShinkaiTool::Agent(a, _) => (
+                "local".to_string(),
+                a.full_identity_name.node_name.clone(),
+                a.name.clone(),
+            ),
             _ => unreachable!(),
         };
         ToolRouterKey::new(provider, author, name, None)
@@ -128,6 +133,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.name.clone(),
             ShinkaiTool::Deno(d, _) => d.name.clone(),
             ShinkaiTool::Python(p, _) => p.name.clone(),
+            ShinkaiTool::Agent(a, _) => a.name.clone(),
         }
     }
     /// Tool description
@@ -137,6 +143,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.description.clone(),
             ShinkaiTool::Deno(d, _) => d.description.clone(),
             ShinkaiTool::Python(p, _) => p.description.clone(),
+            ShinkaiTool::Agent(a, _) => a.ui_description.clone(),
         }
     }
 
@@ -147,6 +154,38 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
             ShinkaiTool::Deno(d, _) => d.input_args.clone(),
             ShinkaiTool::Python(p, _) => p.input_args.clone(),
+            ShinkaiTool::Agent(_a, _) => {
+                let mut params = Parameters::new();
+
+                // Add content parameter (required but can be empty)
+                params.add_property(
+                    "content".to_string(),
+                    "string".to_string(),
+                    "Message content".to_string(),
+                    true,
+                );
+
+                // Add images parameter (optional string array)
+                let string_property =
+                    crate::tools::parameters::Property::new("string".to_string(), "Image URL".to_string());
+                params.properties.insert(
+                    "images".to_string(),
+                    crate::tools::parameters::Property::with_array_items(
+                        "Array of image URLs".to_string(),
+                        string_property,
+                    ),
+                );
+
+                // Add session_id parameter (not required)
+                params.add_property(
+                    "session_id".to_string(),
+                    "string".to_string(),
+                    "Session identifier".to_string(),
+                    false,
+                );
+
+                params
+            }
         }
     }
 
@@ -157,6 +196,9 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.output_arg.clone(),
             ShinkaiTool::Deno(d, _) => d.output_arg.clone(),
             ShinkaiTool::Python(p, _) => p.output_arg.clone(),
+            ShinkaiTool::Agent(a, _) => ToolOutputArg {
+                json: r#"{"type":"string","description":"Agent response"}"#.to_string(),
+            },
         }
     }
 
@@ -167,6 +209,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => "Network",
             ShinkaiTool::Deno(_, _) => "Deno",
             ShinkaiTool::Python(_, _) => "Python",
+            ShinkaiTool::Agent(_, _) => "Agent",
         }
     }
 
@@ -285,6 +328,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
             ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
             ShinkaiTool::Python(p, _) => p.embedding = Some(embedding),
+            ShinkaiTool::Agent(a, _) => a.embedding = Some(embedding),
         }
     }
 
@@ -327,6 +371,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
             ShinkaiTool::Deno(d, _) => d.embedding.clone(),
             ShinkaiTool::Python(p, _) => p.embedding.clone(),
+            ShinkaiTool::Agent(a, _) => a.embedding.clone(),
         }
     }
 
@@ -354,6 +399,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.author.clone(),
             ShinkaiTool::Deno(d, _) => d.author.clone(),
             ShinkaiTool::Python(p, _) => p.author.clone(),
+            ShinkaiTool::Agent(a, _) => a.full_identity_name.node_name.clone(),
         }
     }
 
@@ -364,6 +410,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.version.clone(),
             ShinkaiTool::Deno(d, _) => d.version.clone(),
             ShinkaiTool::Python(p, _) => p.version.clone(),
+            ShinkaiTool::Agent(a, _) => "1.0.0".to_string(),
         }
     }
 
@@ -383,16 +430,18 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled,
             ShinkaiTool::Deno(_, enabled) => *enabled,
             ShinkaiTool::Python(_, enabled) => *enabled,
+            ShinkaiTool::Agent(a, enabled) => *enabled,
         }
     }
 
     /// Check if the tool is enabled for MCP
     pub fn is_mcp_enabled(&self) -> bool {
         match self {
-            ShinkaiTool::Rust(tool, _) => tool.mcp_enabled.unwrap_or(false),
-            ShinkaiTool::Network(tool, _) => tool.mcp_enabled.unwrap_or(false),
-            ShinkaiTool::Deno(tool, _) => tool.mcp_enabled.unwrap_or(false),
-            ShinkaiTool::Python(tool, _) => tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Rust(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Network(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Deno(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Python(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Agent(a, is_enabled) => *is_enabled && a.mcp_enabled.unwrap_or(false),
         }
     }
 
@@ -403,6 +452,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled = true,
             ShinkaiTool::Deno(_, enabled) => *enabled = true,
             ShinkaiTool::Python(_, enabled) => *enabled = true,
+            ShinkaiTool::Agent(a, enabled) => *enabled = true,
         }
     }
 
@@ -412,6 +462,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(tool, _) => tool.mcp_enabled = Some(true),
             ShinkaiTool::Deno(tool, _) => tool.mcp_enabled = Some(true),
             ShinkaiTool::Python(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Agent(a, enabled) => *enabled = true,
         }
     }
 
@@ -422,6 +473,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled = false,
             ShinkaiTool::Deno(_, enabled) => *enabled = false,
             ShinkaiTool::Python(_, enabled) => *enabled = false,
+            ShinkaiTool::Agent(a, enabled) => *enabled = false,
         }
     }
 
@@ -431,6 +483,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(tool, _) => tool.mcp_enabled = Some(false),
             ShinkaiTool::Deno(tool, _) => tool.mcp_enabled = Some(false),
             ShinkaiTool::Python(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Agent(a, enabled) => *enabled = false,
         }
     }
 
@@ -449,6 +502,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => vec![],
             ShinkaiTool::Deno(js_tool, _) => js_tool.config.clone(),
             ShinkaiTool::Python(python_tool, _) => python_tool.config.clone(),
+            ShinkaiTool::Agent(a, _) => vec![],
         }
     }
 
@@ -459,6 +513,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n_tool, _) => n_tool.check_required_config_fields(),
             ShinkaiTool::Deno(deno_tool, _) => deno_tool.check_required_config_fields(),
             ShinkaiTool::Python(_, _) => true,
+            ShinkaiTool::Agent(_, _) => true,
         }
     }
 
@@ -526,6 +581,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => vec![],
             ShinkaiTool::Deno(d, _) => d.keywords.clone(),
             ShinkaiTool::Python(p, _) => p.keywords.clone(),
+            ShinkaiTool::Agent(a, _) => vec![],
         }
     }
 }
