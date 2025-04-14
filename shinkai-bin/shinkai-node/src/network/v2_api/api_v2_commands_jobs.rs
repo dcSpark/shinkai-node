@@ -2017,36 +2017,122 @@ impl Node {
         let encryption_public_key = node.encryption_public_key;
         let signing_secret_key = clone_signature_secret_key(&node.identity_secret_key);
         
-        match crate::tools::tool_generation::v2_create_and_send_job_message(
-            bearer.clone(),
-            JobCreationInfo {
-                scope: MinimalJobScope::default(),
-                is_hidden: Some(true),
-                associated_ui: None,
+        let (create_job_res_sender, create_job_res_receiver) = async_channel::bounded(1);
+        
+        let job_creation_info = JobCreationInfo {
+            scope: MinimalJobScope::default(),
+            is_hidden: Some(true),
+            associated_ui: None,
+        };
+        
+        let node_commands_sender = match db.get_node_commands_sender().await {
+            Ok(sender) => sender,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get node commands sender: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        
+        node_commands_sender.send(NodeCommand::V2ApiCreateJob {
+            bearer: bearer.clone(),
+            job_creation_info,
+            llm_provider: agent_id_str.clone(),
+            res: create_job_res_sender,
+        }).await.map_err(|err| {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to send create job command: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            NodeError::InternalError
+        })?;
+        
+        let job_id = match create_job_res_receiver.recv().await {
+            Ok(Ok(job_id)) => job_id,
+            Ok(Err(api_error)) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
             },
-            agent_id_str,
-            prompt,
-            None, // tools
-            None, // fs_file_paths
-            None, // job_filenames
-            db.clone(),
-            node_name,
-            identity_manager,
-            job_manager,
-            encryption_secret_key,
-            encryption_public_key,
-            signing_secret_key,
-        ).await {
-            Ok(job_id) => {
-                // Get the inbox name for the job
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to receive job creation response: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        
+        let job_message = JobMessage {
+            job_id: job_id.clone(),
+            content: prompt,
+            parent_message_hash: None,
+            callback: None,
+            is_system: false,
+            is_tool_response: false,
+            is_error: false,
+            is_streaming: false,
+            is_last_streaming_message: false,
+            is_function_call: false,
+            function_call_name: None,
+            function_call_arguments: None,
+            function_call_id: None,
+            is_function_response: false,
+            function_response_id: None,
+            is_retry: false,
+            is_retry_of: None,
+            is_retry_with_different_provider: false,
+            is_retry_with_different_provider_of: None,
+            is_retry_with_different_prompt: false,
+            is_retry_with_different_prompt_of: None,
+            is_forked: false,
+            is_forked_of: None,
+            is_hidden: false,
+            is_thinking: false,
+            is_thinking_of: None,
+            is_thinking_done: false,
+            is_thinking_done_of: None,
+            is_thinking_error: false,
+            is_thinking_error_of: None,
+            is_thinking_cancelled: false,
+            is_thinking_cancelled_of: None,
+            is_thinking_timeout: false,
+            is_thinking_timeout_of: None,
+            is_thinking_progress: false,
+            is_thinking_progress_of: None,
+            is_thinking_progress_percentage: None,
+            is_thinking_progress_message: None,
+            is_thinking_progress_total: None,
+            is_thinking_progress_current: None,
+        };
+        
+        let (job_message_res_sender, job_message_res_receiver) = async_channel::bounded(1);
+        
+        node_commands_sender.send(NodeCommand::V2ApiJobMessage {
+            bearer: bearer.clone(),
+            job_message,
+            res: job_message_res_sender,
+        }).await.map_err(|err| {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to send job message command: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            NodeError::InternalError
+        })?;
+        
+        match job_message_res_receiver.recv().await {
+            Ok(Ok(response_data)) => {
+                let inbox_name = response_data.inbox;
                 let (inbox_res_sender, inbox_res_receiver) = async_channel::bounded(1);
-                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).map_err(|err| {
-                    APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to create inbox name: {:?}", err),
-                    }
-                })?;
                 
                 let start_time = std::time::Instant::now();
                 let timeout = std::time::Duration::from_secs(60 * 5); // 5 minutes timeout
@@ -2059,7 +2145,7 @@ impl Node {
                     let _ = Self::v2_get_last_messages_from_inbox_with_branches(
                         db.clone(),
                         bearer.clone(),
-                        inbox_name.to_string(),
+                        inbox_name,
                         100,
                         None,
                         inbox_res_sender.clone(),
@@ -2094,11 +2180,14 @@ impl Node {
                     let _ = res.send(Err(api_error)).await;
                 }
             },
+            Ok(Err(api_error)) => {
+                let _ = res.send(Err(api_error)).await;
+            },
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to create job for agent: {}", err),
+                    message: format!("Failed to receive job message response: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
