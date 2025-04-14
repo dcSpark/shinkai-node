@@ -175,73 +175,85 @@ impl LLMService for OpenAI {
         }
     }
 }
-
-/// A synchronous version of finalize_function_call that doesn't deal with
-/// WebSocket updates
 fn finalize_function_call_sync(
     partial_fc: &mut PartialFunctionCall,
     function_calls: &mut Vec<FunctionCall>,
     tools: &Option<Vec<JsonValue>>,
 ) {
     if let Some(ref name) = partial_fc.name {
-        if !name.is_empty() {
-            eprintln!(
-                "[DEBUG] Finalizing function call: name={}, id={:?}, arguments='{}'",
-                name, partial_fc.id, partial_fc.arguments
-            );
-
-            // Clean up the arguments string and unescape quotes
-            let cleaned_args = partial_fc
-                .arguments
-                .trim()
-                .replace(r#"\""#, "\"") // Unescape quotes
-                .to_string();
-
-            // Attempt to parse the accumulated arguments
-            let fc_arguments = if cleaned_args.is_empty() {
-                serde_json::Map::new()
-            } else {
-                // Try to parse as is first
-                let parse_result = if cleaned_args.starts_with('{') {
-                    serde_json::from_str::<JsonValue>(&cleaned_args)
-                } else {
-                    // If it doesn't start with '{', wrap it
-                    serde_json::from_str::<JsonValue>(&format!("{{{}}}", cleaned_args))
-                };
-
-                match parse_result {
-                    Ok(value) => value.as_object().cloned().unwrap_or_else(|| serde_json::Map::new()),
-                    Err(e) => serde_json::Map::new(),
-                }
-            };
-
-            // Look up the optional tool_router_key
-            let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                tools_array.iter().find_map(|tool| {
-                    if tool.get("name")?.as_str()? == name {
-                        tool.get("tool_router_key")
-                            .and_then(|key| key.as_str().map(|s| s.to_string()))
-                    } else {
-                        None
-                    }
-                })
-            });
-
-            // Build and add to the function_calls vector
-            // Use provided ID if available, otherwise generate one
-            let id = partial_fc.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
-
-            let new_function_call = FunctionCall {
-                name: name.clone(),
-                arguments: fc_arguments,
-                tool_router_key,
-                response: None,
-                index: function_calls.len() as u64,
-                id: Some(id),
-                call_type: partial_fc.call_type.clone(),
-            };
-            function_calls.push(new_function_call);
+        if name.is_empty() {
+            return;
         }
+        eprintln!(
+            "[DEBUG] Finalizing function call: name={}, id={:?}, arguments='{}'",
+            name, partial_fc.id, partial_fc.arguments
+        );
+
+        let raw_args = partial_fc.arguments.trim();
+
+        // If it starts with {\" but not with quotes, let's wrap in outer quotes:
+        // so that it becomes a JSON string (which will parse as Value::String).
+        let mut wrapped_args = raw_args.to_owned();
+        if raw_args.starts_with("{\\") && !raw_args.starts_with("\"{\\") {
+            wrapped_args = format!("\"{}\"", raw_args);
+        }
+
+        // Now do the first parse
+        let parsed_once = serde_json::from_str::<serde_json::Value>(&wrapped_args);
+        let fc_arguments = match parsed_once {
+            Ok(json_value) => {
+                // If the top-level is a JSON string, parse again
+                if let Some(json_str) = json_value.as_str() {
+                    match serde_json::from_str::<serde_json::Value>(json_str) {
+                        Ok(inner_value) => inner_value.as_object().cloned().unwrap_or_default(),
+                        Err(e) => {
+                            eprintln!("[ERROR] Inner parse failed: {:?}. Returning empty object.", e);
+                            serde_json::Map::new()
+                        }
+                    }
+                } else {
+                    // Already an object or array
+                    json_value.as_object().cloned().unwrap_or_default()
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "[ERROR] Failed to parse raw_args even once: {:?}. Returning empty object.",
+                    e
+                );
+                serde_json::Map::new()
+            }
+        };
+
+        eprintln!("[DEBUG] Final function call JSON object: {:#?}", fc_arguments);
+
+        // Look up the optional tool_router_key
+        let tool_router_key = tools.as_ref().and_then(|tools_array| {
+            tools_array.iter().find_map(|tool| {
+                if tool.get("name")?.as_str()? == name {
+                    tool.get("tool_router_key")
+                        .and_then(|key| key.as_str().map(|s| s.to_string()))
+                } else {
+                    None
+                }
+            })
+        });
+
+        // Build and add to function_calls
+        let id = partial_fc
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let new_function_call = FunctionCall {
+            name: name.clone(),
+            arguments: fc_arguments,
+            tool_router_key,
+            response: None,
+            index: function_calls.len() as u64,
+            id: Some(id),
+            call_type: partial_fc.call_type.clone(),
+        };
+        function_calls.push(new_function_call);
     }
 
     // Clear partial so we can accumulate a new function call in subsequent chunks
