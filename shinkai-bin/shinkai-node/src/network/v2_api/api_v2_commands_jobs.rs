@@ -1936,6 +1936,8 @@ impl Node {
         agent_id: String,
         prompt: String,
         node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>, // Added argument
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1973,33 +1975,6 @@ impl Node {
         let agent = agent.unwrap().clone();
         let agent_id_str = agent.get_id().to_string();
         
-        
-        let identity_manager = match db.get_identity_manager().await {
-            Ok(manager) => Arc::new(Mutex::new(manager)),
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to get identity manager: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        
-        let job_manager = match db.get_job_manager().await {
-            Ok(manager) => Arc::new(Mutex::new(manager)),
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to get job manager: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-        
         let node = match db.get_node().await {
             Ok(node) => node,
             Err(err) => {
@@ -2031,8 +2006,8 @@ impl Node {
             None, // job_filenames
             db.clone(),
             node_name,
-            identity_manager,
-            job_manager,
+            identity_manager, // Use passed identity_manager
+            job_manager, // Use passed job_manager
             encryption_secret_key,
             encryption_public_key,
             signing_secret_key,

@@ -3201,6 +3201,8 @@ impl Node {
             NodeCommand::V2ApiCallAgentWithPrompt { bearer, agent_id, prompt, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = Arc::clone(&self.identity_manager);
+                let job_manager_clone = self.job_manager.clone().unwrap();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_call_agent_with_prompt(
                         db_clone,
@@ -3208,6 +3210,8 @@ impl Node {
                         agent_id,
                         prompt,
                         node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
                         res
                     ).await;
                 });

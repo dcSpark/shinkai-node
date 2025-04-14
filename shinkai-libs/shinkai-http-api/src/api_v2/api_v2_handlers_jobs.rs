@@ -1353,18 +1353,12 @@ pub async fn call_agent_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
-    let node_name = ShinkaiName {
-        node_name: node_name_str,
-        subidentity_type: ShinkaiSubidentityType::Node,
-    };
 
     node_commands_sender
         .send(NodeCommand::V2ApiCallAgentWithPrompt {
             bearer,
             agent_id: payload.agent_id,
             prompt: payload.prompt,
-            node_name,
             res: res_sender,
         })
         .await

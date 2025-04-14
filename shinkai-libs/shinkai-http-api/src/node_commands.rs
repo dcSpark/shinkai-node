@@ -1336,7 +1336,6 @@ pub enum NodeCommand {
         bearer: String,
         agent_id: String,
         prompt: String,
-        node_name: ShinkaiName,
         res: Sender<Result<String, APIError>>,
     },
 }
