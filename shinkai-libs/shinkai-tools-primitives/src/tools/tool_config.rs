@@ -76,7 +76,7 @@ impl ToolConfig {
                     description: format!("Description for {}", key),
                     required: false,
                     type_name,
-                    key_value: Some(val.clone()),
+                    key_value,
                 };
                 configs.push(ToolConfig::BasicConfig(basic_config));
             }
