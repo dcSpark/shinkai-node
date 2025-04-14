@@ -2052,7 +2052,13 @@ impl Node {
             Ok(job_id) => {
                 // Get the inbox name for the job
                 let (inbox_res_sender, inbox_res_receiver) = async_channel::bounded(1);
-                let inbox_name = InboxName::from_job_id(&job_id);
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).map_err(|err| {
+                    APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to create inbox name: {:?}", err),
+                    }
+                })?;
                 
                 let start_time = std::time::Instant::now();
                 let timeout = std::time::Duration::from_secs(60 * 5); // 5 minutes timeout
