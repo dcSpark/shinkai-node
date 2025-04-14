@@ -1355,8 +1355,11 @@ pub async fn call_agent_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     let node_name = ShinkaiName {
+        full_name: node_name_str.clone(),
         node_name: node_name_str,
-        subidentity_type: ShinkaiSubidentityType::Node,
+        profile_name: None,
+        subidentity_type: None,
+        subidentity_name: None,
     };
 
     node_commands_sender
