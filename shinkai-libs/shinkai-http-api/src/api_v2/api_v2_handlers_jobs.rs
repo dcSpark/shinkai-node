@@ -35,7 +35,7 @@ use super::api_v2_router::{create_success_response, with_sender};
 
 pub fn job_routes(
     node_commands_sender: Sender<NodeCommand>,
-    _node_name: String,
+    node_name: String,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let create_job_route = warp::path("create_job")
         .and(warp::post())
@@ -194,6 +194,7 @@ pub fn job_routes(
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json::<CallAgentRequest>())
+        .and(warp::any().map(move || node_name.clone()))
         .and_then(call_agent_handler);
 
     create_job_route
@@ -1348,12 +1349,13 @@ pub async fn call_agent_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
     payload: CallAgentRequest,
+    node_name_str: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     
     let node_name = ShinkaiName {
-        node_name: "shinkai".to_string(),
+        node_name: node_name_str,
         subidentity_type: ShinkaiSubidentityType::Node,
     };
 
