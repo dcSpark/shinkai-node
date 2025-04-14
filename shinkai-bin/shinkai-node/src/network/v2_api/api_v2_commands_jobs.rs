@@ -1935,6 +1935,7 @@ impl Node {
         bearer: String,
         agent_id: String,
         prompt: String,
+        node_name: ShinkaiName,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1972,18 +1973,6 @@ impl Node {
         let agent = agent.unwrap().clone();
         let agent_id_str = agent.get_id().to_string();
         
-        let node_info = match db.get_node_info().await {
-            Ok(info) => info,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to get node info: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
         
         let identity_manager = match db.get_identity_manager().await {
             Ok(manager) => Arc::new(Mutex::new(manager)),
@@ -2041,7 +2030,7 @@ impl Node {
             None, // fs_file_paths
             None, // job_filenames
             db.clone(),
-            node_info.node_name,
+            node_name,
             identity_manager,
             job_manager,
             encryption_secret_key,
