@@ -1969,33 +1969,128 @@ impl Node {
         }
 
         let agent = agent.unwrap().clone();
-
-        let mut filled_prompt = Prompt::new();
+        let agent_id_str = agent.get_id();
         
-        let system_prompt = "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string();
-        filled_prompt.add_content(system_prompt, SubPromptType::System, 98);
-        
-        filled_prompt.add_content(prompt, SubPromptType::UserLastMessage, 100);
-
-        let llm_stopper = Arc::new(LLMStopper::new());
-        
-        match JobManager::inference_with_llm_provider(
-            agent,
-            filled_prompt,
-            None, // inbox_name
-            None, // ws_manager_trait
-            None, // config
-            llm_stopper,
-            db.clone(),
-        ).await {
-            Ok(response) => {
-                let _ = res.send(Ok(response.response_string)).await;
-            }
+        let node = match db.get_node().await {
+            Ok(node) => node,
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to get response from agent: {}", err),
+                    message: format!("Failed to get node: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let node_name = node.node_name;
+        
+        let identity_manager = match db.get_identity_manager().await {
+            Ok(manager) => Arc::new(Mutex::new(manager)),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get identity manager: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        
+        let encryption_secret_key = node.encryption_secret_key;
+        let encryption_public_key = node.encryption_public_key;
+        let signing_secret_key = node.identity_secret_key;
+        
+        let job_manager = match db.get_job_manager().await {
+            Ok(manager) => Arc::new(Mutex::new(manager)),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get job manager: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        
+        match crate::tools::tool_generation::v2_create_and_send_job_message(
+            bearer.clone(),
+            JobCreationInfo {
+                scope: MinimalJobScope::default(),
+                is_hidden: Some(true),
+                associated_ui: None,
+            },
+            agent_id_str,
+            prompt,
+            None, // tools
+            None, // image_paths
+            None, // job_filenames
+            db.clone(),
+            node_name,
+            identity_manager,
+            job_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+        ).await {
+            Ok(job_id) => {
+                // Get the inbox name for the job
+                let (inbox_res_sender, inbox_res_receiver) = async_channel::bounded(1);
+                let inbox_name = InboxName::from_job_id(&job_id);
+                
+                let start_time = std::time::Instant::now();
+                let timeout = std::time::Duration::from_secs(60 * 5); // 5 minutes timeout
+                let delay = std::time::Duration::from_secs(1); // 1 second delay between polls
+                
+                let mut response_content = String::new();
+                let mut success = false;
+                
+                while start_time.elapsed() < timeout {
+                    let _ = Self::v2_get_last_messages_from_inbox_with_branches(
+                        db.clone(),
+                        bearer.clone(),
+                        inbox_name.to_string(),
+                        100,
+                        None,
+                        inbox_res_sender.clone(),
+                    ).await;
+                    
+                    match inbox_res_receiver.recv().await {
+                        Ok(Ok(messages)) => {
+                            if messages.len() >= 2 {
+                                if let Some(last_branch) = messages.last() {
+                                    if let Some(last_message) = last_branch.last() {
+                                        response_content = last_message.job_message.content.clone();
+                                        success = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        },
+                        _ => {}
+                    }
+                    
+                    tokio::time::sleep(delay).await;
+                }
+                
+                if success {
+                    let _ = res.send(Ok(response_content)).await;
+                } else {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Timeout waiting for agent response".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                }
+            },
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create job for agent: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
