@@ -1367,6 +1367,7 @@ pub async fn call_agent_handler(
             bearer,
             agent_id: payload.agent_id,
             prompt: payload.prompt,
+            node_name,
             res: res_sender,
         })
         .await
