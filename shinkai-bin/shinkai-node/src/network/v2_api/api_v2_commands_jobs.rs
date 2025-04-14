@@ -13,10 +13,8 @@ use shinkai_message_primitives::{
         job::{ForkedJob, JobLike},
         job_config::JobConfig,
         llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider},
-        prompts::Prompt,
         shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
         smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox},
-        subprompts::SubPromptType,
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData},
@@ -26,7 +24,7 @@ use shinkai_message_primitives::{
         },
     },
     shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::clone_signature_secret_key,
     },
 };
@@ -37,7 +35,6 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
     llm_provider::job_manager::JobManager,
-    llm_provider::llm_stopper::LLMStopper,
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
 };
@@ -2025,7 +2022,7 @@ impl Node {
             agent_id_str,
             prompt,
             None, // tools
-            None, // image_paths
+            None, // fs_file_paths
             None, // job_filenames
             db.clone(),
             node_name,
