@@ -1936,8 +1936,8 @@ impl Node {
         agent_id: String,
         prompt: String,
         node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        job_manager: Arc<Mutex<JobManager>>, // Added argument
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        _job_manager: Arc<Mutex<JobManager>>, // Added argument
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
