@@ -273,7 +273,7 @@ mod tests {
                     assert_eq!(config.description, "API Key for weather service");
                     assert!(config.required);
                     assert_eq!(config.type_name, Some("string".to_string()));
-                    assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
+                    assert_eq!(config.key_value, Some(serde_json::Value::String("63d35ff6068c3103ccd1227546935111".to_string())));
                 }
                 _ => panic!("Parsed ToolConfig is not a BasicConfig"),
             }
@@ -298,7 +298,7 @@ mod tests {
                     assert_eq!(config.description, "");
                     assert!(!config.required);
                     assert_eq!(config.type_name, None);
-                    assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
+                    assert_eq!(config.key_value, Some(serde_json::Value::String("63d35ff6068c3103ccd1227546935111".to_string())));
                 }
                 _ => panic!("Parsed ToolConfig is not a BasicConfig"),
             }
@@ -386,7 +386,7 @@ mod tests {
 
         // Test string value
         if let Some(ToolConfig::BasicConfig(string_config)) = find_config("string_key") {
-            assert_eq!(string_config.key_value, Some("test_value".to_string()));
+            assert_eq!(string_config.key_value, Some(serde_json::Value::String("test_value".to_string())));
             assert_eq!(string_config.type_name, Some("string".to_string()));
         } else {
             panic!("string_key config not found");
@@ -394,7 +394,7 @@ mod tests {
 
         // Test number value
         if let Some(ToolConfig::BasicConfig(number_config)) = find_config("number_key") {
-            assert_eq!(number_config.key_value, Some("42".to_string()));
+            assert_eq!(number_config.key_value, Some(serde_json::Value::Number(42.0)));
             assert_eq!(number_config.type_name, Some("number".to_string()));
         } else {
             panic!("number_key config not found");
@@ -402,7 +402,7 @@ mod tests {
 
         // Test boolean value
         if let Some(ToolConfig::BasicConfig(bool_config)) = find_config("bool_key") {
-            assert_eq!(bool_config.key_value, Some("true".to_string()));
+            assert_eq!(bool_config.key_value, Some(serde_json::Value::Bool(true)));
             assert_eq!(bool_config.type_name, Some("boolean".to_string()));
         } else {
             panic!("bool_key config not found");
