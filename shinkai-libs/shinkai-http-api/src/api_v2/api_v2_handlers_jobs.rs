@@ -194,7 +194,6 @@ pub fn job_routes(
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json::<CallAgentRequest>())
-        .and(warp::any().map(move || node_name.clone()))
         .and_then(call_agent_handler);
 
     create_job_route
@@ -1349,25 +1348,15 @@ pub async fn call_agent_handler(
     node_commands_sender: Sender<NodeCommand>,
     authorization: String,
     payload: CallAgentRequest,
-    node_name_str: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
-    let node_name = ShinkaiName {
-        full_name: node_name_str.clone(),
-        node_name: node_name_str,
-        profile_name: None,
-        subidentity_type: None,
-        subidentity_name: None,
-    };
 
     node_commands_sender
         .send(NodeCommand::V2ApiCallAgentWithPrompt {
             bearer,
             agent_id: payload.agent_id,
             prompt: payload.prompt,
-            node_name,
             res: res_sender,
         })
         .await
