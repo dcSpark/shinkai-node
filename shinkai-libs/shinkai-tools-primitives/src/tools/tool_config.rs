@@ -394,7 +394,7 @@ mod tests {
 
         // Test number value
         if let Some(ToolConfig::BasicConfig(number_config)) = find_config("number_key") {
-            assert_eq!(number_config.key_value, Some(serde_json::Value::Number(42.0)));
+            assert_eq!(number_config.key_value, Some(serde_json::Value::Number(serde_json::Number::from(42))));
             assert_eq!(number_config.type_name, Some("number".to_string()));
         } else {
             panic!("number_key config not found");

@@ -351,14 +351,14 @@ mod tests {
                         description: "API Key".to_string(),
                         required: true,
                         type_name: Some("string".to_string()),
-                        key_value: Some("old_key".to_string()),
+                        key_value: Some(serde_json::Value::String("old_key".to_string())),
                     }),
                     ToolConfig::BasicConfig(BasicConfig {
                         key_name: "secret".to_string(),
                         description: "Secret".to_string(),
                         required: false,
                         type_name: Some("string".to_string()),
-                        key_value: Some("old_secret".to_string()),
+                        key_value: Some(serde_json::Value::String("old_secret".to_string())),
                     }),
                 ],
                 oauth: None,
@@ -418,12 +418,12 @@ mod tests {
                 assert_eq!(config1.description, "API Key");
                 assert!(config1.required);
                 assert_eq!(config1.type_name, Some("string".to_string()));
-                assert_eq!(config1.key_value, Some("new_key".to_string()));
+                assert_eq!(config1.key_value, Some(serde_json::Value::String("new_key".to_string())));
                 assert_eq!(config2.key_name, "secret");
                 assert_eq!(config2.description, "Secret");
                 assert!(!config2.required);
                 assert_eq!(config2.type_name, Some("string".to_string()));
-                assert_eq!(config2.key_value, Some("old_secret".to_string()));
+                assert_eq!(config2.key_value, Some(serde_json::Value::String("old_secret".to_string())));
             }
             _ => panic!("Expected Deno tool"),
         }
