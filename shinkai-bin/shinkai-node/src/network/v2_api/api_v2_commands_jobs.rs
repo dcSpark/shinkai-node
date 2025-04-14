@@ -24,8 +24,7 @@ use shinkai_message_primitives::{
         },
     },
     shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath,
-        signatures::clone_signature_secret_key,
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
     },
 };
 
@@ -37,6 +36,11 @@ use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
     network::{node_error::NodeError, Node},
+};
+
+use shinkai_message_primitives::shinkai_utils::{
+    encryption::clone_static_secret_key,
+    signatures::clone_signature_secret_key,
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1922,6 +1926,258 @@ impl Node {
 
         // Send success response
         let _ = res.send(Ok("Messages added successfully".to_string())).await;
+
+        Ok(())
+    }
+
+    pub async fn v2_api_call_agent_with_prompt(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        agent_id: String,
+        prompt: String,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        node_encryption_sk: EncryptionStaticKey,
+        node_encryption_pk: EncryptionPublicKey,
+        node_signing_sk: SigningKey,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let providers_and_agents = match JobManager::get_all_agents_and_llm_providers(db.clone()).await {
+            Ok(providers) => providers,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get agents: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let agent = providers_and_agents
+            .iter()
+            .find(|p| p.get_id().to_lowercase() == agent_id.to_lowercase());
+
+        if agent.is_none() {
+            let api_error = APIError {
+                code: StatusCode::NOT_FOUND.as_u16(),
+                error: "Not Found".to_string(),
+                message: format!("Agent with ID {} not found", agent_id),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        let agent = agent.unwrap().clone();
+        let agent_id_str = agent.get_id().to_string();
+
+        // Get the main identity
+        let main_identity = {
+            let identity_manager = identity_manager.lock().await;
+            match identity_manager.get_main_identity() {
+                Some(identity) => identity.clone(),
+                None => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to get main identity".to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+        
+        let job_creation_info = JobCreationInfo {
+            scope: MinimalJobScope::default(),
+            is_hidden: Some(true),
+            associated_ui: None,
+        };
+
+        // --- Create ShinkaiMessage for Job Creation ---
+        let sender_name = match ShinkaiName::new(main_identity.get_full_identity_name()) {
+            Ok(name) => name,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create sender name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let recipient_name = match ShinkaiName::from_node_and_profile_names_and_type_and_name(
+            node_name.node_name.clone(),
+            "main".to_string(),
+            ShinkaiSubidentityType::Agent,
+            agent_id_str.clone(),
+        ) {
+            Ok(name) => name,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create recipient name: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let job_creation_message = match Self::api_v2_create_shinkai_message(
+            sender_name.clone(),
+            recipient_name.clone(),
+            &serde_json::to_string(&job_creation_info).unwrap(), // Safe unwrap as JobCreationInfo serialization should not fail
+            MessageSchemaType::JobCreationSchema,
+            node_encryption_sk.clone(),
+            node_signing_sk.clone(), // Clone for this usage
+            node_encryption_pk.clone(),
+            None,
+        ) {
+            Ok(message) => message,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create job creation message: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        // --- End Create ShinkaiMessage ---
+        
+        // Call the internal job creation function directly
+        let job_id = match Self::internal_create_new_job(job_manager.clone(), db.clone(), job_creation_message, main_identity.clone()).await {
+            Ok(job_id) => job_id,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to internally create job: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        
+        let job_message = JobMessage {
+            job_id: job_id.clone(),
+            content: prompt.clone(),
+            parent: None,
+            sheet_job_data: None,
+            tools: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+            fs_files_paths: vec![],
+            job_filenames: vec![],
+        };
+        // --- Create ShinkaiMessage for Job Message ---
+        // Reuse sender_name and recipient_name from job creation
+         let shinkai_job_message = match Self::api_v2_create_shinkai_message(
+            sender_name.clone(), // Clone sender_name for this message
+            recipient_name.clone(), // Clone recipient_name for this message
+            &serde_json::to_string(&job_message).unwrap(), // Serialize the JobMessage
+            MessageSchemaType::JobMessageSchema,
+            node_encryption_sk.clone(),
+            node_signing_sk.clone(), // Clone again for this usage
+            node_encryption_pk.clone(),
+            Some(job_id.clone()), // Include job_id context
+        ) {
+            Ok(message) => message,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create job message ShinkaiMessage: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        // --- End Create ShinkaiMessage ---
+
+        // Call the internal job message function directly
+        match Self::internal_job_message(job_manager, shinkai_job_message, false).await {
+             Ok(_) => {
+                 // Job message sent, now start polling for the response
+                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
+                 let inbox_name_str = inbox_name.to_string(); // Convert to String for polling loop
+
+                 let (inbox_res_sender, inbox_res_receiver) = async_channel::bounded(1);
+
+                 let start_time = std::time::Instant::now();
+                 let timeout = std::time::Duration::from_secs(60 * 5); // 5 minutes timeout
+                 let delay = std::time::Duration::from_secs(1); // 1 second delay between polls
+
+                 let mut response_content = String::new();
+                 let mut success = false;
+
+                 while start_time.elapsed() < timeout {
+                     let _ = Self::v2_get_last_messages_from_inbox_with_branches(
+                         db.clone(),
+                         bearer.clone(),
+                         inbox_name_str.clone(), // Clone String for the loop
+                         100,
+                         None,
+                         inbox_res_sender.clone(),
+                     ).await;
+
+                     match inbox_res_receiver.recv().await {
+                         Ok(Ok(messages)) => {
+                             // Check if we have at least the user message and the AI response
+                             if messages.len() >= 1 { // Expecting at least one branch (the main one)
+                                 if let Some(last_branch) = messages.last() {
+                                     if last_branch.len() >= 2 { // Check if this branch has user + AI msg
+                                         if let Some(last_message) = last_branch.last() {
+                                             // Ensure it's not the user's own message we just sent
+                                             if last_message.sender_subidentity != sender_name.to_string() {
+                                                response_content = last_message.job_message.content.clone();
+                                                success = true;
+                                                break;
+                                             }
+                                         }
+                                     }
+                                 }
+                             }
+                         },
+                         _ => {} // Ignore errors during polling, just retry
+                     }
+
+                     tokio::time::sleep(delay).await;
+                 }
+
+                 if success {
+                     let _ = res.send(Ok(response_content)).await;
+                 } else {
+                     let api_error = APIError {
+                         code: StatusCode::REQUEST_TIMEOUT.as_u16(), // Use Timeout code
+                         error: "Request Timeout".to_string(),
+                         message: "Timeout waiting for agent response".to_string(),
+                     };
+                     let _ = res.send(Err(api_error)).await;
+                 }
+             },
+             Err(err) => {
+                 // Error sending the initial job message
+                 let api_error = APIError {
+                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                     error: "Internal Server Error".to_string(),
+                     message: format!("Failed to send internal job message: {}", err),
+                 };
+                 let _ = res.send(Err(api_error)).await;
+             }
+         };
 
         Ok(())
     }

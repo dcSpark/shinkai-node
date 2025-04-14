@@ -3198,6 +3198,30 @@ impl Node {
                     ).await;
                 });
             }
+            NodeCommand::V2ApiCallAgentWithPrompt { bearer, agent_id, prompt, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = Arc::clone(&self.identity_manager);
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key.clone();
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_call_agent_with_prompt(
+                        db_clone,
+                        bearer,
+                        agent_id,
+                        prompt,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res
+                    ).await;
+                });
+            }
             _ => (),
         }
     }
