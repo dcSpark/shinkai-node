@@ -789,8 +789,8 @@ pub async fn get_shinkai_tool_handler(
         .to_string();
     let serialize_config = query_params
         .get("serialize_config")
-        .map(|value| value == "true")
-        .unwrap_or(false);
+        .map(|value| (value == "false").then(|| false).unwrap_or(true))
+        .unwrap_or(true);
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetShinkaiTool {
