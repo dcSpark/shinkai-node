@@ -29,6 +29,11 @@ COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai_node /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/libpdfium.so /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai-tools-runner-resources /app/shinkai-tools-runner-resources
 
+# Set shinkai-tools-runner binaries path
+ENV SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH="/app/shinkai-tools-runner-resources/deno"
+ENV SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH="/app/shinkai-tools-runner-resources/uv"
+ENV PATH="/app/shinkai-tools-runner-resources:/root/.local/bin:$PATH"
+
 # Set entrypoint
 EXPOSE 9550 9551 9552 9553
 ENTRYPOINT ["/bin/sh", "-c", "/app/shinkai_node"]
