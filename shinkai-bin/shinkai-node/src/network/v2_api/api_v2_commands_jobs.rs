@@ -25,7 +25,6 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
     },
 };
 
