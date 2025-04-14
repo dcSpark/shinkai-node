@@ -762,7 +762,8 @@ pub async fn set_shinkai_tool_handler(
     get,
     path = "/v2/get_shinkai_tool",
     params(
-        ("tool_name" = String, Query, description = "Name of the Shinkai tool")
+        ("tool_name" = String, Query, description = "Name of the Shinkai tool"),
+        ("serialize_config" = bool, Query, description = "Serialize the config")
     ),
     responses(
         (status = 200, description = "Successfully retrieved Shinkai tool", body = Value),
@@ -786,11 +787,16 @@ pub async fn get_shinkai_tool_handler(
             })
         })?
         .to_string();
+    let serialize_config = query_params
+        .get("serialize_config")
+        .map(|value| value == "true")
+        .unwrap_or(false);
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetShinkaiTool {
             bearer,
             payload: tool_name,
+            serialize_config,
             res: res_sender,
         })
         .await

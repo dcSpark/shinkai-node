@@ -45,6 +45,37 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use zip::{write::FileOptions, ZipWriter};
 
+// Helper function to serialize Vec<ToolConfig> into the specific object format
+fn serialize_tool_config_to_object(configs: &Vec<ToolConfig>) -> Value {
+    let mut properties = Map::new();
+    let mut required = Vec::new();
+
+    for config in configs {
+        if let ToolConfig::BasicConfig(basic) = config {
+            let mut property = Map::new();
+            property.insert("description".to_string(), json!(basic.description));
+            // If type_name is None, default to "string"
+            let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+            property.insert("type".to_string(), json!(type_value));
+            properties.insert(basic.key_name.clone(), Value::Object(property));
+
+            if basic.required {
+                required.push(json!(basic.key_name.clone()));
+            }
+        }
+        // Note: This ignores non-BasicConfig variants for the object serialization,
+        // matching the behavior of the original serialize_configurations.
+        // If other ToolConfig variants should be handled differently when
+        // serialize_config is true, this logic needs adjustment.
+    }
+
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": required
+    })
+}
+
 impl Node {
     /// Searches for Shinkai tools using both vector and full-text search (FTS)
     /// methods.
@@ -638,7 +669,8 @@ impl Node {
     pub async fn v2_api_get_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
-        payload: String,
+        tool_key: String,
+        serialize_config: bool,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -646,11 +678,38 @@ impl Node {
             return Ok(());
         }
 
-        // Get the tool from the database using get_tool_by_key
-        match db.get_tool_by_key(&payload) {
+        // Get the tool from the database using the tool_key directly
+        match db.get_tool_by_key(&tool_key) { // Use tool_key directly
             Ok(tool) => {
-                let response = json!(tool);
-                let _ = res.send(Ok(response)).await;
+                // Serialize the tool object to JSON value first.
+                let mut response_value = match serde_json::to_value(&tool) {
+                    Ok(val) => val,
+                    Err(e) => {
+                         let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize tool: {:?}", e),
+                         };
+                         let _ = res.send(Err(api_error)).await;
+                         return Ok(());
+                    }
+                };
+
+                // If serialize_config is true, replace the 'config' field
+                if serialize_config {
+                    if let Value::Object(ref mut map) = response_value {
+                        // Get the original config Vec from the tool struct
+                        let original_config = tool.get_config();
+                        // Serialize the config vector using the helper function
+                        let serialized_config_object = serialize_tool_config_to_object(&original_config);
+                        if let Some(Value::Object(ref mut contents_map)) = map.get_mut("content").and_then(|v| v.as_array_mut()).and_then(|arr| arr.get_mut(0)) {
+                            contents_map.insert("config".to_string(), serialized_config_object);
+                        }
+                    }
+                }
+                // Otherwise, the default serialization (config as array) is used.
+
+                let _ = res.send(Ok(response_value)).await;
                 Ok(())
             }
             Err(SqliteManagerError::ToolNotFound(_)) => {
