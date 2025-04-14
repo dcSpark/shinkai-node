@@ -93,10 +93,8 @@ async fn config_update(
                 update_count += 1;
                 if value.is_null() {
                     basic_config.key_value = None;
-                } else if let Some(string_value) = value.as_str() {
-                    basic_config.key_value = Some(string_value.to_owned());
                 } else {
-                    basic_config.key_value = Some(value.to_string());
+                    basic_config.key_value = Some(value.clone());
                 }
             });
     }

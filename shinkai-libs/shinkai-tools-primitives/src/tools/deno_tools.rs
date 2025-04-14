@@ -121,7 +121,7 @@ impl DenoTool {
         let code = self.js_code.clone();
 
         // Create a hashmap with key_name and key_value
-        let mut config: HashMap<String, String> = self
+        let mut config: HashMap<String, serde_json::Value> = self
             .config
             .iter()
             .filter_map(|c| {
@@ -137,7 +137,7 @@ impl DenoTool {
         for c in extra_config {
             let ToolConfig::BasicConfig(basic_config) = c;
             if let Some(value) = basic_config.key_value {
-                config.insert(basic_config.key_name.clone(), value);
+                config.insert(basic_config.key_name.clone(), value.clone());
             }
         }
 

@@ -23,7 +23,7 @@ impl ToolConfig {
     }
 
     /// The header key to be used when making the request
-    pub fn header(&self) -> String {
+    pub fn header(&self) -> Value {
         match self {
             ToolConfig::BasicConfig(config) => config.key_value.clone().unwrap_or_default(),
         }
@@ -56,11 +56,9 @@ impl ToolConfig {
                 let (key_value, type_name) = if let Some(val_obj) = val.as_object() {
                     (None, val_obj.get("type").and_then(|v| v.as_str()).map(String::from))
                 } else {
-                    // Convert any value type to string representation
+                    // Use the value directly instead of converting to string
                     let key_value = match val {
-                        Value::String(s) => Some(s.clone()),
-                        Value::Number(n) => Some(n.to_string()),
-                        Value::Bool(b) => Some(b.to_string()),
+                        Value::String(_) | Value::Number(_) | Value::Bool(_) => Some(val.clone()),
                         _ => None,
                     };
                     // Infer type_name based on value type
@@ -78,7 +76,7 @@ impl ToolConfig {
                     description: format!("Description for {}", key),
                     required: false,
                     type_name,
-                    key_value,
+                    key_value: Some(val.clone()),
                 };
                 configs.push(ToolConfig::BasicConfig(basic_config));
             }
@@ -94,7 +92,7 @@ impl ToolConfig {
             if let Some(key_name) = obj.get("key_name").and_then(|v| v.as_str()) {
                 let description = obj.get("description").and_then(|v| v.as_str()).unwrap_or_default();
                 let required = obj.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
-                let key_value = obj.get("key_value").and_then(|v| v.as_str()).map(String::from);
+                let key_value = obj.get("key_value");
                 let type_name = obj.get("type").and_then(|v| v.as_str()).map(String::from);
 
                 let basic_config = BasicConfig {
@@ -102,7 +100,7 @@ impl ToolConfig {
                     description: description.to_string(),
                     required,
                     type_name,
-                    key_value,
+                    key_value: key_value.map(|v| v.clone()),
                 };
                 return Some(ToolConfig::BasicConfig(basic_config));
             }
@@ -248,7 +246,7 @@ pub struct BasicConfig {
     pub required: bool,
     #[serde(rename = "type")]
     pub type_name: Option<String>,
-    pub key_value: Option<String>,
+    pub key_value: Option<serde_json::Value>,
 }
 
 #[cfg(test)]
