@@ -39,6 +39,11 @@ use crate::{
     network::{node_error::NodeError, Node},
 };
 
+use shinkai_message_primitives::shinkai_utils::{
+    encryption::clone_static_secret_key,
+    signatures::clone_signature_secret_key,
+};
+
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 impl Node {
     pub fn convert_smart_inbox_to_v2_smart_inbox(smart_inbox: SmartInbox) -> Result<V2SmartInbox, NodeError> {
@@ -1966,21 +1971,20 @@ impl Node {
         }
 
         let agent = agent.unwrap().clone();
-        let agent_id_str = agent.get_id();
+        let agent_id_str = agent.get_id().to_string();
         
-        let node = match db.get_node().await {
-            Ok(node) => node,
+        let node_info = match db.get_node_info().await {
+            Ok(info) => info,
             Err(err) => {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to get node: {}", err),
+                    message: format!("Failed to get node info: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
-        let node_name = node.node_name;
         
         let identity_manager = match db.get_identity_manager().await {
             Ok(manager) => Arc::new(Mutex::new(manager)),
@@ -1995,10 +1999,6 @@ impl Node {
             }
         };
         
-        let encryption_secret_key = node.encryption_secret_key;
-        let encryption_public_key = node.encryption_public_key;
-        let signing_secret_key = node.identity_secret_key;
-        
         let job_manager = match db.get_job_manager().await {
             Ok(manager) => Arc::new(Mutex::new(manager)),
             Err(err) => {
@@ -2011,6 +2011,23 @@ impl Node {
                 return Ok(());
             }
         };
+        
+        let node = match db.get_node().await {
+            Ok(node) => node,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get node: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        
+        let encryption_secret_key = clone_static_secret_key(&node.encryption_secret_key);
+        let encryption_public_key = node.encryption_public_key;
+        let signing_secret_key = clone_signature_secret_key(&node.identity_secret_key);
         
         match crate::tools::tool_generation::v2_create_and_send_job_message(
             bearer.clone(),
@@ -2025,7 +2042,7 @@ impl Node {
             None, // fs_file_paths
             None, // job_filenames
             db.clone(),
-            node_name,
+            node_info.node_name,
             identity_manager,
             job_manager,
             encryption_secret_key,
