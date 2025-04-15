@@ -35,10 +35,11 @@ impl SqliteManager {
         let tools: Vec<String> = agent.tools.iter().map(|t| t.to_string_with_version()).collect();
         let tools = serde_json::to_string(&tools).unwrap();
         let scope = serde_json::to_string(&agent.scope).unwrap();
+        let tools_config_override = serde_json::to_string(&agent.tools_config_override).unwrap();
 
         tx.execute(
-            "INSERT INTO shinkai_agents (name, agent_id, full_identity_name, llm_provider_id, ui_description, knowledge, storage_path, tools, debug_mode, config, scope)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO shinkai_agents (name, agent_id, full_identity_name, llm_provider_id, ui_description, knowledge, storage_path, tools, debug_mode, config, scope, tools_config_override)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 agent.name,
                 agent.agent_id.to_lowercase(),
@@ -51,6 +52,7 @@ impl SqliteManager {
                 agent.debug_mode,
                 config,
                 scope,
+                tools_config_override,
             ],
         )?;
 
@@ -87,6 +89,7 @@ impl SqliteManager {
             let tools: String = row.get(7)?;
             let config: Option<String> = row.get(9)?;
             let scope: String = row.get(10)?;
+            let tools_config_override: Option<String> = row.get(11).unwrap_or(Some("{}".to_string()));
             Ok(Agent {
                 agent_id: row.get(0)?,
                 name: row.get(1)?,
@@ -123,6 +126,10 @@ impl SqliteManager {
                     )))
                 })?,
                 cron_tasks: None,
+                tools_config_override: match tools_config_override {
+                    Some(t) => serde_json::from_str(&t).unwrap_or_default(),
+                    None => Default::default(),
+                },
             })
         })?;
 
@@ -143,6 +150,7 @@ impl SqliteManager {
             let tools: String = row.get(7)?;
             let config: Option<String> = row.get(9)?;
             let scope: String = row.get(10)?;
+            let tools_config_override: Option<String> = row.get(11).unwrap_or(Some("{}".to_string()));
 
             Ok(Agent {
                 agent_id: row.get(0)?,
@@ -180,6 +188,10 @@ impl SqliteManager {
                     )))
                 })?,
                 cron_tasks: None,
+                tools_config_override: match tools_config_override {
+                    Some(t) => serde_json::from_str(&t).unwrap_or_default(),
+                    None => Default::default(),
+                },
             })
         });
 
@@ -209,11 +221,12 @@ impl SqliteManager {
         let tools: Vec<String> = updated_agent.tools.iter().map(|t| t.to_string_with_version()).collect();
         let tools = serde_json::to_string(&tools).unwrap();
         let scope = serde_json::to_string(&updated_agent.scope).unwrap(); // Serialize the scope
+        let tools_config_override = serde_json::to_string(&updated_agent.tools_config_override).unwrap();
 
         tx.execute(
             "UPDATE shinkai_agents
-            SET name = ?1, full_identity_name = ?2, llm_provider_id = ?3, ui_description = ?4, knowledge = ?5, storage_path = ?6, tools = ?7, debug_mode = ?8, config = ?9, scope = ?10
-            WHERE agent_id = ?11",
+            SET name = ?1, full_identity_name = ?2, llm_provider_id = ?3, ui_description = ?4, knowledge = ?5, storage_path = ?6, tools = ?7, debug_mode = ?8, config = ?9, scope = ?10, tools_config_override = ?11
+            WHERE agent_id = ?12",
             params![
                 updated_agent.name,
                 updated_agent.full_identity_name.full_name,
@@ -225,6 +238,7 @@ impl SqliteManager {
                 updated_agent.debug_mode,
                 config,
                 scope,
+                tools_config_override,
                 updated_agent.agent_id,
             ],
         )?;
@@ -268,6 +282,7 @@ mod tests {
             config: None,
             scope: Default::default(),
             cron_tasks: None,
+            tools_config_override: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -294,6 +309,7 @@ mod tests {
             config: None,
             scope: Default::default(),
             cron_tasks: None,
+            tools_config_override: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -364,6 +380,7 @@ mod tests {
             config: None,
             scope: Default::default(),
             cron_tasks: None,
+            tools_config_override: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -392,6 +409,7 @@ mod tests {
             config: None,
             scope: Default::default(),
             cron_tasks: None,
+            tools_config_override: Default::default(),
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 

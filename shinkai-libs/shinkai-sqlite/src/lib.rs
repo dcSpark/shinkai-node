@@ -209,7 +209,8 @@ impl SqliteManager {
                 tools TEXT NOT NULL,
                 debug_mode INTEGER NOT NULL,
                 config TEXT, -- Store as a JSON string
-                scope TEXT NOT NULL -- Change this line to use TEXT instead of BLOB
+                scope TEXT NOT NULL, -- Change this line to use TEXT instead of BLOB
+                tools_config_override TEXT -- Store as a JSON string
             );",
             [],
         )?;
@@ -219,6 +220,20 @@ impl SqliteManager {
             "CREATE INDEX IF NOT EXISTS idx_shinkai_agents_agent_id ON shinkai_agents (agent_id);",
             [],
         )?;
+
+        let columns = conn.prepare("PRAGMA table_info(shinkai_agents)")?
+            .query_map([], |row| {
+                let name: String = row.get(1)?;
+                Ok(name)
+            })?
+            .collect::<Result<Vec<String>, _>>()?;
+        
+        if !columns.contains(&"tools_config_override".to_string()) {
+            conn.execute(
+                "ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT",
+                [],
+            )?;
+        }
 
         Ok(())
     }
