@@ -825,7 +825,7 @@ mod tests {
         let mut params = Parameters::new();
 
         // Create an array of strings property
-        let string_prop = Property::new("string".to_string(), "A string item".to_string());
+        let string_prop = Property::new("string".to_string(), "A string item".to_string(), None);
         let array_prop = Property::with_array_items("An array of strings".to_string(), string_prop);
         params.properties.insert("tags".to_string(), array_prop);
         params.required.push("tags".to_string());
@@ -862,11 +862,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         params.add_nested_property(
@@ -921,11 +921,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         let object_prop =

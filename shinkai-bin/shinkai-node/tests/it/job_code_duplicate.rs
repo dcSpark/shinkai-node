@@ -165,6 +165,7 @@ fn tool_duplicate_tests() {
                         "string".to_string().as_str(),
                         "The prompt to process".to_string().as_str(),
                         true,
+                        Some("Hello, world!".to_string()),
                     ),
                     activated: true,
                     embedding: None,

@@ -22,7 +22,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -424,6 +424,7 @@ impl ToolRouter {
                         "string".to_string(),
                         "The message to echo".to_string(),
                         true,
+                        None,
                     );
                     params
                 },
@@ -453,7 +454,7 @@ impl ToolRouter {
                 config: vec![],
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true);
+                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true, None);
                     params
                 },
                 output_arg: ToolOutputArg { json: "".to_string() },

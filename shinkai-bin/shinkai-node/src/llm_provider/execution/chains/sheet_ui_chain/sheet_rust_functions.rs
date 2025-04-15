@@ -526,7 +526,7 @@ impl SheetRustFunctions {
             "Creates a new column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
             {
                 let mut params = Parameters::new();
-                params.add_property("values".to_string(), "string".to_string(), "The values to create the column with".to_string(), true);
+                params.add_property("values".to_string(), "string".to_string(), "The values to create the column with".to_string(), true, None);
                 params
             },
             ToolOutputArg::empty(),
@@ -540,8 +540,8 @@ impl SheetRustFunctions {
             "Updates an existing column with the provided values. Values should be separated by commas. Example: 'value1, value2, value3'".to_string(),
             {
                 let mut params = Parameters::new();
-                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
-                params.add_property("values".to_string(), "string".to_string(), "The values to update the column with".to_string(), true);
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true, None);
+                params.add_property("values".to_string(), "string".to_string(), "The values to update the column with".to_string(), true, None);
                 params
             },
             ToolOutputArg::empty(),
@@ -555,9 +555,9 @@ impl SheetRustFunctions {
             "Replaces the value at the specified column and row position. Example: 'column_position, row_position, new_value'".to_string(),
             {
                 let mut params = Parameters::new();
-                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true);
-                params.add_property("row_position".to_string(), "usize".to_string(), "The position of the row to update".to_string(), true);
-                params.add_property("new_value".to_string(), "string".to_string(), "The new value to replace the value at the specified position with".to_string(), true);
+                params.add_property("column_position".to_string(), "usize".to_string(), "The position of the column to update".to_string(), true, None);
+                params.add_property("row_position".to_string(), "usize".to_string(), "The position of the row to update".to_string(), true, None);
+                params.add_property("new_value".to_string(), "string".to_string(), "The new value to replace the value at the specified position with".to_string(), true, None);
                 params
             },
             ToolOutputArg::empty(),
@@ -571,7 +571,7 @@ impl SheetRustFunctions {
             "Creates new columns with the provided CSV data. Example: 'column1;column2\nvalue1;value2' It also supports comma separators.".to_string(),
             {
                 let mut params = Parameters::new();
-                params.add_property("csv_data".to_string(), "string".to_string(), "The CSV data to create the columns with".to_string(), true);
+                params.add_property("csv_data".to_string(), "string".to_string(), "The CSV data to create the columns with".to_string(), true, None);
                 params
             },
             ToolOutputArg::empty(),

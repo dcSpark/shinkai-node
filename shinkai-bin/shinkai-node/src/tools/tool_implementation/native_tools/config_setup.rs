@@ -52,8 +52,8 @@ Example usage:
                 mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("tool_router_key".to_string(), "string".to_string(), "The tool_router_key of the tool to update".to_string(), true);
-                    params.add_property("config".to_string(), "object".to_string(), "Configuration key-value pairs to update".to_string(), true);
+                    params.add_property("tool_router_key".to_string(), "string".to_string(), "The tool_router_key of the tool to update".to_string(), true, None);
+                    params.add_property("config".to_string(), "object".to_string(), "Configuration key-value pairs to update".to_string(), true, None);
                     params
                 },
                 output_arg: ToolOutputArg {
@@ -418,12 +418,18 @@ mod tests {
                 assert_eq!(config1.description, "API Key");
                 assert!(config1.required);
                 assert_eq!(config1.type_name, Some("string".to_string()));
-                assert_eq!(config1.key_value, Some(serde_json::Value::String("new_key".to_string())));
+                assert_eq!(
+                    config1.key_value,
+                    Some(serde_json::Value::String("new_key".to_string()))
+                );
                 assert_eq!(config2.key_name, "secret");
                 assert_eq!(config2.description, "Secret");
                 assert!(!config2.required);
                 assert_eq!(config2.type_name, Some("string".to_string()));
-                assert_eq!(config2.key_value, Some(serde_json::Value::String("old_secret".to_string())));
+                assert_eq!(
+                    config2.key_value,
+                    Some(serde_json::Value::String("old_secret".to_string()))
+                );
             }
             _ => panic!("Expected Deno tool"),
         }
