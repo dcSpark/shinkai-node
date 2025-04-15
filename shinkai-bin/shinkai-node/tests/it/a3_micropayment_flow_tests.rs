@@ -361,6 +361,7 @@ fn micropayment_flow_test() {
                     .send(NodeCommand::V2ApiGetShinkaiTool {
                         bearer: api_v2_key.to_string(),
                         payload: "local:::shinkai-tool-echo:::shinkai__echo".to_string(),
+                        serialize_config: false,
                         res: sender,
                     })
                     .await

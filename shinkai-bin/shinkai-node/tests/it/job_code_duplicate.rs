@@ -244,6 +244,7 @@ fn tool_duplicate_tests() {
                     .send(NodeCommand::V2ApiGetShinkaiTool {
                         bearer: node1_api_key.clone(),
                         res: res_sender,
+                        serialize_config: false,
                         payload: tool_key_name_duplicate.clone(),
                     })
                     .await
