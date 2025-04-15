@@ -265,7 +265,7 @@ mod tests {
             description: "A required config".to_string(),
             required: true,
             type_name: Some("string".to_string()),
-            key_value: Some("value".to_string()), // Has required value
+            key_value: Some(serde_json::Value::String("value".to_string())), // Has required value
         })];
         let value = Map::new();
         let parameters = Parameters::new();
@@ -474,7 +474,7 @@ mod tests {
                 description: "Required key".to_string(),
                 required: true,
                 type_name: Some("string".to_string()),
-                key_value: Some("value".to_string()),
+                key_value: Some(serde_json::Value::String("value".to_string())),
             }),
             ToolConfig::BasicConfig(BasicConfig {
                 key_name: "optional_key".to_string(),

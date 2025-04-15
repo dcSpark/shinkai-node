@@ -717,7 +717,7 @@ mod tests {
                 description: "Custom config".to_string(),
                 required: false,
                 type_name: None,
-                key_value: Some("default".to_string()),
+                key_value: Some(serde_json::Value::String("default".to_string())),
             }),
         ];
 

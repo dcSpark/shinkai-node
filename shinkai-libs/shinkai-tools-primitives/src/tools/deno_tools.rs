@@ -121,7 +121,7 @@ impl DenoTool {
         let code = self.js_code.clone();
 
         // Create a hashmap with key_name and key_value
-        let mut config: HashMap<String, String> = self
+        let mut config: HashMap<String, serde_json::Value> = self
             .config
             .iter()
             .filter_map(|c| {
@@ -137,7 +137,7 @@ impl DenoTool {
         for c in extra_config {
             let ToolConfig::BasicConfig(basic_config) = c;
             if let Some(value) = basic_config.key_value {
-                config.insert(basic_config.key_name.clone(), value);
+                config.insert(basic_config.key_name.clone(), value.clone());
             }
         }
 
@@ -687,21 +687,21 @@ mod tests {
                 description: "The IMAP server address".to_string(),
                 required: true,
                 type_name: Some("string".to_string()),
-                key_value: Some("imap.example.com".to_string()),
+                key_value: Some(serde_json::Value::String("imap.example.com".to_string())),
             }),
             ToolConfig::BasicConfig(BasicConfig {
                 key_name: "username".to_string(),
                 description: "The username for the IMAP account".to_string(),
                 required: true,
                 type_name: Some("string".to_string()),
-                key_value: Some("user@example.com".to_string()),
+                key_value: Some(serde_json::Value::String("user@example.com".to_string())),
             }),
             ToolConfig::BasicConfig(BasicConfig {
                 key_name: "password".to_string(),
                 description: "The password for the IMAP account".to_string(),
                 required: true,
                 type_name: Some("string".to_string()),
-                key_value: Some("password123".to_string()),
+                key_value: Some(serde_json::Value::String("password123".to_string())),
             }),
             ToolConfig::BasicConfig(BasicConfig {
                 key_name: "port".to_string(),
