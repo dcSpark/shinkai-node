@@ -723,7 +723,7 @@ impl Node {
                         let serialized_config_data = serialize_tool_config_to_schema_and_form_data(&original_config); // Use new function name
                         // Replace the existing 'config' field in the JSON map with the new structure
                         if let Some(Value::Object(ref mut contents_map)) = map.get_mut("content").and_then(|v| v.as_array_mut()).and_then(|arr| arr.get_mut(0)) {
-                            contents_map.insert("config".to_string(), serialized_config_data.get("schema").unwrap().clone());
+                            contents_map.insert("configurations".to_string(), serialized_config_data.get("schema").unwrap().clone());
                             contents_map.insert("configFormData".to_string(), serialized_config_data.get("configFormData").unwrap().clone());
                         }
                     }
