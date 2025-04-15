@@ -105,7 +105,10 @@ fn get_database_path_from_db_name_config(database_name: String) -> Result<PathBu
         .node_storage_path
         .clone()
         .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-    let adapted_database_name = database_name.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect::<String>();
+    let adapted_database_name = database_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>();
     Ok(Path::new(&node_storage_path)
         .join("tools_storage")
         .join("shared_sql_databases")
@@ -173,9 +176,7 @@ impl ToolExecutor for SQLProcessorTool {
             })
             .unwrap_or(vec![]);
 
-        let database_name = parameters
-            .get("database_name")
-            .and_then(|v| v.as_str());
+        let database_name = parameters.get("database_name").and_then(|v| v.as_str());
 
         let full_path = if let Some(database_name) = database_name {
             get_database_path_from_db_name_config(database_name.to_string())?
@@ -202,18 +203,29 @@ impl ToolExecutor for SQLProcessorTool {
             .map_err(|e| ToolError::ExecutionError(format!("Failed to prepare query: {}", e)))?;
         println!("[execute_sqlite_query] path: {:?}", full_path.clone());
         let qp: String = format!("{:?}", query_params);
+
+        // Helper function to safely truncate strings
+        fn truncate_string(s: &str, max_length: usize) -> String {
+            if s.len() <= max_length {
+                s.to_string()
+            } else {
+                let prefix = s.chars().take(max_length / 2).collect::<String>();
+                let suffix = s
+                    .chars()
+                    .rev()
+                    .take(max_length / 2)
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect::<String>();
+                format!("{}...{}", prefix, suffix)
+            }
+        }
+
         println!(
             "[execute_sqlite_query] query: {} {:?}",
-            if query.len() > 200 {
-                format!("{}...{}", &query[..100], &query[query.len() - 100..])
-            } else {
-                query.to_string()
-            },
-            if qp.len() > 200 {
-                format!("{}...{}", &qp[..100], &qp[qp.len() - 100..])
-            } else {
-                qp
-            }
+            truncate_string(query, 200),
+            truncate_string(&qp, 200)
         );
 
         // For SELECT queries, fetch column names and rows
