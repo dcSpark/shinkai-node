@@ -28,7 +28,7 @@ pub async fn generate_execution_environment(
     envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), instance_id.clone());
     envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
 
-    check_oauth(oauth)?;
+    check_oauth(oauth, &tool_router_key)?;
     let oauth = handle_oauth(oauth, &db, app_id.clone(), tool_id.clone(), tool_router_key.clone()).await?;
 
     envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
@@ -43,13 +43,13 @@ pub fn check_tool(
     parameters: Parameters,
     oauth: &Option<Vec<OAuth>>,
 ) -> Result<(), ToolError> {
-    check_oauth(oauth)?;
+    check_oauth(oauth, &tool_router_key)?;
     check_tool_config(tool_router_key, tool_config)?;
     check_tool_parameters(parameters, value)?;
     Ok(())
 }
 
-fn check_oauth(oauth: &Option<Vec<OAuth>>) -> Result<(), ToolError> {
+fn check_oauth(oauth: &Option<Vec<OAuth>>, tool_router_key: &str) -> Result<(), ToolError> {
     if let Some(oauth_configs) = oauth {
         for oauth in oauth_configs {
             // Check if required fields are empty or missing
@@ -81,7 +81,7 @@ fn check_oauth(oauth: &Option<Vec<OAuth>>) -> Result<(), ToolError> {
             }
 
             if !missing_fields.is_empty() {
-                let fix_redirect_url = format!("shinkai://config?tool={}", urlencoding::encode(&oauth.name));
+                let fix_redirect_url = format!("shinkai://config?tool={}", urlencoding::encode(tool_router_key));
                 return Err(ToolError::MissingConfigError(format!(
                     "\n\nCannot run tool, OAuth config is missing required fields: {}.\n\nClick the link to update the tool config and try again.\n\n{}",
                     missing_fields.join(", "),
@@ -395,7 +395,7 @@ mod tests {
             assert!(msg.contains("authorization_url"));
             assert!(msg.contains("token_url"));
             assert!(msg.contains("client_id"));
-            assert!(msg.contains("shinkai://config?tool=test_oauth"));
+            assert!(msg.contains("shinkai://config?tool=test%2Ftool"));
         } else {
             panic!("Expected MissingConfigError");
         }
@@ -656,7 +656,7 @@ mod tests {
             request_token_content_type: None,
         }]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
@@ -678,11 +678,11 @@ mod tests {
             request_token_content_type: None,
         }]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test/tool");
         assert!(result.is_err());
         if let Err(ToolError::MissingConfigError(msg)) = result {
             assert!(msg.contains("name"));
-            assert!(msg.contains("shinkai://config?tool="));
+            assert!(msg.contains("shinkai://config?tool=test%2Ftool"));
         } else {
             panic!("Expected MissingConfigError");
         }
@@ -723,7 +723,7 @@ mod tests {
             },
         ]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
@@ -745,7 +745,7 @@ mod tests {
             request_token_content_type: None,
         }]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_err());
         if let Err(ToolError::MissingConfigError(msg)) = result {
             assert!(msg.contains("authorization_url"));
@@ -763,14 +763,14 @@ mod tests {
     #[test]
     fn test_check_oauth_none() {
         let oauth: Option<Vec<OAuth>> = None;
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_check_oauth_empty_vec() {
         let oauth = Some(vec![]);
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
@@ -809,12 +809,12 @@ mod tests {
             },
         ]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test/tool");
         assert!(result.is_err());
         if let Err(ToolError::MissingConfigError(msg)) = result {
             assert!(msg.contains("authorization_url"));
             assert!(msg.contains("token_url"));
-            assert!(msg.contains("shinkai://config?tool=invalid_oauth"));
+            assert!(msg.contains("shinkai://config?tool=test%2Ftool"));
         } else {
             panic!("Expected MissingConfigError");
         }
