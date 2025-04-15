@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use utoipa::ToSchema;
 
 use crate::{
@@ -26,6 +27,8 @@ pub struct Agent {
     #[serde(default)]
     pub scope: MinimalJobScope,
     pub cron_tasks: Option<Vec<CronTask>>,
+    #[serde(default)]
+    pub tools_config_override: HashMap<String, HashMap<String, serde_json::Value>>,
 }
 
 #[cfg(test)]
