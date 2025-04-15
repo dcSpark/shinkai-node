@@ -77,7 +77,7 @@ impl JobManager {
             llm_provider,
             generator,
             user_profile,
-            5,
+            10, // TODO: Make this dynamic so you can control it from the UI
             max_tokens_in_prompt,
             ws_manager_trait.clone(),
             tool_router.clone(),
