@@ -273,7 +273,7 @@ impl GenericInferenceChain {
         // Process image files from merged paths, folders and scope
         let additional_image_files =
             Self::process_image_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
-        
+
         // Deduplicate image files based on filename (case insensitive)
         let mut deduplicated_files = HashMap::new();
         for (path, content) in image_files.iter().chain(additional_image_files.iter()) {
@@ -282,9 +282,10 @@ impl GenericInferenceChain {
                 deduplicated_files.insert(filename, (path.clone(), content.clone()));
             }
         }
-        
+
         // Convert back to original format with full paths
-        image_files = deduplicated_files.into_iter()
+        image_files = deduplicated_files
+            .into_iter()
             .map(|(_, (path, content))| (path, content))
             .collect();
 
@@ -327,26 +328,24 @@ impl GenericInferenceChain {
         // Decision Process for Tool Selection:
         // 1. Check if a specific tool was requested by the user
         // 2. If not, fall back to automatic tool selection based on capabilities and context
-        if let Some(selected_tool_name) = user_tool_selected {
-            // Skip if tool name is empty
-            if !selected_tool_name.is_empty() {
-                // CASE 1: User explicitly selected a tool
-                // This takes precedence over all other tool selection methods
-                if let Some(tool_router) = &tool_router {
-                    match tool_router.get_tool_by_name(&selected_tool_name).await {
-                        Ok(Some(tool)) => tools.push(tool),
-                        Ok(None) => {
-                            return Err(LLMProviderError::ToolNotFound(format!(
-                                "Selected tool not found: {}",
-                                selected_tool_name
-                            )));
-                        }
-                        Err(e) => {
-                            return Err(LLMProviderError::ToolRetrievalError(format!(
-                                "Error retrieving selected tool: {:?}",
-                                e
-                            )));
-                        }
+        // Combine the check for Some and non-empty string using filter
+        if let Some(selected_tool_name) = user_tool_selected.filter(|name| !name.is_empty()) {
+            // CASE 1: User explicitly selected a tool
+            // This takes precedence over all other tool selection methods
+            if let Some(tool_router) = &tool_router {
+                match tool_router.get_tool_by_name(&selected_tool_name).await {
+                    Ok(Some(tool)) => tools.push(tool),
+                    Ok(None) => {
+                        return Err(LLMProviderError::ToolNotFound(format!(
+                            "Selected tool not found: {}",
+                            selected_tool_name
+                        )));
+                    }
+                    Err(e) => {
+                        return Err(LLMProviderError::ToolRetrievalError(format!(
+                            "Error retrieving selected tool: {:?}",
+                            e
+                        )));
                     }
                 }
             }
@@ -568,7 +567,16 @@ impl GenericInferenceChain {
             merged_fs_folder_paths.clone(),
         )?;
 
-        println!("Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files", user_message, image_files.keys(), additional_files);
+        println!(
+            "Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files",
+            user_message,
+            image_files.keys(),
+            additional_files
+        );
+
+        // We'll keep a record of *every* function call + response across all iterations:
+        let mut all_function_responses = Vec::new();
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
             custom_system_prompt.clone(),
@@ -635,7 +643,7 @@ impl GenericInferenceChain {
 
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
-                let mut last_function_response = None;
+                let mut iteration_function_responses = Vec::new();
                 let mut should_retry = false;
 
                 for function_call in response.function_calls {
@@ -701,6 +709,12 @@ impl GenericInferenceChain {
                                     function_call_with_error.response = Some(error_msg.clone());
                                     tool_calls_history.push(function_call_with_error);
 
+                                    // Store the error response to be included in the next prompt
+                                    iteration_function_responses.push(ToolCallFunctionResponse {
+                                        function_call: function_call.clone(),
+                                        response: error_msg.clone(),
+                                    });
+
                                     // Update prompt with error information for retry
                                     filled_prompt = JobPromptGenerator::generic_inference_prompt(
                                         db.clone(),
@@ -712,10 +726,14 @@ impl GenericInferenceChain {
                                         None,
                                         Some(full_job.step_history.clone()),
                                         tools.clone(),
-                                        Some(ToolCallFunctionResponse {
-                                            function_call: function_call.clone(),
-                                            response: error_msg.clone(),
-                                        }),
+                                        // Pass all function responses (including the error) to keep context
+                                        Some(
+                                            all_function_responses
+                                                .iter()
+                                                .chain(iteration_function_responses.iter())
+                                                .cloned()
+                                                .collect(),
+                                        ),
                                         full_job.job_id.clone(),
                                         additional_files.clone(),
                                     )
@@ -757,8 +775,8 @@ impl GenericInferenceChain {
                     )
                     .await;
 
-                    // Store the last function response to use in the next prompt
-                    last_function_response = Some(function_response);
+                    // Store all function responses to use in the next prompt
+                    iteration_function_responses.push(function_response);
                 }
 
                 let additional_files = Self::get_additional_files(
@@ -774,7 +792,10 @@ impl GenericInferenceChain {
                     continue;
                 }
 
-                // 7) Call LLM again with the response (for formatting)
+                // Add this iteration's responses to our cumulative collection
+                all_function_responses.extend(iteration_function_responses);
+
+                // Call LLM again with ALL responses from all iterations
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
                     db.clone(),
                     custom_system_prompt.clone(),
@@ -785,7 +806,7 @@ impl GenericInferenceChain {
                     None,
                     Some(full_job.step_history.clone()),
                     tools.clone(),
-                    last_function_response,
+                    Some(all_function_responses.clone()),
                     full_job.job_id.clone(),
                     additional_files,
                 )

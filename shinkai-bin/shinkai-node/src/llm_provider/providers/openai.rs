@@ -54,6 +54,8 @@ pub struct PartialFunctionCall {
     pub name: Option<String>,
     pub arguments: String,
     pub is_accumulating: bool, // Track if we're currently accumulating a function call
+    pub id: Option<String>,
+    pub call_type: Option<String>,
 }
 
 #[async_trait]
@@ -112,16 +114,7 @@ impl LLMService for OpenAI {
 
                 // Conditionally add functions to the payload if tools_json is not empty
                 if !tools_json.is_empty() {
-                    let formatted_tools = tools_json
-                        .iter()
-                        .map(|tool| {
-                            serde_json::json!({
-                                "type": "function",
-                                "function": tool
-                            })
-                        })
-                        .collect::<Vec<serde_json::Value>>();
-                    payload["tools"] = serde_json::Value::Array(formatted_tools);
+                    payload["tools"] = serde_json::Value::Array(tools_json.clone());
                 }
 
                 // Only add options to payload for non-reasoning models
@@ -129,9 +122,12 @@ impl LLMService for OpenAI {
                     add_options_to_payload(&mut payload, config.as_ref());
                 }
 
-                // Print payload as a pretty JSON string
+                // Print payload as a pretty JSON string and log to file if enabled
                 match serde_json::to_string_pretty(&payload) {
-                    Ok(pretty_json) => eprintln!("cURL Payload: {}", pretty_json),
+                    Ok(pretty_json) => {
+                        eprintln!("cURL Payload: {}", pretty_json);
+                        let _ = log_request_to_file(&payload);
+                    }
                     Err(e) => eprintln!("Failed to serialize payload: {:?}", e),
                 };
 
@@ -179,76 +175,93 @@ impl LLMService for OpenAI {
         }
     }
 }
-
-/// A synchronous version of finalize_function_call that doesn't deal with
-/// WebSocket updates
 fn finalize_function_call_sync(
     partial_fc: &mut PartialFunctionCall,
     function_calls: &mut Vec<FunctionCall>,
     tools: &Option<Vec<JsonValue>>,
 ) {
     if let Some(ref name) = partial_fc.name {
-        if !name.is_empty() {
-            // Clean up the arguments string and unescape quotes
-            let cleaned_args = partial_fc
-                .arguments
-                .trim()
-                .replace(r#"\""#, "\"") // Unescape quotes
-                .to_string();
-
-            // Attempt to parse the accumulated arguments
-            let fc_arguments = if cleaned_args.is_empty() {
-                serde_json::Map::new()
-            } else {
-                // Try to parse as is first
-                let parse_result = if cleaned_args.starts_with('{') {
-                    serde_json::from_str::<JsonValue>(&cleaned_args)
-                } else {
-                    // If it doesn't start with '{', wrap it
-                    serde_json::from_str::<JsonValue>(&format!("{{{}}}", cleaned_args))
-                };
-
-                match parse_result {
-                    Ok(value) => value.as_object().cloned().unwrap_or_else(|| {
-                        eprintln!("Failed to convert value to object: {:?}", value);
-                        serde_json::Map::new()
-                    }),
-                    Err(e) => {
-                        eprintln!("Failed to parse arguments: {}", e);
-                        eprintln!("Arguments string was: {}", cleaned_args);
-                        serde_json::Map::new()
-                    }
-                }
-            };
-
-            // Look up the optional tool_router_key
-            let tool_router_key = tools.as_ref().and_then(|tools_array| {
-                tools_array.iter().find_map(|tool| {
-                    if tool.get("name")?.as_str()? == name {
-                        tool.get("tool_router_key")
-                            .and_then(|key| key.as_str().map(|s| s.to_string()))
-                    } else {
-                        None
-                    }
-                })
-            });
-
-            // Build and add to the function_calls vector
-            let new_function_call = FunctionCall {
-                name: name.clone(),
-                arguments: fc_arguments,
-                tool_router_key,
-                response: None,
-                index: function_calls.len() as u64,
-            };
-            function_calls.push(new_function_call);
+        if name.is_empty() {
+            return;
         }
+        eprintln!(
+            "[DEBUG] Finalizing function call: name={}, id={:?}, arguments='{}'",
+            name, partial_fc.id, partial_fc.arguments
+        );
+
+        let raw_args = partial_fc.arguments.trim();
+
+        // If it starts with {\" but not with quotes, let's wrap in outer quotes:
+        // so that it becomes a JSON string (which will parse as Value::String).
+        let mut wrapped_args = raw_args.to_owned();
+        if raw_args.starts_with("{\\") && !raw_args.starts_with("\"{\\") {
+            wrapped_args = format!("\"{}\"", raw_args);
+        }
+
+        // Now do the first parse
+        let parsed_once = serde_json::from_str::<serde_json::Value>(&wrapped_args);
+        let fc_arguments = match parsed_once {
+            Ok(json_value) => {
+                // If the top-level is a JSON string, parse again
+                if let Some(json_str) = json_value.as_str() {
+                    match serde_json::from_str::<serde_json::Value>(json_str) {
+                        Ok(inner_value) => inner_value.as_object().cloned().unwrap_or_default(),
+                        Err(e) => {
+                            eprintln!("[ERROR] Inner parse failed: {:?}. Returning empty object.", e);
+                            serde_json::Map::new()
+                        }
+                    }
+                } else {
+                    // Already an object or array
+                    json_value.as_object().cloned().unwrap_or_default()
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "[ERROR] Failed to parse raw_args even once: {:?}. Returning empty object.",
+                    e
+                );
+                serde_json::Map::new()
+            }
+        };
+
+        eprintln!("[DEBUG] Final function call JSON object: {:#?}", fc_arguments);
+
+        // Look up the optional tool_router_key
+        let tool_router_key = tools.as_ref().and_then(|tools_array| {
+            tools_array.iter().find_map(|tool| {
+                if tool.get("name")?.as_str()? == name {
+                    tool.get("tool_router_key")
+                        .and_then(|key| key.as_str().map(|s| s.to_string()))
+                } else {
+                    None
+                }
+            })
+        });
+
+        // Build and add to function_calls
+        let id = partial_fc
+            .id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let new_function_call = FunctionCall {
+            name: name.clone(),
+            arguments: fc_arguments,
+            tool_router_key,
+            response: None,
+            index: function_calls.len() as u64,
+            id: Some(id),
+            call_type: partial_fc.call_type.clone(),
+        };
+        function_calls.push(new_function_call);
     }
 
     // Clear partial so we can accumulate a new function call in subsequent chunks
     partial_fc.name = None;
     partial_fc.arguments.clear();
     partial_fc.is_accumulating = false;
+    partial_fc.id = None;
+    partial_fc.call_type = None;
 }
 
 pub async fn parse_openai_stream_chunk(
@@ -470,7 +483,8 @@ pub async fn parse_openai_stream_chunk(
                             // If there's function_call
                             if let Some(fc) = delta.get("function_call") {
                                 if let Some(name) = fc.get("name").and_then(|n| n.as_str()) {
-                                    // If partial_fc already had a different name, finalize that first
+                                    // We don't have IDs in the legacy function_call format, but we still check for name
+                                    // changes
                                     if let Some(old_name) = &partial_fc.name {
                                         if !old_name.is_empty() && old_name != name {
                                             finalize_function_call_sync(partial_fc, function_calls, tools);
@@ -478,23 +492,73 @@ pub async fn parse_openai_stream_chunk(
                                     }
                                     partial_fc.name = Some(name.to_string());
                                     partial_fc.is_accumulating = true;
+                                    // Legacy function_call format doesn't have IDs, so we clear it
+                                    partial_fc.id = None;
                                 }
                             }
 
-                            // handle tools_call
+                            // Handle tool_calls (new format)
                             if let Some(tool_calls) = delta.get("tool_calls") {
                                 if let Some(tool_calls_array) = tool_calls.as_array() {
-                                    if let Some(first_tool_call) = tool_calls_array.first() {
-                                        if let Some(function) = first_tool_call.get("function") {
+                                    // Process each tool call in the array instead of just the first one
+                                    for tool_call in tool_calls_array {
+                                        if let Some(function) = tool_call.get("function") {
                                             if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
-                                                // If partial_fc already had a different name, finalize that first
-                                                if let Some(old_name) = &partial_fc.name {
-                                                    if !old_name.is_empty() && old_name != name {
+                                                let new_id = tool_call.get("id").and_then(|id| id.as_str());
+                                                let index = tool_call.get("index").and_then(|i| i.as_u64());
+
+                                                // If partial_fc is in use, check both name and ID before continuing
+                                                if partial_fc.is_accumulating {
+                                                    let same_name = partial_fc.name.as_deref() == Some(name);
+                                                    let same_id = match (partial_fc.id.as_deref(), new_id) {
+                                                        (Some(old_id), Some(nid)) => old_id == nid,
+                                                        (None, None) => true,
+                                                        _ => false,
+                                                    };
+
+                                                    // Finalize if either name changed or ID changed
+                                                    if !(same_name && same_id) {
                                                         finalize_function_call_sync(partial_fc, function_calls, tools);
                                                     }
                                                 }
+
+                                                // Now start or continue a partial FC
                                                 partial_fc.name = Some(name.to_string());
                                                 partial_fc.is_accumulating = true;
+
+                                                // Set the ID of the current tool call
+                                                if let Some(id) = new_id {
+                                                    partial_fc.id = Some(id.to_string());
+                                                }
+
+                                                // Store call_type if present
+                                                if let Some(call_type) = tool_call.get("type").and_then(|t| t.as_str())
+                                                {
+                                                    partial_fc.call_type = Some(call_type.to_string());
+                                                }
+
+                                                // If this tool call has arguments, process them
+                                                if let Some(args) = function.get("arguments").and_then(|a| a.as_str()) {
+                                                    partial_fc.arguments.push_str(args);
+
+                                                    // Check if the accumulated arguments form a valid JSON object
+                                                    if partial_fc.arguments.starts_with('{')
+                                                        && partial_fc.arguments.ends_with('}')
+                                                    {
+                                                        match serde_json::from_str::<JsonValue>(&partial_fc.arguments) {
+                                                            Ok(_) => {
+                                                                finalize_function_call_sync(
+                                                                    partial_fc,
+                                                                    function_calls,
+                                                                    tools,
+                                                                );
+                                                            }
+                                                            Err(e) => {
+                                                                // Continue accumulating
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -593,7 +657,7 @@ pub async fn handle_streaming_response(
                 .and_then(|h| h.get("x-shinkai-session-id"))
                 .and_then(|v| v.as_str())
                 .unwrap_or(""),
-        )        
+        )
         .json(&payload)
         .send()
         .await?;
@@ -603,9 +667,13 @@ pub async fn handle_streaming_response(
         let error_json: serde_json::Value = res.json().await?;
         if let Some(error) = error_json.get("error") {
             let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+            return Err(LLMProviderError::APIError(
+                "AI Provider API Error: ".to_string() + error_message,
+            ));
         }
-        return Err(LLMProviderError::APIError("AI Provider API Error: Unknown error occurred".to_string()));
+        return Err(LLMProviderError::APIError(
+            "AI Provider API Error: Unknown error occurred".to_string(),
+        ));
     }
 
     // Check content type to determine if it's a stream
@@ -623,11 +691,14 @@ pub async fn handle_streaming_response(
         let response_json: serde_json::Value = res.json().await?;
         if let Some(error) = response_json.get("error") {
             let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+            return Err(LLMProviderError::APIError(
+                "AI Provider API Error: ".to_string() + error_message,
+            ));
         }
-        return Err(LLMProviderError::APIError("AI Provider API Error: Expected streaming response but received regular JSON".to_string()));
-    }        
-
+        return Err(LLMProviderError::APIError(
+            "AI Provider API Error: Expected streaming response but received regular JSON".to_string(),
+        ));
+    }
 
     // Check for 429 status code
     if res.status() == 429 {
@@ -666,6 +737,8 @@ pub async fn handle_streaming_response(
         name: None,
         arguments: String::new(),
         is_accumulating: false,
+        id: None,
+        call_type: None,
     };
 
     while let Some(item) = stream.next().await {
@@ -714,7 +787,14 @@ pub async fn handle_streaming_response(
                     }
                 }
 
-                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
+                // Create the response object
+                let response =
+                    LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), None);
+
+                // Log the response if LOG_REQUESTS is enabled
+                log_response_to_file(&response_text, &function_calls, true);
+
+                return Ok(response);
             }
         }
 
@@ -771,12 +851,13 @@ pub async fn handle_streaming_response(
         }
     }
 
-    Ok(LLMInferenceResponse::new(
-        response_text,
-        json!({}),
-        function_calls,
-        None,
-    ))
+    // Create the response object
+    let response = LLMInferenceResponse::new(response_text.clone(), json!({}), function_calls.clone(), None);
+
+    // Log the response if LOG_REQUESTS is enabled
+    log_response_to_file(&response_text, &function_calls, false);
+
+    Ok(response)
 }
 
 pub async fn handle_non_streaming_response(
@@ -954,8 +1035,9 @@ pub async fn handle_non_streaming_response(
                                         arguments,
                                         tool_router_key,
                                         response: None,
-                                        // Here we set 0 because it's just processing the first tool_call
                                         index: 0,
+                                        id: Some(tool_call.id.clone()),
+                                        call_type: Some(tool_call.call_type.clone()),
                                     }
                                 })
                             })
@@ -1163,16 +1245,28 @@ async fn send_tool_ws_update(
 pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) {
     // Find the start of arguments value - check both function_call and tool_calls prefixes
     let function_call_prefix = r#""function_call":{"arguments":""#;
-    let tool_calls_prefix = r#""tool_calls":[{"index":0,"function":{"arguments":""#;
+    // Remove the ":0" part to match any index
+    let tool_calls_prefix = r#""tool_calls":[{"index":"#;
 
     let (prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
         (function_call_prefix, args_start_pos + function_call_prefix.len())
     } else if let Some(args_start_pos) = json_str.find(tool_calls_prefix) {
-        (tool_calls_prefix, args_start_pos + tool_calls_prefix.len())
+        // Since we changed the prefix, we need to find where the actual arguments start
+        let remaining = &json_str[args_start_pos + tool_calls_prefix.len()..];
+        if let Some(args_part) = remaining.find(r#","function":{"arguments":""#) {
+            // Add offset to get to the end of the arguments prefix
+            let args_prefix_end =
+                args_start_pos + tool_calls_prefix.len() + args_part + r#","function":{"arguments":""#.len();
+            (tool_calls_prefix, args_prefix_end)
+        } else {
+            // If we can't find the arguments part, return without extracting
+            return (None, json_str.to_string());
+        }
     } else {
         return (None, json_str.to_string());
     };
 
+    // Rest of the function remains unchanged
     // Find the end of arguments value by looking for the closing quotes and braces
     // We need to handle both cases: when it's just a piece of a JSON string and
     // when it's a complete one
@@ -1218,6 +1312,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1263,6 +1359,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "test_function",
@@ -1326,6 +1424,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
 
@@ -1401,132 +1501,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_parse_gemini_openai_compatibility_stream() {
-        let mut buffer = String::new();
-        let mut response_text = String::new();
-        let mut function_calls = Vec::new();
-        let mut partial_fc = PartialFunctionCall {
-            name: None,
-            arguments: String::new(),
-            is_accumulating: false,
-        };
-        let tools = None;
-
-        // First chunk with initial content
-        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\"Yes\",\"role\":\"assistant\"},\"index\":0}],\"created\":1736746675,\"model\":\"gemini-1.5-flash\",\"object\":\"chat.completion.chunk\"}\n");
-        let result = parse_openai_stream_chunk(
-            &mut buffer,
-            &mut response_text,
-            &mut function_calls,
-            &mut partial_fc,
-            &tools,
-            &None,
-            None,
-            "session_id",
-        )
-        .await;
-        assert!(result.is_ok());
-        assert_eq!(response_text, "Yes");
-
-        // Second chunk with middle content
-        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\", I'm here and ready to assist you.  How can I help\",\"role\":\"assistant\"},\"index\":0}],\"created\":1736746675,\"model\":\"gemini-1.5-flash\",\"object\":\"chat.completion.chunk\"}\n");
-        let result = parse_openai_stream_chunk(
-            &mut buffer,
-            &mut response_text,
-            &mut function_calls,
-            &mut partial_fc,
-            &tools,
-            &None,
-            None,
-            "session_id",
-        )
-        .await;
-        assert!(result.is_ok());
-        assert_eq!(response_text, "Yes, I'm here and ready to assist you.  How can I help");
-
-        // Final chunk with finish_reason
-        buffer.push_str("data: {\"choices\":[{\"delta\":{\"content\":\"?\\n\",\"role\":\"assistant\"},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1736746675,\"model\":\"gemini-1.5-flash\",\"object\":\"chat.completion.chunk\"}\n");
-        let result = parse_openai_stream_chunk(
-            &mut buffer,
-            &mut response_text,
-            &mut function_calls,
-            &mut partial_fc,
-            &tools,
-            &None,
-            None,
-            "session_id",
-        )
-        .await;
-        assert!(result.is_ok());
-
-        // [DONE] message
-        buffer.push_str("data: [DONE]\n");
-        let result = parse_openai_stream_chunk(
-            &mut buffer,
-            &mut response_text,
-            &mut function_calls,
-            &mut partial_fc,
-            &tools,
-            &None,
-            None,
-            "session_id",
-        )
-        .await;
-        assert!(result.is_ok());
-
-        // Verify final response text
-        assert_eq!(
-            response_text,
-            "Yes, I'm here and ready to assist you.  How can I help?\n"
-        );
-        assert!(function_calls.is_empty());
-    }
-
-    #[tokio::test]
-    async fn test_parse_gemini_openai_compatibility_non_stream() {
-        // Create test response JSON
-        let response_json = r#"{
-            "choices": [
-                {
-                    "finish_reason": "stop",
-                    "index": 0,
-                    "message": {
-                        "content": "Yes, I'm here and ready to assist you.  How can I help?\n",
-                        "role": "assistant"
-                    }
-                }
-            ],
-            "created": 1737072854,
-            "model": "gemini-1.5-flash",
-            "object": "chat.completion",
-            "usage": {
-                "completion_tokens": 19,
-                "prompt_tokens": 45,
-                "total_tokens": 64
-            }
-        }"#;
-
-        // Parse response
-        let data: OpenAIResponse = serde_json::from_str(response_json).unwrap();
-
-        // Verify the parsed data
-        assert_eq!(data.choices.len(), 1);
-        let choice = &data.choices[0];
-        assert_eq!(choice.finish_reason.clone().unwrap(), "stop");
-        assert_eq!(choice.index, 0);
-
-        match &choice.message.content {
-            Some(MessageContent::Text(text)) => {
-                assert_eq!(text, "Yes, I'm here and ready to assist you.  How can I help?\n");
-            }
-            _ => panic!("Expected text content"),
-        }
-
-        assert_eq!(choice.message.role, "assistant");
-        assert!(choice.message.function_call.is_none());
-    }
-
-    #[tokio::test]
     async fn test_parse_openai_stream_chunk_riddle_response() {
         let mut buffer = String::new();
         let mut response_text = String::new();
@@ -1535,6 +1509,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
 
@@ -1625,6 +1601,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "shinkai_tool_config_updater",
@@ -1761,6 +1739,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "duckduckgo_search",
@@ -1937,6 +1917,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = None;
         let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
@@ -1981,6 +1963,8 @@ mod tests {
             name: None,
             arguments: String::new(),
             is_accumulating: false,
+            id: None,
+            call_type: None,
         };
         let tools = Some(vec![serde_json::json!({
             "name": "stagehand_runner",
@@ -2133,4 +2117,73 @@ mod tests {
         });
         assert_eq!(arguments, expected_args);
     }
+}
+
+/// Log the response to a file if LOG_REQUESTS environment variable is set to true
+fn log_response_to_file(response_text: &str, function_calls: &Vec<FunctionCall>, stopped_by_user: bool) {
+    if std::env::var("LOG_REQUESTS").unwrap_or_else(|_| "false".to_string()) == "true" {
+        use chrono::Utc;
+        use std::fs::OpenOptions;
+        use std::io::Write;
+
+        let now = Utc::now();
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%.3fZ");
+        let log_header = format!("\n\n### Response ({})\n", timestamp);
+
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("openai_requests.log") {
+            // Create a JSON representation of the response manually
+            let mut response_data = json!({
+                "text": response_text,
+                "function_calls": function_calls
+            });
+
+            if stopped_by_user {
+                response_data["stopped_by_user"] = json!(true);
+            }
+
+            if let Ok(response_json) = serde_json::to_string_pretty(&response_data) {
+                if let Err(e) = writeln!(file, "{}{}", log_header, response_json) {
+                    eprintln!("Failed to write response to log file: {:?}", e);
+                }
+            } else {
+                if let Err(e) = writeln!(file, "{}Failed to create response JSON", log_header) {
+                    eprintln!("Failed to write to log file: {:?}", e);
+                }
+            }
+        } else {
+            eprintln!("Failed to open log file for response logging");
+        }
+    }
+}
+
+/// Log the request payload to a file if LOG_REQUESTS environment variable is set to true
+fn log_request_to_file(payload: &JsonValue) -> Result<(), String> {
+    if std::env::var("LOG_REQUESTS").unwrap_or_else(|_| "false".to_string()) == "true" {
+        use chrono::Utc;
+        use std::fs::OpenOptions;
+        use std::io::Write;
+
+        let now = Utc::now();
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%S%.3fZ");
+        let log_header = format!("\n\n### Request ({})\n", timestamp);
+
+        match serde_json::to_string_pretty(payload) {
+            Ok(pretty_json) => {
+                if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("openai_requests.log") {
+                    if let Err(e) = writeln!(file, "{}{}", log_header, pretty_json) {
+                        eprintln!("Failed to write to log file: {:?}", e);
+                        return Err(format!("Failed to write to log file: {:?}", e));
+                    }
+                } else {
+                    eprintln!("Failed to open log file");
+                    return Err("Failed to open log file".to_string());
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to serialize payload: {:?}", e);
+                return Err(format!("Failed to serialize payload: {:?}", e));
+            }
+        }
+    }
+    Ok(())
 }

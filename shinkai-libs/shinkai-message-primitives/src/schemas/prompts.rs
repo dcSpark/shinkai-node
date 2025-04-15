@@ -6,9 +6,7 @@ use serde_json::Value;
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 use super::{
-    llm_message::{DetailedFunctionCall, LlmMessage},
-    shinkai_fs::ShinkaiFileChunkCollection,
-    subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType},
+    llm_message::{DetailedFunctionCall, LlmMessage}, shinkai_fs::ShinkaiFileChunkCollection, subprompts::{SubPrompt, SubPromptAssetContent, SubPromptAssetDetail, SubPromptAssetType, SubPromptType}
 };
 
 #[derive(Debug)]
@@ -45,9 +43,11 @@ impl From<serde_json::Error> for PromptError {
 pub struct Prompt {
     /// Sub-prompts that make up this prompt
     pub sub_prompts: Vec<SubPrompt>,
-    /// The lowest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
+    /// The lowest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating
+    /// priorities.
     pub lowest_priority: u8,
-    /// The highest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for updating priorities.
+    /// The highest priority value held in sub_prompts. TODO: Make this a hashmap to make it more efficient for
+    /// updating priorities.
     pub highest_priority: u8,
 }
 
@@ -372,15 +372,24 @@ impl Prompt {
                         function_call: None,
                         functions: None,
                         images: None,
+                        tool_calls: None,
                     };
 
                     if let Some(name) = content.get("name").and_then(|n| n.as_str()) {
                         let arguments = content
                             .get("arguments")
                             .map_or_else(|| "".to_string(), |args| args.to_string());
+
+                        let call_id = content
+                            .get("call_id")
+                            .and_then(|id| id.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
                         new_message.function_call = Some(DetailedFunctionCall {
                             name: name.to_string(),
                             arguments,
+                            id: if call_id.is_empty() { None } else { Some(call_id) },
                         });
                     }
                     current_length +=
@@ -396,11 +405,17 @@ impl Prompt {
                         function_call: None,
                         functions: None,
                         images: None,
+                        tool_calls: None,
                     };
 
                     if let Some(function_call) = content.get("function_call") {
                         if let Some(name) = function_call.get("name").and_then(|n| n.as_str()) {
                             new_message.name = Some(name.to_string());
+                        }
+
+                        // Hack to make the tool call id available to the LLM if id is present
+                        if let Some(call_id) = function_call.get("id").and_then(|c| c.as_str()) {
+                            new_message.name = Some(call_id.to_string());
                         }
                     }
                     new_message.content = content.get("response").and_then(|r| r.as_str()).map(|r| r.to_string());
@@ -417,6 +432,7 @@ impl Prompt {
                         function_call: None,
                         functions: None,
                         images: None,
+                        tool_calls: None,
                     });
                 }
                 SubPrompt::Omni(prompt_type, _, _, _) => {
@@ -461,6 +477,7 @@ impl Prompt {
                 function_call: None,
                 functions: None,
                 images: last_user_message.and_then(|msg| msg.images),
+                tool_calls: None,
             };
             current_length += token_counter(&[combined_message.clone()]);
             tiktoken_messages.push(combined_message);

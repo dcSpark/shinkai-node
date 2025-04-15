@@ -22,7 +22,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -623,6 +623,7 @@ impl ToolRouter {
 
         println!("call_function additional_files: {:?}", additional_files);
         println!("call_function job_scope files: {:?}", all_files);
+        println!("call_function function_args: {:?}", function_args);
 
         // Use a HashSet to ensure unique paths
         let mut unique_files: std::collections::HashSet<_> = all_files.into_iter().collect();

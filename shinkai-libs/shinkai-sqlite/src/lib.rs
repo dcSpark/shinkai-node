@@ -91,7 +91,7 @@ impl SqliteManager {
                  PRAGMA synchronous=FULL;
                  PRAGMA temp_store=MEMORY;
                  PRAGMA optimize;
-                 PRAGMA busy_timeout = 5000;
+                 PRAGMA busy_timeout = 10000;
                  PRAGMA mmap_size=262144000; -- 250 MB in bytes (250 * 1024 * 1024)
                  PRAGMA foreign_keys = ON;", // Enable foreign key support
         )?;
@@ -115,7 +115,7 @@ impl SqliteManager {
                 .map_err(|e| rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(1), Some(e.to_string())))?;
             fts_conn.execute_batch(
                 "PRAGMA foreign_keys = ON;
-                 PRAGMA busy_timeout = 5000;", // Added 5 second busy timeout
+                 PRAGMA busy_timeout = 10000;",
             )?;
             Self::initialize_fts_tables(&fts_conn)?;
         }

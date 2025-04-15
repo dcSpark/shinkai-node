@@ -16,7 +16,7 @@ use super::super::error::LLMProviderError;
 use super::openai::{
     add_options_to_payload, handle_non_streaming_response, handle_streaming_response, truncate_image_url_in_payload
 };
-use super::shared::openai_api::openai_prepare_messages;
+use super::shared::openai_api_deprecated::openai_prepare_messages_deprecated;
 use super::LLMService;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -59,7 +59,7 @@ impl LLMService for ShinkaiBackend {
 
         let key: String = api_key.map_or_else(|| "NO_KEY".to_string(), |k| k.clone());
 
-        let result = openai_prepare_messages(&model, prompt)?;
+        let result = openai_prepare_messages_deprecated(&model, prompt)?;
 
         // Check if model_type is not supported and log a warning
         if !matches!(

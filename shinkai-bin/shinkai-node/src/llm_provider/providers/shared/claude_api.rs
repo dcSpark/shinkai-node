@@ -10,10 +10,12 @@ use shinkai_message_primitives::schemas::prompts::Prompt;
 fn sanitize_tool_name(name: &str) -> String {
     let sanitized: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { 
-            c.to_ascii_lowercase() 
-        } else { 
-            '_' 
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
         })
         .collect();
 
@@ -134,12 +136,18 @@ pub fn process_llm_messages(
                     map.remove("functions")
                         .and_then(|functions| {
                             if let serde_json::Value::Array(funcs) = functions {
-                                Some(funcs.into_iter().map(|mut func| {
-                                    if let Some(name) = func.get("name").and_then(|n| n.as_str()) {
-                                        func.as_object_mut().unwrap()["name"] = serde_json::Value::String(sanitize_tool_name(name));
-                                    }
-                                    func
-                                }).collect::<Vec<_>>())
+                                Some(
+                                    funcs
+                                        .into_iter()
+                                        .map(|mut func| {
+                                            if let Some(name) = func.get("name").and_then(|n| n.as_str()) {
+                                                func.as_object_mut().unwrap()["name"] =
+                                                    serde_json::Value::String(sanitize_tool_name(name));
+                                            }
+                                            func
+                                        })
+                                        .collect::<Vec<_>>(),
+                                )
                             } else {
                                 None
                             }
@@ -170,8 +178,7 @@ mod tests {
     use regex::Regex;
     use serde_json::json;
     use shinkai_message_primitives::schemas::{
-        llm_message::DetailedFunctionCall,
-        llm_providers::serialized_llm_provider::{Claude, SerializedLLMProvider}, subprompts::{SubPrompt, SubPromptType},
+        llm_message::DetailedFunctionCall, llm_providers::serialized_llm_provider::{Claude, SerializedLLMProvider}, subprompts::{SubPrompt, SubPromptType}
     };
 
     #[test]
@@ -190,6 +197,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -198,6 +206,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: Some(vec![]),
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("assistant".to_string()),
@@ -206,9 +215,11 @@ mod tests {
                 function_call: Some(DetailedFunctionCall {
                     name: "shinkai__echo".to_string(),
                     arguments: "{\"message\":\"hello\"}".to_string(),
+                    id: None,
                 }),
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("function".to_string()),
@@ -217,6 +228,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
         ];
 
@@ -473,10 +485,13 @@ mod tests {
         assert_eq!(system_messages[0].role, Some("system".to_string()));
 
         // Verify user message
-        let user_message = messages.as_array().unwrap().iter().find(|msg| {
-            msg.get("role") == Some(&json!("user")) && msg.get("content").is_some()
-        }).expect("Should have found a user message");
-        
+        let user_message = messages
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|msg| msg.get("role") == Some(&json!("user")) && msg.get("content").is_some())
+            .expect("Should have found a user message");
+
         assert_eq!(
             user_message.get("content").unwrap().as_str().unwrap(),
             "search in duckduckgo for movies"
@@ -489,13 +504,15 @@ mod tests {
 
         // Verify each function name follows the pattern and matches expected sanitized name
         let name_pattern = Regex::new(r"^[a-zA-Z0-9_-]{1,64}$").unwrap();
-        
+
         let function_names: Vec<String> = functions
             .iter()
-            .map(|f| f.get("name")
-                .and_then(|n| n.as_str())
-                .map(|n| n.to_string())
-                .expect("Each function should have a name"))
+            .map(|f| {
+                f.get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.to_string())
+                    .expect("Each function should have a name")
+            })
             .collect();
 
         // Print all function names for debugging
@@ -511,8 +528,17 @@ mod tests {
         }
 
         // Verify the expected sanitized names are present
-        assert!(function_names.contains(&"google_search".to_string()), "Should contain sanitized Google Search tool");
-        assert!(function_names.contains(&"duckduckgo_search".to_string()), "Should contain sanitized DuckDuckGo Search tool");
-        assert!(function_names.contains(&"smart_search_engine".to_string()), "Should contain sanitized Smart Search Engine tool");
+        assert!(
+            function_names.contains(&"google_search".to_string()),
+            "Should contain sanitized Google Search tool"
+        );
+        assert!(
+            function_names.contains(&"duckduckgo_search".to_string()),
+            "Should contain sanitized DuckDuckGo Search tool"
+        );
+        assert!(
+            function_names.contains(&"smart_search_engine".to_string()),
+            "Should contain sanitized Smart Search Engine tool"
+        );
     }
 }

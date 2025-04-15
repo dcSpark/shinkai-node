@@ -141,7 +141,8 @@ impl SubPrompt {
             SubPrompt::ToolAvailable(_, content, _) => *content = serde_json::Value::String(new_content),
             SubPrompt::FunctionCall(_, content, _) => *content = serde_json::Value::String(new_content),
             SubPrompt::FunctionCallResponse(_, content, _) => *content = serde_json::Value::String(new_content),
-            SubPrompt::Omni(_, content, _, _) => *content = new_content, // Note: shouldn't this account for the assets as well?
+            SubPrompt::Omni(_, content, _, _) => *content = new_content, /* Note: shouldn't this account for the
+                                                                          * assets as well? */
         }
     }
 
@@ -168,6 +169,7 @@ impl SubPrompt {
                     function_call: None,
                     functions: None,
                     images: Some(images),
+                    tool_calls: None,
                 }
             }
             _ => {
@@ -179,13 +181,14 @@ impl SubPrompt {
                     function_call: None,
                     functions: None,
                     images: None,
+                    tool_calls: None,
                 }
             }
         }
     }
 
-    /// Counts the number of (estimated) tokens that the sub-prompt will be treated as when converted into a completion message.
-    /// In other words, this is the "real" estimated token count (not just naive utf-8 character count).
+    /// Counts the number of (estimated) tokens that the sub-prompt will be treated as when converted into a completion
+    /// message. In other words, this is the "real" estimated token count (not just naive utf-8 character count).
     pub fn count_tokens_as_completion_message<F>(&self, token_counter: F) -> usize
     where
         F: Fn(&[LlmMessage]) -> usize,
@@ -194,9 +197,10 @@ impl SubPrompt {
         self.count_tokens_with_pregenerated_completion_message(&new_message, token_counter)
     }
 
-    /// Counts the number of (estimated) tokens that the sub-prompt will be treated as when converted into a completion message.
-    /// In other words, this is the "real" estimated token count (not just naive utf-8 character count).
-    /// This accepts a pregenerated completion message made from self.into_chat_completion_request_message() for greater efficiency.
+    /// Counts the number of (estimated) tokens that the sub-prompt will be treated as when converted into a completion
+    /// message. In other words, this is the "real" estimated token count (not just naive utf-8 character count).
+    /// This accepts a pregenerated completion message made from self.into_chat_completion_request_message() for greater
+    /// efficiency.
     pub fn count_tokens_with_pregenerated_completion_message<F>(
         &self,
         completion_message: &LlmMessage,
@@ -216,8 +220,8 @@ impl SubPrompt {
 
     // /// Converts a vector resource into a series of subprompts to be used in a prompt
     // /// If the VR is ordered, the output will be as well.
-    // pub fn convert_resource_into_subprompts(resource: &BaseVectorResource, subprompt_priority: u8) -> Vec<SubPrompt> {
-    //     let mut temp_prompt = Prompt::new();
+    // pub fn convert_resource_into_subprompts(resource: &BaseVectorResource, subprompt_priority: u8) -> Vec<SubPrompt>
+    // {     let mut temp_prompt = Prompt::new();
 
     //     let nodes = resource.as_trait_object().get_all_nodes_flattened();
 
@@ -317,7 +321,10 @@ impl SubPrompt {
             }
 
             // Generate extra info based on the chunk's position and file ID
-            let extra_info = format!("\nRef. chunk: {} from file ID: {}.", chunk.position, chunk.parsed_file_id);
+            let extra_info = format!(
+                "\nRef. chunk: {} from file ID: {}.",
+                chunk.position, chunk.parsed_file_id
+            );
 
             if extra_info != last_reference {
                 if !buffer_content.is_empty() {

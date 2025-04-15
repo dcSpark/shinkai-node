@@ -727,6 +727,7 @@ pub enum NodeCommand {
     V2ApiGetShinkaiTool {
         bearer: String,
         payload: String,
+        serialize_config: bool,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetDefaultEmbeddingModel {
