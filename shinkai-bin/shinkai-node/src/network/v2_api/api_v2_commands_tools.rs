@@ -30,7 +30,14 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
+    deno_tools::DenoTool,
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
 };
 use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
@@ -46,33 +53,45 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use zip::{write::FileOptions, ZipWriter};
 
 // Helper function to serialize Vec<ToolConfig> into the specific object format
-fn serialize_tool_config_to_object(configs: &Vec<ToolConfig>) -> Value {
-    let mut properties = Map::new();
-    let mut required = Vec::new();
+fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> Value {
+    let mut schema_properties = Map::new();
+    let mut schema_required = Vec::new();
+    let mut config_form_data = Map::new();
 
     for config in configs {
         if let ToolConfig::BasicConfig(basic) = config {
-            let mut property = Map::new();
-            property.insert("description".to_string(), json!(basic.description));
-            // If type_name is None, default to "string"
+            // --- Build Schema Part ---
+            let mut property_details = Map::new();
+            property_details.insert("description".to_string(), json!(basic.description));
             let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
-            property.insert("type".to_string(), json!(type_value));
-            properties.insert(basic.key_name.clone(), Value::Object(property));
+            property_details.insert("type".to_string(), json!(type_value));
+            schema_properties.insert(basic.key_name.clone(), Value::Object(property_details));
 
             if basic.required {
-                required.push(json!(basic.key_name.clone()));
+                schema_required.push(json!(basic.key_name.clone()));
             }
+
+            // --- Build configFormData Part ---
+            // Use json! macro which converts Option<String> to Value::String or Value::Null
+            config_form_data.insert(basic.key_name.clone(), json!(basic.key_value));
         }
-        // Note: This ignores non-BasicConfig variants for the object serialization,
-        // matching the behavior of the original serialize_configurations.
-        // If other ToolConfig variants should be handled differently when
-        // serialize_config is true, this logic needs adjustment.
+        // Note: Still ignores non-BasicConfig variants for both parts.
     }
 
-    json!({
+    // Construct the final schema object
+    let schema_object = json!({
         "type": "object",
-        "properties": properties,
-        "required": required
+        "properties": schema_properties,
+        "required": schema_required
+    });
+
+    // Construct the final configFormData object
+    let config_form_data_object = Value::Object(config_form_data);
+
+    // Construct the final return object containing both parts
+    json!({
+        "schema": schema_object,
+        "configFormData": config_form_data_object
     })
 }
 
@@ -699,11 +718,13 @@ impl Node {
                 if serialize_config {
                     if let Value::Object(ref mut map) = response_value {
                         // Get the original config Vec from the tool struct
-                        let original_config = tool.get_config();
-                        // Serialize the config vector using the helper function
-                        let serialized_config_object = serialize_tool_config_to_object(&original_config);
+                        let original_config = tool.get_config(); // Assumes ShinkaiTool implements GetConfig trait or similar
+                        // Serialize the config vector using the updated helper function
+                        let serialized_config_data = serialize_tool_config_to_schema_and_form_data(&original_config); // Use new function name
+                        // Replace the existing 'config' field in the JSON map with the new structure
                         if let Some(Value::Object(ref mut contents_map)) = map.get_mut("content").and_then(|v| v.as_array_mut()).and_then(|arr| arr.get_mut(0)) {
-                            contents_map.insert("config".to_string(), serialized_config_object);
+                            contents_map.insert("config".to_string(), serialized_config_data.get("schema").unwrap().clone());
+                            contents_map.insert("configFormData".to_string(), serialized_config_data.get("configFormData").unwrap().clone());
                         }
                     }
                 }
