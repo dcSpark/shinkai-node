@@ -48,14 +48,15 @@ impl SqliteManager {
 
         // Create the folder name with the job_id suffix
         let folder_name = format!("{} - ({}) {}", formatted_date, job_id_suffix, smart_inbox_name);
-        
+
         // Use the sanitize_folder_name function to ensure compatibility
         let valid_folder_name = Self::sanitize_folder_name(&folder_name);
 
-        // Truncate if the name is too long
-        let max_length = 30; // Max length
-        let final_folder_name = if valid_folder_name.len() > max_length {
-            valid_folder_name[..max_length].to_string()
+        // Truncate if the name is too long, ensuring character boundaries
+        let max_length = 30; // Max length in characters
+        let final_folder_name = if valid_folder_name.chars().count() > max_length {
+            // Take the first `max_length` characters and collect them into a new String
+            valid_folder_name.chars().take(max_length).collect::<String>()
         } else {
             valid_folder_name
         };
