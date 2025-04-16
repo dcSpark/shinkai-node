@@ -640,7 +640,13 @@ mod tests {
             embedding_metadata: None,
         };
 
-        let input_args = Parameters::with_single_property("url", "string", "The URL to fetch", true);
+        let input_args = Parameters::with_single_property(
+            "url",
+            "string",
+            "The URL to fetch",
+            true,
+            Some("https://example.com".to_string()),
+        );
 
         let deno_tool = DenoTool {
             name: "shinkai__download_website".to_string(),

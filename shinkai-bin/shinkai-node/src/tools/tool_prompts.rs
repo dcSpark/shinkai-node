@@ -571,6 +571,9 @@ pub async fn tool_metadata_implementation_prompt(
           "order": {{
             "type": "number"
           }},
+          "default": {{
+            "type": "any"
+          }},
           "type": {{
             "type": "string",
             "enum": [
@@ -730,7 +733,7 @@ pub async fn tool_metadata_implementation_prompt(
       "properties": {{
         "urls": {{ "type": "array", "description": "The URLs to download", "items": {{ "type": "string", "description": "URL to download" }} }},
         "email": {{ "type": "string", "description": "The email to send the markdown to" }},
-        "subject": {{ "type": "string", "description": "The subject of the email" }},
+        "subject": {{ "type": "string", "description": "The subject of the email", "default": "Downloaded Pages" }},
       }},
       "required": [
         "urls"

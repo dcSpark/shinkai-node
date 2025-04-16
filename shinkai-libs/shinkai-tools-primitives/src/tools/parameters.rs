@@ -17,15 +17,18 @@ pub struct Property {
     pub properties: Option<std::collections::HashMap<String, Property>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Box<Property>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
 }
 
 impl Property {
-    pub fn new(property_type: String, description: String) -> Self {
+    pub fn new(property_type: String, description: String, default_value: Option<String>) -> Self {
         Self {
             property_type,
             description,
             properties: None,
             items: None,
+            default: default_value,
         }
     }
 
@@ -39,6 +42,7 @@ impl Property {
             description,
             properties: Some(properties),
             items: None,
+            default: None,
         }
     }
 
@@ -48,6 +52,7 @@ impl Property {
             description,
             properties: None,
             items: Some(Box::new(items)),
+            default: None,
         }
     }
 }
@@ -61,9 +66,16 @@ impl Parameters {
         }
     }
 
-    pub fn add_property(&mut self, name: String, property_type: String, description: String, is_required: bool) {
+    pub fn add_property(
+        &mut self,
+        name: String,
+        property_type: String,
+        description: String,
+        is_required: bool,
+        default_value: Option<String>,
+    ) {
         self.properties
-            .insert(name.clone(), Property::new(property_type, description));
+            .insert(name.clone(), Property::new(property_type, description, default_value));
         if is_required {
             self.required.push(name);
         }
@@ -87,7 +99,13 @@ impl Parameters {
     }
 
     /// Creates a new Parameters instance with a single property.
-    pub fn with_single_property(name: &str, property_type: &str, description: &str, is_required: bool) -> Self {
+    pub fn with_single_property(
+        name: &str,
+        property_type: &str,
+        description: &str,
+        is_required: bool,
+        default_value: Option<String>,
+    ) -> Self {
         let mut params = Self {
             schema_type: "object".to_string(),
             properties: std::collections::HashMap::new(),
@@ -98,6 +116,7 @@ impl Parameters {
             property_type.to_string(),
             description.to_string(),
             is_required,
+            default_value,
         );
         params
     }
@@ -185,6 +204,7 @@ mod tests {
             "string".to_string(),
             "The URL to fetch".to_string(),
             true,
+            None,
         );
 
         // Serialize the Parameters instance to JSON
@@ -226,6 +246,7 @@ mod tests {
             "string".to_string(),
             "The URL to fetch".to_string(),
             true,
+            None,
         );
 
         // Convert Parameters to Vec<DeprecatedArgument>
@@ -319,11 +340,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         // Add the nested user property
@@ -371,7 +392,7 @@ mod tests {
         let mut params = Parameters::new();
 
         // Create an array of strings
-        let string_prop = Property::new("string".to_string(), "A string item".to_string());
+        let string_prop = Property::new("string".to_string(), "A string item".to_string(), None);
         let array_prop = Property::with_array_items("An array of strings".to_string(), string_prop);
 
         params.properties.insert("tags".to_string(), array_prop);
@@ -409,11 +430,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         let object_prop =
@@ -456,5 +477,42 @@ mod tests {
         // Test deserialization
         let deserialized: Parameters = serde_json::from_value(expected).unwrap();
         assert_eq!(deserialized, params);
+    }
+
+    #[test]
+    fn test_property_with_default() {
+        // Create a Parameters instance with a property that has a default value
+        let mut params = Parameters::new();
+        params.add_property(
+            "port".to_string(),
+            "integer".to_string(),
+            "The port number for the server".to_string(),
+            false,
+            Some("8080".to_string()),
+        );
+
+        // Serialize to JSON and verify the structure
+        let serialized = serde_json::to_value(&params).unwrap();
+        let expected = json!({
+            "type": "object",
+            "properties": {
+                "port": {
+                    "type": "integer",
+                    "description": "The port number for the server",
+                    "default": "8080"
+                }
+            },
+            "required": []
+        });
+
+        assert_eq!(serialized, expected);
+
+        // Test deserialization
+        let deserialized: Parameters = serde_json::from_value(expected).unwrap();
+        assert_eq!(deserialized, params);
+
+        // Verify the default value is correctly set
+        let port_property = deserialized.properties.get("port").unwrap();
+        assert_eq!(port_property.default, Some("8080".to_string()));
     }
 }

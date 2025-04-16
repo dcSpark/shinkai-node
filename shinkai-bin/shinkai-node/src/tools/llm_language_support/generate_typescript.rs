@@ -322,11 +322,11 @@ mod tests {
                 let mut params = Parameters::new();
                 params.properties.insert(
                     "stringParam".to_string(),
-                    Property::new("string".to_string(), "A string parameter".to_string()),
+                    Property::new("string".to_string(), "A string parameter".to_string(), None),
                 );
                 params.properties.insert(
                     "numberParam".to_string(),
-                    Property::new("number".to_string(), "A number parameter".to_string()),
+                    Property::new("number".to_string(), "A number parameter".to_string(), None),
                 );
                 params.required.push("stringParam".to_string());
                 params
@@ -502,11 +502,11 @@ mod tests {
                 let mut params = Parameters::new();
                 params.properties.insert(
                     "arrayOfObjects".to_string(),
-                    Property::new("array".to_string(), "Array of objects".to_string()),
+                    Property::new("array".to_string(), "Array of objects".to_string(), None),
                 );
                 params.properties.insert(
                     "nestedObject".to_string(),
-                    Property::new("object".to_string(), "A nested object".to_string()),
+                    Property::new("object".to_string(), "A nested object".to_string(), None),
                 );
                 params
             },
@@ -557,11 +557,11 @@ mod tests {
                 // No required parameters
                 params.properties.insert(
                     "optionalString".to_string(),
-                    Property::new("string".to_string(), "Optional string".to_string()),
+                    Property::new("string".to_string(), "Optional string".to_string(), None),
                 );
                 params.properties.insert(
                     "optionalNumber".to_string(),
-                    Property::new("number".to_string(), "Optional number".to_string()),
+                    Property::new("number".to_string(), "Optional number".to_string(), None),
                 );
                 params
             },

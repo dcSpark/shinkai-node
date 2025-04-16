@@ -69,9 +69,9 @@ SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DES
                 mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("query".to_string(), "string".to_string(), "The SQL query to execute".to_string(), true);
-                    params.add_property("params".to_string(), "any[]".to_string(), "The parameters to pass to the query".to_string(), false);
-                    params.add_property("database_name".to_string(), "string".to_string(), "By default, the database name is the app_id. You can specify a different name to share the same database in multiple contexts.".to_string(), false);
+                    params.add_property("query".to_string(), "string".to_string(), "The SQL query to execute".to_string(), true, None);
+                    params.add_property("params".to_string(), "any[]".to_string(), "The parameters to pass to the query".to_string(), false, None);
+                    params.add_property("database_name".to_string(), "string".to_string(), "By default, the database name is the app_id. You can specify a different name to share the same database in multiple contexts.".to_string(), false, None);
                     params
                 },
                 output_arg: ToolOutputArg {
