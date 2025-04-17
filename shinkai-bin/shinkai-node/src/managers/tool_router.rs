@@ -770,17 +770,35 @@ impl ToolRouter {
                     function_call,
                 });
             }
-            ShinkaiTool::Agent(_agent_tool, _is_enabled) => {
+            ShinkaiTool::Agent(agent_tool, _is_enabled) => {
+                let job_callback_manager = context.job_callback_manager();
+                let mut job_manager: Option<Arc<Mutex<JobManager>>> = None;
+                if let Some(job_callback_manager) = &job_callback_manager {
+                    let job_callback_manager = job_callback_manager.lock().await;
+                    job_manager = job_callback_manager.job_manager.clone();
+                }
+
+                if job_manager.is_none() {
+                    return Err(LLMProviderError::FunctionExecutionError(
+                        "Job manager is not available".to_string(),
+                    ));
+                }
+
+                // Clone function_args and inject the agent_id
+                let mut modified_function_args = function_args.clone();
+                modified_function_args.insert(
+                    "agent_id".to_string(),
+                    serde_json::Value::String(agent_tool.agent_id.clone()),
+                );
+
                 // Use the dedicated execute_agent_tool function
                 let result = execute_agent_tool(
                     context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default(),
                     context.db(),
-                    function_args.clone(),
+                    modified_function_args,
                     node_name,
                     self.identity_manager.clone(),
-                    self.job_manager.clone().ok_or_else(|| {
-                        LLMProviderError::FunctionExecutionError("Job manager is not available".to_string())
-                    })?,
+                    job_manager.unwrap(),
                     self.encryption_secret_key.clone(),
                     self.encryption_public_key.clone(),
                     self.signing_secret_key.clone(),
