@@ -1,9 +1,9 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use super::execution_header_generator::{check_tool, generate_execution_environment};
-use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::job_manager::JobManager;
 use crate::tools::agent_execution::v2_create_and_send_job_message_for_agent;
+use crate::tools::tool_generation::v2_send_basic_job_message_for_existing_job;
 use crate::utils::environment::fetch_node_environment;
 use crate::{managers::IdentityManager, network::Node};
 use ed25519_dalek::SigningKey;
@@ -158,6 +158,9 @@ pub async fn execute_agent_tool(
         None => String::new(),
     };
 
+    // Set up inbox name and channel for retrieving initial message count
+    let mut initial_message_count = 0;
+
     // Create a new job if session_id is None
     if session_id.is_none() {
         // Get agent_id from parameters or return error
@@ -183,9 +186,51 @@ pub async fn execute_agent_tool(
 
         // Set the session ID to the created job ID
         session_id = Some(job_id);
+        // For new chats, we expect to have 2 messages (system message + agent response)
+        initial_message_count = 0;
     } else {
+        // Get the current message count before sending a new message
+        let inbox_name = InboxName::get_job_inbox_name_from_params(session_id.clone().unwrap())
+            .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+        let (count_sender, count_receiver) = async_channel::bounded(1);
+        let _ = Node::v2_get_last_messages_from_inbox_with_branches(
+            db.clone(),
+            bearer.clone(),
+            inbox_name.to_string(),
+            100,
+            None,
+            count_sender.clone(),
+        )
+        .await;
+
+        let existing_messages = count_receiver
+            .recv()
+            .await
+            .map_err(|e| ToolError::ExecutionError(e.to_string()))?
+            .map_err(|_| ToolError::ExecutionError("Failed to get existing messages".to_string()))?;
+
+        // Count the total messages across all branches
+        initial_message_count = existing_messages.iter().map(|branch| branch.len()).sum();
+
         // We should send the message to the existing job
-        // This is not implemented yet
+        v2_send_basic_job_message_for_existing_job(
+            bearer.clone(),
+            session_id.clone().unwrap(),
+            prompt,
+            None,
+            None,
+            None,
+            db.clone(),
+            node_name,
+            identity_manager_clone,
+            job_manager_clone,
+            encryption_secret_key_clone,
+            encryption_public_key_clone,
+            signing_secret_key_clone,
+        )
+        .await
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to send message to existing job: {}", e.message)))?;
     }
 
     // Unwrap session_id (we know it's Some at this point)
@@ -200,6 +245,13 @@ pub async fn execute_agent_tool(
     let start_time = std::time::Instant::now();
     let timeout = Duration::from_secs(60 * 5); // 5 minutes timeout
     let delay = Duration::from_secs(1); // 1 second delay between polls
+
+    // For new chats, we wait for at least 2 messages; for existing chats, we wait for initial_count + 1
+    let expected_min_messages = if initial_message_count == 0 {
+        2
+    } else {
+        initial_message_count + 2
+    };
 
     // Poll for messages until we get a response or timeout
     let messages = loop {
@@ -219,7 +271,10 @@ pub async fn execute_agent_tool(
             .map_err(|e| ToolError::ExecutionError(e.to_string()))?
             .map_err(|_| ToolError::ExecutionError("Failed to get messages".to_string()))?;
 
-        if messages.len() >= 2 {
+        // Count total messages across all branches
+        let current_message_count: usize = messages.iter().map(|branch| branch.len()).sum();
+
+        if current_message_count >= expected_min_messages {
             break messages;
         }
 
