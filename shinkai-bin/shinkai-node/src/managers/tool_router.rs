@@ -7,8 +7,8 @@ use crate::llm_provider::execution::chains::generic_chain::generic_inference_cha
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::Node;
-use crate::tools::agent_execution::v2_create_and_send_job_message_for_agent;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
+use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
@@ -47,7 +47,6 @@ use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::IdentityManager;
-use crate::tools::tool_execution::execution_python_dynamic::{self, execute_agent_tool};
 
 #[derive(Clone)]
 pub struct ToolRouter {

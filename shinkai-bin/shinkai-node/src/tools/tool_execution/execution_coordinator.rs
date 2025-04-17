@@ -1,10 +1,11 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
+use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
-use crate::tools::tool_execution::execution_python_dynamic::{execute_agent_tool, execute_python_tool};
+use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
 use crate::utils::environment::fetch_node_environment;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
@@ -294,6 +295,28 @@ pub async fn execute_tool_cmd(
                 bearer,
                 db,
                 llm_provider,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+            )
+            .await
+        }
+        ShinkaiTool::Agent(agent_tool, _) => {
+            // Clone parameters and inject the agent_id
+            let mut modified_parameters = parameters.clone();
+            modified_parameters.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(agent_tool.agent_id.clone()),
+            );
+
+            // Use the dedicated execute_agent_tool function
+            execute_agent_tool(
+                bearer,
+                db,
+                modified_parameters,
                 node_name,
                 identity_manager,
                 job_manager,
