@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
-    schemas::{job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey, crontab::CronTask},
-    shinkai_utils::job_scope::MinimalJobScope,
+    schemas::{crontab::CronTask, job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey}, shinkai_utils::job_scope::MinimalJobScope
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]

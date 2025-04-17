@@ -1,14 +1,7 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::{tool_router::ToolRouter, IdentityManager},
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_deno_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_tool_cmd, execute_mcp_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 use async_channel::Sender;
 use chrono::Utc;
@@ -379,7 +372,6 @@ impl Node {
         tool_router: Option<Arc<ToolRouter>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
-
         let _bearer = Self::get_bearer_token(db.clone(), &res).await?;
 
         // List all tools
@@ -495,7 +487,8 @@ impl Node {
                 } else {
                     latest_tools
                 };
-                let t = filtered_tools.iter()
+                let t = filtered_tools
+                    .iter()
                     .filter(|tool| tool.mcp_enabled.unwrap_or(false))
                     .map(|tool| json!(tool))
                     .collect();
@@ -1293,6 +1286,11 @@ impl Node {
         mounts: Option<Vec<String>>,
         runner: Option<RunnerType>,
         operating_system: Option<Vec<OperatingSystem>>,
+        identity_manager_clone: Arc<Mutex<IdentityManager>>,
+        job_manager_clone: Arc<Mutex<JobManager>>,
+        encryption_secret_key_clone: EncryptionStaticKey,
+        encryption_public_key_clone: EncryptionPublicKey,
+        signing_secret_key_clone: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -1322,6 +1320,11 @@ impl Node {
             mounts,
             runner,
             operating_system,
+            identity_manager_clone,
+            job_manager_clone,
+            encryption_secret_key_clone,
+            encryption_public_key_clone,
+            signing_secret_key_clone,
         )
         .await;
 
@@ -1448,7 +1451,7 @@ impl Node {
 
         let _ = res
             .send(Ok(json!({
-                "availableTools": get_all_deno_tools(db.clone()).await.into_iter().map(|tool| tool.tool_router_key).collect::<Vec<String>>(),
+                "availableTools": get_all_tools(db.clone()).await.into_iter().map(|tool| tool.tool_router_key).collect::<Vec<String>>(),
                 "libraryCode": library_code.clone(),
                 "headers": header_code.clone(),
                 "codePrompt": code_prompt.clone(),
@@ -3423,11 +3426,11 @@ impl Node {
         metadata: Option<Value>,
         assets: Option<Vec<String>>,
         language: CodeLanguage,
-        tools: Option<Vec<ToolRouterKey>>,
-        parameters: Option<Value>,
-        config: Option<Value>,
-        oauth: Option<Vec<OAuth>>,
-        tool_id: String,
+        _tools: Option<Vec<ToolRouterKey>>,
+        _parameters: Option<Value>,
+        _config: Option<Value>,
+        _oauth: Option<Vec<OAuth>>,
+        _tool_id: String,
         app_id: String,
         llm_provider: String,
         bearer: String,

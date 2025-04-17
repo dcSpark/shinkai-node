@@ -1,7 +1,5 @@
 use rusqlite::params;
-use shinkai_message_primitives::schemas::{
-    llm_providers::agent::Agent, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey,
-};
+use shinkai_message_primitives::schemas::{llm_providers::agent::Agent, shinkai_name::ShinkaiName};
 
 use crate::{SqliteManager, SqliteManagerError};
 
@@ -238,7 +236,7 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-    use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
