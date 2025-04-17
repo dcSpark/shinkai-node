@@ -1,6 +1,5 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
-use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
 use crate::network::node::ProxyConnectionInfo;
@@ -12,7 +11,6 @@ use chashmap::CHashMap;
 use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
-use regex::Regex;
 use shinkai_fs;
 
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;

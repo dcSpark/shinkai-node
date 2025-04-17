@@ -25,8 +25,6 @@ pub struct Agent {
     #[serde(default)]
     pub scope: MinimalJobScope,
     pub cron_tasks: Option<Vec<CronTask>>,
-    pub embedding: Option<Vec<f32>>,
-    pub mcp_enabled: Option<bool>,
 }
 
 #[cfg(test)]

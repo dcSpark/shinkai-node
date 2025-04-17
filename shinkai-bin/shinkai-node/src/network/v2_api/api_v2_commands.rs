@@ -34,7 +34,6 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::llm_provider::providers::shinkai_backend::check_quota;
-use crate::utils::environment::NodeEnvironment;
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
@@ -43,12 +42,11 @@ use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 
-use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
+use std::collections::HashMap;
 use std::time::Instant;
 use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use std::collections::HashMap;
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -1832,7 +1830,7 @@ impl Node {
             }
         }
         Ok(())
-    }    
+    }
 
     pub async fn v2_api_add_regex_pattern(
         db: Arc<SqliteManager>,
