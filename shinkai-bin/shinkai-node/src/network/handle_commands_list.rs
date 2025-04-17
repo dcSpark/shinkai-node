@@ -1973,10 +1973,10 @@ impl Node {
                     let _ = Node::v2_api_add_shinkai_tool(db_clone, bearer, node_env, shinkai_tool, res).await;
                 });
             }
-            NodeCommand::V2ApiGetShinkaiTool { bearer, payload, res } => {
+            NodeCommand::V2ApiGetShinkaiTool { bearer, payload, serialize_config, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_shinkai_tool(db_clone, bearer, payload, res).await;
+                    let _ = Node::v2_api_get_shinkai_tool(db_clone, bearer, payload, serialize_config, res).await;
                 });
             }
             NodeCommand::V2ApiAddOllamaModels { bearer, payload, res } => {

@@ -23,7 +23,14 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
+    deno_tools::DenoTool,
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
 };
 use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
@@ -37,6 +44,49 @@ use tokio::{process::Command, sync::Mutex};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use zip::{write::FileOptions, ZipWriter};
+
+// Helper function to serialize Vec<ToolConfig> into the specific object format
+fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> Value {
+    let mut schema_properties = Map::new();
+    let mut schema_required = Vec::new();
+    let mut config_form_data = Map::new();
+
+    for config in configs {
+        if let ToolConfig::BasicConfig(basic) = config {
+            // --- Build Schema Part ---
+            let mut property_details = Map::new();
+            property_details.insert("description".to_string(), json!(basic.description));
+            let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+            property_details.insert("type".to_string(), json!(type_value));
+            schema_properties.insert(basic.key_name.clone(), Value::Object(property_details));
+
+            if basic.required {
+                schema_required.push(json!(basic.key_name.clone()));
+            }
+
+            // --- Build configFormData Part ---
+            // Use json! macro which converts Option<String> to Value::String or Value::Null
+            config_form_data.insert(basic.key_name.clone(), json!(basic.key_value));
+        }
+        // Note: Still ignores non-BasicConfig variants for both parts.
+    }
+
+    // Construct the final schema object
+    let schema_object = json!({
+        "type": "object",
+        "properties": schema_properties,
+        "required": schema_required
+    });
+
+    // Construct the final configFormData object
+    let config_form_data_object = Value::Object(config_form_data);
+
+    // Construct the final return object containing both parts
+    json!({
+        "schema": schema_object,
+        "configFormData": config_form_data_object
+    })
+}
 
 impl Node {
     /// Searches for Shinkai tools using both vector and full-text search (FTS)
@@ -631,7 +681,8 @@ impl Node {
     pub async fn v2_api_get_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
-        payload: String,
+        tool_key: String,
+        serialize_config: bool,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -639,11 +690,40 @@ impl Node {
             return Ok(());
         }
 
-        // Get the tool from the database using get_tool_by_key
-        match db.get_tool_by_key(&payload) {
+        // Get the tool from the database using the tool_key directly
+        match db.get_tool_by_key(&tool_key) { // Use tool_key directly
             Ok(tool) => {
-                let response = json!(tool);
-                let _ = res.send(Ok(response)).await;
+                // Serialize the tool object to JSON value first.
+                let mut response_value = match serde_json::to_value(&tool) {
+                    Ok(val) => val,
+                    Err(e) => {
+                         let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to serialize tool: {:?}", e),
+                         };
+                         let _ = res.send(Err(api_error)).await;
+                         return Ok(());
+                    }
+                };
+
+                // If serialize_config is true, replace the 'config' field
+                if serialize_config {
+                    if let Value::Object(ref mut map) = response_value {
+                        // Get the original config Vec from the tool struct
+                        let original_config = tool.get_config(); // Assumes ShinkaiTool implements GetConfig trait or similar
+                        // Serialize the config vector using the updated helper function
+                        let serialized_config_data = serialize_tool_config_to_schema_and_form_data(&original_config); // Use new function name
+                        // Replace the existing 'config' field in the JSON map with the new structure
+                        if let Some(Value::Object(ref mut contents_map)) = map.get_mut("content").and_then(|v| v.as_array_mut()).and_then(|arr| arr.get_mut(0)) {
+                            contents_map.insert("configurations".to_string(), serialized_config_data.get("schema").unwrap().clone());
+                            contents_map.insert("configFormData".to_string(), serialized_config_data.get("configFormData").unwrap().clone());
+                        }
+                    }
+                }
+                // Otherwise, the default serialization (config as array) is used.
+
+                let _ = res.send(Ok(response_value)).await;
                 Ok(())
             }
             Err(SqliteManagerError::ToolNotFound(_)) => {

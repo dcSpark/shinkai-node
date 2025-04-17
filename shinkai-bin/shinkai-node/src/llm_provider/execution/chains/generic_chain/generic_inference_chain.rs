@@ -328,26 +328,24 @@ impl GenericInferenceChain {
         // Decision Process for Tool Selection:
         // 1. Check if a specific tool was requested by the user
         // 2. If not, fall back to automatic tool selection based on capabilities and context
-        if let Some(selected_tool_name) = user_tool_selected {
-            // Skip if tool name is empty
-            if !selected_tool_name.is_empty() {
-                // CASE 1: User explicitly selected a tool
-                // This takes precedence over all other tool selection methods
-                if let Some(tool_router) = &tool_router {
-                    match tool_router.get_tool_by_name(&selected_tool_name).await {
-                        Ok(Some(tool)) => tools.push(tool),
-                        Ok(None) => {
-                            return Err(LLMProviderError::ToolNotFound(format!(
-                                "Selected tool not found: {}",
-                                selected_tool_name
-                            )));
-                        }
-                        Err(e) => {
-                            return Err(LLMProviderError::ToolRetrievalError(format!(
-                                "Error retrieving selected tool: {:?}",
-                                e
-                            )));
-                        }
+        // Combine the check for Some and non-empty string using filter
+        if let Some(selected_tool_name) = user_tool_selected.filter(|name| !name.is_empty()) {
+            // CASE 1: User explicitly selected a tool
+            // This takes precedence over all other tool selection methods
+            if let Some(tool_router) = &tool_router {
+                match tool_router.get_tool_by_name(&selected_tool_name).await {
+                    Ok(Some(tool)) => tools.push(tool),
+                    Ok(None) => {
+                        return Err(LLMProviderError::ToolNotFound(format!(
+                            "Selected tool not found: {}",
+                            selected_tool_name
+                        )));
+                    }
+                    Err(e) => {
+                        return Err(LLMProviderError::ToolRetrievalError(format!(
+                            "Error retrieving selected tool: {:?}",
+                            e
+                        )));
                     }
                 }
             }

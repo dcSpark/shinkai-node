@@ -2022,7 +2022,7 @@ mod tests {
                 description: "Enable feature X".to_string(),
                 required: false,
                 type_name: Some("boolean".to_string()),
-                key_value: Some("true".to_string()),
+                key_value: Some(serde_json::Value::Bool(true)),
             })],
             oauth: None,
             description: "A tool to test config update".to_string(),
@@ -2105,7 +2105,7 @@ mod tests {
                     None
                 }
             });
-            assert_eq!(config_value, Some("true".to_string()), "Config value not preserved");
+            assert_eq!(config_value, Some(serde_json::Value::Bool(true)), "Config value not preserved");
         } else {
             panic!("Retrieved tool is not a DenoTool");
         }
@@ -2127,7 +2127,7 @@ mod tests {
                 description: "Enable feature X".to_string(),
                 required: false,
                 type_name: Some("boolean".to_string()),
-                key_value: Some("true".to_string()),
+                key_value: Some(serde_json::Value::Bool(true)),
             })],
             oauth: None,
             description: "A python tool to test config update".to_string(),
@@ -2204,7 +2204,7 @@ mod tests {
                 }
                 _ => None,
             });
-            assert_eq!(config_value, Some("true".to_string()));
+            assert_eq!(config_value, Some(serde_json::Value::Bool(true)));
         } else {
             panic!("Retrieved tool is not a PythonTool");
         }

@@ -625,6 +625,7 @@ impl ToolRouter {
 
         println!("call_function additional_files: {:?}", additional_files);
         println!("call_function job_scope files: {:?}", all_files);
+        println!("call_function function_args: {:?}", function_args);
 
         // Use a HashSet to ensure unique paths
         let mut unique_files: std::collections::HashSet<_> = all_files.into_iter().collect();
