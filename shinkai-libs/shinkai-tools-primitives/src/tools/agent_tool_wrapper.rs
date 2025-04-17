@@ -85,12 +85,13 @@ fn default_input_args() -> Parameters {
         true,
     );
 
-    // Add images parameter (optional string array)
-    let string_property = crate::tools::parameters::Property::new("string".to_string(), "Image URL".to_string());
-    params.properties.insert(
-        "images".to_string(),
-        crate::tools::parameters::Property::with_array_items("Array of image URLs".to_string(), string_property),
-    );
+    // TODO: add later
+    // // Add images parameter (optional string array)
+    // let string_property = crate::tools::parameters::Property::new("string".to_string(), "Image URL".to_string());
+    // params.properties.insert(
+    //     "images".to_string(),
+    //     crate::tools::parameters::Property::with_array_items("Array of image URLs".to_string(), string_property),
+    // );
 
     // Add session_id parameter (not required)
     params.add_property(
