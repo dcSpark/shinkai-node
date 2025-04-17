@@ -22,7 +22,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_message_primitives::{
     schemas::{
-        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
+        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey
     }, shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
             APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
@@ -1131,7 +1131,13 @@ impl Node {
         match db.remove_agent(&agent_id) {
             Ok(_) => {
                 // Remove the agent tool
-                let tool_router_key = format!("local:::{}:::{}", node_name_string, agent_id);
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name_string.to_string(),
+                    agent_id.clone(),
+                    None,
+                )
+                .to_string_with_version();
                 if let Err(err) = db.remove_tool(&tool_router_key, None) {
                     eprintln!("Warning: Failed to remove agent tool: {}", err);
                 }
