@@ -137,6 +137,7 @@ pub async fn execute_python_tool(
     }
 }
 
+// TODO: move to its own file
 pub async fn execute_agent_tool(
     bearer: String,
     db: Arc<SqliteManager>,

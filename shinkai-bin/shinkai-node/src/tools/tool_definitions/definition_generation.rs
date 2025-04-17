@@ -28,7 +28,7 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     custom_tools
 }
 
-pub async fn get_all_deno_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeader> {
+pub async fn get_all_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeader> {
     let mut all_tools = match sqlite_manager.get_all_tool_headers() {
         Ok(data) => data,
         Err(_) => Vec::new(),
@@ -41,15 +41,14 @@ pub async fn get_all_deno_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<Shink
 ///
 /// # Arguments
 ///
-/// * `language` - The target programming language for which the tool definitions are generated.
-///   It can be either `Language::Typescript` or `Language::Python`.
+/// * `language` - The target programming language for which the tool definitions are generated. It can be either
+///   `Language::Typescript` or `Language::Python`.
 ///
-/// * `sqlite_manager` - An `Arc` wrapped `SqliteManager` instance used to fetch tool headers
-///   from the SQLite database. This manager provides access to the database operations.
+/// * `sqlite_manager` - An `Arc` wrapped `SqliteManager` instance used to fetch tool headers from the SQLite database.
+///   This manager provides access to the database operations.
 ///
-/// * `only_headers` - A boolean flag indicating whether to generate only the headers of the tool
-///   definitions. If `true`, only the headers are generated; otherwise, full definitions are
-///   included.
+/// * `only_headers` - A boolean flag indicating whether to generate only the headers of the tool definitions. If
+///   `true`, only the headers are generated; otherwise, full definitions are included.
 ///
 /// # Returns
 ///
@@ -78,7 +77,7 @@ pub async fn generate_tool_definitions(
     };
     // Filter tools and prevent duplicates
     let mut seen_keys = HashSet::new();
-    let all_tools: Vec<ShinkaiToolHeader> = get_all_deno_tools(sqlite_manager.clone())
+    let all_tools: Vec<ShinkaiToolHeader> = get_all_tools(sqlite_manager.clone())
         .await
         .into_iter()
         .filter(|tool| {
@@ -153,6 +152,18 @@ pub async fn generate_tool_definitions(
             }
             ShinkaiTool::Network(network_tool, _) => {
                 let value = serde_json::from_str::<serde_json::Value>(&network_tool.output_arg.json).unwrap();
+                let result_type = value["result_type"].as_str().unwrap_or("object");
+                let properties = value["properties"].clone();
+                let required = value["required"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect();
+                ToolResult::new(result_type.to_string(), properties, required)
+            }
+            ShinkaiTool::Agent(agent_tool, _) => {
+                let value = serde_json::from_str::<serde_json::Value>(&agent_tool.output_arg.json).unwrap();
                 let result_type = value["result_type"].as_str().unwrap_or("object");
                 let properties = value["properties"].clone();
                 let required = value["required"]

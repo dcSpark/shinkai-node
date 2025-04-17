@@ -97,7 +97,7 @@ fn default_input_args() -> Parameters {
     params.add_property(
         "session_id".to_string(),
         "string".to_string(),
-        "Session identifier".to_string(),
+        "Session identifier to continue a previous conversation (Optional)".to_string(),
         false,
     );
 

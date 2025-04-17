@@ -571,6 +571,7 @@ impl From<NetworkTool> for ShinkaiTool {
 mod tests {
     use super::*;
     use crate::tools::deno_tools::DenoTool;
+    use crate::tools::parameters::Property;
     use crate::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use serde_json::json;
     use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
@@ -783,6 +784,83 @@ mod tests {
             assert_eq!(deno_tool.operating_system, vec![OperatingSystem::Linux]);
         } else {
             panic!("Expected Deno tool variant");
+        }
+    }
+
+    #[test]
+    fn test_serialize_deserialize_agent_tool() {
+        // Create an AgentToolWrapper instance
+        let agent_wrapper = AgentToolWrapper {
+            name: "new pirate".to_string(),
+            agent_id: "new_pirate".to_string(),
+            author: "@@my_local_ai.sep-shinkai".to_string(),
+            description: "".to_string(),
+            input_args: Parameters {
+                schema_type: "object".to_string(),
+                properties: {
+                    let mut props = std::collections::HashMap::new();
+                    props.insert(
+                        "prompt".to_string(),
+                        Property::new("string".to_string(), "Message to the agent".to_string()),
+                    );
+                    props.insert(
+                        "session_id".to_string(),
+                        Property::new("string".to_string(), "Session identifier".to_string()),
+                    );
+
+                    let item_prop = Property::new("string".to_string(), "Image URL".to_string());
+                    props.insert(
+                        "images".to_string(),
+                        Property::with_array_items("Array of image URLs".to_string(), item_prop),
+                    );
+                    props
+                },
+                required: vec!["prompt".to_string()],
+            },
+            output_arg: ToolOutputArg {
+                json: "{\"type\":\"string\",\"description\":\"Agent response\"}".to_string(),
+            },
+            mcp_enabled: Some(false),
+            embedding: None,
+        };
+
+        // Create a ShinkaiTool::Agent instance
+        let original_tool = ShinkaiTool::Agent(agent_wrapper, true);
+
+        // Serialize to JSON
+        let serialized = serde_json::to_string(&original_tool).expect("Failed to serialize Agent tool");
+
+        // Deserialize from JSON
+        let deserialized: ShinkaiTool = serde_json::from_str(&serialized).expect("Failed to deserialize Agent tool");
+
+        // Verify the tool was properly deserialized
+        match deserialized {
+            ShinkaiTool::Agent(agent, enabled) => {
+                assert_eq!(agent.name, "new pirate");
+                assert_eq!(agent.agent_id, "new_pirate");
+                assert_eq!(agent.author, "@@my_local_ai.sep-shinkai");
+                assert_eq!(agent.description, "");
+                assert!(enabled);
+
+                // Verify the input_args structure
+                assert_eq!(agent.input_args.schema_type, "object");
+                assert!(agent.input_args.properties.contains_key("prompt"));
+                assert!(agent.input_args.properties.contains_key("session_id"));
+                assert!(agent.input_args.properties.contains_key("images"));
+
+                // Verify required fields
+                assert_eq!(agent.input_args.required, vec!["prompt".to_string()]);
+
+                // Verify output_arg
+                assert_eq!(
+                    agent.output_arg.json,
+                    "{\"type\":\"string\",\"description\":\"Agent response\"}"
+                );
+
+                // Verify mcp_enabled
+                assert_eq!(agent.mcp_enabled, Some(false));
+            }
+            _ => panic!("Deserialized tool is not an Agent variant"),
         }
     }
 }

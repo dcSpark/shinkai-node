@@ -47,6 +47,7 @@ use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::IdentityManager;
+use crate::tools::tool_execution::execution_python_dynamic::{self, execute_agent_tool};
 
 #[derive(Clone)]
 pub struct ToolRouter {
@@ -661,7 +662,9 @@ impl ToolRouter {
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Python, self.sqlite_manager.clone(), false)
                         .await
-                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                        .map_err(|e| {
+                            ToolError::ExecutionError(format!("Failed to generate tool definitions: {:?}", e))
+                        })?;
 
                 let envs = generate_execution_environment(
                     context.db(),
@@ -767,134 +770,31 @@ impl ToolRouter {
                     function_call,
                 });
             }
-            ShinkaiTool::Agent(agent_tool, _is_enabled) => {
-                // 1.a) Find chat if session_id is present in the params
-                let mut session_id: Option<String> = function_args
-                    .get("session_id")
-                    .and_then(|v| v.as_str().map(|s| s.to_string()));
+            ShinkaiTool::Agent(_agent_tool, _is_enabled) => {
+                // Use the dedicated execute_agent_tool function
+                let result = execute_agent_tool(
+                    context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default(),
+                    context.db(),
+                    function_args.clone(),
+                    node_name,
+                    self.identity_manager.clone(),
+                    self.job_manager.clone().ok_or_else(|| {
+                        LLMProviderError::FunctionExecutionError("Job manager is not available".to_string())
+                    })?,
+                    self.encryption_secret_key.clone(),
+                    self.encryption_public_key.clone(),
+                    self.signing_secret_key.clone(),
+                )
+                .await
+                .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
 
-                let prompt = match function_args.get("prompt") {
-                    Some(prompt_value) => prompt_value.as_str().unwrap_or_default().to_string(),
-                    None => String::new(),
-                };
-
-                let images = match function_args.get("images") {
-                    Some(images_value) => {
-                        if let Some(images_array) = images_value.as_array() {
-                            // Convert array values to strings
-                            let image_strings: Vec<String> = images_array
-                                .iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect();
-                            Some(image_strings)
-                        } else {
-                            None
-                        }
-                    }
-                    None => None,
-                };
-
-                if session_id.is_none() {
-                    // 1.b) Find agent otherwise and create a new chat
-                    let job_id = v2_create_and_send_job_message_for_agent(
-                        context.db(),
-                        agent_tool.agent_id.clone(),
-                        prompt,
-                        node_name,
-                        self.identity_manager.clone(),
-                        self.job_manager.clone().ok_or_else(|| {
-                            LLMProviderError::FunctionExecutionError("Job manager is not available".to_string())
-                        })?,
-                        self.encryption_secret_key.clone(),
-                        self.encryption_public_key.clone(),
-                        self.signing_secret_key.clone(),
-                    )
-                    .await
-                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.message))?;
-
-                    // Set the session ID to the created job ID
-                    session_id = Some(job_id);
-                } else {
-                    // We should send the message to the existing job
-                    // This is not implemented yet
-                }
-
-                // 2) Wait for agent response
-                if let Some(job_id) = &session_id {
-                    use shinkai_message_primitives::schemas::inbox_name::InboxName;
-                    use tokio::time::{sleep, Duration};
-
-                    let (res_sender, res_receiver) = async_channel::bounded(1);
-                    let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())
-                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-
-                    let start_time = std::time::Instant::now();
-                    let timeout = Duration::from_secs(60 * 5); // 5 minutes timeout
-                    let delay = Duration::from_secs(1); // 1 second delay between polls
-
-                    let messages = loop {
-                        let db = context.db();
-                        let bearer = db.read_api_v2_key().unwrap_or_default().unwrap_or_default();
-
-                        let _ = crate::network::Node::v2_get_last_messages_from_inbox_with_branches(
-                            db.clone(),
-                            bearer.clone(),
-                            inbox_name.to_string(),
-                            100,
-                            None,
-                            res_sender.clone(),
-                        )
-                        .await;
-
-                        let messages = res_receiver
-                            .recv()
-                            .await
-                            .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?
-                            .map_err(|_| {
-                                LLMProviderError::FunctionExecutionError("Failed to get messages".to_string())
-                            })?;
-
-                        if messages.len() >= 2 {
-                            break messages;
-                        }
-
-                        if start_time.elapsed() >= timeout {
-                            return Err(LLMProviderError::FunctionExecutionError(
-                                "Timeout waiting for agent response".to_string(),
-                            ));
-                        }
-
-                        sleep(delay).await;
-                    };
-
-                    // 3) Return agent response (includes the session_id)
-                    if let Some(last_message) = messages.last().and_then(|branch| branch.last()) {
-                        let agent_response = last_message.job_message.content.clone();
-
-                        // Create a response that includes both the message content and session_id
-                        let mut response_obj = serde_json::Map::new();
-                        response_obj.insert("message".to_string(), serde_json::Value::String(agent_response));
-                        response_obj.insert("session_id".to_string(), serde_json::Value::String(job_id.clone()));
-
-                        let response = serde_json::to_string(&response_obj)
-                            .unwrap_or_else(|_| format!("{{\"message\":\"\", \"session_id\":\"{}\"}}", job_id));
-
-                        return Ok(ToolCallFunctionResponse {
-                            response,
-                            function_call,
-                        });
-                    }
-                }
-
-                // Fallback response if we couldn't get the agent's response
-                let default_response = if let Some(job_id) = &session_id {
-                    format!("{{\"message\":\"\", \"session_id\":\"{}\"}}", job_id)
-                } else {
-                    "{\"message\":\"No response from agent\", \"session_id\":\"\"}".to_string()
-                };
+                // Convert the result to a JSON string
+                let response = serde_json::to_string(&result).unwrap_or_else(|_| {
+                    "{\"message\":\"\", \"session_id\":\"\", \"status\":\"some error\"}".to_string()
+                });
 
                 return Ok(ToolCallFunctionResponse {
-                    response: default_response,
+                    response,
                     function_call,
                 });
             }
@@ -928,7 +828,9 @@ impl ToolRouter {
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
-                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                        .map_err(|e| {
+                            ToolError::ExecutionError(format!("Failed to generate tool definitions: {:?}", e))
+                        })?;
 
                 let envs = generate_execution_environment(
                     context.db(),
@@ -1286,7 +1188,7 @@ impl ToolRouter {
         let support_files =
             generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                 .await
-                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to generate tool definitions: {:?}", e)))?;
 
         let oauth = match shinkai_tool.clone() {
             ShinkaiTool::Deno(deno_tool, _) => deno_tool.oauth.clone(),
