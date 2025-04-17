@@ -1,6 +1,8 @@
 use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
+use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::{env, sync::Arc};
@@ -1067,8 +1069,25 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             } else {
                 // Add the agent to the database
-                match db.add_agent(agent, &requester_name) {
+                match db.add_agent(agent.clone(), &requester_name) {
                     Ok(_) => {
+                        // Create and add Agent tool wrapper
+                        let node_name = requester_name.get_node_name_string();
+                        let agent_tool_wrapper = AgentToolWrapper::new(
+                            agent.agent_id.clone(),
+                            agent.name.clone(),
+                            agent.ui_description.clone(),
+                            node_name,
+                            None,
+                        );
+
+                        let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
+
+                        // Add agent tool to database
+                        if let Err(err) = db.add_tool(shinkai_tool).await {
+                            eprintln!("Warning: Failed to add agent tool: {}", err);
+                        }
+
                         let _ = res.send(Ok("Agent added successfully".to_string())).await;
                     }
                     Err(err) => {
@@ -1096,6 +1115,7 @@ impl Node {
     pub async fn v2_api_remove_agent(
         db: Arc<SqliteManager>,
         bearer: String,
+        node_name: ShinkaiName,
         agent_id: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1104,9 +1124,18 @@ impl Node {
             return Ok(());
         }
 
+        // Get the agent's node name
+        let node_name_string = node_name.get_node_name_string();
+
         // Remove the agent from the database
         match db.remove_agent(&agent_id) {
             Ok(_) => {
+                // Remove the agent tool
+                let tool_router_key = format!("local:::{}:::{}", node_name_string, agent_id);
+                if let Err(err) = db.remove_tool(&tool_router_key, None) {
+                    eprintln!("Warning: Failed to remove agent tool: {}", err);
+                }
+
                 let _ = res.send(Ok("Agent removed successfully".to_string())).await;
             }
             Err(err) => {

@@ -541,21 +541,19 @@ impl SqliteManager {
 
     fn migrate_tools_table(conn: &rusqlite::Connection) -> Result<()> {
         // Check if the mcp_enabled column already exists
-        let columns = conn.prepare("PRAGMA table_info(shinkai_tools)")?
+        let columns = conn
+            .prepare("PRAGMA table_info(shinkai_tools)")?
             .query_map([], |row| {
                 let name: String = row.get(1)?;
                 Ok(name)
             })?
             .collect::<Result<Vec<String>, _>>()?;
-        
+
         // Only add the column if it doesn't exist
         if !columns.contains(&"mcp_enabled".to_string()) {
-            conn.execute(
-                "ALTER TABLE shinkai_tools ADD COLUMN mcp_enabled INTEGER",
-                [],
-            )?;
+            conn.execute("ALTER TABLE shinkai_tools ADD COLUMN mcp_enabled INTEGER", [])?;
         }
-        
+
         Ok(())
     }
 

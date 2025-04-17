@@ -150,38 +150,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
             ShinkaiTool::Deno(d, _) => d.input_args.clone(),
             ShinkaiTool::Python(p, _) => p.input_args.clone(),
-            ShinkaiTool::Agent(_a, _) => {
-                let mut params = Parameters::new();
-
-                // Add content parameter (required but can be empty)
-                params.add_property(
-                    "prompt".to_string(),
-                    "string".to_string(),
-                    "Message to the agent".to_string(),
-                    true,
-                );
-
-                // Add images parameter (optional string array)
-                let string_property =
-                    crate::tools::parameters::Property::new("string".to_string(), "Image URL".to_string());
-                params.properties.insert(
-                    "images".to_string(),
-                    crate::tools::parameters::Property::with_array_items(
-                        "Array of image URLs".to_string(),
-                        string_property,
-                    ),
-                );
-
-                // Add session_id parameter (not required)
-                params.add_property(
-                    "session_id".to_string(),
-                    "string".to_string(),
-                    "Session identifier".to_string(),
-                    false,
-                );
-
-                params
-            }
+            ShinkaiTool::Agent(a, _) => a.input_args.clone(),
         }
     }
 
@@ -192,9 +161,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.output_arg.clone(),
             ShinkaiTool::Deno(d, _) => d.output_arg.clone(),
             ShinkaiTool::Python(p, _) => p.output_arg.clone(),
-            ShinkaiTool::Agent(a, _) => ToolOutputArg {
-                json: r#"{"type":"string","description":"Agent response"}"#.to_string(),
-            },
+            ShinkaiTool::Agent(a, _) => a.output_arg.clone(),
         }
     }
 
