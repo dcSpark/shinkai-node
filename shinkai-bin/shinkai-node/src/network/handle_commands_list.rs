@@ -251,7 +251,7 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_agent_zip(db_clone, bearer, file_data, res).await;
                 });
-            }            
+            }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
                 let db_clone = self.db.clone();
                 let node_name_clone = self.node_name.clone();
@@ -2276,8 +2276,9 @@ impl Node {
             }
             NodeCommand::V2ApiRemoveAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_remove_agent(db_clone, bearer, agent_id, res).await;
+                    let _ = Node::v2_api_remove_agent(db_clone, bearer, node_name, agent_id, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateAgent {
@@ -2491,6 +2492,12 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+
                 tokio::spawn(async move {
                     let _ = Node::run_execute_code(
                         bearer,
@@ -2509,6 +2516,11 @@ impl Node {
                         mounts,
                         runner,
                         operating_system,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
                         res,
                     )
                     .await;
@@ -3153,7 +3165,8 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_tool_mcp_enabled(db_clone, bearer, tool_router_key, mcp_enabled, res).await;
+                    let _ =
+                        Node::v2_api_set_tool_mcp_enabled(db_clone, bearer, tool_router_key, mcp_enabled, res).await;
                 });
             }
             NodeCommand::V2ApiCopyToolAssets {
@@ -3196,12 +3209,7 @@ impl Node {
             NodeCommand::V2ApiSetPreferences { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_preferences(
-                        db_clone,
-                        bearer,
-                        payload,
-                        res
-                    ).await;
+                    let _ = Node::v2_api_set_preferences(db_clone, bearer, payload, res).await;
                 });
             }
             _ => (),

@@ -8,25 +8,14 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity,
-        inbox_name::InboxName,
-        job::{ForkedJob, JobLike},
-        job_config::JobConfig,
-        llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider},
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-        smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox},
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData},
-        shinkai_message_schemas::{
-            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, shinkai_path::ShinkaiPath,
-        signatures::clone_signature_secret_key,
-    },
+        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox}
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
+    }
 };
 
 use shinkai_sqlite::SqliteManager;
@@ -34,9 +23,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
