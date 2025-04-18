@@ -73,6 +73,49 @@ pub async fn v2_create_and_send_job_message_for_agent(
         .await
         .map_err(|e| Node::generic_api_error(&e.to_string()))??;
 
+    // Get the current job config
+    let (config_res_sender, config_res_receiver) = async_channel::bounded(1);
+
+    let _ = Node::v2_api_get_job_config(db.clone(), bearer.clone(), job_id.clone(), config_res_sender).await;
+
+    let current_config = config_res_receiver
+        .recv()
+        .await
+        .map_err(|e| Node::generic_api_error(&e.to_string()))??;
+
+    // Check if agent_id uses any tools
+    // We'll use db.get_agent() to check if the agent has tools
+    let should_enable_tools = match db.get_agent(&agent_id) {
+        Ok(Some(agent)) => {
+            // Check if the agent has any tools defined
+            !agent.tools.is_empty()
+        }
+        _ => false, // Default to false if we can't retrieve the agent or it doesn't exist
+    };
+
+    if should_enable_tools {
+        // Update the job config with use_tools=true
+        let mut updated_config = current_config.clone();
+        updated_config.use_tools = Some(true);
+
+        // Update the job config in the database
+        let (update_config_sender, update_config_receiver) = async_channel::bounded(1);
+
+        let _ = Node::v2_api_update_job_config(
+            db.clone(),
+            bearer.clone(),
+            job_id.clone(),
+            updated_config,
+            update_config_sender,
+        )
+        .await;
+
+        let _ = update_config_receiver
+            .recv()
+            .await
+            .map_err(|e| Node::generic_api_error(&e.to_string()))??;
+    }
+
     // Use the new function to send the message
     v2_send_basic_job_message_for_existing_job(
         bearer,

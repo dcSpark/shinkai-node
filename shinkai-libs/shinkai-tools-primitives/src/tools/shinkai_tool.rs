@@ -526,7 +526,12 @@ impl ShinkaiTool {
     /// Returns a sanitized version of the tool name where all characters are lowercase
     /// and any non-alphanumeric characters (except '-' and '_') are replaced with underscores
     pub fn internal_sanitized_name(&self) -> String {
-        self.name()
+        let name_to_sanitize = match self {
+            ShinkaiTool::Agent(agent, _) => agent.agent_id.clone(),
+            _ => self.name(),
+        };
+
+        name_to_sanitize
             .chars()
             .map(|c| {
                 if c.is_alphanumeric() || c == '_' || c == '-' {
