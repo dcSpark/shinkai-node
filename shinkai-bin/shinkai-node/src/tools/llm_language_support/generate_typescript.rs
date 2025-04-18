@@ -26,7 +26,8 @@ export async function shinkaiDownloadPages(input: {urls: any[]}): Promise<{
                 'Authorization': `Bearer ${Deno.env.get('BEARER')}`,
                 'x-shinkai-tool-id': `${Deno.env.get('X_SHINKAI_TOOL_ID')}`,
                 'x-shinkai-app-id': `${Deno.env.get('X_SHINKAI_APP_ID')}`,
-                'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`
+                'x-shinkai-llm-provider': `${Deno.env.get('X_SHINKAI_LLM_PROVIDER')}`,
+                'x-shinkai-agent-id': `${Deno.env.get('X_SHINKAI_AGENT_ID')}`
             }
         });
         return response.data;
@@ -204,7 +205,8 @@ pub fn generate_typescript_definition(
                 'Authorization': `Bearer ${{Deno.env.get('BEARER')}}`,
                 'x-shinkai-tool-id': `${{Deno.env.get('X_SHINKAI_TOOL_ID')}}`,
                 'x-shinkai-app-id': `${{Deno.env.get('X_SHINKAI_APP_ID')}}`,
-                'x-shinkai-llm-provider': `${{Deno.env.get('X_SHINKAI_LLM_PROVIDER')}}`
+                'x-shinkai-llm-provider': `${{Deno.env.get('X_SHINKAI_LLM_PROVIDER')}}`,
+                'x-shinkai-agent-id': `${{Deno.env.get('X_SHINKAI_AGENT_ID')}}`
             }}
         }});
         return response.data;

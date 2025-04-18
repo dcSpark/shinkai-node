@@ -39,7 +39,8 @@ async def shinkai_download_pages(input: Dict[str, Any]) -> Dict[str, Any]:
                 'Authorization': f"Bearer {os.environ.get('BEARER', '')}",
                 'x-shinkai-tool-id': os.environ.get('X_SHINKAI_TOOL_ID', ''),
                 'x-shinkai-app-id': os.environ.get('X_SHINKAI_APP_ID', ''),
-                'x-shinkai-llm-provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', '')
+                'x-shinkai-llm-provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', ''),
+                'x-shinkai-agent-id': os.environ.get('X_SHINKAI_AGENT_ID', '')
             }
         )
         response.raise_for_status()
@@ -240,7 +241,8 @@ pub fn generate_python_definition(
                 'Authorization': f"Bearer {os.environ.get('BEARER', '')}",
                 'x-shinkai-tool-id': os.environ.get('X_SHINKAI_TOOL_ID', ''),
                 'x-shinkai-app-id': os.environ.get('X_SHINKAI_APP_ID', ''),
-                'x-shinkai-llm-provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', '')
+                'x-shinkai-llm-provider': os.environ.get('X_SHINKAI_LLM_PROVIDER', ''),
+                'x-shinkai-agent-id': os.environ.get('X_SHINKAI_AGENT_ID', '')
             },
             timeout=360
         )

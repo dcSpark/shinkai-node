@@ -173,6 +173,7 @@ impl McpToolsService {
                 parameters,
                 tool_id: "".to_string(),
                 app_id: "".to_string(),
+                agent_id: None,
                 extra_config: Map::new(),
                 mounts: None,
                 res: tx,

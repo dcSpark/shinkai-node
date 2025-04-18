@@ -187,6 +187,24 @@ impl SqliteManager {
 
     fn migrate_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::migrate_tools_table(conn)?;
+        Self::migrate_agents_table(conn)?;
+        Ok(())
+    }
+
+    fn migrate_agents_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if tool_config_override column exists
+        let mut stmt = conn.prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'tools_config_override'",
+        )?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // Add the column if it doesn't exist
+        if column_exists == 0 {
+            conn.execute(
+                "ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT",
+                [],
+            )?;
+        }
         Ok(())
     }
 
@@ -209,7 +227,8 @@ impl SqliteManager {
                 tools TEXT NOT NULL,
                 debug_mode INTEGER NOT NULL,
                 config TEXT, -- Store as a JSON string
-                scope TEXT NOT NULL -- Change this line to use TEXT instead of BLOB
+                scope TEXT NOT NULL, -- Change this line to use TEXT instead of BLOB
+                tools_config_override TEXT -- Store as a JSON string
             );",
             [],
         )?;

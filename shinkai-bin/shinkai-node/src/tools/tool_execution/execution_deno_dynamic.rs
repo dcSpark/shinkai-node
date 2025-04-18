@@ -24,6 +24,7 @@ pub async fn execute_deno_tool(
     oauth: Option<Vec<OAuth>>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     llm_provider: String,
     support_files: HashMap<String, String>,
     code: String,
@@ -67,6 +68,7 @@ pub async fn execute_deno_tool(
         llm_provider.clone(),
         app_id.clone(),
         tool_id.clone(),
+        agent_id.clone(),
         // TODO: Update this value for runtime tool execution
         "code-execution".to_string(),
         "".to_string(),
