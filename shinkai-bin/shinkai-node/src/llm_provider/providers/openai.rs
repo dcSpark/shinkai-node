@@ -1969,15 +1969,18 @@ mod tests {
             "session_id",
         )
         .await;
+        println!("result: {:?}", result);
 
-        // Verify that we got an error message back
-        assert!(result.is_ok());
-        let error_message = result.unwrap();
-        assert!(error_message.is_some());
-        assert_eq!(
-            error_message.unwrap(),
-            "invalid_function_parameters: Invalid schema for function 'shinkai_typescript_unsafe_processor': ['code', 'package', 'parameters', 'code'] has non-unique elements."
-        );
+        // Verify that we got an error back
+        assert!(result.is_err());
+        if let Err(LLMProviderError::APIError(error_message)) = result {
+            assert_eq!(
+                error_message,
+                "invalid_function_parameters: Invalid schema for function 'shinkai_typescript_unsafe_processor': ['code', 'package', 'parameters', 'code'] has non-unique elements."
+            );
+        } else {
+            panic!("Expected APIError but got a different error type");
+        }
 
         // Verify no function calls were created
         assert!(function_calls.is_empty());
