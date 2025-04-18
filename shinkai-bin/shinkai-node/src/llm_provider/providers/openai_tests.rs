@@ -537,4 +537,57 @@ data: [DONE]"#,
         // No plain text in these chunks, so final content string should be empty
         assert!(response_text.is_empty());
     }
+
+    #[tokio::test]
+    async fn test_parse_openai_stream_chunk_quota_exceeded() {
+        let mut buffer = String::new();
+        let mut response_text = String::new();
+        let mut function_calls = Vec::new();
+        let mut partial_fc = PartialFunctionCall {
+            name: None,
+            arguments: String::new(),
+            is_accumulating: false,
+            id: None,
+            call_type: None,
+        };
+        let tools = None;
+        let ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>> = None;
+
+        // Quota exceeded error chunk
+        let chunks = vec![
+            r#"{"code":"QUOTA_EXCEEDED","error":"Daily quota of 500000 tokens exceeded, please try again in 1230 minutes."}"#,
+        ];
+
+        for chunk in chunks {
+            buffer.push_str(chunk);
+            buffer.push('\n');
+            let result = parse_openai_stream_chunk(
+                &mut buffer,
+                &mut response_text,
+                &mut function_calls,
+                &mut partial_fc,
+                &tools,
+                &ws_manager,
+                None,
+                "session_id",
+            )
+            .await;
+
+            // The parser should detect this as an error and return an Err
+            assert!(result.is_err());
+
+            if let Err(err) = result {
+                // Check that the error message contains the quota exceeded info
+                let err_msg = err.to_string();
+                // The parser only passes through the error message, not the code
+                assert!(err_msg.contains("Daily quota of 500000 tokens exceeded"));
+            }
+        }
+
+        // No function calls should be added
+        assert!(function_calls.is_empty());
+
+        // No response text should be added
+        assert!(response_text.is_empty());
+    }
 }

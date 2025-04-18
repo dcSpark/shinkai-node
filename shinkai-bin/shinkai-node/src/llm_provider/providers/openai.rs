@@ -280,6 +280,20 @@ pub async fn parse_openai_stream_chunk(
             Ok(json_data) => {
                 // If it has an "error" field, record that and return immediately.
                 if let Some(error_obj) = json_data.get("error") {
+                    // Handle error that's a direct string
+                    if let Some(error_str) = error_obj.as_str() {
+                        // Check if there's also a code field at the top level
+                        let code = json_data.get("code").and_then(|c| c.as_str()).unwrap_or("");
+
+                        buffer.clear();
+                        if !code.is_empty() {
+                            return Err(LLMProviderError::APIError(format!("{}: {}", code, error_str)));
+                        } else {
+                            return Err(LLMProviderError::APIError(error_str.to_string()));
+                        }
+                    }
+
+                    // Handle error as an object with code and message fields
                     let code = error_obj
                         .get("code")
                         .and_then(|c| c.as_str())
@@ -291,7 +305,7 @@ pub async fn parse_openai_stream_chunk(
                         .unwrap_or("Unknown error");
                     // Clear the buffer since we've consumed it
                     buffer.clear();
-                    return Ok(Some(format!("{}: {}", code, msg)));
+                    return Err(LLMProviderError::APIError(format!("{}: {}", code, msg)));
                 }
                 // Once parsed, clear the buffer since we've consumed it.
                 buffer.clear();
@@ -665,12 +679,29 @@ pub async fn handle_streaming_response(
     // Check if it's an error response
     if !res.status().is_success() {
         let error_json: serde_json::Value = res.json().await?;
+
+        // Case 1: error is an object with message field (standard OpenAI format)
         if let Some(error) = error_json.get("error") {
-            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError(
-                "AI Provider API Error: ".to_string() + error_message,
-            ));
+            if error.is_object() {
+                let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                return Err(LLMProviderError::APIError(
+                    "AI Provider API Error: ".to_string() + error_message,
+                ));
+            } else if error.is_string() {
+                // Case 2: error is a string directly
+                let error_message = error.as_str().unwrap_or("Unknown error");
+                let code = error_json.get("code").and_then(|c| c.as_str()).unwrap_or("");
+                let error_prefix = if !code.is_empty() {
+                    format!("AI Provider API Error ({}): ", code)
+                } else {
+                    "AI Provider API Error: ".to_string()
+                };
+
+                return Err(LLMProviderError::APIError(error_prefix + error_message));
+            }
         }
+
+        // Fall back to generic error if we can't parse the specific format
         return Err(LLMProviderError::APIError(
             "AI Provider API Error: Unknown error occurred".to_string(),
         ));
