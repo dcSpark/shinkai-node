@@ -131,9 +131,6 @@ pub fn openai_prepare_messages(model: &LLMProviderInterface, prompt: Prompt) -> 
         &ModelCapabilitiesManager::num_tokens_from_llama3,
     )?;
 
-    // TODO: Remove this
-    eprintln!("Chat Completion Messages: {:?}", chat_completion_messages);
-
     // Get a more accurate estimate of the number of used tokens
     let used_tokens = ModelCapabilitiesManager::num_tokens_from_messages(&chat_completion_messages);
     // Calculate the remaining output tokens available
