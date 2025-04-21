@@ -245,10 +245,31 @@ impl DenoTool {
                     .collect::<Vec<String>>()
                     .join(" ");
 
-                Err(ToolError::ExecutionError(format!(
-                    "Error: {}. Files: {}",
-                    e.message().to_string(),
-                    files
+                // Errors from the runner include the downloaded libraries
+                // on the first run. So we clean them up, as the are not part of the execution it self.
+                // Remove download links from the error message
+                let re = regex::Regex::new(r"^Download https:[\S]*$").unwrap();
+                // Shinkai UI requires double line breaks to display a line break.
+                let error_message: String = e
+                    .message()
+                    .to_string()
+                    .split("\n")
+                    .map(|line| line.to_string())
+                    .filter(|line| !line.is_empty())
+                    .filter(|line| match re.captures(line) {
+                        Some(_) => false,
+                        None => true,
+                    })
+                    .collect::<Vec<String>>()
+                    .join("\n");
+
+                let title: String = format!("**Tool {} execution failed.**", self.name);
+                let parameters: String = format!("*Inputs:*\n `{}`", serde_json::to_string(&parameters).unwrap());
+                let error: String = format!("```typescript\n{}\n```", error_message);
+                let files: String = format!("Files: {}", files);
+                Err(ToolError::AutocontainedError(format!(
+                    "{}\n\n  {}\n\n  {}\n\n  {}",
+                    title, parameters, error, files
                 )))
             }
         }
