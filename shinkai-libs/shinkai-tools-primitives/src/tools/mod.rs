@@ -13,3 +13,4 @@ pub mod tool_output_arg;
 pub mod tool_playground;
 pub mod tool_router_dep;
 pub mod tool_types;
+pub mod wasm_tools;

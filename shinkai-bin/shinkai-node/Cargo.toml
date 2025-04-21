@@ -89,6 +89,15 @@ zip = "2.2.1"
 open = "5.3.2"
 sha2 = "0.10" 
 
+# WASM execution
+wasmtime = { version = "31.0.0", features = ["async"] }
+wasmtime-wasi = "31.0.0"
+
+# TEE support
+enarx = "0.7.0"  # For Intel SGX and AMD SEV
+sgx-isa = "0.4.1"  # For Intel SGX
+sev = "6.0.0"  # For AMD SEV
+
 [dev-dependencies]
 mockito = "1.0.2"
 tokio-tungstenite = "0.15.0"

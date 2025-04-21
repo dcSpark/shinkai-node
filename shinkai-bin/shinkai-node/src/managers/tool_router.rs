@@ -11,6 +11,7 @@ use crate::tools::tool_definitions::definition_generation::{generate_tool_defini
 use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
+use crate::tools::tool_execution::execution_wasm_dynamic::execute_wasm_tool;
 use crate::utils::environment::fetch_node_environment;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1157,6 +1158,77 @@ impl ToolRouter {
 
                 return Ok(ToolCallFunctionResponse {
                     response,
+                    function_call,
+                });
+            }
+            ShinkaiTool::Wasm(wasm_tool, _is_enabled) => {
+                let function_config = shinkai_tool.get_config_from_env();
+                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+
+                // Get app_id from Cron UI if present, otherwise use job_id
+                let app_id = match context.full_job().associated_ui().as_ref() {
+                    Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
+                    _ => context.full_job().job_id().to_string(),
+                };
+
+                let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
+                let tools: Vec<ToolRouterKey> = context
+                    .db()
+                    .clone()
+                    .get_all_tool_headers()?
+                    .into_iter()
+                    .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                        Ok(tool_router_key) => Some(tool_router_key),
+                        Err(_) => None,
+                    })
+                    .collect();
+
+                let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
+                    .await
+                    .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+
+                let envs = generate_execution_environment(
+                    context.db(),
+                    context.agent().clone().get_id().to_string(),
+                    app_id.clone(),
+                    tool_id.clone(),
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    app_id.clone(),
+                    &wasm_tool.oauth,
+                )
+                .await?;
+
+                check_tool(
+                    shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                    wasm_tool.config.clone(),
+                    function_args.clone(),
+                    wasm_tool.input_args.clone(),
+                    &wasm_tool.oauth,
+                )?;
+
+                let result = execute_wasm_tool(
+                    context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default(),
+                    context.db().clone(),
+                    node_name.clone(),
+                    function_args,
+                    function_config_vec,
+                    wasm_tool.oauth.clone(),
+                    tool_id.clone(),
+                    app_id.clone(),
+                    context.agent().get_llm_provider_id().to_string(),
+                    support_files,
+                    wasm_tool.wasm_code.clone(),
+                    None,
+                    Some(wasm_tool.runner),
+                    Some(wasm_tool.operating_system.clone()),
+                )
+                .await?;
+
+                let result_str = serde_json::to_string(&result)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+
+                return Ok(ToolCallFunctionResponse {
+                    response: result_str,
                     function_call,
                 });
             }

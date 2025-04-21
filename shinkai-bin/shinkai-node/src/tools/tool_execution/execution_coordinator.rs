@@ -6,6 +6,7 @@ use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::tools::tool_execution::execution_python_dynamic::execute_python_tool;
+use crate::tools::tool_execution::execution_wasm_dynamic::{check_wasm_tool, execute_wasm_tool};
 use crate::utils::environment::fetch_node_environment;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::Utc;
@@ -627,6 +628,28 @@ pub async fn execute_code(
             )
             .await
         }
+        DynamicToolType::WasmDynamic => {
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
+                .await
+                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+            execute_wasm_tool(
+                bearer.clone(),
+                db.clone(),
+                node_name,
+                parameters,
+                extra_config,
+                oauth.clone(),
+                tool_id,
+                app_id,
+                llm_provider,
+                support_files,
+                code,
+                mounts,
+                runner,
+                operating_system,
+            )
+            .await
+        }
     }
 }
 
@@ -670,6 +693,7 @@ pub async fn check_code(
         }
         DynamicToolType::PythonDynamic => Err(ToolError::ExecutionError("NYI Python".to_string())),
         DynamicToolType::AgentDynamic => Err(ToolError::ExecutionError("NYI Agent".to_string())),
+        DynamicToolType::WasmDynamic => Err(ToolError::ExecutionError("NYI Wasm".to_string())),
     }
 }
 
