@@ -305,6 +305,7 @@ fn test_job_code_fork() {
                             limit: None,
                             offset: None,
                             show_hidden: None,
+                            agent_id: None,
                             res: inbox_sender,
                         })
                         .await
