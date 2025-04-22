@@ -63,6 +63,19 @@ impl JobManager {
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
 
+        // Get max_iterations from preferences, default to 10 if not found
+        // Try first as u64, then as String (in case it's stored as a string)
+        let max_iterations = match db.get_preference::<u64>("max_iterations") {
+            Ok(Some(value)) => value,
+            _ => {
+                // If it fails or is None, try as string and parse
+                match db.get_preference::<String>("max_iterations") {
+                    Ok(Some(str_value)) => str_value.parse::<u64>().unwrap_or(10),
+                    _ => 10, // Default if nothing works
+                }
+            }
+        };
+
         // Create the inference chain context
         let chain_context = InferenceChainContext::new(
             db,
@@ -77,7 +90,7 @@ impl JobManager {
             llm_provider,
             generator,
             user_profile,
-            10, // TODO: Make this dynamic so you can control it from the UI
+            max_iterations,
             max_tokens_in_prompt,
             ws_manager_trait.clone(),
             tool_router.clone(),
