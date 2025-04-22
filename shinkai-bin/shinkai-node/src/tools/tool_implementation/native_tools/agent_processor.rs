@@ -51,14 +51,11 @@ This can be used to process complex requests, text analysis, text matching, text
                     params.add_property("prompt".to_string(), "string".to_string(), "The prompt the agent will process".to_string(), true);
                     // Add the optional llm_provider parameter
                     params.add_property("agent".to_string(), "string".to_string(), "The Agent to use.".to_string(), true);
-                    
-                
                     let image_paths_property = Property::with_array_items(
                         "List of image file paths to be used with the prompt".to_string(),
                         Property::new("string".to_string(), "Image path".to_string())
                     );
                     params.properties.insert("image_paths".to_string(), image_paths_property);
- 
                     params
                 },
                 output_arg: ToolOutputArg {
@@ -86,7 +83,7 @@ impl ToolExecutor for AgentPromptProcessorTool {
         encryption_public_key_clone: EncryptionPublicKey,
         signing_secret_key_clone: SigningKey,
         parameters: &Map<String, Value>,
-        default_llm_provider: String,
+        _default_llm_provider: String,
     ) -> Result<Value, ToolError> {
         let content = parameters
             .get("prompt")
@@ -94,10 +91,13 @@ impl ToolExecutor for AgentPromptProcessorTool {
             .unwrap_or("")
             .to_string();
 
-        let image_paths = if let Some(paths_array) = parameters
-            .get("image_paths")
-            .and_then(|v| v.as_array()) {
-                Some(paths_array.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<String>>())
+        let image_paths = if let Some(paths_array) = parameters.get("image_paths").and_then(|v| v.as_array()) {
+            Some(
+                paths_array
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect::<Vec<String>>(),
+            )
         } else {
             None
         };
@@ -107,26 +107,23 @@ impl ToolExecutor for AgentPromptProcessorTool {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        
-   
 
-            let available_agents = db_clone.get_all_agents()
-                    .map_err(|e| ToolError::ExecutionError(format!("Failed to get agents: {}", e)))?;
-                
-                    let agent_to_use = available_agents.iter().find(|p| p.agent_id == agent_param);
+        let available_agents = db_clone
+            .get_all_agents()
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to get agents: {}", e)))?;
 
+        let agent_to_use = available_agents.iter().find(|p| p.agent_id == agent_param);
 
-            if !agent_to_use.is_some() {
-                let available_ids: Vec<String> = available_agents.iter().map(|p| p.agent_id.clone()).collect();
-                let error_message = format!(
-                    "Agent '{}' not found. Available agents: {}",
-                    agent_param,
-                    available_ids.join(", ")
-                );
-                return Err(ToolError::ExecutionError(error_message));
-            }
-            
-        
+        if !agent_to_use.is_some() {
+            let available_ids: Vec<String> = available_agents.iter().map(|p| p.agent_id.clone()).collect();
+            let error_message = format!(
+                "Agent '{}' not found. Available agents: {}",
+                agent_param,
+                available_ids.join(", ")
+            );
+            return Err(ToolError::ExecutionError(error_message));
+        }
+
         let agent_to_use = agent_to_use.unwrap();
         let response = v2_create_and_send_job_message(
             bearer.clone(),
@@ -137,7 +134,13 @@ impl ToolExecutor for AgentPromptProcessorTool {
             },
             agent_to_use.agent_id.clone(),
             content,
-            Some(agent_to_use.tools.iter().map(|t| t.to_string_without_version()).collect()),
+            Some(
+                agent_to_use
+                    .tools
+                    .iter()
+                    .map(|t| t.to_string_without_version())
+                    .collect(),
+            ),
             image_paths,
             None,
             db_clone.clone(),
@@ -193,4 +196,3 @@ impl ToolExecutor for AgentPromptProcessorTool {
         }))
     }
 }
-
