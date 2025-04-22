@@ -2743,8 +2743,14 @@ impl Node {
         let tool_key_name = tool_router_key.to_string_without_version();
         let version = tool_router_key.version;
 
-        // Attempt to remove the playground tool first
-        let _ = db_write.remove_tool_playground(&tool_key);
+        // Attempt to remove the playground tool first, warn on failure but continue
+        if let Err(e) = db_write.remove_tool_playground(&tool_key) {
+            log::warn!(
+                "Attempt to remove associated playground tool for key '{}' failed (this might be expected if none exists): {}. Continuing with main tool removal.",
+                tool_key,
+                e
+            );
+        }
 
         // Remove the tool from the database
         match db_write.remove_tool(&tool_key_name, version) {
