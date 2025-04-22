@@ -25,6 +25,7 @@ impl JobPromptGenerator {
         user_message: String,
         image_files: HashMap<String, String>,
         ret_nodes: ShinkaiFileChunkCollection,
+        agent_file_chunks: Option<ShinkaiFileChunkCollection>,
         _summary_text: Option<String>,
         job_step_history: Option<Vec<ShinkaiMessage>>,
         tools: Vec<ShinkaiTool>,
@@ -40,6 +41,15 @@ impl JobPromptGenerator {
         .unwrap_or_else(|| "You are a very helpful assistant. You may be provided with documents or content to analyze and answer questions about them, in that case refer to the content provided in the user message for your responses.".to_string());
 
         prompt.add_content(system_prompt, SubPromptType::System, 98);
+
+        // Handle agent file chunks (agent knowledge) as part of the system context
+        if let Some(agent_chunks) = agent_file_chunks {
+            if !agent_chunks.is_empty() {
+                prompt.add_content("<agent_knowledge>\n".to_string(), SubPromptType::System, 99);
+                prompt.add_ret_node_content(agent_chunks, SubPromptType::System, 99);
+                prompt.add_content("\n</agent_knowledge>".to_string(), SubPromptType::System, 99);
+            }
+        }
 
         let has_ret_nodes = !ret_nodes.is_empty();
 
@@ -110,13 +120,13 @@ impl JobPromptGenerator {
         // and also grouping i.e. instead of having 100 tiny messages, we have a message with the chunks grouped
         {
             if has_ret_nodes && !user_message.is_empty() {
-                prompt.add_content("--- start --- \n".to_string(), SubPromptType::ExtraContext, 97);
+                prompt.add_content("<attached_files>\n".to_string(), SubPromptType::ExtraContext, 97);
             }
 
             prompt.add_ret_node_content(ret_nodes, SubPromptType::ExtraContext, 96);
 
             if has_ret_nodes && !user_message.is_empty() {
-                prompt.add_content("--- end ---".to_string(), SubPromptType::ExtraContext, 97);
+                prompt.add_content("\n</attached_files>".to_string(), SubPromptType::ExtraContext, 97);
             }
         }
 

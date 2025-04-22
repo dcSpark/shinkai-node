@@ -19,7 +19,7 @@ use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
-use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
+use shinkai_message_primitives::schemas::shinkai_fs::{ShinkaiFileChunkCollection, ShinkaiFileChunk};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -127,7 +127,7 @@ impl SheetUIInferenceChain {
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
         llm_stopper: Arc<LLMStopper>,
-        node_env: NodeEnvironment,
+        _node_env: NodeEnvironment,
     ) -> Result<String, LLMProviderError> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
@@ -196,11 +196,51 @@ impl SheetUIInferenceChain {
             chunks: vec![],
             paths: None,
         };
+        
+        // Add support for agent files
+        let mut agent_file_chunks: Option<ShinkaiFileChunkCollection> = None;
+        let mut agent_fs_files_paths = Vec::new();
+        let mut agent_fs_folder_paths = Vec::new();
+        
+        // Extract agent files if provider is an agent
+        if let ProviderOrAgent::Agent(agent) = &llm_provider {
+            agent_fs_files_paths.extend(agent.scope.vector_fs_items.clone());
+            agent_fs_folder_paths.extend(agent.scope.vector_fs_folders.clone());
+        }
+        
+        // Process agent files separately if present
+        if !agent_fs_files_paths.is_empty() || !agent_fs_folder_paths.is_empty() {
+            let agent_ret = JobManager::search_for_chunks_in_resources(
+                agent_fs_files_paths.clone(),
+                agent_fs_folder_paths.clone(),
+                Vec::new(), // No job filenames for agent
+                full_job.job_id.clone(),
+                &job_scope,
+                db.clone(),
+                user_message.clone(),
+                20,
+                max_tokens_in_prompt / 3, // Give agent files a smaller allocation
+                generator.clone(),
+            )
+            .await?;
+            
+            if !agent_ret.is_empty() {
+                agent_file_chunks = Some(agent_ret);
+            }
+        }
+        
         // tODO: remove this
         let summary_node_text = None;
         if !scope_is_empty {
+            // Filter out agent files from regular search to avoid duplication
+            let regular_fs_files_paths: Vec<ShinkaiPath> = fs_files_paths
+                .iter()
+                .filter(|path| !agent_fs_files_paths.contains(path))
+                .cloned()
+                .collect();
+                
             let ret = JobManager::search_for_chunks_in_resources(
-                fs_files_paths.clone(),
+                regular_fs_files_paths,
                 Vec::new(), // fs_folder_paths
                 job_filenames.clone(),
                 full_job.job_id.clone(),
@@ -212,7 +252,39 @@ impl SheetUIInferenceChain {
                 generator.clone(),
             )
             .await?;
-            ret_nodes = ret;
+            
+            // Further deduplication at the chunk level to ensure
+            // files that appear in both agent files and regular files
+            // are only included as agent files
+            if let Some(ref agent_chunks) = agent_file_chunks {
+                // Create a set of file IDs from agent chunks for fast lookup
+                let agent_file_ids: HashSet<i64> = agent_chunks.chunks
+                    .iter()
+                    .map(|chunk| chunk.parsed_file_id)
+                    .collect();
+                
+                // Create a set of chunk content hashes from agent chunks for content-based deduplication
+                let agent_chunk_contents: HashSet<String> = agent_chunks.chunks
+                    .iter()
+                    .map(|chunk| chunk.content.clone())
+                    .collect();
+                
+                // Filter out chunks that have the same file ID or exact content match as agent chunks
+                let filtered_chunks: Vec<ShinkaiFileChunk> = ret.chunks
+                    .into_iter()
+                    .filter(|chunk| {
+                        !agent_file_ids.contains(&chunk.parsed_file_id) && 
+                        !agent_chunk_contents.contains(&chunk.content)
+                    })
+                    .collect();
+                
+                ret_nodes = ShinkaiFileChunkCollection {
+                    chunks: filtered_chunks,
+                    paths: ret.paths,
+                };
+            } else {
+                ret_nodes = ret;
+            }
             // summary_node_text = summary;
         }
 
@@ -287,6 +359,7 @@ impl SheetUIInferenceChain {
             extended_user_message.clone(),
             image_files.clone(),
             ret_nodes.clone(),
+            agent_file_chunks.clone(),
             summary_node_text.clone(),
             Some(full_job.step_history.clone()),
             tools.clone(),
@@ -437,6 +510,7 @@ impl SheetUIInferenceChain {
                     user_message.clone(),
                     image_files.clone(),
                     ret_nodes.clone(),
+                    agent_file_chunks.clone(),
                     summary_node_text.clone(),
                     Some(full_job.step_history.clone()),
                     tools.clone(),
