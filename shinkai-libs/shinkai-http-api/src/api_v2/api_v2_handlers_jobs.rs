@@ -294,6 +294,7 @@ pub struct GetAllSmartInboxesRequest {
     pub limit: Option<usize>,
     pub offset: Option<String>,
     pub show_hidden: Option<bool>,
+    pub agent_id: Option<String>,
 }
 
 #[utoipa::path(
@@ -486,6 +487,7 @@ pub async fn get_all_smart_inboxes_handler(
             limit: query.limit,
             offset: query.offset,
             show_hidden: query.show_hidden,
+            agent_id: query.agent_id,
             res: res_sender,
         })
         .await
@@ -532,6 +534,7 @@ pub async fn get_all_smart_inboxes_paginated_handler(
             limit: query.limit,
             offset: query.offset,
             show_hidden: query.show_hidden,
+            agent_id: query.agent_id,
             res: res_sender,
         })
         .await

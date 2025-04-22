@@ -540,6 +540,7 @@ pub enum NodeCommand {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     },
     V2ApiGetAllSmartInboxesPaginated {
@@ -547,6 +548,7 @@ pub enum NodeCommand {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiUpdateSmartInboxName {
