@@ -217,18 +217,21 @@ mod tests {
             "string".to_string(),
             "A string parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "number_param".to_string(),
             "number".to_string(),
             "A number parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "optional_bool".to_string(),
             "boolean".to_string(),
             "An optional boolean parameter".to_string(),
             false,
+            None,
         );
         params
     }
@@ -497,6 +500,7 @@ mod tests {
             "array".to_string(),
             "An array parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -514,6 +518,7 @@ mod tests {
             "array".to_string(),
             "An array parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -537,6 +542,7 @@ mod tests {
             "object".to_string(),
             "An object parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -554,6 +560,7 @@ mod tests {
             "object".to_string(),
             "An object parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -577,6 +584,7 @@ mod tests {
             "integer".to_string(),
             "An integer parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -597,12 +605,14 @@ mod tests {
             "string".to_string(),
             "A string parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "number_param".to_string(),
             "number".to_string(),
             "A number parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -629,6 +639,7 @@ mod tests {
             "string".to_string(),
             "An optional parameter".to_string(),
             false,
+            None,
         );
 
         let mut value = Map::new();
