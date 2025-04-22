@@ -1,6 +1,7 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
+use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
@@ -303,6 +304,28 @@ pub async fn execute_tool_cmd(
             )
             .await
         }
+        ShinkaiTool::Agent(agent_tool, _) => {
+            // Clone parameters and inject the agent_id
+            let mut modified_parameters = parameters.clone();
+            modified_parameters.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(agent_tool.agent_id.clone()),
+            );
+
+            // Use the dedicated execute_agent_tool function
+            execute_agent_tool(
+                bearer,
+                db,
+                modified_parameters,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+            )
+            .await
+        }
         ShinkaiTool::Python(python_tool, _) => {
             let env = generate_execution_environment(
                 db.clone(),
@@ -451,7 +474,8 @@ pub async fn execute_mcp_tool_cmd(
     let preferences_llm_provider_result = match db.get_preference::<String>("default_llm_provider") {
         Ok(Some(provider_id)) => {
             // HARDCODED MAIN PROFILE NAME
-            let profile_name = ShinkaiName::new(format!("{}/main/agent/mcp_default", node_name.get_node_name_string())).unwrap();
+            let profile_name =
+                ShinkaiName::new(format!("{}/main/agent/mcp_default", node_name.get_node_name_string())).unwrap();
             match db.get_llm_provider(&provider_id, &profile_name) {
                 Ok(Some(provider)) => {
                     // Successfully found the preferred provider
@@ -512,7 +536,7 @@ pub async fn execute_mcp_tool_cmd(
 pub async fn execute_code(
     tool_type: DynamicToolType,
     code: String,
-    tools: Vec<ToolRouterKey>,
+    _tools: Vec<ToolRouterKey>,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
     oauth: Option<Vec<OAuth>>,
@@ -525,6 +549,11 @@ pub async fn execute_code(
     mounts: Option<Vec<String>>,
     runner: Option<RunnerType>,
     operating_system: Option<Vec<OperatingSystem>>,
+    identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    job_manager_clone: Arc<Mutex<JobManager>>,
+    encryption_secret_key_clone: EncryptionStaticKey,
+    encryption_public_key_clone: EncryptionPublicKey,
+    signing_secret_key_clone: SigningKey,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
     // Route based on the prefix
@@ -584,6 +613,20 @@ pub async fn execute_code(
             )
             .await
         }
+        DynamicToolType::AgentDynamic => {
+            execute_agent_tool(
+                bearer,
+                db,
+                parameters,
+                node_name,
+                identity_manager_clone,
+                job_manager_clone,
+                encryption_secret_key_clone,
+                encryption_public_key_clone,
+                signing_secret_key_clone,
+            )
+            .await
+        }
     }
 }
 
@@ -592,7 +635,7 @@ pub async fn check_code(
     unfiltered_code: String,
     tool_id: String,
     app_id: String,
-    tools: Vec<ToolRouterKey>,
+    _tools: Vec<ToolRouterKey>,
     sqlite_manager: Arc<SqliteManager>,
 ) -> Result<Vec<String>, ToolError> {
     eprintln!("[check_code] tool_type: {}", tool_type);
@@ -626,6 +669,7 @@ pub async fn check_code(
             check_deno_tool(tool_id, app_id, support_files, code_extracted).await
         }
         DynamicToolType::PythonDynamic => Err(ToolError::ExecutionError("NYI Python".to_string())),
+        DynamicToolType::AgentDynamic => Err(ToolError::ExecutionError("NYI Agent".to_string())),
     }
 }
 

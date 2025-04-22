@@ -10,5 +10,6 @@ pub mod llm_language_support {
     pub mod language_helpers;
 }
 
+pub mod agent_execution;
 pub mod tool_generation;
 pub mod tool_implementation;

@@ -1,6 +1,8 @@
 use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
+use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::{env, sync::Arc};
@@ -20,7 +22,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_message_primitives::{
     schemas::{
-        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
+        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey
     }, shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
             APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
@@ -34,7 +36,6 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::llm_provider::providers::shinkai_backend::check_quota;
-use crate::utils::environment::NodeEnvironment;
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
@@ -43,12 +44,11 @@ use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 
-use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
+use std::collections::HashMap;
 use std::time::Instant;
 use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use std::collections::HashMap;
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -1069,8 +1069,25 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             } else {
                 // Add the agent to the database
-                match db.add_agent(agent, &requester_name) {
+                match db.add_agent(agent.clone(), &requester_name) {
                     Ok(_) => {
+                        // Create and add Agent tool wrapper
+                        let node_name = requester_name.get_node_name_string();
+                        let agent_tool_wrapper = AgentToolWrapper::new(
+                            agent.agent_id.clone(),
+                            agent.name.clone(),
+                            agent.ui_description.clone(),
+                            node_name,
+                            None,
+                        );
+
+                        let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
+
+                        // Add agent tool to database
+                        if let Err(err) = db.add_tool(shinkai_tool).await {
+                            eprintln!("Warning: Failed to add agent tool: {}", err);
+                        }
+
                         let _ = res.send(Ok("Agent added successfully".to_string())).await;
                     }
                     Err(err) => {
@@ -1098,6 +1115,7 @@ impl Node {
     pub async fn v2_api_remove_agent(
         db: Arc<SqliteManager>,
         bearer: String,
+        node_name: ShinkaiName,
         agent_id: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1106,9 +1124,24 @@ impl Node {
             return Ok(());
         }
 
+        // Get the agent's node name
+        let node_name_string = node_name.get_node_name_string();
+
         // Remove the agent from the database
         match db.remove_agent(&agent_id) {
             Ok(_) => {
+                // Remove the agent tool
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name_string.to_string(),
+                    agent_id.clone(),
+                    None,
+                )
+                .to_string_with_version();
+                if let Err(err) = db.remove_tool(&tool_router_key, None) {
+                    eprintln!("Warning: Failed to remove agent tool: {}", err);
+                }
+
                 let _ = res.send(Ok("Agent removed successfully".to_string())).await;
             }
             Err(err) => {
@@ -1832,7 +1865,7 @@ impl Node {
             }
         }
         Ok(())
-    }    
+    }
 
     pub async fn v2_api_add_regex_pattern(
         db: Arc<SqliteManager>,

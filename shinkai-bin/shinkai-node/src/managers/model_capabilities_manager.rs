@@ -126,6 +126,9 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
                 "gpt-4o" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-4.1-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-4.1-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "gpt-4.1" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
                 "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
                 "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -211,11 +214,9 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::LocalLLM(_) => ModelCost::Cheap,
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
-                "gpt4" | "gpt-4-1106-preview" | "PREMIUM_TEXT_INFERENCE" => ModelCost::Expensive,
-                "gpt-vision" | "gpt-4-vision-preview" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_VISION_INFERENCE" => {
-                    ModelCost::GoodValue
-                }
-                "dall-e" => ModelCost::GoodValue,
+                "STANDARD_TEXT_INFERENCE" | "PREMIUM_TEXT_INFERENCE" => ModelCost::GoodValue,
+                "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => ModelCost::Expensive,
+                "FREE_TEXT_INFERENCE" => ModelCost::VeryCheap,
                 _ => ModelCost::Unknown,
             },
             LLMProviderInterface::Ollama(_) => ModelCost::Free,
@@ -246,9 +247,11 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::TogetherAI(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::LocalLLM(_) => ModelPrivacy::Local,
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
-                "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
-                "PREMIUM_VISION_INFERENCE" => ModelPrivacy::RemoteGreedy,
+                "FREE_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "STANDARD_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
+                "PREMIUM_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
+                "CODE_GENERATOR" => ModelPrivacy::RemoteGreedy,
+                "CODE_GENERATOR_NO_FEEDBACK" => ModelPrivacy::RemoteGreedy,
                 _ => ModelPrivacy::Unknown,
             },
             LLMProviderInterface::Ollama(_) => ModelPrivacy::Local,
@@ -389,6 +392,8 @@ impl ModelCapabilitiesManager {
                     || openai.model_type.starts_with("o1-preview")
                 {
                     128_000
+                } else if openai.model_type.starts_with("gpt-4.1") {
+                    1_047_576
                 } else {
                     32_000
                 }
@@ -413,8 +418,8 @@ impl ModelCapabilitiesManager {
                 0
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
-                "FREE_TEXT_INFERENCE" => 128_000,
-                "STANDARD_TEXT_INFERENCE" => 128_000,
+                "FREE_TEXT_INFERENCE" => 1_047_576,
+                "STANDARD_TEXT_INFERENCE" => 1_047_576,
                 "PREMIUM_TEXT_INFERENCE" => 200_000,
                 "CODE_GENERATOR" => 128_000,
                 "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
@@ -523,7 +528,10 @@ impl ModelCapabilitiesManager {
     pub fn get_max_output_tokens(model: &LLMProviderInterface) -> usize {
         match model {
             LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.starts_with("o1-preview") || openai.model_type.starts_with("o1-mini") {
+                if openai.model_type.starts_with("o1-preview")
+                    || openai.model_type.starts_with("o1-mini")
+                    || openai.model_type.starts_with("gpt-4.1")
+                {
                     32768
                 } else {
                     16384

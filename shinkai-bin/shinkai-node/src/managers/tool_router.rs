@@ -8,6 +8,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
+use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
@@ -662,7 +663,9 @@ impl ToolRouter {
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Python, self.sqlite_manager.clone(), false)
                         .await
-                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                        .map_err(|e| {
+                            ToolError::ExecutionError(format!("Failed to generate tool definitions: {:?}", e))
+                        })?;
 
                 let envs = generate_execution_environment(
                     context.db(),
@@ -768,6 +771,52 @@ impl ToolRouter {
                     function_call,
                 });
             }
+            ShinkaiTool::Agent(agent_tool, _is_enabled) => {
+                let job_callback_manager = context.job_callback_manager();
+                let mut job_manager: Option<Arc<Mutex<JobManager>>> = None;
+                if let Some(job_callback_manager) = &job_callback_manager {
+                    let job_callback_manager = job_callback_manager.lock().await;
+                    job_manager = job_callback_manager.job_manager.clone();
+                }
+
+                if job_manager.is_none() {
+                    return Err(LLMProviderError::FunctionExecutionError(
+                        "Job manager is not available".to_string(),
+                    ));
+                }
+
+                // Clone function_args and inject the agent_id
+                let mut modified_function_args = function_args.clone();
+                modified_function_args.insert(
+                    "agent_id".to_string(),
+                    serde_json::Value::String(agent_tool.agent_id.clone()),
+                );
+
+                // Use the dedicated execute_agent_tool function
+                let result = execute_agent_tool(
+                    context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default(),
+                    context.db(),
+                    modified_function_args,
+                    node_name,
+                    self.identity_manager.clone(),
+                    job_manager.unwrap(),
+                    self.encryption_secret_key.clone(),
+                    self.encryption_public_key.clone(),
+                    self.signing_secret_key.clone(),
+                )
+                .await
+                .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+
+                // Convert the result to a JSON string
+                let response = serde_json::to_string(&result).unwrap_or_else(|_| {
+                    "{\"message\":\"\", \"session_id\":\"\", \"status\":\"some error\"}".to_string()
+                });
+
+                return Ok(ToolCallFunctionResponse {
+                    response,
+                    function_call,
+                });
+            }
             ShinkaiTool::Deno(deno_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
                 let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
@@ -798,7 +847,9 @@ impl ToolRouter {
                 let support_files =
                     generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                         .await
-                        .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                        .map_err(|e| {
+                            ToolError::ExecutionError(format!("Failed to generate tool definitions: {:?}", e))
+                        })?;
 
                 let envs = generate_execution_environment(
                     context.db(),
@@ -1156,7 +1207,7 @@ impl ToolRouter {
         let support_files =
             generate_tool_definitions(tools, CodeLanguage::Typescript, self.sqlite_manager.clone(), false)
                 .await
-                .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to generate tool definitions: {:?}", e)))?;
 
         let oauth = match shinkai_tool.clone() {
             ShinkaiTool::Deno(deno_tool, _) => deno_tool.oauth.clone(),
