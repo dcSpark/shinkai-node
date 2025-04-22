@@ -1279,6 +1279,9 @@ impl Node {
             }),
             cron_tasks: None,
             full_identity_name, // Set the constructed full identity name
+            tools_config_override: partial_agent.get("tools_config_override").map_or(existing_agent.tools_config_override.clone(), |v| {
+                serde_json::from_value(v.clone()).unwrap_or(existing_agent.tools_config_override.clone())
+            }),
         };
 
         // Update the agent in the database
