@@ -4380,7 +4380,7 @@ mod tests {
             "type": "Workflow"
         });
 
-        let merged_value = Node::merge_json(existing_tool_value, input_value);
+        let merged_value = Node::merge_tool(&existing_tool_value, &input_value);
         assert_eq!(merged_value, expected_merged_value);
     }
 
