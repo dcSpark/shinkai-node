@@ -359,10 +359,40 @@ impl PythonTool {
                     .collect::<Vec<String>>()
                     .join(" ");
 
-                Err(ToolError::ExecutionError(format!(
-                    "Error: {}. Files: {}",
-                    e.message().to_string(),
-                    files
+                // Python execution logs might include the version. virtual environment and warning.
+                // These are not part of the runtime execution, so we clean them up.
+                let invalid_lines = [
+                    regex::Regex::new(r"^INFO add_decision: Id::<PubGrubPackage>\(\d+\) @ [\da-z]+\.[\da-z]+\.?[\da-z]+? without checking dependencies\s+$").unwrap(),
+                    regex::Regex::new(r"^Installed \d+ packages in \d+ms$").unwrap(),
+                    regex::Regex::new(r"^Using CPython \d+\.\d+\.\d+$").unwrap(),
+                    regex::Regex::new(r"^Creating virtual environment at: [\S]*\.venv$").unwrap(),
+                    regex::Regex::new(r"^warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance\.").unwrap(),
+                    regex::Regex::new(r"^If the cache and target directories are on different filesystems, hardlinking may not be supported\.$").unwrap(),
+                    regex::Regex::new(r"^If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning\.$").unwrap(),
+                ];
+
+                let error_message = e
+                    .message()
+                    .to_string()
+                    .split("\n")
+                    .map(|line| line.to_string())
+                    .filter(|line| !line.is_empty())
+                    .filter(|line| !invalid_lines.iter().any(|re| re.is_match(line)))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+
+                let code = format!(
+                    "<shinkaicode>\n\n  ```python\n{}\n```\n\n  </shinkaicode>",
+                    self.py_code.replace("```", "` ` `")
+                );
+
+                let title: String = format!("**Tool {} execution failed.**", self.name);
+                let parameters = format!("*Inputs:* `{}`", serde_json::to_string(&parameters).unwrap());
+                let error: String = format!("```python\n{}\n```", error_message);
+                let files: String = format!("Files: {}", files);
+                Err(ToolError::AutocontainedError(format!(
+                    "{}\n\n  {}\n\n  {}\n\n  {}\n\n  {}",
+                    title, parameters, error, files, code
                 )))
             }
         }
