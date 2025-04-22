@@ -390,7 +390,7 @@ impl ModelCapabilitiesManager {
                 {
                     128_000
                 } else {
-                    32_000
+                    128_000
                 }
             }
             LLMProviderInterface::TogetherAI(togetherai) => {
