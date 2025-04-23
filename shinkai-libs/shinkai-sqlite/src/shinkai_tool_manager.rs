@@ -411,10 +411,16 @@ impl SqliteManager {
 
         // Get the tool_key and find the rowid
         let tool_key = tool.tool_router_key().to_string_without_version().to_lowercase();
+
+        // Convert version string to IndexableVersion
+        let indexable_version = IndexableVersion::from_string(&tool.version())
+            .map_err(|e| SqliteManagerError::VersionConversionError(e))?;
+        let version_number = indexable_version.get_version_number();
+
         let rowid: i64 = tx
             .query_row(
-                "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1",
-                params![tool_key],
+                "SELECT rowid FROM shinkai_tools WHERE tool_key = ?1 AND version = ?2",
+                params![tool_key, version_number],
                 |row| row.get(0),
             )
             .map_err(|e| {
@@ -445,11 +451,6 @@ impl SqliteManager {
             }
             _ => (None, false),
         };
-
-        // Convert version string to IndexableVersion
-        let indexable_version = IndexableVersion::from_string(&tool.version())
-            .map_err(|e| SqliteManagerError::VersionConversionError(e))?;
-        let version_number = indexable_version.get_version_number();
 
         // Update the tool in the database
         tx.execute(
@@ -2105,7 +2106,11 @@ mod tests {
                     None
                 }
             });
-            assert_eq!(config_value, Some(serde_json::Value::Bool(true)), "Config value not preserved");
+            assert_eq!(
+                config_value,
+                Some(serde_json::Value::Bool(true)),
+                "Config value not preserved"
+            );
         } else {
             panic!("Retrieved tool is not a DenoTool");
         }
