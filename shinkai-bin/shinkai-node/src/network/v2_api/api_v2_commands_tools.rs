@@ -3884,7 +3884,17 @@ LANGUAGE={env_language}
             Ok(mut tool) => {
                 // Update the enabled status using the appropriate method
                 if enabled {
-                    tool.enable();
+                    if (!tool.can_be_enabled()) {
+                        let _ = res.send(Err(APIError {
+                            code: 400,
+                            error: "Tool Cannot Be Enabled".to_string(),
+                            message: format!("Failed to update tool: Tool Cannot Be Enabled"),
+                        }));
+                        return Ok(());
+                    }
+                    else {
+                        tool.enable();
+                    }
                 } else {
                     tool.disable();
                     tool.disable_mcp();
