@@ -1973,7 +1973,12 @@ impl Node {
                     let _ = Node::v2_api_add_shinkai_tool(db_clone, bearer, node_env, shinkai_tool, res).await;
                 });
             }
-            NodeCommand::V2ApiGetShinkaiTool { bearer, payload, serialize_config, res } => {
+            NodeCommand::V2ApiGetShinkaiTool {
+                bearer,
+                payload,
+                serialize_config,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_shinkai_tool(db_clone, bearer, payload, serialize_config, res).await;
@@ -2960,6 +2965,23 @@ impl Node {
                 let node_env = fetch_node_environment();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_upload_tool_asset(
+                        db_clone, bearer, tool_id, app_id, file_name, file_data, node_env, res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiUploadPlaygroundFile {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                file_data,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_upload_playground_file(
                         db_clone, bearer, tool_id, app_id, file_name, file_data, node_env, res,
                     )
                     .await;

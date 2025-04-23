@@ -1192,6 +1192,14 @@ pub enum NodeCommand {
         file_data: Vec<u8>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiUploadPlaygroundFile {
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        file_name: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiListToolAssets {
         bearer: String,
         tool_id: String,
