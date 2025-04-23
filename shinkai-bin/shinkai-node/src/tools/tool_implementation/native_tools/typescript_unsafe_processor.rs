@@ -262,6 +262,8 @@ impl ToolExecutor for TypescriptUnsafeProcessorTool {
             llm_provider,
             app_id,
             tool_id,
+            // Unsafe ts tools don't use the logic about agent_id under the hood
+            None,
             "".to_string(), // Tool router key needed for oauth validation.
             "unknown".to_string(),
             &None,

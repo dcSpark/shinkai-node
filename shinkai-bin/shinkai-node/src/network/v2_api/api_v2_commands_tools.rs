@@ -23,14 +23,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    parameters::Parameters,
-    python_tools::PythonTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
 };
 use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
@@ -56,7 +49,10 @@ fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> V
             // --- Build Schema Part ---
             let mut property_details = Map::new();
             property_details.insert("description".to_string(), json!(basic.description));
-            let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+            let type_value = basic
+                .type_name
+                .as_ref()
+                .map_or_else(|| "string".to_string(), |t| t.clone());
             property_details.insert("type".to_string(), json!(type_value));
             schema_properties.insert(basic.key_name.clone(), Value::Object(property_details));
 
@@ -507,6 +503,62 @@ impl Node {
         }
     }
 
+    /// Merges tool, handling both existing and new configs.
+    /// This method supports modifying existing config items and adding new ones,
+    /// but does not support deleting config items.
+    pub fn merge_tool(existing_tool_value: &Value, input_value: &Value) -> Value {
+        let mut merged_value = Self::merge_json(existing_tool_value.clone(), input_value.clone());
+
+        if let Some(Value::Array(input_configs)) = input_value
+            .get("content")
+            .and_then(|v| v.as_array().and_then(|v| v.first()).and_then(|v| v.get("config")))
+        {
+            let existing_configs = existing_tool_value
+                .get("content")
+                .and_then(|v| v.as_array().and_then(|v| v.first()).and_then(|v| v.get("config")))
+                .and_then(|v| v.as_array())
+                .unwrap_or(&vec![])
+                .to_vec();
+            let mut new_configs = existing_configs;
+
+            // For each input config, either merge with existing or add new
+            for input_config in input_configs {
+                let input_key_name = input_config
+                    .get("BasicConfig")
+                    .and_then(|c| c.get("key_name"))
+                    .and_then(|k| k.as_str());
+
+                if let Some(key_name) = input_key_name {
+                    // Try to find matching existing config
+                    if let Some(existing_idx) = new_configs.iter().position(|c| {
+                        c.get("BasicConfig")
+                            .and_then(|c| c.get("key_name"))
+                            .and_then(|k| k.as_str())
+                            == Some(key_name)
+                    }) {
+                        // Merge with existing config
+                        new_configs[existing_idx] =
+                            Self::merge_json(new_configs[existing_idx].clone(), input_config.clone());
+                    } else {
+                        // Add new config
+                        new_configs.push(input_config.clone());
+                    }
+                }
+            }
+
+            // Update the merged value with new configs
+            if let Some(content_array) = merged_value.get_mut("content").and_then(|v| v.as_array_mut()) {
+                if let Some(first_content) = content_array.get_mut(0) {
+                    if let Some(obj) = first_content.as_object_mut() {
+                        obj.insert("config".to_string(), Value::Array(new_configs));
+                    }
+                }
+            }
+        }
+
+        merged_value
+    }
+
     pub async fn v2_api_set_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -556,8 +608,7 @@ impl Node {
             }
         };
 
-        // Merge existing_tool_value with input_value
-        let merged_value = Self::merge_json(existing_tool_value, input_value);
+        let merged_value = Self::merge_tool(&existing_tool_value, &input_value);
 
         // Convert merged_value to ShinkaiTool
         let merged_tool: ShinkaiTool = match serde_json::from_value(merged_value) {
@@ -691,19 +742,20 @@ impl Node {
         }
 
         // Get the tool from the database using the tool_key directly
-        match db.get_tool_by_key(&tool_key) { // Use tool_key directly
+        match db.get_tool_by_key(&tool_key) {
+            // Use tool_key directly
             Ok(tool) => {
                 // Serialize the tool object to JSON value first.
                 let mut response_value = match serde_json::to_value(&tool) {
                     Ok(val) => val,
                     Err(e) => {
-                         let api_error = APIError {
+                        let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                             error: "Internal Server Error".to_string(),
                             message: format!("Failed to serialize tool: {:?}", e),
-                         };
-                         let _ = res.send(Err(api_error)).await;
-                         return Ok(());
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
                     }
                 };
 
@@ -712,12 +764,22 @@ impl Node {
                     if let Value::Object(ref mut map) = response_value {
                         // Get the original config Vec from the tool struct
                         let original_config = tool.get_config(); // Assumes ShinkaiTool implements GetConfig trait or similar
-                        // Serialize the config vector using the updated helper function
+                                                                 // Serialize the config vector using the updated helper function
                         let serialized_config_data = serialize_tool_config_to_schema_and_form_data(&original_config); // Use new function name
-                        // Replace the existing 'config' field in the JSON map with the new structure
-                        if let Some(Value::Object(ref mut contents_map)) = map.get_mut("content").and_then(|v| v.as_array_mut()).and_then(|arr| arr.get_mut(0)) {
-                            contents_map.insert("configurations".to_string(), serialized_config_data.get("schema").unwrap().clone());
-                            contents_map.insert("configFormData".to_string(), serialized_config_data.get("configFormData").unwrap().clone());
+                                                                                                                      // Replace the existing 'config' field in the JSON map with the new structure
+                        if let Some(Value::Object(ref mut contents_map)) = map
+                            .get_mut("content")
+                            .and_then(|v| v.as_array_mut())
+                            .and_then(|arr| arr.get_mut(0))
+                        {
+                            contents_map.insert(
+                                "configurations".to_string(),
+                                serialized_config_data.get("schema").unwrap().clone(),
+                            );
+                            contents_map.insert(
+                                "configFormData".to_string(),
+                                serialized_config_data.get("configFormData").unwrap().clone(),
+                            );
                         }
                     }
                 }
@@ -1158,6 +1220,7 @@ impl Node {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         extra_config: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1185,6 +1248,7 @@ impl Node {
             parameters,
             tool_id,
             app_id,
+            agent_id,
             llm_provider,
             tool_configs,
             identity_manager,
@@ -1223,6 +1287,7 @@ impl Node {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         extra_config: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -1243,6 +1308,7 @@ impl Node {
             parameters,
             tool_id,
             app_id,
+            agent_id,
             tool_configs,
             identity_manager,
             job_manager,
@@ -1281,6 +1347,7 @@ impl Node {
         oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         node_name: ShinkaiName,
         mounts: Option<Vec<String>>,
@@ -1314,6 +1381,7 @@ impl Node {
             db,
             tool_id,
             app_id,
+            agent_id,
             llm_provider,
             bearer,
             node_name,
@@ -4318,7 +4386,158 @@ mod tests {
             "type": "Workflow"
         });
 
-        let merged_value = Node::merge_json(existing_tool_value, input_value);
+        let merged_value = Node::merge_tool(&existing_tool_value, &input_value);
         assert_eq!(merged_value, expected_merged_value);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_update_existing() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "Updated API Key",
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_config = merged["content"][0]["config"][0]["BasicConfig"].as_object().unwrap();
+        assert_eq!(merged_config["description"], "Updated API Key");
+    }
+
+    #[test]
+    fn test_merge_tool_configs_add_new() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "new_config",
+                            "description": "New Config",
+                            "required": false,
+                            "type_name": "string",
+                            "key_value": "new_value"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_configs = merged["content"][0]["config"].as_array().unwrap();
+        assert_eq!(merged_configs.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_empty_existing() {
+        let existing_tool = json!({
+            "content": [{
+                "config": []
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "new_config",
+                            "description": "New Config",
+                            "required": false,
+                            "type_name": "string",
+                            "key_value": "new_value"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_configs = merged["content"][0]["config"].as_array().unwrap();
+        assert_eq!(merged_configs.len(), 1);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_update_dont_override_wrong_key() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    },
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key2",
+                            "description": "API Key 2",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key2"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key2",
+                            "description": "Updated API Key 2",
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_config = merged["content"][0]["config"][0]["BasicConfig"].as_object().unwrap();
+        assert_eq!(merged_config["key_name"], "api_key");
+        assert_eq!(merged["content"][0]["config"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["content"][0]["config"][1]["BasicConfig"]["key_name"], "api_key2");
     }
 }

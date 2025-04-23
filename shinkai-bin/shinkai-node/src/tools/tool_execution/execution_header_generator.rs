@@ -15,6 +15,7 @@ pub async fn generate_execution_environment(
     llm_provider: String,
     app_id: String,
     tool_id: String,
+    agent_id: Option<String>,
     tool_router_key: String,
     instance_id: String,
     oauth: &Option<Vec<OAuth>>,
@@ -25,6 +26,9 @@ pub async fn generate_execution_environment(
     envs.insert("BEARER".to_string(), bearer);
     envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
     envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
+    if let Some(agent_id) = agent_id {
+        envs.insert("X_SHINKAI_AGENT_ID".to_string(), agent_id.clone());
+    }
     envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), instance_id.clone());
     envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
 
