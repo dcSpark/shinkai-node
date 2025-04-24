@@ -453,6 +453,70 @@ impl ShinkaiFileManager {
                 }
             }
         }
+        Ok(matching_files)
+    }
+
+    /// Search files based on their names and return matching FileInfo entries.
+    /// This performs a case-insensitive search of filenames.
+    pub fn search_files_by_name(
+        base_path: ShinkaiPath,
+        search_text: &str,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        let mut matching_files = Vec::new();
+        let base_dir = base_path.as_path();
+        let search_text_lower = search_text.to_lowercase();
+
+        // Walk through the directory recursively
+        for entry in walkdir::WalkDir::new(base_dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            // Skip the root directory itself (depth 0)
+            if entry.depth() == 0 {
+                continue;
+            }
+            
+            // Get the file name and check if it matches the search criteria
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            
+            // Perform case-insensitive search on the filename
+            if file_name.to_lowercase().contains(&search_text_lower) {
+                // Get file metadata
+                if let Ok(metadata) = entry.metadata() {
+                    // Convert the path to a relative path from the base directory
+                    if let Ok(relative_path) = entry.path().strip_prefix(base_dir) {
+                        let relative_path_str = relative_path.to_string_lossy().to_string();
+                        
+                        // Check if the file has embeddings (only if it's a file)
+                        let has_embeddings = if !entry.file_type().is_dir() {
+                            sqlite_manager
+                                .get_parsed_file_by_rel_path(&relative_path_str)
+                                .map_or(false, |pf| pf.is_some())
+                        } else {
+                            false
+                        };
+
+                        let file_info = FileInfo {
+                            path: relative_path_str,
+                            is_directory: entry.file_type().is_dir(),
+                            created_time: metadata.created().ok(),
+                            modified_time: metadata.modified().ok(),
+                            has_embeddings,
+                            children: None,
+                            size: if entry.file_type().is_file() { 
+                                Some(metadata.len()) 
+                            } else { 
+                                None 
+                            },
+                            name: file_name,
+                        };
+                        matching_files.push(file_info);
+                    }
+                }
+            }
+        }
 
         Ok(matching_files)
     }
@@ -1011,6 +1075,81 @@ mod tests {
             assert!(file_info.has_embeddings);
             assert!(file_info.created_time.is_some());
             assert!(file_info.modified_time.is_some());
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_search_files_by_name() {
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
+        let base_path = ShinkaiPath::from_base_path();
+
+        // Create test directory structure and files with content
+        let test_files = vec![
+            ("docs/reports/2024/january.txt", "January 2024 monthly report", 1),
+            ("docs/reports/2024/february.txt", "February 2024 quarterly update", 2),
+            ("docs/other/2024/march.txt", "March 2024 meeting notes", 3),
+            ("projects/report-2024.md", "2024 Project Status Report", 4),
+            ("misc/notes.txt", "Random notes from 2024 meetings", 5),
+        ];
+
+        // Create directories and files
+        for (path, content, id) in &test_files {
+            // Create directory structure
+            if let Some(parent) = Path::new(path).parent() {
+                fs::create_dir_all(base_path.as_path().join(parent)).unwrap();
+            }
+
+            // Create and write to file
+            let mut file = File::create(base_path.as_path().join(path)).unwrap();
+            writeln!(file, "{}", content).unwrap();
+
+            // Add file to database with embeddings
+            let pf = create_test_parsed_file(*id, path);
+            db.add_parsed_file(&pf).unwrap();
+        }
+
+        // Create a directory that should match name searches
+        let report_dir_path = base_path.as_path().join("reports-2024");
+        fs::create_dir(&report_dir_path).unwrap();
+
+        // Test exact name match
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "january.txt", &db).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "docs/reports/2024/january.txt");
+        assert!(results[0].has_embeddings);
+
+        // Test partial name match
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "2024", &db).unwrap();
+        // Should find all files containing "2024" plus the "reports-2024" directory
+        assert!(results.len() >= 6, "Expected at least 6 results, found {}", results.len());
+
+        // Test case insensitive match
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "REPORT", &db).unwrap();
+        // Should find files and directories containing "report" regardless of case
+        assert!(results.len() >= 2, "Expected at least 2 results, found {}", results.len());
+
+        // Test no matches
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "nonexistent", &db).unwrap();
+        assert_eq!(results.len(), 0);
+
+        // Verify file and directory metadata
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "2024", &db).unwrap();
+        for file_info in results {
+            // Check appropriate properties based on whether it's a file or directory
+            if file_info.is_directory {
+                assert!(file_info.size.is_none(), "Directories should have no size");
+                assert!(!file_info.has_embeddings, "Directories should not have embeddings");
+            } else {
+                assert!(file_info.size.is_some(), "Files should have size");
+                // Only check for embeddings on files we explicitly added to the database
+                let has_expected_embeddings = test_files.iter().any(|(path, _, _)| file_info.path == *path);
+                if has_expected_embeddings {
+                    assert!(file_info.has_embeddings, "Expected file should have embeddings");
+                }
+            }
+            assert!(file_info.created_time.is_some(), "All entries should have created_time");
+            assert!(file_info.modified_time.is_some(), "All entries should have modified_time");
         }
     }
 }
