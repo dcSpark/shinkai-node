@@ -3880,48 +3880,52 @@ LANGUAGE={env_language}
         }
 
         // Get the tool first to verify it exists
-        match db.get_tool_by_key(&tool_router_key) {
-            Ok(mut tool) => {
-                // Update the enabled status using the appropriate method
-                if enabled {
-                    tool.enable();
-                } else {
-                    tool.disable();
-                    tool.disable_mcp();
-                }
-
-                // Save the updated tool
-                match db.update_tool(tool).await {
-                    Ok(_) => {
-                        let response = json!({
-                            "tool_router_key": tool_router_key,
-                            "enabled": enabled,
-                            "success": true
-                        });
-                        let _ = res.send(Ok(response)).await;
-                    }
-                    Err(e) => {
-                        let _ = res
-                            .send(Err(APIError {
-                                code: 500,
-                                error: "Failed to update tool".to_string(),
-                                message: format!("Failed to update tool: {}", e),
-                            }))
-                            .await;
-                    }
-                }
-            }
+        let mut tool = match db.get_tool_by_key(&tool_router_key) {
+            Ok(t) => t,
             Err(_) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: 404,
-                        error: "Tool not found".to_string(),
-                        message: format!("Tool with key '{}' not found", tool_router_key),
-                    }))
-                    .await;
+                let err = APIError {
+                    code: 404,
+                    error: "Tool not found".to_string(),
+                    message: format!("Tool not found: {}", tool_router_key),
+                };
+                let _ = res.send(Err(err)).await;
+                return Ok(());
             }
+        };
+        // Check if the tool can be enabled
+        if enabled && !tool.can_be_enabled() {
+            let err = APIError {
+                code: 400,
+                error: "Tool Cannot Be Enabled".to_string(),
+                message: "Tool Cannot Be Enabled".to_string(),
+            };
+            let _ = res.send(Err(err)).await;
+            return Ok(());
         }
-
+        // Enable or disable the tool
+        if enabled {
+            tool.enable();
+        } else {
+            tool.disable();
+            tool.disable_mcp();
+        }
+        
+        if let Err(e) = db.update_tool(tool).await {
+            let err = APIError {
+                code: 500,
+                error: "Failed to update tool".to_string(),
+                message: format!("Failed to update tool: {}", e),
+            };
+            let _ = res.send(Err(err)).await;
+            return Ok(());
+        }
+        
+        let response = json!({
+            "tool_router_key": tool_router_key,
+            "enabled": enabled,
+            "success": true
+        });
+        let _ = res.send(Ok(response)).await;
         Ok(())
     }
 
