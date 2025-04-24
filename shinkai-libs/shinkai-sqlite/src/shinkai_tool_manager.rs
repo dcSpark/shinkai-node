@@ -939,6 +939,7 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_tool_offering::AssetPayment;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
@@ -968,9 +969,17 @@ mod tests {
     async fn test_add_deno_tool() {
         let manager = setup_test_db().await;
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            "Deno Test Tool".to_string(),
+            None,
+        );
+
         // Create a DenoTool instance
         let deno_tool = DenoTool {
             name: "Deno Test Tool".to_string(),
+            tool_router_key: tool_router_key,
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
@@ -1044,9 +1053,17 @@ mod tests {
     async fn test_tool_vector_search() {
         let manager = setup_test_db().await;
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            "Deno Test Tool".to_string(),
+            None,
+        );
+
         // Create and add three DenoTool instances
         let deno_tool_1 = DenoTool {
             name: "Deno Test Tool 1".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 1".to_string(),
             version: "1.0.0".to_string(),
@@ -1071,8 +1088,16 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author 2".to_string(),
+            "Deno Test Tool 2".to_string(),
+            None,
+        );
+
         let deno_tool_2 = DenoTool {
             name: "Deno Test Tool 2".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 2".to_string(),
             version: "1.0.0".to_string(),
@@ -1097,8 +1122,16 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author 3".to_string(),
+            "Deno Test Tool 3".to_string(),
+            None,
+        );
+
         let deno_tool_3 = DenoTool {
             name: "Deno Test Tool 3".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author 3".to_string(),
             version: "1.0.0".to_string(),
@@ -1159,9 +1192,17 @@ mod tests {
     async fn test_update_middle_tool() {
         let manager = setup_test_db().await;
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            "Deno Test Tool".to_string(),
+            None,
+        );
+
         // Create three DenoTool instances
         let deno_tool_1 = DenoTool {
             name: "Deno Tool 1".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
@@ -1186,8 +1227,16 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author 2".to_string(),
+            "Deno Test Tool 2".to_string(),
+            None,
+        );
+
         let deno_tool_2 = DenoTool {
             name: "Deno Tool 2".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
@@ -1212,8 +1261,16 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author 3".to_string(),
+            "Deno Test Tool 3".to_string(),
+            None,
+        );
+
         let deno_tool_3 = DenoTool {
             name: "Deno Tool 3".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 3".to_string(),
             version: "1.0.0".to_string(),
@@ -1304,9 +1361,17 @@ mod tests {
     async fn test_add_duplicate_tool() {
         let manager = setup_test_db().await;
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            "Deno Duplicate Tool".to_string(),
+            None,
+        );
+
         // Create a DenoTool instance
         let deno_tool = DenoTool {
             name: "Deno Duplicate Tool".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: None,
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
@@ -1353,10 +1418,32 @@ mod tests {
     async fn test_fts_search() {
         let manager = setup_test_db().await;
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            "Deno Test Tool".to_string(),
+            None,
+        );
+
+        let tool_router_key_2 = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author 2".to_string(),
+            "Deno Test Tool 2".to_string(),
+            None,
+        );
+
+        let tool_router_key_3 = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author 3".to_string(),
+            "Deno Test Tool 3".to_string(),
+            None,
+        );
+
         // Create multiple tools with different names
         let tools = vec![
             DenoTool {
                 name: "Image Processing Tool".to_string(),
+                tool_router_key: tool_router_key.clone(),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Author 1".to_string(),
                 version: "1.0.0".to_string(),
@@ -1382,6 +1469,7 @@ mod tests {
             },
             DenoTool {
                 name: "Text Analysis Helper".to_string(),
+                tool_router_key: tool_router_key_2.clone(),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Author 2".to_string(),
                 version: "1.0.0".to_string(),
@@ -1407,6 +1495,7 @@ mod tests {
             },
             DenoTool {
                 name: "Data Visualization Tool".to_string(),
+                tool_router_key: tool_router_key_3.clone(),
                 homepage: None,
                 author: "Author 3".to_string(),
                 version: "1.0.0".to_string(),
@@ -1472,9 +1561,17 @@ mod tests {
     async fn test_tool_vector_search_with_disabled() {
         let manager = setup_test_db().await;
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Author 1".to_string(),
+            "Enabled Test Tool".to_string(),
+            None,
+        );
+
         // Create two DenoTool instances - one enabled, one disabled
         let enabled_tool = DenoTool {
             name: "Enabled Test Tool".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
             mcp_enabled: Some(false),
@@ -1499,8 +1596,16 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Author 2".to_string(),
+            "Disabled Test Tool".to_string(),
+            None,
+        );
+
         let disabled_tool = DenoTool {
             name: "Disabled Test Tool".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: None,
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
@@ -1591,9 +1696,17 @@ mod tests {
     async fn test_tool_vector_search_with_network_filter() {
         let manager = setup_test_db().await;
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Author 1".to_string(),
+            "Enabled Non-Network Tool".to_string(),
+            None,
+        );
+
         // Create three tools: one enabled non-network, one disabled non-network, one enabled network
         let enabled_non_network_tool = DenoTool {
             name: "Enabled Non-Network Tool".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 1".to_string(),
             version: "1.0.0".to_string(),
@@ -1618,8 +1731,16 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Author 2".to_string(),
+            "Disabled Non-Network Tool".to_string(),
+            None,
+        );
+
         let disabled_non_network_tool = DenoTool {
             name: "Disabled Non-Network Tool".to_string(),
+            tool_router_key: tool_router_key.clone(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Author 2".to_string(),
             version: "1.0.0".to_string(),
@@ -2105,7 +2226,11 @@ mod tests {
                     None
                 }
             });
-            assert_eq!(config_value, Some(serde_json::Value::Bool(true)), "Config value not preserved");
+            assert_eq!(
+                config_value,
+                Some(serde_json::Value::Bool(true)),
+                "Config value not preserved"
+            );
         } else {
             panic!("Retrieved tool is not a DenoTool");
         }

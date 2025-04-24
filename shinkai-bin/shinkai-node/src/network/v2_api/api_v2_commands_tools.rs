@@ -23,14 +23,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    parameters::Parameters,
-    python_tools::PythonTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
 };
 use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
@@ -56,7 +49,10 @@ fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> V
             // --- Build Schema Part ---
             let mut property_details = Map::new();
             property_details.insert("description".to_string(), json!(basic.description));
-            let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+            let type_value = basic
+                .type_name
+                .as_ref()
+                .map_or_else(|| "string".to_string(), |t| t.clone());
             property_details.insert("type".to_string(), json!(type_value));
             schema_properties.insert(basic.key_name.clone(), Value::Object(property_details));
 
@@ -691,19 +687,20 @@ impl Node {
         }
 
         // Get the tool from the database using the tool_key directly
-        match db.get_tool_by_key(&tool_key) { // Use tool_key directly
+        match db.get_tool_by_key(&tool_key) {
+            // Use tool_key directly
             Ok(tool) => {
                 // Serialize the tool object to JSON value first.
                 let mut response_value = match serde_json::to_value(&tool) {
                     Ok(val) => val,
                     Err(e) => {
-                         let api_error = APIError {
+                        let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                             error: "Internal Server Error".to_string(),
                             message: format!("Failed to serialize tool: {:?}", e),
-                         };
-                         let _ = res.send(Err(api_error)).await;
-                         return Ok(());
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
                     }
                 };
 
@@ -712,12 +709,22 @@ impl Node {
                     if let Value::Object(ref mut map) = response_value {
                         // Get the original config Vec from the tool struct
                         let original_config = tool.get_config(); // Assumes ShinkaiTool implements GetConfig trait or similar
-                        // Serialize the config vector using the updated helper function
+                                                                 // Serialize the config vector using the updated helper function
                         let serialized_config_data = serialize_tool_config_to_schema_and_form_data(&original_config); // Use new function name
-                        // Replace the existing 'config' field in the JSON map with the new structure
-                        if let Some(Value::Object(ref mut contents_map)) = map.get_mut("content").and_then(|v| v.as_array_mut()).and_then(|arr| arr.get_mut(0)) {
-                            contents_map.insert("configurations".to_string(), serialized_config_data.get("schema").unwrap().clone());
-                            contents_map.insert("configFormData".to_string(), serialized_config_data.get("configFormData").unwrap().clone());
+                                                                                                                      // Replace the existing 'config' field in the JSON map with the new structure
+                        if let Some(Value::Object(ref mut contents_map)) = map
+                            .get_mut("content")
+                            .and_then(|v| v.as_array_mut())
+                            .and_then(|arr| arr.get_mut(0))
+                        {
+                            contents_map.insert(
+                                "configurations".to_string(),
+                                serialized_config_data.get("schema").unwrap().clone(),
+                            );
+                            contents_map.insert(
+                                "configFormData".to_string(),
+                                serialized_config_data.get("configFormData").unwrap().clone(),
+                            );
                         }
                     }
                 }
@@ -814,8 +821,15 @@ impl Node {
 
         let shinkai_tool = match payload.language {
             CodeLanguage::Typescript => {
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    payload.metadata.author.clone(),
+                    payload.metadata.name.clone(),
+                    None,
+                );
                 let tool = DenoTool {
                     name: payload.metadata.name.clone(),
+                    tool_router_key: tool_router_key,
                     homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
                     version: payload.metadata.version.clone(),
@@ -4077,31 +4091,31 @@ LANGUAGE={env_language}
                     }
                     None => (),
                 }
-                let tool = DenoTool {
-                    name: "".to_string(),
-                    homepage: None,
-                    author: "".to_string(),
-                    mcp_enabled: Some(false),
-                    version: "".to_string(),
-                    js_code: code.clone(),
-                    tools: vec![],
-                    config: vec![],
-                    description: "".to_string(),
-                    keywords: vec![],
-                    input_args: Parameters::new(),
-                    output_arg: ToolOutputArg { json: "".to_string() },
-                    activated: true,
-                    embedding: None,
-                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-                    sql_tables: None,
-                    sql_queries: None,
-                    file_inbox: None,
-                    oauth: None,
-                    assets: None,
-                    runner: RunnerType::Any,
-                    operating_system: vec![],
-                    tool_set: None,
-                };
+                let tool = DenoTool::new(
+                    "".to_string(),
+                    None,
+                    "".to_string(),
+                    "".to_string(),
+                    Some(false),
+                    code.clone(),
+                    vec![],
+                    vec![],
+                    "".to_string(),
+                    vec![],
+                    Parameters::new(),
+                    ToolOutputArg { json: "".to_string() },
+                    true,
+                    None,
+                    ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    RunnerType::Any,
+                    vec![],
+                    None,
+                );
                 tool.check_code(code.clone(), support_files).await
             }
             CodeLanguage::Python => {

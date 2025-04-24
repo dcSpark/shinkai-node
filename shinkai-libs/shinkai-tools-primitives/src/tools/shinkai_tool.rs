@@ -94,9 +94,13 @@ impl ShinkaiTool {
     pub fn tool_router_key(&self) -> ToolRouterKey {
         let (provider, author, name) = match self {
             ShinkaiTool::Rust(r, _) => ("local".to_string(), r.author(), r.name.clone()),
+            // TODO: read from tool itself
             ShinkaiTool::Network(n, _) => (n.provider.to_string(), n.author.to_string(), n.name.clone()),
+            // TODO: read from tool itself
             ShinkaiTool::Deno(d, _) => ("local".to_string(), d.author.clone(), d.name.clone()),
+            // TODO: read from tool itself
             ShinkaiTool::Python(p, _) => ("local".to_string(), p.author.clone(), p.name.clone()),
+            // TODO: read from tool itself
             ShinkaiTool::Agent(a, _) => ("local".to_string(), a.author.clone(), a.agent_id.clone()),
             _ => unreachable!(),
         };
@@ -114,12 +118,6 @@ impl ShinkaiTool {
             }
             _ => (),
         }
-    }
-
-    /// Generate the key that this tool will be stored under in the tool router
-    pub fn gen_router_key(source: String, author: String, name: String) -> String {
-        let tool_router_key = ToolRouterKey::new(source, author, name, None);
-        tool_router_key.to_string_without_version()
     }
 
     /// Tool name

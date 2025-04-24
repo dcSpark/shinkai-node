@@ -25,6 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DenoTool {
     pub name: String,
+    pub tool_router_key: ToolRouterKey,
     pub homepage: Option<String>,
     pub author: String,
     pub version: String,
@@ -53,6 +54,61 @@ pub struct DenoTool {
 }
 
 impl DenoTool {
+    pub fn new(
+        name: String,
+        homepage: Option<String>,
+        author: String,
+        version: String,
+        mcp_enabled: Option<bool>,
+        js_code: String,
+        tools: Vec<ToolRouterKey>,
+        config: Vec<ToolConfig>,
+        description: String,
+        keywords: Vec<String>,
+        input_args: Parameters,
+        output_arg: ToolOutputArg,
+        activated: bool,
+        embedding: Option<Vec<f32>>,
+        result: ToolResult,
+        sql_tables: Option<Vec<SqlTable>>,
+        sql_queries: Option<Vec<SqlQuery>>,
+        file_inbox: Option<String>,
+        oauth: Option<Vec<OAuth>>,
+        assets: Option<Vec<String>>,
+        runner: RunnerType,
+        operating_system: Vec<OperatingSystem>,
+        tool_set: Option<String>,
+    ) -> Self {
+        let tool_router_key = ToolRouterKey::new("local".to_string(), author.clone(), name.clone(), None);
+
+        DenoTool {
+            name,
+            tool_router_key,
+            homepage,
+            author,
+            version,
+            mcp_enabled,
+            js_code,
+            tools,
+            config,
+            description,
+            keywords,
+            input_args,
+            output_arg,
+            activated,
+            embedding,
+            result,
+            sql_tables,
+            sql_queries,
+            file_inbox,
+            oauth,
+            assets,
+            runner,
+            operating_system,
+            tool_set,
+        }
+    }
+
     /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
@@ -638,6 +694,12 @@ mod tests {
     #[test]
     fn test_email_fetcher_tool_config() {
         let tool = DenoTool {
+            tool_router_key: ToolRouterKey::new(
+                "local".to_string(),
+                "Shinkai".to_string(),
+                "Email Fetcher".to_string(),
+                None,
+            ),
             name: "Email Fetcher".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Shinkai".to_string(),
@@ -792,6 +854,12 @@ mod tests {
     #[test]
     fn test_deno_tool_runner_types() {
         let tool = DenoTool {
+            tool_router_key: ToolRouterKey::new(
+                "local".to_string(),
+                "Test Author".to_string(),
+                "Test Tool".to_string(),
+                None,
+            ),
             name: "Test Tool".to_string(),
             homepage: None,
             author: "Test Author".to_string(),
@@ -835,6 +903,12 @@ mod tests {
     fn test_deno_tool_operating_systems() {
         let tool = DenoTool {
             name: "Test Tool".to_string(),
+            tool_router_key: ToolRouterKey::new(
+                "local".to_string(),
+                "Test Author".to_string(),
+                "Test Tool".to_string(),
+                None,
+            ),
             homepage: None,
             author: "Test Author".to_string(),
             version: "1.0.0".to_string(),
@@ -871,6 +945,12 @@ mod tests {
     #[test]
     fn test_deno_tool_tool_set() {
         let tool = DenoTool {
+            tool_router_key: ToolRouterKey::new(
+                "local".to_string(),
+                "Test Author".to_string(),
+                "Test Tool".to_string(),
+                None,
+            ),
             name: "Test Tool".to_string(),
             homepage: None,
             author: "Test Author".to_string(),

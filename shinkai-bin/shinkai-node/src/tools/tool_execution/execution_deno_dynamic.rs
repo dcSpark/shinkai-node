@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use serde_json::{Map, Value};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::parameters::Parameters;
@@ -31,9 +32,17 @@ pub async fn execute_deno_tool(
     runner: Option<RunnerType>,
     operating_system: Option<Vec<OperatingSystem>>,
 ) -> Result<Value, ToolError> {
+    let tool_router_key = ToolRouterKey::new(
+        "local".to_string(),
+        "@@system.shinkai".to_string(),
+        "deno_runtime".to_string(),
+        None,
+    );
+
     // Create a minimal DenoTool instance
     let tool = DenoTool {
         name: "deno_runtime".to_string(),
+        tool_router_key: tool_router_key,
         homepage: None,
         author: "@@system.shinkai".to_string(),
         version: "1.0.0".to_string(),
@@ -138,9 +147,17 @@ pub async fn check_deno_tool(
     support_files: HashMap<String, String>,
     code: String,
 ) -> Result<Vec<String>, ToolError> {
+    let tool_router_key = ToolRouterKey::new(
+        "local".to_string(),
+        "@@system.shinkai".to_string(),
+        "deno_runtime".to_string(),
+        None,
+    );
+
     // Create a minimal DenoTool instance
     let tool = DenoTool {
         name: "deno_runtime".to_string(),
+        tool_router_key: tool_router_key,
         homepage: None,
         author: "@@system.shinkai".to_string(),
         version: "1.0".to_string(),
