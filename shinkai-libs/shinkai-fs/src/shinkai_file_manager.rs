@@ -1174,4 +1174,124 @@ mod tests {
             assert!(file_info.modified_time.is_some(), "All entries should have modified_time");
         }
     }
+
+    #[test]
+    #[serial]
+    fn test_search_files_by_name_and_content() {
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
+        let base_path = ShinkaiPath::from_base_path();
+
+        // Create test directory structure and files with content
+        let test_files = vec![
+            ("docs/reports/2024/january.txt", "January 2024 monthly report", 1),
+            ("docs/reports/2024/february.txt", "February 2024 quarterly update", 2),
+            ("docs/other/2024/march.txt", "March 2024 meeting notes", 3),
+            ("projects/report-2024.md", "2024 Project Status Report", 4),
+            ("misc/notes.txt", "Random notes from 2024 meetings", 5),
+        ];
+
+        // Create directories and files
+        for (path, content, id) in &test_files {
+            // Create directory structure
+            if let Some(parent) = Path::new(path).parent() {
+                fs::create_dir_all(base_path.as_path().join(parent)).unwrap();
+            }
+
+            // Create and write to file
+            let mut file = File::create(base_path.as_path().join(path)).unwrap();
+            writeln!(file, "{}", content).unwrap();
+
+            // Add file to database with embeddings
+            let pf = create_test_parsed_file(*id, path);
+            db.add_parsed_file(&pf).unwrap();
+        }
+
+        // Create a directory that should match name searches
+        let report_dir_path = base_path.as_path().join("reports-2024");
+        fs::create_dir(&report_dir_path).unwrap();
+
+        // Create a file that matches by content but not name
+        let content_match_path = "docs/content-only.txt";
+        if let Some(parent) = Path::new(content_match_path).parent() {
+            fs::create_dir_all(base_path.as_path().join(parent)).unwrap();
+        }
+        let mut file = File::create(base_path.as_path().join(content_match_path)).unwrap();
+        writeln!(file, "This file contains meeting notes but no matching filename").unwrap();
+        let pf = create_test_parsed_file(6, content_match_path);
+        db.add_parsed_file(&pf).unwrap();
+
+        // Test simple by-name match 
+        let name_results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "january.txt", &db).unwrap();
+        assert_eq!(name_results.len(), 1);
+        assert_eq!(name_results[0].path, "docs/reports/2024/january.txt");
+
+        // Test simple by-content match
+        let content_results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "monthly report", &db).unwrap();
+        assert_eq!(content_results.len(), 1);
+        assert_eq!(content_results[0].path, "docs/reports/2024/january.txt");
+
+        // Test combined search - exact match by name
+        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
+            base_path.clone(), "january.txt", &db
+        ).unwrap();
+        assert_eq!(combined_results.len(), 1);
+        assert_eq!(combined_results[0].path, "docs/reports/2024/january.txt");
+
+        // Test combined search - exact match by content
+        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
+            base_path.clone(), "quarterly update", &db
+        ).unwrap();
+        assert_eq!(combined_results.len(), 1);
+        assert_eq!(combined_results[0].path, "docs/reports/2024/february.txt");
+
+        // Test combined search - matches both name and content
+        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
+            base_path.clone(), "2024", &db
+        ).unwrap();
+        
+        // Should find:
+        // - 4 files with "2024" in their name
+        // - The "reports-2024" directory  
+        // - All 5 files containing "2024" in their content
+        // With duplicates removed, so counting unique paths
+        assert!(combined_results.len() >= 6, 
+            "Expected at least 6 results (4 name-matching files + directory + content-only match), found {}",
+            combined_results.len());
+
+        // Test content-only match
+        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
+            base_path.clone(), "meeting", &db
+        ).unwrap();
+        
+        // Should find:
+        // - Zero files with "meeting" in name 
+        // - At least 2 files containing "meeting" in content
+        assert!(combined_results.len() >= 2, 
+            "Expected at least 2 results for content-only search, found {}", 
+            combined_results.len());
+        
+        // Make sure we find the content-only file
+        let content_only_match = combined_results.iter()
+            .find(|info| info.path == content_match_path);
+        assert!(content_only_match.is_some(), "Should find the content-only match file");
+
+        // Verify file and directory metadata
+        for file_info in combined_results {
+            // Check appropriate properties based on whether it's a file or directory
+            if file_info.is_directory {
+                assert!(file_info.size.is_none(), "Directories should have no size");
+                assert!(!file_info.has_embeddings, "Directories should not have embeddings");
+            } else {
+                assert!(file_info.size.is_some(), "Files should have size");
+                // Only check for embeddings on files we explicitly added to the database
+                let has_expected_embeddings = test_files.iter().any(|(path, _, _)| file_info.path == *path) ||
+                                               file_info.path == content_match_path;
+                if has_expected_embeddings {
+                    assert!(file_info.has_embeddings, "Expected file should have embeddings");
+                }
+            }
+            assert!(file_info.created_time.is_some(), "All entries should have created_time");
+            assert!(file_info.modified_time.is_some(), "All entries should have modified_time");
+        }
+    }
 }
