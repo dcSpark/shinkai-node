@@ -1,7 +1,7 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
-use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage};
+use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage, tool_router_key::ToolRouterKey};
 use shinkai_tools_primitives::tools::{
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
     tool_types::{OperatingSystem, RunnerType},
@@ -401,9 +401,17 @@ mod tests {
     }
 
     async fn add_tool_to_db(manager: &mut SqliteManager) -> String {
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            "Deno Test Tool".to_string(),
+            None,
+        );
+
         let deno_tool = DenoTool {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: "Deno Test Tool".to_string(),
+            tool_router_key,
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
             mcp_enabled: Some(false),
@@ -536,9 +544,17 @@ mod tests {
 
     // Helper function to add a tool with a unique name
     async fn add_tool_to_db_with_unique_name(manager: &mut SqliteManager, name: &str) -> String {
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            name.to_string(),
+            None,
+        );
+
         let deno_tool = DenoTool {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: name.to_string(),
+            tool_router_key,
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
             mcp_enabled: Some(false),
@@ -613,8 +629,16 @@ mod tests {
         let manager = setup_test_db().await;
 
         // Add a tool to ensure the tool_router_key exists
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Deno Author".to_string(),
+            "Deno Test Tool".to_string(),
+            None,
+        );
+
         let deno_tool = DenoTool {
             name: "Deno Test Tool".to_string(),
+            tool_router_key,
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
