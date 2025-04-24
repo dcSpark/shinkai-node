@@ -890,8 +890,8 @@ impl Node {
         // Get the base path for searching
         let base_path = ShinkaiPath::from_base_path();
 
-        // Search for files using ShinkaiFileManager::search_files_by_name
-        match ShinkaiFileManager::search_files_by_name(base_path, &name, &db) {
+        // Search for files using ShinkaiFileManager::search_files_by_name_and_content
+        match ShinkaiFileManager::search_files_by_name_and_content(base_path, &name, &db) {
             Ok(files) => {
                 let json_files = serde_json::to_value(files).map_err(|e| NodeError::from(e))?;
                 let _ = res.send(Ok(json_files)).await;

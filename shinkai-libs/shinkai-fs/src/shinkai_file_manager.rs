@@ -408,16 +408,6 @@ impl ShinkaiFileManager {
             .into_iter()
             .filter_map(|e| e.ok())
         {
-            /*println!("Entry: {:?}", entry.path());
-            println!("Is file: {}", entry.file_type().is_file());
-            println!("Is directory: {}", entry.file_type().is_dir());
-            println!("Is symlink: {}", entry.file_type().is_symlink());
-            println!("Depth: {}", entry.depth());
-            println!("File name: {:?}", entry.file_name());
-            println!("Metadata: {:?}", entry.metadata().unwrap());
-            println!("Path: {:?}", entry.path());
-            let content = fs::read_to_string(entry.path()).unwrap_or_default();
-            println!("Reading file: {:?}, Content: {}", entry.path(), content);*/
             if entry.file_type().is_file() {
                 // Try to read the file content
                 if let Ok(content) = fs::read_to_string(entry.path()) {
@@ -519,6 +509,36 @@ impl ShinkaiFileManager {
         }
 
         Ok(matching_files)
+    }
+    
+    /// Search files based on both their names and content, returning combined results
+    /// with duplicates removed. This performs a case-insensitive search.
+    pub fn search_files_by_name_and_content(
+        base_path: ShinkaiPath,
+        search_text: &str,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        // Get results from both search methods
+        let name_results = Self::search_files_by_name(base_path.clone(), search_text, sqlite_manager)?;
+        let content_results = Self::search_files_by_content(base_path, search_text, sqlite_manager)?;
+        
+        // Use a HashMap to keep track of unique paths
+        let mut unique_results = std::collections::HashMap::new();
+        
+        // Add all name search results
+        for file_info in name_results {
+            unique_results.insert(file_info.path.clone(), file_info);
+        }
+        
+        // Add content search results, not replacing existing entries
+        for file_info in content_results {
+            unique_results.entry(file_info.path.clone()).or_insert(file_info);
+        }
+        
+        // Convert HashMap values into a Vec
+        let combined_results = unique_results.into_values().collect();
+        
+        Ok(combined_results)
     }
 }
 
@@ -1121,13 +1141,15 @@ mod tests {
 
         // Test partial name match
         let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "2024", &db).unwrap();
-        // Should find all files containing "2024" plus the "reports-2024" directory
-        assert!(results.len() >= 6, "Expected at least 6 results, found {}", results.len());
+        assert_eq!(results.len(), 4); // Should find all files whose name contains "2024"
 
         // Test case insensitive match
         let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "REPORT", &db).unwrap();
-        // Should find files and directories containing "report" regardless of case
-        assert!(results.len() >= 2, "Expected at least 2 results, found {}", results.len());
+        assert_eq!(results.len(), 3); // Should find files containing "report" regardless of case
+
+        // Test name spanning multiple files
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "meeting", &db).unwrap();
+        assert_eq!(results.len(), 0); // Should not find any files containing "meeting" because is searching now only by name
 
         // Test no matches
         let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "nonexistent", &db).unwrap();
