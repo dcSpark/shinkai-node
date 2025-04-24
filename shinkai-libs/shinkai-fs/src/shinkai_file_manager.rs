@@ -302,22 +302,29 @@ impl ShinkaiFileManager {
         let mut contents = Vec::new();
         let rel_path = path.relative_path();
 
-        for entry in std::fs::read_dir(path.as_path())? {
-            let entry = entry?;
-            let metadata = entry.metadata()?;
-
-            let file_name = entry.file_name().into_string().unwrap_or_default();
+        for entry in walkdir::WalkDir::new(path.as_path())
+            .max_depth(1)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            // Skip the root directory itself (depth 0)
+            if entry.depth() == 0 {
+                continue;
+            }
+            
+            let file_name = entry.file_name().to_str().unwrap_or_default();
             let shinkai_path = ShinkaiPath::new(&format!("{}/{}", rel_path, file_name));
 
             let mut file_info = FileInfo {
                 path: shinkai_path.relative_path().to_string(),
-                is_directory: metadata.is_dir(),
-                created_time: metadata.created().ok(),
-                modified_time: metadata.modified().ok(),
+                is_directory: entry.file_type().is_dir(),
+                created_time: entry.metadata().ok().and_then(|m| m.created().ok()),
+                modified_time: entry.metadata().ok().and_then(|m| m.modified().ok()),
                 has_embeddings: false,
                 children: None,
-                size: if metadata.is_file() { Some(metadata.len()) } else { None },
-                name: file_name.clone(),
+                size: if entry.file_type().is_file() { Some(entry.metadata().unwrap().len()) } else { None },
+                name: file_name.to_string(),
             };
 
             // If it's a directory and we can still go deeper, recurse
@@ -401,6 +408,16 @@ impl ShinkaiFileManager {
             .into_iter()
             .filter_map(|e| e.ok())
         {
+            /*println!("Entry: {:?}", entry.path());
+            println!("Is file: {}", entry.file_type().is_file());
+            println!("Is directory: {}", entry.file_type().is_dir());
+            println!("Is symlink: {}", entry.file_type().is_symlink());
+            println!("Depth: {}", entry.depth());
+            println!("File name: {:?}", entry.file_name());
+            println!("Metadata: {:?}", entry.metadata().unwrap());
+            println!("Path: {:?}", entry.path());
+            let content = fs::read_to_string(entry.path()).unwrap_or_default();
+            println!("Reading file: {:?}, Content: {}", entry.path(), content);*/
             if entry.file_type().is_file() {
                 // Try to read the file content
                 if let Ok(content) = fs::read_to_string(entry.path()) {
@@ -431,6 +448,8 @@ impl ShinkaiFileManager {
                             }
                         }
                     }
+                } else {
+                    println!("Failed to read file: {:?}", entry.path());
                 }
             }
         }
