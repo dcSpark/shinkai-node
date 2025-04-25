@@ -1448,6 +1448,7 @@ impl Node {
                 limit,
                 offset,
                 show_hidden,
+                agent_id,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1460,6 +1461,7 @@ impl Node {
                         limit,
                         offset,
                         show_hidden,
+                        agent_id,
                         res,
                     )
                     .await;
@@ -1470,6 +1472,7 @@ impl Node {
                 limit,
                 offset,
                 show_hidden,
+                agent_id,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1482,6 +1485,7 @@ impl Node {
                         limit,
                         offset,
                         show_hidden,
+                        agent_id,
                         res,
                     )
                     .await;
