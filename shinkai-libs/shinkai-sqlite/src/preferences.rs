@@ -361,4 +361,30 @@ mod tests {
         assert_eq!(final_extended.name, "test");
         assert_eq!(final_extended.count, 42);
     }
+
+    #[tokio::test]
+    async fn test_get_all_preferences() {
+        let manager = setup_test_db().await;
+
+        // Set some preferences with different types
+        manager.set_preference("key_string", &"value_string", None).unwrap();
+        manager.set_preference("key_int", &123, None).unwrap();
+        manager.set_preference("key_bool", &true, None).unwrap();
+
+        // Call the function to test
+        let all_prefs_result = manager.get_all_preferences();
+        assert!(all_prefs_result.is_ok());
+        let all_prefs = all_prefs_result.unwrap();
+
+        // Assert the number of preferences retrieved
+        assert_eq!(all_prefs.len(), 3);
+
+        // Assert the values are correct serde_json::Value representations
+        assert_eq!(all_prefs.get("key_string"), Some(&serde_json::json!("value_string")));
+        assert_eq!(all_prefs.get("key_int"), Some(&serde_json::json!(123)));
+        assert_eq!(all_prefs.get("key_bool"), Some(&serde_json::json!(true)));
+
+        // Check for a non-existent key
+        assert!(all_prefs.get("non_existent_key").is_none());
+    }
 }
