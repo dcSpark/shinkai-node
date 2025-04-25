@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::errors::SqliteManagerError;
 use crate::SqliteManager;
 use rusqlite::{OptionalExtension, Result, ToSql};
@@ -121,6 +122,15 @@ impl SqliteManager {
         for row in rows {
             preferences.push(row?);
         }
+        Ok(preferences)
+    }
+
+    pub fn get_all_preferences(&self) -> Result<HashMap<String, String>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT key, value FROM preferences ORDER BY key")?;
+        let preferences = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<HashMap<String, String>, _>>()?;
         Ok(preferences)
     }
 }
