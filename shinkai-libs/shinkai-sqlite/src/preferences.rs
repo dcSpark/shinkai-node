@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::errors::SqliteManagerError;
 use crate::SqliteManager;
+use crate::preferences::serde_json::Value;
 use rusqlite::{OptionalExtension, Result, ToSql};
 use serde;
 use serde_json;
@@ -125,12 +126,26 @@ impl SqliteManager {
         Ok(preferences)
     }
 
-    pub fn get_all_preferences(&self) -> Result<HashMap<String, String>, SqliteManagerError> {
+    /// Returns a `Result` containing a `HashMap` where keys are preference names (String)
+    /// and values are `serde_json::Value`, or an `SqliteManagerError` on failure.
+    pub fn get_all_preferences(&self) -> Result<HashMap<String, serde_json::Value>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT key, value FROM preferences ORDER BY key")?;
-        let preferences = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .collect::<Result<HashMap<String, String>, _>>()?;
+        let preferences_iter = stmt.query_map([], |row| {
+            let key: String = row.get(0)?;
+            let value_str: String = row.get(1)?;
+            // Parse the JSON string into a serde_json::Value
+            let value: serde_json::Value = serde_json::from_str(&value_str)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                    1, // Column index (value)
+                    rusqlite::types::Type::Text, // Expected type from DB (JSON stored as TEXT)
+                    Box::new(e) // The actual serde_json error
+                ))?;
+            Ok((key, value))
+        })?;
+
+        // Collect the iterator of results into a single result containing the HashMap
+        let preferences = preferences_iter.collect::<Result<HashMap<String, serde_json::Value>, rusqlite::Error>>()?;
         Ok(preferences)
     }
 }
@@ -378,8 +393,7 @@ mod tests {
 
         // Assert the number of preferences retrieved
         assert_eq!(all_prefs.len(), 3);
-
-        // Assert the values are correct serde_json::Value representations
+        // Assert the values are correct JSON strings
         assert_eq!(all_prefs.get("key_string"), Some(&serde_json::json!("value_string")));
         assert_eq!(all_prefs.get("key_int"), Some(&serde_json::json!(123)));
         assert_eq!(all_prefs.get("key_bool"), Some(&serde_json::json!(true)));
