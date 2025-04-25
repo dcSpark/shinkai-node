@@ -56,6 +56,23 @@ pub async fn try_to_execute_rust_tool(
             )
             .await
         }
+        s if s == "local:::__official_shinkai:::shinkai_agent_prompt_processor" => {
+            tool_implementation::native_tools::agent_processor::AgentPromptProcessorTool::execute(
+                bearer,
+                tool_id,
+                app_id,
+                db,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+                &parameters,
+                llm_provider,
+            )
+            .await
+        }
         s if s == "local:::__official_shinkai:::shinkai_typescript_unsafe_processor" => {
             tool_implementation::native_tools::typescript_unsafe_processor::TypescriptUnsafeProcessorTool::execute(
                 bearer,
