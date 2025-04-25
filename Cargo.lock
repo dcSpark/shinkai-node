@@ -7160,6 +7160,7 @@ dependencies = [
  "reqwest 0.11.27",
  "rusqlite",
  "rust_decimal",
+ "semver",
  "serde",
  "serde_json",
  "shinkai_embedding",
