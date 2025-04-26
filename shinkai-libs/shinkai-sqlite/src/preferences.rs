@@ -126,26 +126,63 @@ impl SqliteManager {
         Ok(preferences)
     }
 
-    /// Returns a `Result` containing a `HashMap` where keys are preference names (String)
-    /// and values are `serde_json::Value`, or an `SqliteManagerError` on failure.
+    /// Retrieves all preferences stored in the database as a HashMap.
+    ///
+    /// Includes a special `__meta` key containing metadata (description, updated_at)
+    /// for each preference.
+    ///
+    /// Deserializes the stored JSON string values into `serde_json::Value`.
+    /// If a value cannot be deserialized, it will be skipped and an error logged.
+    ///
+    /// # Returns
+    /// Returns a `HashMap<String, serde_json::Value>` containing preferences and metadata.
     pub fn get_all_preferences(&self) -> Result<HashMap<String, serde_json::Value>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT key, value FROM preferences ORDER BY key")?;
-        let preferences_iter = stmt.query_map([], |row| {
+        // Select key, value, description, and updated_at
+        let mut stmt = conn.prepare("SELECT key, value, description, updated_at FROM preferences ORDER BY key")?;
+        let rows_iter = stmt.query_map([], |row| {
             let key: String = row.get(0)?;
             let value_str: String = row.get(1)?;
-            // Parse the JSON string into a serde_json::Value
-            let value: serde_json::Value = serde_json::from_str(&value_str)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
-                    1, // Column index (value)
-                    rusqlite::types::Type::Text, // Expected type from DB (JSON stored as TEXT)
-                    Box::new(e) // The actual serde_json error
-                ))?;
-            Ok((key, value))
+            let description: Option<String> = row.get(2)?;
+            let updated_at: String = row.get(3)?; // Assuming updated_at is stored as TEXT or compatible
+
+            // Parse the value string into serde_json::Value
+            let value_result = serde_json::from_str::<serde_json::Value>(&value_str);
+
+            Ok((key, value_result, description, updated_at))
         })?;
 
-        // Collect the iterator of results into a single result containing the HashMap
-        let preferences = preferences_iter.collect::<Result<HashMap<String, serde_json::Value>, rusqlite::Error>>()?;
+        let mut preferences = HashMap::new();
+        let mut metadata = HashMap::new();
+
+        for row_result in rows_iter {
+            match row_result {
+                Ok((key, value_result, description, updated_at)) => {
+                    match value_result {
+                        Ok(value) => {
+                            preferences.insert(key.clone(), value); // Insert the actual preference key-value
+                        }
+                        Err(e) => {
+                            eprintln!("Error deserializing preference value for key '{}': {}. Skipping value.", key, e);
+                        }
+                    }
+
+                    // Create metadata object for this key
+                    let meta_entry = serde_json::json!({
+                        "description": description,
+                        "updated_at": updated_at
+                    });
+                    metadata.insert(key, meta_entry); // Insert metadata for the key
+                }
+                Err(e) => {
+                    eprintln!("Error retrieving preference row: {}. Skipping row.", e);
+                }
+            }
+        }
+        if !metadata.is_empty() {
+            preferences.insert("__meta".to_string(), serde_json::Value::Object(metadata.into_iter().collect()));
+        }
+
         Ok(preferences)
     }
 }
