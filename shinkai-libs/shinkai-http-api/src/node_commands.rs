@@ -1338,4 +1338,8 @@ pub enum NodeCommand {
         payload: HashMap<String, serde_json::Value>,
         res: Sender<Result<String, APIError>>,
     },
+    V2ApiGetPreferences {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }

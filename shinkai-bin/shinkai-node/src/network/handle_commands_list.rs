@@ -3216,6 +3216,12 @@ impl Node {
                     let _ = Node::v2_api_set_preferences(db_clone, bearer, payload, res).await;
                 });
             }
+            NodeCommand::V2ApiGetPreferences { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_preferences(db_clone, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }

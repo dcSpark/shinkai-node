@@ -2159,4 +2159,29 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn v2_api_get_preferences(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_all_preferences() {
+            Ok(preferences) => {
+                let _ = res.send(Ok(json!(preferences))).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get preferences: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
 }
