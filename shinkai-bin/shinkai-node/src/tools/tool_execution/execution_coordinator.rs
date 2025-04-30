@@ -325,6 +325,23 @@ pub async fn execute_tool_cmd(
     }
 
     match tool {
+        ShinkaiTool::Simulated(simulated_tool, _) => {
+            let node_env = fetch_node_environment();
+
+            return simulated_tool
+                .run(
+                    bearer,
+                    node_env.api_listen_address.ip().to_string(),
+                    node_env.api_listen_address.port(),
+                    app_id,
+                    tool_id,
+                    llm_provider,
+                    parameters,
+                    extra_config,
+                )
+                .await
+                .map(|result| json!(result.data));
+        }
         ShinkaiTool::Rust(_, _) => {
             try_to_execute_rust_tool(
                 &tool_router_key,
@@ -394,7 +411,7 @@ pub async fn execute_tool_cmd(
                 .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
             let tools: Vec<ToolRouterKey> = db
                 .clone()
-                .get_all_tool_headers()
+                .get_all_tool_headers(false)
                 .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
                 .into_iter()
                 .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
@@ -452,7 +469,7 @@ pub async fn execute_tool_cmd(
                 .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
             let tools: Vec<ToolRouterKey> = db
                 .clone()
-                .get_all_tool_headers()
+                .get_all_tool_headers(false)
                 .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
                 .into_iter()
                 .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
@@ -604,7 +621,7 @@ pub async fn execute_code(
     // Route based on the prefix
     let tools: Vec<ToolRouterKey> = db
         .clone()
-        .get_all_tool_headers()
+        .get_all_tool_headers(false)
         .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
         .into_iter()
         .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
@@ -698,7 +715,7 @@ pub async fn check_code(
     eprintln!("[check_code] code_extracted: {}", code_extracted);
     let tools: Vec<ToolRouterKey> = sqlite_manager
         .clone()
-        .get_all_tool_headers()
+        .get_all_tool_headers(false)
         .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
         .into_iter()
         .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {

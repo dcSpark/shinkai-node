@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -369,13 +369,17 @@ impl GenericInferenceChain {
                             // If tool not found directly, try FTS and vector search
                             let sanitized_query = tool_name.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
 
+                            // TODO [SIMULATED]
+                            // Simulated tools should not be included in the FTS search. We have to detect if this is Agent Test Screen.
                             // Perform FTS search
-                            let fts_results = tool_router.sqlite_manager.search_tools_fts(&sanitized_query);
+                            let fts_results = tool_router.sqlite_manager.search_tools_fts(&sanitized_query, true);
 
                             // Perform vector search
                             let vector_results = tool_router
                                 .sqlite_manager
-                                .tool_vector_search(&sanitized_query, 5, false, true)
+                                // TODO [SIMULATED]
+                                // include_simulated should be false by default and only turned on if the user is the agent-test screen.
+                                .tool_vector_search(&sanitized_query, 5, false, true, true)
                                 .await;
 
                             match (fts_results, vector_results) {
@@ -493,7 +497,9 @@ impl GenericInferenceChain {
                     // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
                         let results = tool_router
-                            .combined_tool_search(&user_message.clone(), 7, false, true)
+                            // TODO [SIMULATED]
+                            // include_simulated should be false by default and only turned on if the user is the agent-test screen.
+                            .combined_tool_search(&user_message.clone(), 7, false, true, true)
                             .await;
 
                         match results {

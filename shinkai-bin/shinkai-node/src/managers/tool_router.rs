@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -548,10 +548,11 @@ impl ToolRouter {
         &self,
         query: &str,
         num_of_results: u64,
+        include_simulated: bool,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
-            .tool_vector_search(query, num_of_results, false, false)
+            .tool_vector_search(query, num_of_results, false, false, include_simulated)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         // Note: we can add more code here to filter out low confidence results
@@ -563,10 +564,11 @@ impl ToolRouter {
         &self,
         query: &str,
         num_of_results: u64,
+        include_simulated: bool,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
-            .tool_vector_search(query, num_of_results, false, true)
+            .tool_vector_search(query, num_of_results, false, true, include_simulated)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         // Note: we can add more code here to filter out low confidence results
@@ -578,10 +580,11 @@ impl ToolRouter {
         &self,
         query: &str,
         num_of_results: u64,
+        include_simulated: bool,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         let tool_headers = self
             .sqlite_manager
-            .tool_vector_search(query, num_of_results, true, true)
+            .tool_vector_search(query, num_of_results, true, true, include_simulated)
             .await
             .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         // Note: we can add more code here to filter out low confidence results
@@ -656,8 +659,37 @@ impl ToolRouter {
         }
 
         match shinkai_tool {
+            ShinkaiTool::Simulated(simulated_tool, _is_enabled) => {
+                let node_env: crate::utils::environment::NodeEnvironment = fetch_node_environment();
+                let bearer = context.db().read_api_v2_key().unwrap_or_default().unwrap_or_default();
+                let app_id = match context.full_job().associated_ui().as_ref() {
+                    Some(AssociatedUI::Cron(cron_id)) => cron_id.clone(),
+                    _ => context.full_job().job_id().to_string(),
+                };
+
+                let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
+                let result = simulated_tool
+                    .run(
+                        bearer,
+                        node_env.api_listen_address.ip().to_string(),
+                        node_env.api_listen_address.port(),
+                        app_id,
+                        tool_id,
+                        // TODO This should resolve the LLM provider, and not the agent_id
+                        context.agent().clone().get_llm_provider_id().to_string(),
+                        function_args,
+                        function_config_vec,
+                    )
+                    .await?;
+                let result_str = serde_json::to_string(&result)
+                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                return Ok(ToolCallFunctionResponse {
+                    response: result_str,
+                    function_call,
+                });
+            }
             ShinkaiTool::Python(python_tool, _is_enabled) => {
-                let node_env = fetch_node_environment();
+                let node_env: crate::utils::environment::NodeEnvironment = fetch_node_environment();
                 let node_storage_path = node_env
                     .node_storage_path
                     .clone()
@@ -673,7 +705,7 @@ impl ToolRouter {
                 let tools: Vec<ToolRouterKey> = context
                     .db()
                     .clone()
-                    .get_all_tool_headers()?
+                    .get_all_tool_headers(false)?
                     .into_iter()
                     .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
                         Ok(tool_router_key) => Some(tool_router_key),
@@ -690,8 +722,8 @@ impl ToolRouter {
                 let envs = generate_execution_environment(
                     context.db(),
                     context.agent().clone().get_id().to_string(),
-                    tool_id.clone(),
                     app_id.clone(),
+                    tool_id.clone(),
                     agent_id,
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     app_id.clone(),
@@ -853,7 +885,7 @@ impl ToolRouter {
                 let tools: Vec<ToolRouterKey> = context
                     .db()
                     .clone()
-                    .get_all_tool_headers()?
+                    .get_all_tool_headers(false)?
                     .into_iter()
                     .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
                         Ok(tool_router_key) => Some(tool_router_key),
@@ -1212,7 +1244,7 @@ impl ToolRouter {
         let tools: Vec<ToolRouterKey> = self
             .sqlite_manager
             .clone()
-            .get_all_tool_headers()?
+            .get_all_tool_headers(false)?
             .into_iter()
             .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
                 Ok(tool_router_key) => Some(tool_router_key),
@@ -1284,6 +1316,7 @@ impl ToolRouter {
         num_of_results: u64,
         include_disabled: bool,
         include_network: bool,
+        include_simulated: bool,
     ) -> Result<Vec<ShinkaiToolHeader>, ToolError> {
         // Sanitize the query to handle special characters
         let sanitized_query = query.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
@@ -1292,14 +1325,22 @@ impl ToolRouter {
         let vector_start_time = Instant::now();
         let vector_search_result = self
             .sqlite_manager
-            .tool_vector_search(&sanitized_query, num_of_results, include_disabled, include_network)
+            .tool_vector_search(
+                &sanitized_query,
+                num_of_results,
+                include_disabled,
+                include_network,
+                include_simulated,
+            )
             .await;
         let vector_elapsed_time = vector_start_time.elapsed();
         println!("Time taken for vector search: {:?}", vector_elapsed_time);
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = self.sqlite_manager.search_tools_fts(&sanitized_query);
+        let fts_search_result = self
+            .sqlite_manager
+            .search_tools_fts(&sanitized_query, include_simulated);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
 

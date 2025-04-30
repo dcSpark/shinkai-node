@@ -1,42 +1,42 @@
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{
-        node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
-    }, utils::update_global_identity::update_global_identity_name
+    llm_provider::job_manager::JobManager,
+    managers::IdentityManager,
+    network::{
+        node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node,
+    },
+    utils::update_global_identity::update_global_identity_name,
 };
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
-use async_channel::Sender;
-use blake3::Hasher;
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use log::error;
-use reqwest::StatusCode;
-use serde_json::{json, Value as JsonValue};
-
-use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
-    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
+    DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType,
 };
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}
-    }, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
-            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType
-        }
-    }, shinkai_utils::{
+        inbox_name::InboxName,
+        llm_providers::serialized_llm_provider::SerializedLLMProvider,
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+    },
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_schemas::{
+            APIAddAgentRequest, APIAddOllamaModels, APIChangeJobAgentRequest, APIGetMessagesFromInboxRequest,
+            APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
+            RegistrationCodeType,
+        },
+    },
+    shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod
-        }, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key}
-    }
+            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod,
+        },
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
+    },
 };
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
@@ -2596,7 +2596,7 @@ impl Node {
 
         // Perform the internal search using tool_router
         if let Some(tool_router) = tool_router {
-            match tool_router.vector_search_all_tools(&search_query, 5).await {
+            match tool_router.vector_search_all_tools(&search_query, 5, false).await {
                 Ok(tools) => {
                     let tools_json = serde_json::to_value(tools).map_err(|err| NodeError {
                         message: format!("Failed to serialize tools: {}", err),
@@ -2669,7 +2669,7 @@ impl Node {
 
         // List all Shinkai tools
         let tools = {
-            match sqlite_manager.get_all_tool_headers() {
+            match sqlite_manager.get_all_tool_headers(false) {
                 Ok(tools) => tools,
                 Err(err) => {
                     let api_error = APIError {

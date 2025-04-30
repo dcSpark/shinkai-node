@@ -38,7 +38,7 @@ pub struct DenoTool {
     pub description: String,
     pub keywords: Vec<String>,
     pub input_args: Parameters,
-    pub output_arg: ToolOutputArg,
+    pub output_arg: ToolOutputArg, // DEPRICATED. Use "Result" Instance instead.
     pub activated: bool,
     pub embedding: Option<Vec<f32>>,
     pub result: ToolResult,

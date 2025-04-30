@@ -8,6 +8,7 @@ pub mod python_tools;
 pub mod rust_tools;
 pub mod shared_execution;
 pub mod shinkai_tool;
+pub mod simulated_tool;
 pub mod tool_config;
 pub mod tool_output_arg;
 pub mod tool_playground;

@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::chains::sheet_ui_chain::sheet_rust_functions::SheetRustFunctions;
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
@@ -240,7 +240,7 @@ impl SheetUIInferenceChain {
 
                 // Search in JS Tools
                 let results = tool_router
-                    .vector_search_enabled_tools(&user_message.clone(), 2)
+                    .vector_search_enabled_tools(&user_message.clone(), 2, false)
                     .await
                     .unwrap();
                 for result in results {

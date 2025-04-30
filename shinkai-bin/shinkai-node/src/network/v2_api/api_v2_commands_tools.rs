@@ -1,7 +1,14 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::{tool_router::ToolRouter, IdentityManager},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 use async_channel::Sender;
 use chrono::Utc;
@@ -11,26 +18,44 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
-    }
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
-    }, shinkai_message::shinkai_message_schemas::JobMessage
+        shinkai_name::ShinkaiName,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+    },
+    shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
+    deno_tools::DenoTool,
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
 };
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    shinkai_tool::ShinkaiToolHeader,
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::{collections::HashMap, path::PathBuf};
 use std::{
-    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
+    env,
+    fs::File,
+    io::{Read, Write},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -148,9 +173,9 @@ impl Node {
                 .iter()
                 .map(|tool| tool.to_string_without_version())
                 .collect::<Vec<String>>();
-            db.tool_vector_search_with_vector_limited(embedding, 5, tool_names)
+            db.tool_vector_search_with_vector_limited(embedding, 5, tool_names, false)
         } else {
-            db.tool_vector_search(&sanitized_query, 5, false, true).await
+            db.tool_vector_search(&sanitized_query, 5, false, true, false).await
         };
 
         let vector_elapsed_time = vector_start_time.elapsed();
@@ -158,7 +183,7 @@ impl Node {
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = db.search_tools_fts(&sanitized_query);
+        let fts_search_result = db.search_tools_fts(&sanitized_query, false);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
 
@@ -238,7 +263,7 @@ impl Node {
         }
 
         // List all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 // Group tools by their base key (without version)
                 use std::collections::HashMap;
@@ -371,7 +396,7 @@ impl Node {
         let _bearer = Self::get_bearer_token(db.clone(), &res).await?;
 
         // List all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 // Group tools by their base key (without version)
                 use std::collections::HashMap;
@@ -1483,7 +1508,7 @@ impl Node {
 
         let all_tools: Vec<ToolRouterKey> = db
             .clone()
-            .get_all_tool_headers()?
+            .get_all_tool_headers(false)?
             .into_iter()
             .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
                 Ok(tool_router_key) => Some(tool_router_key),
@@ -1614,7 +1639,7 @@ impl Node {
             .map(|t| t.to_string())
             .collect();
             let user_tools: Vec<String> = tools.iter().map(|tools| tools.to_string_with_version()).collect();
-            let all_tool_headers = db.clone().get_all_tool_headers()?;
+            let all_tool_headers = db.clone().get_all_tool_headers(false)?;
             all_tool_headers
                 .into_iter()
                 .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
@@ -2850,7 +2875,7 @@ impl Node {
         }
 
         // Get all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 let mut tool_statuses: Vec<(String, bool)> = Vec::new();
 
@@ -2910,7 +2935,7 @@ impl Node {
         }
 
         // Get all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 let mut tool_statuses: Vec<(String, bool)> = Vec::new();
 
@@ -3113,7 +3138,7 @@ impl Node {
             }
             Err(_) => {
                 // Create a new playground from the tool data
-                let output = new_tool.output_arg();
+                let output = ToolOutputArg::empty();
                 let output_json = output.json;
                 // Attempt to parse the output_json into a meaningful result
                 let result: ToolResult = if !output_json.is_empty() {
@@ -3609,7 +3634,7 @@ impl Node {
 
         // Get all tool-key-paths
         let tool_list: Vec<ToolRouterKey> = db
-            .get_all_tool_headers()
+            .get_all_tool_headers(false)
             .map_err(|e| APIError {
                 code: 500,
                 error: "Failed to get tool headers".to_string(),
@@ -3826,7 +3851,7 @@ LANGUAGE={env_language}
         }
 
         // List all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 // Group tools by their base key (without version)
                 use std::collections::HashMap;
@@ -3915,7 +3940,7 @@ LANGUAGE={env_language}
             tool.disable();
             tool.disable_mcp();
         }
-        
+
         if let Err(e) = db.update_tool(tool).await {
             let err = APIError {
                 code: 500,
@@ -3925,7 +3950,7 @@ LANGUAGE={env_language}
             let _ = res.send(Err(err)).await;
             return Ok(());
         }
-        
+
         let response = json!({
             "tool_router_key": tool_router_key,
             "enabled": enabled,
@@ -4132,7 +4157,7 @@ LANGUAGE={env_language}
         }
 
         let tools: Vec<ToolRouterKey> = db
-            .get_all_tool_headers()
+            .get_all_tool_headers(false)
             .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
             .iter()
             .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
