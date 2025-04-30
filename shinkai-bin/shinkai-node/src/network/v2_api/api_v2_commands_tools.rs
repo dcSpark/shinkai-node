@@ -41,6 +41,7 @@ use shinkai_tools_primitives::tools::{
     parameters::Parameters,
     python_tools::PythonTool,
     shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    simulated_tool::SimulatedTool,
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
@@ -4271,6 +4272,65 @@ LANGUAGE={env_language}
         }
 
         Ok(())
+    }
+
+    pub async fn v2_api_create_simulated_tool(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        name: String,
+        prompt: String,
+        agent_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Create a simulated tool
+        let simulated_tool = SimulatedTool {
+            name: format!("{agent_id}-{name}"),
+            description: prompt,
+            keywords: vec![],
+            config: vec![],
+            input_args: Parameters::new(),
+            result: ToolResult {
+                r#type: "object".to_string(),
+                properties: json!({
+                    "return": {
+                        "type": "string",
+                        "description": "The return value of the tool"
+                    }
+                }),
+                required: vec!["return".to_string()],
+            },
+            embedding: None,
+        };
+
+        // Save the tool
+        let save_result = db.add_tool(ShinkaiTool::Simulated(simulated_tool.clone(), true)).await;
+
+        match save_result {
+            Ok(_) => {
+                let _ = res
+                    .send(Ok(json!({
+                        "status": "success",
+                        "message": "Simulated tool created successfully",
+                        "tool_router_key": simulated_tool.get_tool_router_key(),
+                    })))
+                    .await;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to create simulated tool: {}", err),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
     }
 }
 

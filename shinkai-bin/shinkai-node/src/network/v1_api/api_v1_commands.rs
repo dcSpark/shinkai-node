@@ -8,6 +8,16 @@ use crate::{
     },
     utils::update_global_identity::update_global_identity_name,
 };
+use async_channel::Sender;
+use blake3::Hasher;
+use ed25519_dalek::SigningKey;
+use ed25519_dalek::VerifyingKey;
+use log::error;
+use reqwest::StatusCode;
+use serde_json::json;
+use serde_json::Value as JsonValue;
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
@@ -41,7 +51,6 @@ use shinkai_message_primitives::{
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-
 use std::{convert::TryInto, env, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};

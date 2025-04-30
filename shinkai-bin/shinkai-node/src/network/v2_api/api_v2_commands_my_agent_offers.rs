@@ -298,4 +298,35 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn v2_api_generate_agent_from_prompt(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        prompt: String,
+        _: ShinkaiName,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let json_response = serde_json::json!(format!(
+            r#"{{
+                "name": "Agent 1",
+                "description": "Agent 1 is a helpful agent that can help with tasks",
+                "system_prompt": {prompt},
+                "simulated_tools": [{{
+                    "name": "Get Crypto Token Price",
+                    "prompt": "Get the price of a token"
+                }}, {{
+                    "name": "Swap Crypto Tokens",
+                    "prompt": "Swap tokens"
+                }}]
+            }}"#
+        ));
+
+        let _ = res.send(Ok(json_response)).await;
+        Ok(())
+    }
 }

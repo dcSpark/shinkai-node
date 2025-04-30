@@ -2025,6 +2025,17 @@ impl Node {
             //         let _ = Node::v2_api_list_files_in_inbox(db_clone, bearer, inbox_name, res).await;
             //     });
             // }
+            NodeCommand::V2ApiGenerateAgentFromPrompt {
+                bearer,
+                prompt,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_generate_agent_from_prompt(db_clone, bearer, prompt, node_name, res).await;
+                });
+            }
             NodeCommand::V2ApiGetToolOffering {
                 bearer,
                 tool_key_name,
@@ -3220,6 +3231,18 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_preferences(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiCreateSimulatedTool {
+                bearer,
+                name,
+                prompt,
+                agent_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_create_simulated_tool(db_clone, bearer, name, prompt, agent_id, res).await;
                 });
             }
             _ => (),

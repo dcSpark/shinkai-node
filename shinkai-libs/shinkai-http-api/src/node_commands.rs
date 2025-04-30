@@ -816,6 +816,11 @@ pub enum NodeCommand {
         payload: APIAddOllamaModels,
         res: Sender<Result<(), APIError>>,
     },
+    V2ApiGenerateAgentFromPrompt {
+        bearer: String,
+        prompt: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiGetToolOffering {
         bearer: String,
         tool_key_name: String,
@@ -1340,6 +1345,13 @@ pub enum NodeCommand {
     },
     V2ApiGetPreferences {
         bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCreateSimulatedTool {
+        bearer: String,
+        name: String,
+        prompt: String,
+        agent_id: String,
         res: Sender<Result<Value, APIError>>,
     },
 }

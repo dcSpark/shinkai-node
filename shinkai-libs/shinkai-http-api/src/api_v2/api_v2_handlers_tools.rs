@@ -283,6 +283,13 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(tool_check_handler);
 
+    let create_simulated_tool_route = warp::path("create_simulated_tool")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(create_simulated_tool_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -319,6 +326,7 @@ pub fn tool_routes(
         .or(set_tool_mcp_enabled_route)
         .or(copy_tool_asset_route)
         .or(tool_check_route)
+        .or(create_simulated_tool_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -2362,6 +2370,57 @@ pub async fn tool_check_handler(
     }
 }
 
+
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SimulatedShinkaiToolRequest {
+    pub agent_id: String,
+    pub name: String,
+    pub prompt: String
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/create_simulated_tool",
+    request_body = SimulatedShinkaiToolRequest,
+    responses(
+        (status = 200, description = "Successfully created simulated tool", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn create_simulated_tool_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: SimulatedShinkaiToolRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+         let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiCreateSimulatedTool {
+            bearer,
+            agent_id: payload.agent_id.clone(),
+            name: payload.name.clone(),
+            prompt: payload.prompt.clone(),
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -2397,6 +2456,7 @@ pub async fn tool_check_handler(
         set_tool_mcp_enabled_handler,
         copy_tool_assets_handler,
         tool_check_handler,
+        create_simulated_tool_handler,
     ),
     components(
         schemas(
