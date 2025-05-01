@@ -63,7 +63,7 @@ fn tool_duplicate_tests() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     node1_api_key.clone(),
-                    20, // Wait up to 30 seconds
+                    30, // Wait up to 30 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");

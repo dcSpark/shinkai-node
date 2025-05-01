@@ -92,19 +92,25 @@ impl ShinkaiTool {
 
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> ToolRouterKey {
-        let (provider, author, name) = match self {
-            ShinkaiTool::Rust(r, _) => ("local".to_string(), r.author(), r.name.clone()),
-            // TODO: read from tool itself
-            ShinkaiTool::Network(n, _) => (n.provider.to_string(), n.author.to_string(), n.name.clone()),
-            // TODO: read from tool itself
-            ShinkaiTool::Deno(d, _) => ("local".to_string(), d.author.clone(), d.name.clone()),
-            // TODO: read from tool itself
-            ShinkaiTool::Python(p, _) => ("local".to_string(), p.author.clone(), p.name.clone()),
-            // TODO: read from tool itself
-            ShinkaiTool::Agent(a, _) => ("local".to_string(), a.author.clone(), a.agent_id.clone()),
-            _ => unreachable!(),
-        };
-        ToolRouterKey::new(provider, author, name, None)
+        match self {
+            ShinkaiTool::Rust(r, _) => ToolRouterKey::new("local".to_string(), r.author(), r.name.clone(), None),
+            ShinkaiTool::Network(n, _) => {
+                ToolRouterKey::new(n.provider.to_string(), n.author.to_string(), n.name.clone(), None)
+            }
+            ShinkaiTool::Deno(d, _) => {
+                if let Some(key) = &d.tool_router_key {
+                    key.clone()
+                } else {
+                    ToolRouterKey::new("local".to_string(), d.author.clone(), d.name.clone(), None)
+                }
+            }
+            ShinkaiTool::Python(p, _) => {
+                ToolRouterKey::new("local".to_string(), p.author.clone(), p.name.clone(), None)
+            }
+            ShinkaiTool::Agent(a, _) => {
+                ToolRouterKey::new("local".to_string(), a.author.clone(), a.agent_id.clone(), None)
+            }
+        }
     }
 
     /// Sanitize the config by removing key-values from BasicConfig
