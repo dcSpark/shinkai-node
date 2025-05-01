@@ -705,6 +705,7 @@ pub enum NodeCommand {
     V2ApiListAllShinkaiTools {
         bearer: String,
         category: Option<String>,
+        include_simulated: bool,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllMcpShinkaiTools {

@@ -261,6 +261,7 @@ impl Node {
         bearer: String,
         node_name: ShinkaiName,
         category: Option<String>,
+        include_simulated: bool,
         tool_router: Option<Arc<ToolRouter>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -270,7 +271,7 @@ impl Node {
         }
 
         // List all tools
-        match db.get_all_tool_headers(false) {
+        match db.get_all_tool_headers(include_simulated) {
             Ok(tools) => {
                 // Group tools by their base key (without version)
                 use std::collections::HashMap;
@@ -4303,7 +4304,7 @@ LANGUAGE={env_language}
         let mut tool_metadata_implementation;
         loop {
             tool_metadata_implementation = Self::create_tool_metadata_from_prompt(
-                prompt.clone(),
+                format!("{}: {}", name, prompt),
                 llm_provider.clone(),
                 db.clone(),
                 bearer.clone(),
@@ -4348,29 +4349,62 @@ LANGUAGE={env_language}
 
         // Save the tool
         let save_result = db.add_tool(ShinkaiTool::Simulated(simulated_tool.clone(), true)).await;
-
-        match save_result {
-            Ok(_) => {
-                let _ = res
-                    .send(Ok(json!({
-                        "status": "success",
-                        "message": "Simulated tool created successfully",
-                        "tool_router_key": simulated_tool.get_tool_router_key(),
-                    })))
-                    .await;
-                Ok(())
-            }
-            Err(err) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to create simulated tool: {}", err),
-                    }))
-                    .await;
-                Ok(())
-            }
+        if let Err(e) = save_result {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create simulated tool: {}", e),
+                }))
+                .await;
+            return Ok(());
         }
+
+        let agent = db.clone().get_agent(&agent_id);
+        if let Err(e) = agent {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get agent: {}", e),
+                }))
+                .await;
+            return Ok(());
+        }
+        let agent = agent.unwrap();
+        if agent.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Failed to get agent".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        let mut agent = agent.unwrap();
+        agent.tools.push(simulated_tool.get_tool_router_key());
+        let status = db.update_agent(agent);
+        if let Err(e) = status {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update agent: {}", e),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        let _ = res
+            .send(Ok(json!({
+                "status": "success",
+                "message": "Simulated tool created successfully",
+                "tool_router_key": simulated_tool.get_tool_router_key_string(),
+            })))
+            .await;
+        Ok(())
     }
 
     async fn create_tool_metadata_from_prompt(

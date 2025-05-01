@@ -362,6 +362,16 @@ impl Node {
             break;
         }
 
+        // {
+        //     "name": "AGENT_NAME",
+        //     "indications": "AGENT_INDICATIONS",
+        //     "instructions": "AGENT_INSTRUCTIONS",
+        //     "tools": [{
+        //         "name": "TOOL_NAME",
+        //         "description": "TOOL_DESCRIPTION",
+        //     }]
+        //   }
+
         let _ = res.send(Ok(agent.unwrap())).await;
         Ok(())
     }

@@ -695,12 +695,13 @@ pub async fn list_all_shinkai_tools_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let category = query_params.get("category").cloned();
-    
+    let include_simulated = query_params.get("include_simulated").cloned().unwrap_or("false".to_string()).parse::<bool>().unwrap_or(false);
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiListAllShinkaiTools {
             bearer,
             category,
+            include_simulated,
             res: res_sender,
         })
         .await

@@ -40,14 +40,17 @@ impl SimulatedTool {
         "@@simulated.local".to_string()
     }
 
-    pub fn get_tool_router_key(&self) -> String {
-        let trk = ToolRouterKey {
+    pub fn get_tool_router_key(&self) -> ToolRouterKey {
+        ToolRouterKey {
             source: self.get_source(),
             author: self.get_author(),
             name: self.name.clone(),
             version: None,
-        };
-        trk.to_string_without_version()
+        }
+    }
+
+    pub fn get_tool_router_key_string(&self) -> String {
+        self.get_tool_router_key().to_string_without_version()
     }
 
     pub async fn build_example_json(

@@ -1030,7 +1030,7 @@ mod tests {
 
         let vector = SqliteManager::generate_vector_for_testing(0.1);
         let _ = manager.add_tool_with_vector(ShinkaiTool::Simulated(simulated_tool_example.clone(), true), vector);
-        let t = manager.get_tool_by_key(&simulated_tool_example.get_tool_router_key());
+        let t = manager.get_tool_by_key(&simulated_tool_example.get_tool_router_key_string());
         assert!(t.is_ok());
         let tool = t.unwrap();
         assert_eq!(tool.name(), simulated_tool_example.clone().name);
@@ -1113,7 +1113,7 @@ mod tests {
 
         let _ = manager.add_tool_with_vector(ShinkaiTool::Simulated(simulated_tool_example.clone(), true), vector);
 
-        let t = manager.get_tool_by_key(&simulated_tool_example.get_tool_router_key());
+        let t = manager.get_tool_by_key(&simulated_tool_example.get_tool_router_key_string());
 
         assert!(t.is_ok());
         let tool = t.unwrap();

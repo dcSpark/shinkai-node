@@ -1918,7 +1918,12 @@ impl Node {
                     let _ = Node::v2_api_scan_ollama_models(db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiListAllShinkaiTools { bearer, category, res } => {
+            NodeCommand::V2ApiListAllShinkaiTools {
+                bearer,
+                category,
+                include_simulated,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let tool_router_clone = self.tool_router.clone();
                 let node_name_clone = self.node_name.clone();
@@ -1928,6 +1933,7 @@ impl Node {
                         bearer,
                         node_name_clone,
                         category,
+                        include_simulated,
                         tool_router_clone,
                         res,
                     )
