@@ -47,7 +47,7 @@ impl fmt::Display for EmbeddingModelType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum OllamaTextEmbeddingsInference {
     AllMiniLML6v2,
-    SnowflakeArcticEmbed_M,
+    SnowflakeArcticEmbedM,
     JinaEmbeddingsV2BaseEs,
     Other(String),
 }
@@ -60,7 +60,7 @@ impl OllamaTextEmbeddingsInference {
     pub fn from_string(s: &str) -> Result<Self, ShinkaiEmbeddingError> {
         match s {
             Self::ALL_MINI_LML6V2 => Ok(Self::AllMiniLML6v2),
-            Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(Self::SnowflakeArcticEmbed_M),
+            Self::SNOWFLAKE_ARCTIC_EMBED_M => Ok(Self::SnowflakeArcticEmbedM),
             Self::JINA_EMBEDDINGS_V2_BASE_ES => Ok(Self::JinaEmbeddingsV2BaseEs),
             _ => Err(ShinkaiEmbeddingError::InvalidModelArchitecture),
         }
@@ -82,9 +82,12 @@ impl OllamaTextEmbeddingsInference {
 
     pub fn vector_dimensions(&self) -> Result<usize, ShinkaiEmbeddingError> {
         match self {
-            Self::SnowflakeArcticEmbed_M => Ok(384),
+            Self::SnowflakeArcticEmbedM => Ok(384),
             Self::JinaEmbeddingsV2BaseEs => Ok(768),
-            _ => Err(ShinkaiEmbeddingError::UnimplementedModelDimensions(format!("{:?}", self))),
+            _ => Err(ShinkaiEmbeddingError::UnimplementedModelDimensions(format!(
+                "{:?}",
+                self
+            ))),
         }
     }
 }
@@ -93,7 +96,7 @@ impl fmt::Display for OllamaTextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::AllMiniLML6v2 => write!(f, "{}", Self::ALL_MINI_LML6V2),
-            Self::SnowflakeArcticEmbed_M => write!(f, "{}", Self::SNOWFLAKE_ARCTIC_EMBED_M),
+            Self::SnowflakeArcticEmbedM => write!(f, "{}", Self::SNOWFLAKE_ARCTIC_EMBED_M),
             Self::JinaEmbeddingsV2BaseEs => write!(f, "{}", Self::JINA_EMBEDDINGS_V2_BASE_ES),
             Self::Other(name) => write!(f, "{}", name),
         }
@@ -108,7 +111,7 @@ mod tests {
     fn test_parse_snowflake_arctic_embed_xs() {
         let model_str = "snowflake-arctic-embed:xs";
         let parsed_model = OllamaTextEmbeddingsInference::from_string(model_str);
-        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M));
+        assert_eq!(parsed_model, Ok(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM));
     }
 
     #[test]
@@ -125,7 +128,7 @@ mod tests {
         assert_eq!(
             parsed_model,
             Ok(EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM
             ))
         );
     }

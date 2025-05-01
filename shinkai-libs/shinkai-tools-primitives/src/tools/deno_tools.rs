@@ -65,7 +65,9 @@ impl<'de> serde::Deserialize<'de> for DenoTool {
             version: String,
             mcp_enabled: Option<bool>,
             js_code: String,
+            #[serde(default)]
             #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
+            #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys")]
             tools: Vec<ToolRouterKey>,
             config: Vec<ToolConfig>,
             description: String,
@@ -85,33 +87,16 @@ impl<'de> serde::Deserialize<'de> for DenoTool {
             tool_set: Option<String>,
         }
 
-        println!("Starting DenoTool deserialization");
-        let helper = match Helper::deserialize(deserializer) {
-            Ok(h) => {
-                println!("Successfully deserialized Helper struct");
-                println!("Deserialized tools: {:?}", h.tools);
-                h
-            }
-            Err(e) => {
-                println!("Failed to deserialize Helper struct: {}", e);
-                return Err(e);
-            }
-        };
+        let helper = Helper::deserialize(deserializer)?;
 
         let tool_router_key = match helper.tool_router_key {
-            Some(key_str) => {
-                println!("Parsing tool_router_key from string: {}", key_str);
-                Some(ToolRouterKey::from_string(&key_str).map_err(serde::de::Error::custom)?)
-            }
-            None => {
-                println!("Creating default tool_router_key");
-                Some(ToolRouterKey::new(
-                    "local".to_string(),
-                    helper.author.clone(),
-                    helper.name.clone(),
-                    None,
-                ))
-            }
+            Some(key_str) => Some(ToolRouterKey::from_string(&key_str).map_err(serde::de::Error::custom)?),
+            None => Some(ToolRouterKey::new(
+                "local".to_string(),
+                helper.author.clone(),
+                helper.name.clone(),
+                None,
+            )),
         };
 
         Ok(DenoTool {
@@ -149,7 +134,6 @@ impl serde::Serialize for DenoTool {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        println!("Starting DenoTool serialization");
         let mut state = serializer.serialize_struct("DenoTool", 24)?;
         state.serialize_field("name", &self.name)?;
         if let Some(key) = &self.tool_router_key {
@@ -162,17 +146,7 @@ impl serde::Serialize for DenoTool {
         state.serialize_field("version", &self.version)?;
         state.serialize_field("mcp_enabled", &self.mcp_enabled)?;
         state.serialize_field("js_code", &self.js_code)?;
-        println!("Serializing tools field. Current tools: {:?}", self.tools);
-        let tools_strings: Vec<String> = self
-            .tools
-            .iter()
-            .map(|k| {
-                let str = k.to_string_with_version();
-                println!("Converted tool to string: {}", str);
-                str
-            })
-            .collect();
-        println!("Final tools array: {:?}", tools_strings);
+        let tools_strings: Vec<String> = self.tools.iter().map(|k| k.to_string_with_version()).collect();
         state.serialize_field("tools", &tools_strings)?;
         state.serialize_field("config", &self.config)?;
         state.serialize_field("description", &self.description)?;
@@ -190,7 +164,6 @@ impl serde::Serialize for DenoTool {
         state.serialize_field("runner", &self.runner)?;
         state.serialize_field("operating_system", &self.operating_system)?;
         state.serialize_field("tool_set", &self.tool_set)?;
-        println!("Completed DenoTool serialization");
         state.end()
     }
 }
@@ -844,8 +817,6 @@ mod tests {
 
     #[test]
     fn test_email_fetcher_tool_config() {
-        println!("\n=== Starting test_email_fetcher_tool_config ===\n");
-
         let tool = DenoTool {
             tool_router_key: Some(ToolRouterKey::new(
                 "local".to_string(),
@@ -914,30 +885,9 @@ mod tests {
             tool_set: None,
         };
 
-        println!("\n=== Serializing tool ===\n");
-        let serialized = match serde_json::to_string_pretty(&tool) {
-            Ok(s) => {
-                println!("Successfully serialized to JSON:\n{}", s);
-                s
-            }
-            Err(e) => {
-                println!("Failed to serialize: {}", e);
-                panic!("Serialization failed: {}", e);
-            }
-        };
+        let serialized = serde_json::to_string_pretty(&tool).expect("Failed to serialize DenoTool");
 
-        println!("\n=== Deserializing tool ===\n");
-        let deserialized: DenoTool = match serde_json::from_str(&serialized) {
-            Ok(d) => {
-                println!("Successfully deserialized DenoTool");
-                d
-            }
-            Err(e) => {
-                println!("Failed to deserialize DenoTool: {}", e);
-                println!("JSON being deserialized:\n{}", serialized);
-                panic!("Deserialization failed: {}", e);
-            }
-        };
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
 
         // Test check_required_config_fields with no values set
         assert!(
@@ -992,18 +942,7 @@ mod tests {
 
         // Test serialization/deserialization
         let serialized = serde_json::to_string(&tool).expect("Failed to serialize DenoTool");
-        println!("Serialized JSON: {}", serialized);
-
-        let deserialized: DenoTool = match serde_json::from_str(&serialized) {
-            Ok(d) => {
-                println!("Successfully deserialized DenoTool");
-                d
-            }
-            Err(e) => {
-                println!("Failed to deserialize DenoTool: {}", e);
-                panic!("Deserialization failed: {}", e);
-            }
-        };
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
 
         // Check specific configs
         let imap_server_config = deserialized

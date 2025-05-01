@@ -1,6 +1,6 @@
 use rusqlite::params;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
+    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName
 };
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -231,11 +231,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::schemas::{
-        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI},
-        shinkai_name::ShinkaiName,
-    };
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::{
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI}, shinkai_name::ShinkaiName
+    };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -244,7 +243,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

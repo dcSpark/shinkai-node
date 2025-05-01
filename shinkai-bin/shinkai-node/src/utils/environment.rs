@@ -179,7 +179,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     let default_embedding_model: EmbeddingModelType = env::var("DEFAULT_EMBEDDING_MODEL")
         .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
         .unwrap_or_else(|_| {
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M)
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)
         });
 
     // Fetch the supported embedding models
@@ -191,7 +191,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         })
         .unwrap_or_else(|_| {
             vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
             )]
         });
 

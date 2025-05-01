@@ -11,7 +11,7 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolWith
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::{
-    parameters::Parameters, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    parameters::Parameters, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 
 use utils::test_boilerplate::run_test_one_node_network;

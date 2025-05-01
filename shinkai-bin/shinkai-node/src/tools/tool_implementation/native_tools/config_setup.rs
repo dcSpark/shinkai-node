@@ -322,7 +322,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -347,7 +347,7 @@ mod tests {
         let mut initial_tool = ShinkaiTool::Deno(
             DenoTool {
                 name: "Test Tool".to_string(),
-                tool_router_key: tool_router_key,
+                tool_router_key: Some(tool_router_key),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),
                 version: "1.0.0".to_string(),
