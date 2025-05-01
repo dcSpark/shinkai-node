@@ -58,12 +58,15 @@ impl SimulatedTool {
         let r#type = hash_map.get("type").unwrap_or(&unknown).as_str().unwrap_or_default();
 
         if r#type == "array" {
-            let items = hash_map.get("items").unwrap().as_object().unwrap();
-            let _items_type = items
-                .get("type")
-                .unwrap_or(&unknown.clone())
-                .as_str()
-                .unwrap_or_default();
+            let items = hash_map.get("items");
+            if items.is_some() {
+                let items = items.unwrap().as_object().unwrap();
+                let _items_type = items
+                    .get("type")
+                    .unwrap_or(&unknown.clone())
+                    .as_str()
+                    .unwrap_or_default();
+            }
         }
 
         match r#type {
@@ -84,7 +87,11 @@ impl SimulatedTool {
             }
             "object" => {
                 // Create recursive call to build the object
-                let properties = hash_map.get("properties").unwrap().as_object().unwrap();
+                let properties = hash_map.get("properties");
+                if properties.is_none() {
+                    return Ok((key.to_string(), json!({})));
+                }
+                let properties = properties.unwrap().as_object().unwrap();
                 let mut object = HashMap::new();
                 for (property_key, property_value) in properties {
                     let property_values = property_value.as_object().unwrap();

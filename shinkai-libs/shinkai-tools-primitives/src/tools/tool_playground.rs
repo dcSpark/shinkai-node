@@ -61,6 +61,7 @@ pub struct ToolPlaygroundMetadata {
     pub tools: Option<Vec<ToolRouterKey>>,
     pub oauth: Option<Vec<OAuth>>,
     pub runner: RunnerType,
+    #[serde(rename = "operatingSystem")]
     pub operating_system: Vec<OperatingSystem>,
     pub tool_set: Option<String>,
 }
@@ -137,7 +138,10 @@ where
         let mut property = HashMap::new();
         property.insert("description", basic.description.clone());
         // If type_name is None, default to "string"
-        let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+        let type_value = basic
+            .type_name
+            .as_ref()
+            .map_or_else(|| "string".to_string(), |t| t.clone());
         property.insert("type", type_value);
         properties.insert(basic.key_name.clone(), property);
 

@@ -2,6 +2,9 @@ use crate::{
     llm_provider::job_manager::JobManager,
     managers::{tool_router::ToolRouter, IdentityManager},
     network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
+    tools::tool_implementation::{
+        native_tools::llm_prompt_processor::LlmPromptProcessorTool, tool_traits::ToolExecutor,
+    },
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
         tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
@@ -12,7 +15,8 @@ use crate::{
 };
 use async_channel::Sender;
 use chrono::Utc;
-use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
+use ed25519_dalek::ed25519::signature::SignerMut;
+use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
@@ -50,16 +54,18 @@ use shinkai_tools_primitives::tools::{
     shinkai_tool::ShinkaiToolHeader,
     tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
+use std::sync::Arc;
 use std::{collections::HashMap, path::PathBuf};
 use std::{
     env,
     fs::File,
     io::{Read, Write},
-    sync::Arc,
     time::Instant,
 };
 use tokio::fs;
-use tokio::{process::Command, sync::Mutex};
+use tokio::process::Command;
+use tokio::sync::Mutex;
+use uuid::Uuid;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 use zip::{write::FileOptions, ZipWriter};
@@ -4280,29 +4286,63 @@ LANGUAGE={env_language}
         name: String,
         prompt: String,
         agent_id: String,
+        llm_provider: String,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
+        let mut retries = 3;
+        let mut tool_metadata_implementation;
+        loop {
+            tool_metadata_implementation = Self::create_tool_metadata_from_prompt(
+                prompt.clone(),
+                llm_provider.clone(),
+                db.clone(),
+                bearer.clone(),
+                node_name.clone(),
+                identity_manager.clone(),
+                job_manager.clone(),
+                encryption_secret_key.clone(),
+                encryption_public_key.clone(),
+                signing_secret_key.clone(),
+            )
+            .await;
+
+            if let Err(e) = tool_metadata_implementation {
+                if retries > 0 {
+                    retries -= 1;
+                    continue;
+                }
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create simulated tool: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+            break;
+        }
+        let tool_metadata_implementation = tool_metadata_implementation.unwrap();
+        let random = Uuid::new_v4().to_string();
+        let metadata: ToolPlaygroundMetadata = serde_json::from_value(tool_metadata_implementation).unwrap();
+
         // Create a simulated tool
         let simulated_tool = SimulatedTool {
-            name: format!("{agent_id}-{name}"),
-            description: prompt,
-            keywords: vec![],
-            config: vec![],
-            input_args: Parameters::new(),
-            result: ToolResult {
-                r#type: "object".to_string(),
-                properties: json!({
-                    "return": {
-                        "type": "string",
-                        "description": "The return value of the tool"
-                    }
-                }),
-                required: vec!["return".to_string()],
-            },
+            name: format!("{}-{}-{}", agent_id, metadata.name, random),
+            description: metadata.description.to_string(),
+            keywords: metadata.keywords,
+            config: metadata.configurations,
+            input_args: metadata.parameters,
+            result: metadata.result,
             embedding: None,
         };
 
@@ -4331,6 +4371,69 @@ LANGUAGE={env_language}
                 Ok(())
             }
         }
+    }
+
+    async fn create_tool_metadata_from_prompt(
+        tool_prompt: String,
+        llm_provider: String,
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+    ) -> Result<Value, ToolError> {
+        let tool_metadata_implementation = tool_metadata_implementation_prompt(
+            CodeLanguage::Typescript,
+            tool_prompt,
+            vec![],
+            identity_manager.clone(),
+        )
+        .await
+        .map_err(|e| {
+            ToolError::ExecutionError(format!(
+                "Failed to generate tool metadata implementation: {}",
+                e.message
+            ))
+        })?;
+
+        let mut parameters = Map::new();
+        parameters.insert("prompt".to_string(), tool_metadata_implementation.clone().into());
+        parameters.insert("llm_provider".to_string(), llm_provider.clone().into());
+
+        let body = LlmPromptProcessorTool::execute(
+            bearer,
+            "tool_id".to_string(),
+            "app_id".to_string(),
+            db,
+            node_name,
+            identity_manager,
+            job_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+            &parameters,
+            llm_provider,
+        )
+        .await?;
+
+        let message_value = body.get("message").unwrap();
+        let message = message_value.as_str().unwrap_or_default();
+        let mut message_split = message.split("\n").collect::<Vec<&str>>();
+        let len = message_split.clone().len();
+
+        if message_split[0] == "```json" {
+            message_split[0] = "";
+        }
+        if message_split[len - 1] == "```" {
+            message_split[len - 1] = "";
+        }
+        let cleaned_json = message_split.join(" ");
+
+        serde_json::from_str::<serde_json::Value>(&cleaned_json)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to parse JSON: {}", e)))
     }
 }
 

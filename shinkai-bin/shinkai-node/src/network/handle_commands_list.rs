@@ -1977,7 +1977,12 @@ impl Node {
                     let _ = Node::v2_api_add_shinkai_tool(db_clone, bearer, node_env, shinkai_tool, res).await;
                 });
             }
-            NodeCommand::V2ApiGetShinkaiTool { bearer, payload, serialize_config, res } => {
+            NodeCommand::V2ApiGetShinkaiTool {
+                bearer,
+                payload,
+                serialize_config,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_shinkai_tool(db_clone, bearer, payload, serialize_config, res).await;
@@ -2028,12 +2033,31 @@ impl Node {
             NodeCommand::V2ApiGenerateAgentFromPrompt {
                 bearer,
                 prompt,
+                llm_provider,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key.clone();
+                let signing_secret_key_clone = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_generate_agent_from_prompt(db_clone, bearer, prompt, node_name, res).await;
+                    let _ = Node::v2_api_generate_agent_from_prompt(
+                        db_clone,
+                        bearer,
+                        prompt,
+                        llm_provider,
+                        node_name,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiGetToolOffering {
@@ -3238,11 +3262,34 @@ impl Node {
                 name,
                 prompt,
                 agent_id,
+                llm_provider,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_create_simulated_tool(db_clone, bearer, name, prompt, agent_id, res).await;
+                    let _ = Node::v2_api_create_simulated_tool(
+                        db_clone,
+                        bearer,
+                        name,
+                        prompt,
+                        agent_id,
+                        llm_provider,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
                 });
             }
             _ => (),

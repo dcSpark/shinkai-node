@@ -25,6 +25,7 @@ pub fn my_agent_offers_routes(
 #[derive(Deserialize, ToSchema)]
 pub struct GenerateAgentFromPromptRequest {
     pub prompt: String,
+    pub llm_provider: String,
 }
 
 #[utoipa::path(
@@ -48,6 +49,7 @@ pub async fn generate_agent_from_prompt_handler(
         .send(NodeCommand::V2ApiGenerateAgentFromPrompt {
             bearer,
             prompt: payload.prompt,
+            llm_provider: payload.llm_provider,
             res: res_sender,
         })
         .await

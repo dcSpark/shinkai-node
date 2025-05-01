@@ -2376,7 +2376,8 @@ pub async fn tool_check_handler(
 pub struct SimulatedShinkaiToolRequest {
     pub agent_id: String,
     pub name: String,
-    pub prompt: String
+    pub prompt: String,
+    pub llm_provider: String,
 }
 
 #[utoipa::path(
@@ -2402,6 +2403,7 @@ pub async fn create_simulated_tool_handler(
             agent_id: payload.agent_id.clone(),
             name: payload.name.clone(),
             prompt: payload.prompt.clone(),
+            llm_provider: payload.llm_provider.clone(),
             res: res_sender,
         })
         .await

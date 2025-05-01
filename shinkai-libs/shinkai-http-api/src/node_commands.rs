@@ -819,6 +819,7 @@ pub enum NodeCommand {
     V2ApiGenerateAgentFromPrompt {
         bearer: String,
         prompt: String,
+        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetToolOffering {
@@ -1352,6 +1353,7 @@ pub enum NodeCommand {
         name: String,
         prompt: String,
         agent_id: String,
+        llm_provider: String,
         res: Sender<Result<Value, APIError>>,
     },
 }
