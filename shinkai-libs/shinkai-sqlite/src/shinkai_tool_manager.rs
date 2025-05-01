@@ -2295,8 +2295,15 @@ mod tests {
     #[tokio::test]
     async fn test_upgrade_tool_preserves_config_python() {
         let manager = setup_test_db().await;
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Test Author".to_string(),
+            "Configurable Python Tool".to_string(),
+            None,
+        );
         let python_tool_v1 = PythonTool {
             name: "Configurable Python Tool".to_string(),
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://example.com".to_string()),
             author: "Test Author".to_string(),
             version: "1.0.0".to_string(),
@@ -2331,8 +2338,15 @@ mod tests {
             .add_tool_with_vector(shinkai_tool_v1, SqliteManager::generate_vector_for_testing(0.1))
             .unwrap();
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Test Author".to_string(),
+            "Configurable Python Tool".to_string(),
+            None,
+        );
         let python_tool_v2 = PythonTool {
             name: "Configurable Python Tool".to_string(),
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://example.com".to_string()),
             author: "Test Author".to_string(),
             version: "2.0.0".to_string(),

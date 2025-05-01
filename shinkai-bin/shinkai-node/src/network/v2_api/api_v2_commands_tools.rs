@@ -856,8 +856,16 @@ impl Node {
                 ShinkaiTool::Deno(tool, false)
             }
             CodeLanguage::Python => {
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    payload.metadata.author.clone(),
+                    payload.metadata.name.clone(),
+                    None,
+                );
+
                 let tool = PythonTool {
                     name: payload.metadata.name.clone(),
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: payload.metadata.homepage.clone(),
                     version: payload.metadata.version.clone(),
                     author: payload.metadata.author.clone(),
@@ -4148,6 +4156,7 @@ LANGUAGE={env_language}
                 let tool: PythonTool = PythonTool {
                     version: "".to_string(),
                     name: "".to_string(),
+                    tool_router_key: None,
                     homepage: None,
                     author: "".to_string(),
                     mcp_enabled: Some(false),

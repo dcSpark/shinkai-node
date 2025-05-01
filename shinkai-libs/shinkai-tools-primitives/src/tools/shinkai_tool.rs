@@ -105,7 +105,11 @@ impl ShinkaiTool {
                 }
             }
             ShinkaiTool::Python(p, _) => {
-                ToolRouterKey::new("local".to_string(), p.author.clone(), p.name.clone(), None)
+                if let Some(key) = &p.tool_router_key {
+                    key.clone()
+                } else {
+                    ToolRouterKey::new("local".to_string(), p.author.clone(), p.name.clone(), None)
+                }
             }
             ShinkaiTool::Agent(a, _) => {
                 ToolRouterKey::new("local".to_string(), a.author.clone(), a.agent_id.clone(), None)
