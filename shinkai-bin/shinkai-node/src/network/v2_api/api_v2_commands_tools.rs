@@ -3023,12 +3023,25 @@ impl Node {
 
         // Create a copy of the tool with "_copy" appended to the name
         let mut new_tool = original_tool.clone();
-        new_tool.update_name(format!(
+        let new_name = format!(
             "{}_{}",
             original_tool.name(),
             chrono::Local::now().format("%Y%m%d_%H%M%S")
-        ));
+        );
+        new_tool.update_name(new_name.clone());
         new_tool.update_author(node_name.node_name.clone());
+
+        // Update the tool_router_key for Deno tools since they store it explicitly
+        if let ShinkaiTool::Deno(deno_tool, enabled) = &mut new_tool {
+            if deno_tool.tool_router_key.is_some() {
+                deno_tool.tool_router_key = Some(ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name.node_name.clone(),
+                    new_name,
+                    None,
+                ));
+            }
+        }
 
         // Try to get the original playground tool, or create one from the tool data
         let (new_playground, is_new_playground) = match db.get_tool_playground(&tool_key_path) {
