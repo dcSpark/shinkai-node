@@ -145,7 +145,7 @@ fn tool_duplicate_tests() {
                 // Create a tool offering
                 let deno = DenoTool {
                     name: "demo_tool".to_string(),
-                    tool_router_key: tool_router_key.clone(),
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: Some("http://127.0.0.1/index.html".to_string()),
                     author: "@@node1_test.sep-shinkai".to_string(),
                     version: "1.0.0".to_string(),
@@ -233,7 +233,9 @@ fn tool_duplicate_tests() {
                 assert!(result.is_ok(), "Tool fork failed");
                 let fork_result = result.unwrap();
                 eprintln!("Fork result: {:?}", fork_result);
-                // Fork result: Object {"job_id": String("jobid_5ae1f3e2-874a-47a1-b98a-23cd255f0456"), "tool_router_key": String("local:::__node1_test_sep_shinkai:::demo_tool_20250331_163342"), "version": String("1.0.0")}
+                // Fork result: Object {"job_id": String("jobid_5ae1f3e2-874a-47a1-b98a-23cd255f0456"),
+                // "tool_router_key": String("local:::__node1_test_sep_shinkai:::demo_tool_20250331_163342"), "version":
+                // String("1.0.0")}
                 fork_result
                     .get("tool_router_key")
                     .unwrap()

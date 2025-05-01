@@ -1,10 +1,11 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
-use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage, tool_router_key::ToolRouterKey};
+use shinkai_message_primitives::schemas::{
+    indexable_version::IndexableVersion, shinkai_tools::CodeLanguage, tool_router_key::ToolRouterKey
+};
 use shinkai_tools_primitives::tools::{
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
-    tool_types::{OperatingSystem, RunnerType},
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType}
 };
 
 impl SqliteManager {
@@ -381,11 +382,7 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_tools_primitives::tools::{
-        deno_tools::DenoTool,
-        parameters::Parameters,
-        shinkai_tool::ShinkaiTool,
-        tool_output_arg::ToolOutputArg,
-        tool_types::{OperatingSystem, RunnerType, ToolResult},
+        deno_tools::DenoTool, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg, tool_types::{OperatingSystem, RunnerType, ToolResult}
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -411,7 +408,7 @@ mod tests {
         let deno_tool = DenoTool {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: "Deno Test Tool".to_string(),
-            tool_router_key,
+            tool_router_key: Some(tool_router_key.clone()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
             mcp_enabled: Some(false),
@@ -544,17 +541,13 @@ mod tests {
 
     // Helper function to add a tool with a unique name
     async fn add_tool_to_db_with_unique_name(manager: &mut SqliteManager, name: &str) -> String {
-        let tool_router_key = ToolRouterKey::new(
-            "local".to_string(),
-            "Deno Author".to_string(),
-            name.to_string(),
-            None,
-        );
+        let tool_router_key =
+            ToolRouterKey::new("local".to_string(), "Deno Author".to_string(), name.to_string(), None);
 
         let deno_tool = DenoTool {
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             name: name.to_string(),
-            tool_router_key,
+            tool_router_key: Some(tool_router_key.clone()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),
             mcp_enabled: Some(false),
@@ -638,7 +631,7 @@ mod tests {
 
         let deno_tool = DenoTool {
             name: "Deno Test Tool".to_string(),
-            tool_router_key,
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Deno Author".to_string(),
             version: "1.0.0".to_string(),

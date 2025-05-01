@@ -829,7 +829,7 @@ impl Node {
                 );
                 let tool = DenoTool {
                     name: payload.metadata.name.clone(),
-                    tool_router_key: tool_router_key,
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
                     version: payload.metadata.version.clone(),

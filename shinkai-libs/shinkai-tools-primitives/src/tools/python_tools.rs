@@ -25,6 +25,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct PythonTool {
     pub version: String,
     pub name: String,
+    // pub tool_router_key: ToolRouterKey,
     pub homepage: Option<String>,
     pub author: String,
     pub mcp_enabled: Option<bool>,

@@ -577,8 +577,8 @@ mod tests {
     use crate::tools::parameters::Property;
     use crate::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use serde_json::json;
-    use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
     use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+    use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
     #[test]
     fn test_gen_router_key() {
@@ -589,10 +589,10 @@ mod tests {
             "Shinkai: Download Pages".to_string(),
             None,
         );
-        
+
         let deno_tool = DenoTool {
             name: "Shinkai: Download Pages".to_string(),
-            tool_router_key,
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
             mcp_enabled: Some(false),
@@ -683,7 +683,7 @@ mod tests {
 
         let deno_tool = DenoTool {
             name: "shinkai__download_website".to_string(),
-            tool_router_key,
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
             mcp_enabled: Some(false),

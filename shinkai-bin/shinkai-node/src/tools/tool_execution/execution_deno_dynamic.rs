@@ -42,7 +42,7 @@ pub async fn execute_deno_tool(
     // Create a minimal DenoTool instance
     let tool = DenoTool {
         name: "deno_runtime".to_string(),
-        tool_router_key: tool_router_key,
+        tool_router_key: Some(tool_router_key.clone()),
         homepage: None,
         author: "@@system.shinkai".to_string(),
         version: "1.0.0".to_string(),
@@ -157,7 +157,7 @@ pub async fn check_deno_tool(
     // Create a minimal DenoTool instance
     let tool = DenoTool {
         name: "deno_runtime".to_string(),
-        tool_router_key: tool_router_key,
+        tool_router_key: Some(tool_router_key.clone()),
         homepage: None,
         author: "@@system.shinkai".to_string(),
         version: "1.0".to_string(),
