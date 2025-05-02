@@ -61,7 +61,7 @@ pub struct ToolPlaygroundMetadata {
     pub tools: Option<Vec<ToolRouterKey>>,
     pub oauth: Option<Vec<OAuth>>,
     pub runner: RunnerType,
-    #[serde(rename = "operatingSystem")]
+    #[serde(alias = "operatingSystem", alias = "operating_system")]
     pub operating_system: Vec<OperatingSystem>,
     pub tool_set: Option<String>,
 }
