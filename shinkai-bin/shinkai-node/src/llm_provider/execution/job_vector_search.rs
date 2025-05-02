@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::result::Result::Ok;
 use std::sync::Arc;
+use std::boxed::Box;
 
 impl JobManager {
     /// Helper function to process folders and collect file information
@@ -50,6 +51,17 @@ impl JobManager {
                         *all_files_have_token_count = false;
                     }
                 }
+            } else if file_info.is_directory {
+                let sub_folder_path = ShinkaiPath::from_string(file_info.path);
+                Box::pin(Self::process_folder_contents(
+                    &sub_folder_path,
+                    sqlite_manager,
+                    parsed_file_ids,
+                    paths_map,
+                    total_tokens,
+                    all_files_have_token_count,
+                ))
+                .await?;
             }
         }
         Ok(())
