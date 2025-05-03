@@ -1,7 +1,18 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::{tool_router::ToolRouter, IdentityManager},
+    network::{
+        node_error::NodeError,
+        node_shareable_logic::{download_zip_file, ZipFileContents},
+        Node,
+    },
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 use async_channel::Sender;
 use chrono::Utc;
@@ -11,26 +22,44 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
-    }
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
-    }, shinkai_message::shinkai_message_schemas::JobMessage
+        shinkai_name::ShinkaiName,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+    },
+    shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
+    deno_tools::DenoTool,
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
 };
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    shinkai_tool::ShinkaiToolHeader,
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::{collections::HashMap, path::PathBuf};
 use std::{
-    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
+    env,
+    fs::File,
+    io::{Read, Write},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -2177,7 +2206,7 @@ impl Node {
         Ok(())
     }
 
-    async fn get_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
+    pub async fn get_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
         let mut tool = tool;
         tool.sanitize_config();
 
@@ -2425,7 +2454,7 @@ impl Node {
         node_name: String,
         signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
-        let mut zip_contents =
+        let zip_contents: ZipFileContents =
             match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
                 Ok(contents) => contents,
                 Err(err) => {
@@ -2445,10 +2474,51 @@ impl Node {
             }
         };
 
+        Node::import_tool(db, node_env, zip_contents, tool).await
+    }
+
+    pub async fn import_tool(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        mut zip_contents: ZipFileContents,
+        tool: ShinkaiTool,
+    ) -> Result<Value, APIError> {
         // Check if the tool can be enabled and enable it if possible
         let mut tool = tool.clone();
         if !tool.is_enabled() && tool.can_be_enabled() {
             tool.enable();
+        }
+
+        let tool_router_key = tool.tool_router_key().to_string_without_version();
+        match tool.clone() {
+            ShinkaiTool::Deno(_, _) => {
+                println!("Deno tool detected {}", tool_router_key);
+            }
+            ShinkaiTool::Python(_, _) => {
+                println!("Python tool detected {}", tool_router_key);
+            }
+            ShinkaiTool::Network(_, _) => {
+                println!("Network tool detected {}", tool_router_key);
+            }
+            ShinkaiTool::Rust(_, _) => {
+                println!("Rust tool detected {}. Skipping installation.", tool_router_key);
+                return Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool_key": tool_router_key,
+                    "tool": tool.clone()
+                }));
+            }
+            ShinkaiTool::Agent(_, _) => {
+                // TODO Agents might depend on other agents, so we need to handle that.
+                println!("Agent tool detected {}. Skipping installation.", tool_router_key);
+                return Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool_key": tool_router_key,
+                    "tool": tool.clone()
+                }));
+            }
         }
 
         // check if any version of the tool exists in the database
@@ -3255,7 +3325,7 @@ impl Node {
         };
 
         // Extract and parse tool.json
-        let mut buffer = Vec::new();
+        let mut buffer: Vec<u8> = Vec::new();
         {
             let mut file = match archive.by_name("__tool.json") {
                 Ok(file) => file,
@@ -3915,7 +3985,7 @@ LANGUAGE={env_language}
             tool.disable();
             tool.disable_mcp();
         }
-        
+
         if let Err(e) = db.update_tool(tool).await {
             let err = APIError {
                 code: 500,
@@ -3925,7 +3995,7 @@ LANGUAGE={env_language}
             let _ = res.send(Err(err)).await;
             return Ok(());
         }
-        
+
         let response = json!({
             "tool_router_key": tool_router_key,
             "enabled": enabled,
