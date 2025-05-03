@@ -213,7 +213,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true)) {
+        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true), None) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
