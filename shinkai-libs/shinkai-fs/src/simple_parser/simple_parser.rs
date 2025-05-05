@@ -14,7 +14,9 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 
 use crate::shinkai_fs_error::ShinkaiFsError;
 
-use std::{fmt, fs};
+use std::{
+    fmt, fs, path::{self, PathBuf}
+};
 
 use super::{local_parsing::LocalFileParser, text_group::TextGroup};
 
@@ -89,14 +91,15 @@ impl SimpleParser {
         let file_buffer = fs::read(&filepath.as_path()).map_err(|e| ShinkaiFsError::FailedIO(e.to_string()))?;
 
         // call the new function based on the file extension
+        let absolute_path = path::absolute(filepath.as_path()).map_err(|e| ShinkaiFsError::FailedIO(e.to_string()))?;
         let text_groups =
-            SimpleParser::process_file_by_extension(filepath, file_buffer, file_type, max_node_text_size).await?;
+            SimpleParser::process_file_by_extension(absolute_path, file_buffer, file_type, max_node_text_size).await?;
 
         Ok(text_groups)
     }
 
     async fn process_file_by_extension(
-        file_path: ShinkaiPath,
+        file_path: PathBuf,
         file_buffer: Vec<u8>,
         file_type: SupportedFileType,
         max_node_text_size: u64,
