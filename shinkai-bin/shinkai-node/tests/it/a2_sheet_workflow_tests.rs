@@ -5,18 +5,15 @@ use crate::it::utils::vecfs_test_utils::generate_message_with_payload;
 use super::utils::test_boilerplate::run_test_one_node_network;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider,
+    LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::sheet::{ColumnBehavior, ColumnDefinition};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIExportSheetPayload, APIImportSheetPayload, MessageSchemaType, SheetFileFormat, SpreadSheetPayload,
+    APIExportSheetPayload, APIImportSheetPayload, MessageSchemaType, SheetFileFormat, SpreadSheetPayload
 };
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
-use shinkai_message_primitives::shinkai_utils::file_encryption::{
-    aes_encryption_key_to_string, unsafe_deterministic_aes_encryption_key,
-};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::file_encryption::unsafe_deterministic_aes_encryption_key;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use tokio::time::sleep;
 use uuid::Uuid;
@@ -108,6 +105,8 @@ fn create_a_sheet_and_check_workflows() {
                 };
 
                 let agent = SerializedLLMProvider {
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     external_url: Some(server.url()),
@@ -282,6 +281,8 @@ fn import_export_sheet_tests() {
                 };
 
                 let agent = SerializedLLMProvider {
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     api_key: Some("".to_string()),

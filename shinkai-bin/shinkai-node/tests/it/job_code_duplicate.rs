@@ -116,6 +116,8 @@ fn tool_duplicate_tests() {
                 let agent = SerializedLLMProvider {
                     id: node1_llm_provider.clone().to_string(),
                     full_identity_name: agent_name,
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     external_url: Some(server.url()),
                     api_key: Some("".to_string()),
                     model: LLMProviderInterface::Ollama(ollama),
