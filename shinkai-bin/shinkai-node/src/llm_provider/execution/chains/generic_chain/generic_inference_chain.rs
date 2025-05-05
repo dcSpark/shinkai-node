@@ -613,6 +613,9 @@ impl GenericInferenceChain {
         // We'll keep a record of *every* function call + response across all iterations:
         let mut all_function_responses = Vec::new();
 
+        // NEW: Accumulate all LLM response messages
+        let mut all_llm_messages = Vec::new();
+
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
             custom_system_prompt.clone(),
@@ -641,8 +644,16 @@ impl GenericInferenceChain {
                     tool_calls_history.len()
                 );
 
+                // NEW: Join all accumulated messages for the result
+                let full_conversation = all_llm_messages
+                    .iter()
+                    .map(|msg: &String| msg.trim())
+                    .filter(|msg| !msg.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n\n");
+
                 let inference_result = InferenceChainResult::with_full_details(
-                    max_iterations_message,
+                    format!("{}\n\n{}", full_conversation, max_iterations_message),
                     None,
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
@@ -676,6 +687,9 @@ impl GenericInferenceChain {
             }
 
             let response = response_res?;
+
+            // NEW: Accumulate this LLM message
+            all_llm_messages.push(response.response_string.clone());
 
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
@@ -851,8 +865,16 @@ impl GenericInferenceChain {
                 // No more function calls required, return the final response
                 let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
 
+                // NEW: Join all accumulated messages for the result
+                let full_conversation = all_llm_messages
+                    .iter()
+                    .map(|msg: &String| msg.trim())
+                    .filter(|msg| !msg.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n\n");
+
                 let inference_result = InferenceChainResult::with_full_details(
-                    response.response_string,
+                    full_conversation,
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
