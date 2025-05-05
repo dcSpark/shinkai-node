@@ -64,6 +64,13 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::query::<HashMap<String, String>>())
         .and_then(search_shinkai_tool_handler);
+    
+    let get_shinkai_tools_by_tool_set_route = warp::path("tools_from_toolset")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(get_tools_from_toolset_handler);
 
     let add_shinkai_tool_route = warp::path("add_shinkai_tool")
         .and(warp::post())
@@ -292,6 +299,7 @@ pub fn tool_routes(
         .or(set_shinkai_tool_route)
         .or(get_shinkai_tool_route)
         .or(search_shinkai_tool_route)
+        .or(get_shinkai_tools_by_tool_set_route)
         .or(add_shinkai_tool_route)
         .or(duplicate_tool_route)
         .or(set_playground_tool_route)
@@ -2266,7 +2274,71 @@ pub struct CopyToolAssetsRequest {
     pub is_second_playground: bool,
     pub second_path: String, // app_id for playground or tool_key_path for tool
 }
+#[utoipa::path(
+    get,
+    path = "/v2/tools_from_toolset",
+    params(
+        ("tool_set_key" = String, Query, description = "The key of the toolset")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved tools from toolset", body = Vec<ShinkaiTool>), // Updated body type
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_tools_from_toolset_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query: HashMap<String, String>, // Use HashMap to extract query parameters
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
+    // Extract tool_set_key from query parameters
+    let tool_set_key = match query.get("tool_set_key") {
+        Some(key) => key.clone(),
+        None => {
+            let error = APIError {
+                code: 400,
+                error: "Bad Request".to_string(),
+                message: "Missing 'tool_set_key' query parameter".to_string(),
+            };
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetToolsFromToolset {
+            bearer,
+            tool_set_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to send V2ApiGetToolsFromToolset command: {}", e);
+            warp::reject::reject()
+        })?;
+
+    let result = res_receiver.recv().await.map_err(|e| {
+        eprintln!("Failed to receive result for V2ApiGetToolsFromToolset: {}", e);
+        warp::reject::reject()
+    })?;
+
+    match result {
+        Ok(tools) => {
+            Ok(warp::reply::with_status(warp::reply::json(&tools), StatusCode::OK))
+        }
+        Err(error) => {
+            Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), // Fallback to 500 if code is invalid
+            ))
+        }
+    }
+}
 #[utoipa::path(
     post,
     path = "/v2/copy_tool_assets",
@@ -2397,6 +2469,7 @@ pub async fn tool_check_handler(
         set_tool_mcp_enabled_handler,
         copy_tool_assets_handler,
         tool_check_handler,
+        get_tools_from_toolset_handler,
     ),
     components(
         schemas(

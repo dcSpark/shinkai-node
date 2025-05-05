@@ -929,6 +929,36 @@ impl SqliteManager {
 
         Ok(tool)
     }
+
+    /// Retrieves all ShinkaiTool entries that belong to a specific tool_set.
+    pub fn get_tools_by_tool_set(&self, tool_set_name: &str) -> Result<Vec<ShinkaiTool>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools")?;
+
+        let tool_iter = stmt.query_map([], |row| {
+            let tool_data: Vec<u8> = row.get(0)?;
+            serde_json::from_slice(&tool_data).map_err(|e| {
+                eprintln!("Deserialization error: {}", e);
+                rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
+            })
+        })?;
+
+        let mut tools = Vec::new();
+        for tool_result in tool_iter {
+            let tool: ShinkaiTool = tool_result.map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
+
+            if let Some(ts) = tool.get_tool_set() {
+                if ts == tool_set_name {
+                    tools.push(tool);
+                }
+            }
+        }
+
+        Ok(tools)
+    }
 }
 
 #[cfg(test)]
@@ -2404,5 +2434,148 @@ mod tests {
         } else {
             panic!("Retrieved tool is not a PythonTool");
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_tools_by_tool_set() {
+        let manager = setup_test_db().await;
+
+        // Tool 1: Part of "Set A"
+        let tool1 = DenoTool {
+            name: "Tool A1".to_string(),
+            author: "Author A".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "console.log('A1');".to_string(),
+            description: "Tool A1 description".to_string(),
+            tool_set: Some("Set A".to_string()),
+            // Fill in other required fields...
+            homepage: None,
+            mcp_enabled: Some(false),
+            tools: vec![],
+            config: vec![],
+            oauth: None,
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+        };
+
+        // Tool 2: Part of "Set B"
+        let tool2 = DenoTool {
+            name: "Tool B1".to_string(),
+            author: "Author B".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "console.log('B1');".to_string(),
+            description: "Tool B1 description".to_string(),
+            tool_set: Some("Set B".to_string()),
+            // Fill in other required fields...
+             homepage: None,
+            mcp_enabled: Some(false),
+            tools: vec![],
+            config: vec![],
+            oauth: None,
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+        };
+
+        // Tool 3: Part of "Set A"
+        let tool3 = PythonTool {
+            name: "Tool A2".to_string(),
+            author: "Author A".to_string(),
+            version: "1.0.0".to_string(),
+            py_code: "print('A2')".to_string(),
+            description: "Tool A2 description".to_string(),
+            tool_set: Some("Set A".to_string()),
+             // Fill in other required fields...
+            homepage: None,
+            mcp_enabled: Some(false),
+            tools: vec![],
+            config: vec![],
+            oauth: None,
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+        };
+
+        // Tool 4: No tool_set
+        let tool4 = DenoTool {
+            name: "Tool C1".to_string(),
+            author: "Author C".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "console.log('C1');".to_string(),
+            description: "Tool C1 description".to_string(),
+            tool_set: None, // No tool set assigned
+             // Fill in other required fields...
+            homepage: None,
+            mcp_enabled: Some(false),
+            tools: vec![],
+            config: vec![],
+            oauth: None,
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+        };
+
+        // Add tools to the database
+        let shinkai_tool1 = ShinkaiTool::Deno(tool1, true);
+        let shinkai_tool2 = ShinkaiTool::Deno(tool2, true);
+        let shinkai_tool3 = ShinkaiTool::Python(tool3, true);
+        let shinkai_tool4 = ShinkaiTool::Deno(tool4, true);
+
+        manager.add_tool_with_vector(shinkai_tool1, SqliteManager::generate_vector_for_testing(0.1)).unwrap();
+        manager.add_tool_with_vector(shinkai_tool2, SqliteManager::generate_vector_for_testing(0.2)).unwrap();
+        manager.add_tool_with_vector(shinkai_tool3, SqliteManager::generate_vector_for_testing(0.3)).unwrap();
+        manager.add_tool_with_vector(shinkai_tool4, SqliteManager::generate_vector_for_testing(0.4)).unwrap();
+
+        // Retrieve tools for "Set A"
+        let set_a_tools = manager.get_tools_by_tool_set("Set A").unwrap();
+        assert_eq!(set_a_tools.len(), 2);
+        assert!(set_a_tools.iter().any(|t| t.name() == "Tool A1"));
+        assert!(set_a_tools.iter().any(|t| t.name() == "Tool A2"));
+
+        // Retrieve tools for "Set B"
+        let set_b_tools = manager.get_tools_by_tool_set("Set B").unwrap();
+        assert_eq!(set_b_tools.len(), 1);
+        assert_eq!(set_b_tools[0].name(), "Tool B1");
+
+        // Retrieve tools for a non-existent set
+        let set_c_tools = manager.get_tools_by_tool_set("Set C").unwrap();
+        assert_eq!(set_c_tools.len(), 0);
     }
 }

@@ -2709,6 +2709,7 @@ impl Node {
                     let _ = Node::v2_api_remove_tool(db_clone, bearer, tool_key, res).await;
                 });
             }
+            // Implement Here
             NodeCommand::V2ApiResolveShinkaiFileProtocol {
                 bearer,
                 shinkai_file_protocol,
@@ -3205,6 +3206,16 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::V2ApiGetToolsFromToolset {
+                bearer,
+                tool_set_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tools_from_toolset(db_clone, bearer, tool_set_key, res).await;
                 });
             }
             NodeCommand::V2ApiCheckTool {

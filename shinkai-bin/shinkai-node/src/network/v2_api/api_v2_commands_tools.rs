@@ -4081,6 +4081,26 @@ LANGUAGE={env_language}
         Ok(())
     }
 
+    pub async fn v2_api_get_tools_from_toolset(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_set_key: String,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    ) {
+        let result = match db.get_tools_by_tool_set(&tool_set_key) {
+            Ok(tools) => Ok(tools),
+            Err(e) => {
+                eprintln!("Error getting tools by toolset '{}': {}", tool_set_key, e);
+                Err(APIError {
+                    code: 500,
+                    error: "Failed to retrieve tools".to_string(),
+                    message: format!("Failed to retrieve tools for toolset '{}': {}", tool_set_key, e),
+                })
+            }
+        };
+        let _ = res.send(result).await;
+    }
+
     pub async fn v2_api_copy_tool_assets(
         db: Arc<SqliteManager>,
         bearer: String,

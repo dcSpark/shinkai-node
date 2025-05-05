@@ -816,6 +816,11 @@ pub enum NodeCommand {
         payload: APIAddOllamaModels,
         res: Sender<Result<(), APIError>>,
     },
+    V2ApiGetToolsFromToolset {
+        bearer: String,
+        tool_set_key: String,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    },
     V2ApiGetToolOffering {
         bearer: String,
         tool_key_name: String,
