@@ -72,7 +72,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -81,7 +81,7 @@ mod tests {
     async fn test_update_and_get_supported_embedding_models() {
         let manager = setup_test_db();
         let models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
         )];
 
         // Insert the models
@@ -92,7 +92,7 @@ mod tests {
         assert_eq!(models, updated_models);
 
         let new_models = vec![
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM),
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs),
         ];
 

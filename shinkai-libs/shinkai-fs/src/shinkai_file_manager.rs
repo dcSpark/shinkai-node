@@ -581,7 +581,7 @@ mod tests {
 
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -631,7 +631,7 @@ mod tests {
 
         // Create a mock embedding generator
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
         let generator = MockGenerator::new(model_type, 384); // 128 is the number of floats in the mock embedding
 
         (db, dir, ShinkaiPath::from_string(file_path), generator)
