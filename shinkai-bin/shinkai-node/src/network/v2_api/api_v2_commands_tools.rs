@@ -1,7 +1,18 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::{tool_router::ToolRouter, IdentityManager},
+    network::{
+        node_error::NodeError,
+        node_shareable_logic::{download_zip_file, ZipFileContents},
+        Node,
+    },
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 use async_channel::Sender;
 use chrono::Utc;
@@ -11,26 +22,37 @@ use serde_json::{json, Map, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
-    }
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
-    }, shinkai_message::shinkai_message_schemas::JobMessage
+        shinkai_name::ShinkaiName,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+    },
+    shinkai_message::shinkai_message_schemas::JobMessage,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
     deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}
 };
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    shinkai_tool::ShinkaiToolHeader,
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::{collections::HashMap, path::PathBuf};
 use std::{
-    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
+    env,
+    fs::File,
+    io::{Read, Write},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -503,6 +525,62 @@ impl Node {
         }
     }
 
+    /// Merges tool, handling both existing and new configs.
+    /// This method supports modifying existing config items and adding new ones,
+    /// but does not support deleting config items.
+    pub fn merge_tool(existing_tool_value: &Value, input_value: &Value) -> Value {
+        let mut merged_value = Self::merge_json(existing_tool_value.clone(), input_value.clone());
+
+        if let Some(Value::Array(input_configs)) = input_value
+            .get("content")
+            .and_then(|v| v.as_array().and_then(|v| v.first()).and_then(|v| v.get("config")))
+        {
+            let existing_configs = existing_tool_value
+                .get("content")
+                .and_then(|v| v.as_array().and_then(|v| v.first()).and_then(|v| v.get("config")))
+                .and_then(|v| v.as_array())
+                .unwrap_or(&vec![])
+                .to_vec();
+            let mut new_configs = existing_configs;
+
+            // For each input config, either merge with existing or add new
+            for input_config in input_configs {
+                let input_key_name = input_config
+                    .get("BasicConfig")
+                    .and_then(|c| c.get("key_name"))
+                    .and_then(|k| k.as_str());
+
+                if let Some(key_name) = input_key_name {
+                    // Try to find matching existing config
+                    if let Some(existing_idx) = new_configs.iter().position(|c| {
+                        c.get("BasicConfig")
+                            .and_then(|c| c.get("key_name"))
+                            .and_then(|k| k.as_str())
+                            == Some(key_name)
+                    }) {
+                        // Merge with existing config
+                        new_configs[existing_idx] =
+                            Self::merge_json(new_configs[existing_idx].clone(), input_config.clone());
+                    } else {
+                        // Add new config
+                        new_configs.push(input_config.clone());
+                    }
+                }
+            }
+
+            // Update the merged value with new configs
+            if let Some(content_array) = merged_value.get_mut("content").and_then(|v| v.as_array_mut()) {
+                if let Some(first_content) = content_array.get_mut(0) {
+                    if let Some(obj) = first_content.as_object_mut() {
+                        obj.insert("config".to_string(), Value::Array(new_configs));
+                    }
+                }
+            }
+        }
+
+        merged_value
+    }
+
     pub async fn v2_api_set_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -552,8 +630,7 @@ impl Node {
             }
         };
 
-        // Merge existing_tool_value with input_value
-        let merged_value = Self::merge_json(existing_tool_value, input_value);
+        let merged_value = Self::merge_tool(&existing_tool_value, &input_value);
 
         // Convert merged_value to ShinkaiTool
         let merged_tool: ShinkaiTool = match serde_json::from_value(merged_value) {
@@ -1180,6 +1257,7 @@ impl Node {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         extra_config: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1207,6 +1285,7 @@ impl Node {
             parameters,
             tool_id,
             app_id,
+            agent_id,
             llm_provider,
             tool_configs,
             identity_manager,
@@ -1245,6 +1324,7 @@ impl Node {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         extra_config: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -1265,6 +1345,7 @@ impl Node {
             parameters,
             tool_id,
             app_id,
+            agent_id,
             tool_configs,
             identity_manager,
             job_manager,
@@ -1303,6 +1384,7 @@ impl Node {
         oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         node_name: ShinkaiName,
         mounts: Option<Vec<String>>,
@@ -1336,6 +1418,7 @@ impl Node {
             db,
             tool_id,
             app_id,
+            agent_id,
             llm_provider,
             bearer,
             node_name,
@@ -2131,7 +2214,7 @@ impl Node {
         Ok(())
     }
 
-    async fn get_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
+    pub async fn get_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
         let mut tool = tool;
         tool.sanitize_config();
 
@@ -2379,7 +2462,7 @@ impl Node {
         node_name: String,
         signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
-        let mut zip_contents =
+        let zip_contents: ZipFileContents =
             match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
                 Ok(contents) => contents,
                 Err(err) => {
@@ -2399,10 +2482,51 @@ impl Node {
             }
         };
 
+        Node::import_tool(db, node_env, zip_contents, tool).await
+    }
+
+    pub async fn import_tool(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        mut zip_contents: ZipFileContents,
+        tool: ShinkaiTool,
+    ) -> Result<Value, APIError> {
         // Check if the tool can be enabled and enable it if possible
         let mut tool = tool.clone();
         if !tool.is_enabled() && tool.can_be_enabled() {
             tool.enable();
+        }
+
+        let tool_router_key = tool.tool_router_key().to_string_without_version();
+        match tool.clone() {
+            ShinkaiTool::Deno(_, _) => {
+                println!("Deno tool detected {}", tool_router_key);
+            }
+            ShinkaiTool::Python(_, _) => {
+                println!("Python tool detected {}", tool_router_key);
+            }
+            ShinkaiTool::Network(_, _) => {
+                println!("Network tool detected {}", tool_router_key);
+            }
+            ShinkaiTool::Rust(_, _) => {
+                println!("Rust tool detected {}. Skipping installation.", tool_router_key);
+                return Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool_key": tool_router_key,
+                    "tool": tool.clone()
+                }));
+            }
+            ShinkaiTool::Agent(_, _) => {
+                // TODO Agents might depend on other agents, so we need to handle that.
+                println!("Agent tool detected {}. Skipping installation.", tool_router_key);
+                return Ok(json!({
+                    "status": "success",
+                    "message": "Tool imported successfully",
+                    "tool_key": tool_router_key,
+                    "tool": tool.clone()
+                }));
+            }
         }
 
         // check if any version of the tool exists in the database
@@ -2765,8 +2889,14 @@ impl Node {
         let tool_key_name = tool_router_key.to_string_without_version();
         let version = tool_router_key.version;
 
-        // Attempt to remove the playground tool first
-        let _ = db_write.remove_tool_playground(&tool_key);
+        // Attempt to remove the playground tool first, warn on failure but continue
+        if let Err(e) = db_write.remove_tool_playground(&tool_key) {
+            log::warn!(
+                "Attempt to remove associated playground tool for key '{}' failed (this might be expected if none exists): {}. Continuing with main tool removal.",
+                tool_key,
+                e
+            );
+        }
 
         // Remove the tool from the database
         match db_write.remove_tool(&tool_key_name, version) {
@@ -3216,7 +3346,7 @@ impl Node {
         };
 
         // Extract and parse tool.json
-        let mut buffer = Vec::new();
+        let mut buffer: Vec<u8> = Vec::new();
         {
             let mut file = match archive.by_name("__tool.json") {
                 Ok(file) => file,
@@ -3847,48 +3977,52 @@ LANGUAGE={env_language}
         }
 
         // Get the tool first to verify it exists
-        match db.get_tool_by_key(&tool_router_key) {
-            Ok(mut tool) => {
-                // Update the enabled status using the appropriate method
-                if enabled {
-                    tool.enable();
-                } else {
-                    tool.disable();
-                    tool.disable_mcp();
-                }
-
-                // Save the updated tool
-                match db.update_tool(tool).await {
-                    Ok(_) => {
-                        let response = json!({
-                            "tool_router_key": tool_router_key,
-                            "enabled": enabled,
-                            "success": true
-                        });
-                        let _ = res.send(Ok(response)).await;
-                    }
-                    Err(e) => {
-                        let _ = res
-                            .send(Err(APIError {
-                                code: 500,
-                                error: "Failed to update tool".to_string(),
-                                message: format!("Failed to update tool: {}", e),
-                            }))
-                            .await;
-                    }
-                }
-            }
+        let mut tool = match db.get_tool_by_key(&tool_router_key) {
+            Ok(t) => t,
             Err(_) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: 404,
-                        error: "Tool not found".to_string(),
-                        message: format!("Tool with key '{}' not found", tool_router_key),
-                    }))
-                    .await;
+                let err = APIError {
+                    code: 404,
+                    error: "Tool not found".to_string(),
+                    message: format!("Tool not found: {}", tool_router_key),
+                };
+                let _ = res.send(Err(err)).await;
+                return Ok(());
             }
+        };
+        // Check if the tool can be enabled
+        if enabled && !tool.can_be_enabled() {
+            let err = APIError {
+                code: 400,
+                error: "Tool Cannot Be Enabled".to_string(),
+                message: "Tool Cannot Be Enabled".to_string(),
+            };
+            let _ = res.send(Err(err)).await;
+            return Ok(());
+        }
+        // Enable or disable the tool
+        if enabled {
+            tool.enable();
+        } else {
+            tool.disable();
+            tool.disable_mcp();
         }
 
+        if let Err(e) = db.update_tool(tool).await {
+            let err = APIError {
+                code: 500,
+                error: "Failed to update tool".to_string(),
+                message: format!("Failed to update tool: {}", e),
+            };
+            let _ = res.send(Err(err)).await;
+            return Ok(());
+        }
+
+        let response = json!({
+            "tool_router_key": tool_router_key,
+            "enabled": enabled,
+            "success": true
+        });
+        let _ = res.send(Ok(response)).await;
         Ok(())
     }
 
@@ -4348,7 +4482,158 @@ mod tests {
             "type": "Workflow"
         });
 
-        let merged_value = Node::merge_json(existing_tool_value, input_value);
+        let merged_value = Node::merge_tool(&existing_tool_value, &input_value);
         assert_eq!(merged_value, expected_merged_value);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_update_existing() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "Updated API Key",
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_config = merged["content"][0]["config"][0]["BasicConfig"].as_object().unwrap();
+        assert_eq!(merged_config["description"], "Updated API Key");
+    }
+
+    #[test]
+    fn test_merge_tool_configs_add_new() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "new_config",
+                            "description": "New Config",
+                            "required": false,
+                            "type_name": "string",
+                            "key_value": "new_value"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_configs = merged["content"][0]["config"].as_array().unwrap();
+        assert_eq!(merged_configs.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_empty_existing() {
+        let existing_tool = json!({
+            "content": [{
+                "config": []
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "new_config",
+                            "description": "New Config",
+                            "required": false,
+                            "type_name": "string",
+                            "key_value": "new_value"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_configs = merged["content"][0]["config"].as_array().unwrap();
+        assert_eq!(merged_configs.len(), 1);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_update_dont_override_wrong_key() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    },
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key2",
+                            "description": "API Key 2",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key2"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key2",
+                            "description": "Updated API Key 2",
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_config = merged["content"][0]["config"][0]["BasicConfig"].as_object().unwrap();
+        assert_eq!(merged_config["key_name"], "api_key");
+        assert_eq!(merged["content"][0]["config"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["content"][0]["config"][1]["BasicConfig"]["key_name"], "api_key2");
     }
 }

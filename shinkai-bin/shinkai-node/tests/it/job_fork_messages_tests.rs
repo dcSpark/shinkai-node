@@ -314,6 +314,7 @@ fn test_fork_job_messages() {
                         limit: None,
                         offset: None,
                         show_hidden: None,
+                        agent_id: None,
                         res: res2_sender,
                     })
                     .await

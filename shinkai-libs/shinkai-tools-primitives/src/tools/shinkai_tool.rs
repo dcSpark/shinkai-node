@@ -6,7 +6,8 @@ use serde_json::{self, Value};
 
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}
+    indexable_version::IndexableVersion,
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
 };
 
 use super::agent_tool_wrapper::AgentToolWrapper;
@@ -14,7 +15,8 @@ use super::tool_config::OAuth;
 use super::tool_playground::{SqlQuery, SqlTable};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
-    deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
+    deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
+    tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
 };
 
 pub type IsEnabled = bool;

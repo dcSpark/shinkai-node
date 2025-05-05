@@ -540,6 +540,7 @@ pub enum NodeCommand {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     },
     V2ApiGetAllSmartInboxesPaginated {
@@ -547,6 +548,7 @@ pub enum NodeCommand {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiUpdateSmartInboxName {
@@ -982,6 +984,7 @@ pub enum NodeCommand {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         extra_config: Map<String, Value>,
         mounts: Option<Vec<String>>,
@@ -992,6 +995,7 @@ pub enum NodeCommand {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         extra_config: Map<String, Value>,
         mounts: Option<Vec<String>>,
         res: Sender<Result<Value, APIError>>,
@@ -1013,6 +1017,7 @@ pub enum NodeCommand {
         oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         mounts: Option<Vec<String>>,
         runner: Option<RunnerType>,
@@ -1332,5 +1337,9 @@ pub enum NodeCommand {
         bearer: String,
         payload: HashMap<String, serde_json::Value>,
         res: Sender<Result<String, APIError>>,
+    },
+    V2ApiGetPreferences {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
     },
 }

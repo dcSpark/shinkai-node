@@ -538,22 +538,58 @@ impl GenericInferenceChain {
         // First, attempt to use the custom_prompt from the job's config.
         // If it doesn't exist, fall back to the agent's custom_prompt if the
         // llm_provider is an Agent.
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone()).or_else(|| {
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                agent.config.as_ref().and_then(|config| config.custom_prompt.clone())
-            } else {
-                None
-            }
-        });
-
-        let custom_system_prompt = job_config
-            .and_then(|config| config.custom_system_prompt.clone())
+        let custom_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_prompt exists and is not empty
+                config
+                    .custom_prompt
+                    .clone()
+                    .and_then(|prompt| if prompt.is_empty() { None } else { Some(prompt) })
+            })
             .or_else(|| {
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                    agent
-                        .config
-                        .as_ref()
-                        .and_then(|config| config.custom_system_prompt.clone())
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_prompt.clone().and_then(
+                            |prompt| {
+                                if prompt.is_empty() {
+                                    None
+                                } else {
+                                    Some(prompt)
+                                }
+                            },
+                        )
+                    })
+                } else {
+                    None
+                }
+            });
+
+        let custom_system_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_system_prompt exists and is not empty
+                config.custom_system_prompt.clone().and_then(
+                    |prompt| {
+                        if prompt.is_empty() {
+                            None
+                        } else {
+                            Some(prompt)
+                        }
+                    },
+                )
+            })
+            .or_else(|| {
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_system_prompt.clone().and_then(|prompt| {
+                            if prompt.is_empty() {
+                                None
+                            } else {
+                                Some(prompt)
+                            }
+                        })
+                    })
                 } else {
                     None
                 }

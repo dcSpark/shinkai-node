@@ -22,6 +22,7 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     custom_tools
         .push(tool_implementation::native_tools::llm_map_reduce_processor::LlmMapReduceProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::new().tool);
+    custom_tools.push(tool_implementation::native_tools::agent_processor::AgentPromptProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::config_setup::ConfigSetupTool::new().tool);

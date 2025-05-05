@@ -78,6 +78,7 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::header::<String>("x-shinkai-tool-id"))
         .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::header::optional::<String>("x-shinkai-agent-id"))
         .and(warp::body::json())
         .and_then(tool_execution_handler);
     
@@ -144,6 +145,7 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::header::<String>("x-shinkai-tool-id"))
         .and(warp::header::<String>("x-shinkai-app-id"))
+        .and(warp::header::optional::<String>("x-shinkai-agent-id"))
         .and(warp::body::json())
         .and_then(code_execution_handler);
 
@@ -425,6 +427,7 @@ pub async fn tool_execution_handler(
     authorization: String,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     payload: ToolExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {    
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -456,6 +459,7 @@ pub async fn tool_execution_handler(
             parameters,
             tool_id: safe_folder_name(&tool_id),
             app_id: safe_folder_name(&app_id),
+            agent_id: agent_id.map(|id| safe_folder_name(&id)),
             llm_provider: payload.llm_provider.clone(),
             extra_config,
             mounts: payload.mounts,
@@ -1145,6 +1149,7 @@ pub async fn code_execution_handler(
     authorization: String,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     payload: CodeExecutionRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
@@ -1180,6 +1185,7 @@ pub async fn code_execution_handler(
             oauth: payload.oauth,
             tool_id: safe_folder_name(&tool_id),
             app_id: safe_folder_name(&app_id),
+            agent_id: agent_id.map(|id| safe_folder_name(&id)),
             llm_provider: payload.llm_provider,
             mounts: payload.mounts,
             runner: payload.runner,

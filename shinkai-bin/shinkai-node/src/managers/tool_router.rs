@@ -9,6 +9,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
+use crate::tools::tool_execution::execution_coordinator::override_tool_config;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
@@ -631,11 +632,31 @@ impl ToolRouter {
         unique_files.extend(additional_files.into_iter());
         let all_files: Vec<_> = unique_files.into_iter().collect();
 
+        let agent_id = if let ProviderOrAgent::Agent(agent) = context.agent() {
+            Some(agent.clone().agent_id)
+        } else {
+            None
+        };
+
+        // If agent_id is provided, get the agent's tool config overrides and merge with extra_config
+        let function_config = shinkai_tool.get_config_from_env();
+        let mut function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+        let agent = context.agent().clone();
+        match agent {
+            ProviderOrAgent::Agent(agent) => {
+                if let Some(agent_id) = &agent_id {
+                    function_config_vec = override_tool_config(
+                        shinkai_tool.tool_router_key().to_string_without_version().clone(),
+                        agent,
+                        function_config_vec.clone(),
+                    );
+                }
+            }
+            _ => {}
+        }
+
         match shinkai_tool {
             ShinkaiTool::Python(python_tool, _is_enabled) => {
-                let function_config = shinkai_tool.get_config_from_env();
-                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
-
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
                     .node_storage_path
@@ -671,6 +692,7 @@ impl ToolRouter {
                     context.agent().clone().get_id().to_string(),
                     tool_id.clone(),
                     app_id.clone(),
+                    agent_id,
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     app_id.clone(),
                     &python_tool.oauth,
@@ -717,8 +739,6 @@ impl ToolRouter {
                 };
 
                 let tool_id = shinkai_tool.tool_router_key().to_string_without_version().clone();
-                let function_config = shinkai_tool.get_config_from_env();
-                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
 
                 let db = context.db();
                 let llm_provider = context.agent().get_llm_provider_id().to_string();
@@ -817,9 +837,6 @@ impl ToolRouter {
                 });
             }
             ShinkaiTool::Deno(deno_tool, _is_enabled) => {
-                let function_config = shinkai_tool.get_config_from_env();
-                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
-
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env
                     .node_storage_path
@@ -855,6 +872,7 @@ impl ToolRouter {
                     context.agent().clone().get_id().to_string(),
                     app_id.clone(),
                     tool_id.clone(),
+                    agent_id,
                     shinkai_tool.tool_router_key().to_string_without_version().clone(),
                     app_id.clone(),
                     &deno_tool.oauth,
@@ -1219,6 +1237,7 @@ impl ToolRouter {
             "".to_string(),
             format!("xid-{}", app_id),
             format!("xid-{}", tool_id),
+            None,
             shinkai_tool.tool_router_key().clone().to_string_without_version(),
             // TODO: Pass data from the API
             "".to_string(),

@@ -187,6 +187,20 @@ impl SqliteManager {
 
     fn migrate_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::migrate_tools_table(conn)?;
+        Self::migrate_agents_table(conn)?;
+        Ok(())
+    }
+
+    fn migrate_agents_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if tool_config_override column exists
+        let mut stmt = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'tools_config_override'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // Add the column if it doesn't exist
+        if column_exists == 0 {
+            conn.execute("ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT", [])?;
+        }
         Ok(())
     }
 
@@ -209,7 +223,8 @@ impl SqliteManager {
                 tools TEXT NOT NULL,
                 debug_mode INTEGER NOT NULL,
                 config TEXT, -- Store as a JSON string
-                scope TEXT NOT NULL -- Change this line to use TEXT instead of BLOB
+                scope TEXT NOT NULL, -- Change this line to use TEXT instead of BLOB
+                tools_config_override TEXT -- Store as a JSON string
             );",
             [],
         )?;
@@ -931,16 +946,52 @@ impl SqliteManager {
         vec![value; 384]
     }
 
-    // Method to set the version and determine if a global reset is needed
-    pub fn set_version(&self, version: &str) -> Result<()> {
-        // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7", "0.9.8"];
+    pub fn get_needs_global_reset(
+        current_version: &semver::Version,
+        new_version: &semver::Version,
+        breaking_versions: &[semver::Version],
+    ) -> bool {
+        let needs_global_reset = breaking_versions
+            .iter()
+            .any(|breaking_version| current_version < breaking_version && new_version >= breaking_version);
+        needs_global_reset
+    }
 
-        let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
-            breaking_versions
-                .iter()
-                .any(|&breaking_version| current_version.as_str() < breaking_version && version >= breaking_version)
-        });
+    // Method to set the version and determine if a global reset is needed
+    pub fn set_version(&self, version: &str) -> Result<(), rusqlite::Error> {
+        // Note: add breaking versions here as needed
+        let new_version = match semver::Version::parse(version) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(1),
+                    Some(format!("failed to parse new version: {}", e)),
+                ))
+            }
+        };
+
+        let breaking_versions = vec!["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7", "0.9.8"]
+            .iter()
+            .map(|v| semver::Version::parse(v))
+            .collect::<Result<Vec<semver::Version>, _>>()
+            .map_err(|e| {
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(1),
+                    Some(format!("failed to parse breaking versions: {}", e)),
+                )
+            })?;
+
+        let mut needs_global_reset = false;
+
+        if let Ok((current_version_str, _)) = self.get_version() {
+            let current_version = semver::Version::parse(&current_version_str).map_err(|e| {
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(1),
+                    Some(format!("failed to parse current version: {}", e)),
+                )
+            })?;
+            needs_global_reset = Self::get_needs_global_reset(&current_version, &new_version, &breaking_versions);
+        }
 
         let conn = self.get_connection()?;
         conn.execute("DELETE FROM app_version;", [])?;
@@ -1154,5 +1205,115 @@ mod tests {
         // Wait for both threads to complete
         handle.join().unwrap();
         read_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_needs_global_reset() {
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.19").unwrap(),
+            &semver::Version::parse("0.9.20").unwrap(),
+            &vec![
+                semver::Version::parse("0.9.0").unwrap(),
+                semver::Version::parse("0.9.1").unwrap(),
+                semver::Version::parse("0.9.2").unwrap(),
+                semver::Version::parse("0.9.3").unwrap(),
+                semver::Version::parse("0.9.4").unwrap(),
+                semver::Version::parse("0.9.5").unwrap(),
+                semver::Version::parse("0.9.7").unwrap(),
+                semver::Version::parse("0.9.8").unwrap(),
+            ],
+        );
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_needs_global_reset_edge_cases() {
+        // Test case 1: Current version is exactly at a breaking version
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.5").unwrap(),
+            &semver::Version::parse("0.9.6").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(!result);
+
+        // Test case 2: New version is exactly at a breaking version
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.4").unwrap(),
+            &semver::Version::parse("0.9.5").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 3: Current version is greater than all breaking versions
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("1.0.1").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(!result);
+
+        // Test case 4: Current version is less than all breaking versions, new version is greater than all
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.8.0").unwrap(),
+            &semver::Version::parse("1.0.0").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 5: Multiple breaking versions, current version between them
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.3").unwrap(),
+            &semver::Version::parse("0.9.7").unwrap(),
+            &vec![
+                semver::Version::parse("0.9.0").unwrap(),
+                semver::Version::parse("0.9.5").unwrap(),
+                semver::Version::parse("0.9.8").unwrap(),
+            ],
+        );
+        assert!(result);
+
+        // Test case 6: Multiple breaking versions, current version after all of them
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.9").unwrap(),
+            &semver::Version::parse("1.0.0").unwrap(),
+            &vec![
+                semver::Version::parse("0.9.0").unwrap(),
+                semver::Version::parse("0.9.5").unwrap(),
+                semver::Version::parse("0.9.8").unwrap(),
+            ],
+        );
+        assert!(!result);
+
+        // Test case 7: Empty breaking versions list
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.0").unwrap(),
+            &semver::Version::parse("1.0.0").unwrap(),
+            &vec![],
+        );
+        assert!(!result);
+
+        // Test case 8: Major version change (1.0.0 to 2.0.0)
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("2.0.0").unwrap(),
+            &vec![semver::Version::parse("1.5.0").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 9: Minor version change (1.0.0 to 1.1.0)
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("1.1.0").unwrap(),
+            &vec![semver::Version::parse("1.0.5").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 10: Patch version change (1.0.0 to 1.0.1)
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("1.0.1").unwrap(),
+            &vec![semver::Version::parse("1.0.0").unwrap()],
+        );
+        assert!(!result);
     }
 }

@@ -234,22 +234,27 @@ impl Node {
             }
             NodeCommand::V2ApiExportAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_export_agent(db_clone, bearer, agent_id, res).await;
+                    let _ = Node::v2_api_export_agent(db_clone, bearer, node_env, agent_id, res).await;
                 });
             }
             NodeCommand::V2ApiImportAgent { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent(db_clone, bearer, url, node_name, signing_secret_key, res).await;
+                    let _ =
+                        Node::v2_api_import_agent(db_clone, bearer, url, node_name, node_env, signing_secret_key, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiImportAgentZip { bearer, file_data, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent_zip(db_clone, bearer, file_data, res).await;
+                    let _ = Node::v2_api_import_agent_zip(db_clone, bearer, node_env, file_data, res).await;
                 });
             }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
@@ -1448,6 +1453,7 @@ impl Node {
                 limit,
                 offset,
                 show_hidden,
+                agent_id,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1460,6 +1466,7 @@ impl Node {
                         limit,
                         offset,
                         show_hidden,
+                        agent_id,
                         res,
                     )
                     .await;
@@ -1470,6 +1477,7 @@ impl Node {
                 limit,
                 offset,
                 show_hidden,
+                agent_id,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1482,6 +1490,7 @@ impl Node {
                         limit,
                         offset,
                         show_hidden,
+                        agent_id,
                         res,
                     )
                     .await;
@@ -1973,7 +1982,12 @@ impl Node {
                     let _ = Node::v2_api_add_shinkai_tool(db_clone, bearer, node_env, shinkai_tool, res).await;
                 });
             }
-            NodeCommand::V2ApiGetShinkaiTool { bearer, payload, serialize_config, res } => {
+            NodeCommand::V2ApiGetShinkaiTool {
+                bearer,
+                payload,
+                serialize_config,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_shinkai_tool(db_clone, bearer, payload, serialize_config, res).await;
@@ -2396,6 +2410,7 @@ impl Node {
                 parameters,
                 tool_id,
                 app_id,
+                agent_id,
                 llm_provider,
                 extra_config,
                 mounts,
@@ -2419,6 +2434,7 @@ impl Node {
                         parameters,
                         tool_id,
                         app_id,
+                        agent_id,
                         llm_provider,
                         extra_config,
                         identity_manager,
@@ -2437,6 +2453,7 @@ impl Node {
                 parameters,
                 tool_id,
                 app_id,
+                agent_id,
                 extra_config,
                 mounts,
                 res,
@@ -2457,6 +2474,7 @@ impl Node {
                         parameters,
                         tool_id,
                         app_id,
+                        agent_id,
                         extra_config,
                         identity_manager,
                         job_manager,
@@ -2479,6 +2497,7 @@ impl Node {
                 oauth,
                 tool_id,
                 app_id,
+                agent_id,
                 llm_provider,
                 mounts,
                 runner,
@@ -2505,6 +2524,7 @@ impl Node {
                         oauth,
                         tool_id,
                         app_id,
+                        agent_id,
                         llm_provider,
                         node_name,
                         mounts,
@@ -3204,6 +3224,12 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_preferences(db_clone, bearer, payload, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetPreferences { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_preferences(db_clone, bearer, res).await;
                 });
             }
             _ => (),
