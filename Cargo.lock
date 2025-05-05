@@ -6946,6 +6946,7 @@ dependencies = [
  "shinkai_message_primitives",
  "shinkai_ocr",
  "shinkai_sqlite",
+ "shinkai_tools_runner",
  "tempfile",
  "thiserror 2.0.3",
  "tokio",
@@ -7211,9 +7212,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.9.12"
+version = "0.9.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8f759172c79fc0c6304930f9e71406c059cf979b2cd95197fd2bca1a863e936"
+checksum = "74983f416643e54753518aa56958abf85649caa56a799ac282c38a821d3bc604"
 dependencies = [
  "anyhow",
  "base64-simd",

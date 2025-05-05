@@ -68,7 +68,7 @@ impl fmt::Display for SupportedFileType {
 }
 
 impl SimpleParser {
-    pub fn parse_file(filepath: ShinkaiPath, max_node_text_size: u64) -> Result<Vec<TextGroup>, ShinkaiFsError> {
+    pub async fn parse_file(filepath: ShinkaiPath, max_node_text_size: u64) -> Result<Vec<TextGroup>, ShinkaiFsError> {
         // check if file exists
         if !filepath.exists() {
             return Err(ShinkaiFsError::FileNotFoundWithPath(filepath.to_string()));
@@ -89,12 +89,14 @@ impl SimpleParser {
         let file_buffer = fs::read(&filepath.as_path()).map_err(|e| ShinkaiFsError::FailedIO(e.to_string()))?;
 
         // call the new function based on the file extension
-        let text_groups = SimpleParser::process_file_by_extension(file_buffer, file_type, max_node_text_size)?;
+        let text_groups =
+            SimpleParser::process_file_by_extension(filepath, file_buffer, file_type, max_node_text_size).await?;
 
         Ok(text_groups)
     }
 
-    fn process_file_by_extension(
+    async fn process_file_by_extension(
+        file_path: ShinkaiPath,
         file_buffer: Vec<u8>,
         file_type: SupportedFileType,
         max_node_text_size: u64,
@@ -107,7 +109,9 @@ impl SimpleParser {
             SupportedFileType::Md => LocalFileParser::process_md_file(file_buffer, max_node_text_size),
             SupportedFileType::Pdf => LocalFileParser::process_pdf_file(file_buffer, max_node_text_size),
             SupportedFileType::Docx => LocalFileParser::process_docx_file(file_buffer, max_node_text_size),
-            SupportedFileType::Xlsx => LocalFileParser::process_xlsx_file(file_buffer, max_node_text_size),
+            SupportedFileType::Xlsx => {
+                LocalFileParser::process_xlsx_file_async(file_path.as_path().to_path_buf(), max_node_text_size).await
+            }
             SupportedFileType::Xls => LocalFileParser::process_xls_file(file_buffer, max_node_text_size),
             _ => Err(ShinkaiFsError::UnsupportedFileType(file_type.to_string())),
         }
@@ -122,8 +126,8 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    #[test]
-    fn test_parse_csv_file() {
+    #[tokio::test]
+    async fn test_parse_csv_file() {
         let _dir = testing_create_tempdir_and_set_env_var();
 
         let shinkai_path = ShinkaiPath::from_string("test.csv".to_string());
@@ -134,7 +138,7 @@ mod tests {
         writeln!(file, "value1,value2").unwrap();
 
         // Call the parse_file function
-        let result = SimpleParser::parse_file(shinkai_path, 1024);
+        let result = SimpleParser::parse_file(shinkai_path, 1024).await;
 
         // Assert the result is Ok and contains expected data
         assert!(result.is_ok());
@@ -142,8 +146,8 @@ mod tests {
         assert!(!text_groups.is_empty());
     }
 
-    #[test]
-    fn test_parse_large_csv_file() {
+    #[tokio::test]
+    async fn test_parse_large_csv_file() {
         let _dir = testing_create_tempdir_and_set_env_var();
 
         // Create a ShinkaiPath directly
@@ -157,7 +161,7 @@ mod tests {
         }
 
         // Call the parse_file function with a smaller max_node_text_size
-        let result = SimpleParser::parse_file(shinkai_path, 20);
+        let result = SimpleParser::parse_file(shinkai_path, 20).await;
 
         // Assert the result is Ok and contains expected data
         assert!(result.is_ok());
