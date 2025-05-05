@@ -7,7 +7,7 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
+use shinkai_tools_primitives::tools::agent_tool_wrapper::{self, AgentToolWrapper};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::collections::HashMap;
 use std::fs::File;
@@ -141,15 +141,15 @@ async fn calculate_zip_dependencies(
     return Ok(());
 }
 
-async fn add_dependencies_to_zip(
+async fn get_dependencies_for_zip(
     db: Arc<SqliteManager>,
     shinkai_name: ShinkaiName,
     node_env: NodeEnvironment,
-    zip: &mut ZipWriter<File>,
     agent_dependencies: &HashMap<String, Agent>,
     tool_dependencies: &HashMap<String, ShinkaiTool>,
-) -> Result<(), NodeError> {
-    for (agent_id, agent) in agent_dependencies {
+) -> Result<HashMap<String, Vec<u8>>, NodeError> {
+    let mut zip_files = HashMap::new();
+    for (agent_id, _) in agent_dependencies {
         let agent_bytes = match Box::pin(generate_agent_zip(
             db.clone(),
             shinkai_name.clone(),
@@ -167,17 +167,7 @@ async fn add_dependencies_to_zip(
             }
         };
 
-        zip.start_file::<_, ()>(
-            format!("__agents/{}.zip", agent_id.replace(':', "_")),
-            FileOptions::default(),
-        )
-        .map_err(|e| NodeError {
-            message: format!("Failed to create agent file in zip: {}", e),
-        })?;
-
-        zip.write_all(&agent_bytes).map_err(|e| NodeError {
-            message: format!("Failed to write agent data to zip: {}", e),
-        })?;
+        zip_files.insert(format!("__agents/{}.zip", agent_id.replace(':', "_")), agent_bytes);
     }
 
     for (tool_key, tool) in tool_dependencies {
@@ -185,36 +175,33 @@ async fn add_dependencies_to_zip(
             ShinkaiTool::Deno(_, _) => (),
             ShinkaiTool::Python(_, _) => (),
             ShinkaiTool::Rust(_, _) => {
-                println!("No including rust tool in zip");
+                println!("Not including rust tool in zip");
                 continue;
             }
             ShinkaiTool::Agent(_, _) => {
-                println!("No including agent tool in zip");
+                println!("Not including agent tool in zip");
                 continue;
             }
             ShinkaiTool::Network(_, _) => (),
         }
 
-        let tool_bytes =
-            match generate_tool_zip(db.clone(), shinkai_name.clone(), node_env.clone(), tool.clone(), true).await {
-                Ok(bytes) => bytes,
-                Err(err) => return Err(NodeError::from(err)),
-            };
+        let tool_bytes = match Box::pin(generate_tool_zip(
+            db.clone(),
+            shinkai_name.clone(),
+            node_env.clone(),
+            tool.clone(),
+            false,
+        ))
+        .await
+        {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(NodeError::from(err)),
+        };
 
-        zip.start_file::<_, ()>(
-            format!("__tools/{}.zip", tool_key.replace(':', "_")),
-            FileOptions::default(),
-        )
-        .map_err(|e| NodeError {
-            message: format!("Failed to create tool file in zip: {}", e),
-        })?;
-
-        zip.write_all(&tool_bytes).map_err(|e| NodeError {
-            message: format!("Failed to write tool data to zip: {}", e),
-        })?;
+        zip_files.insert(format!("__tools/{}.zip", tool_key.replace(':', "_")), tool_bytes);
     }
 
-    Ok(())
+    Ok(zip_files)
 }
 
 pub async fn generate_agent_zip(
@@ -253,18 +240,7 @@ pub async fn generate_agent_zip(
         Err(err) => return Err(internal_error(format!("Failed to create zip file: {}", err))),
     };
 
-    let mut zip = ZipWriter::new(file);
-
-    // Add the agent JSON to the zip file
-    if let Err(err) = zip.start_file::<_, ()>("__agent.json", FileOptions::default()) {
-        return Err(internal_error(format!("Failed to create agent file in zip: {}", err)));
-    }
-
-    if let Err(err) = zip.write_all(&agent_bytes) {
-        return Err(internal_error(format!("Failed to write agent data to zip: {}", err)));
-    }
-
-    if add_dependencies {
+    let zip_files: Result<HashMap<String, Vec<u8>>, APIError> = if add_dependencies {
         // Add the dependencies to the zip file
         let mut tool_dependencies = HashMap::new();
         let mut agent_dependencies = HashMap::new();
@@ -272,31 +248,68 @@ pub async fn generate_agent_zip(
             db.clone(),
             shinkai_name.clone(),
             None,
-            Some(agent),
+            Some(agent.clone()),
             &mut agent_dependencies,
             &mut tool_dependencies,
         ))
         .await?;
 
-        Box::pin(add_dependencies_to_zip(
+        // Remove self from dependencies
+        agent_dependencies.remove(&agent_id);
+        let agent_tool_wrapper = ShinkaiTool::Agent(
+            AgentToolWrapper::new(
+                agent.agent_id.clone(),
+                agent.name.clone(),
+                agent.ui_description.clone(),
+                shinkai_name.get_node_name_string(),
+                None,
+            ),
+            true,
+        )
+        .tool_router_key()
+        .to_string_with_version();
+        tool_dependencies.remove(&agent_tool_wrapper);
+        println!("For agent: {}", agent_id);
+        println!("Agent dependencies: {:?}", agent_dependencies);
+        println!("Tool dependencies: {:?}", tool_dependencies);
+
+        let mut zip_files = get_dependencies_for_zip(
             db.clone(),
             shinkai_name,
             node_env,
-            &mut zip,
             &agent_dependencies,
             &tool_dependencies,
-        ))
+        )
         .await
         .map_err(|e| internal_error(format!("Failed to add dependencies to zip: {}", e)))?;
-    }
 
+        zip_files.insert("__agent.json".to_string(), agent_bytes);
+        Ok(zip_files)
+    } else {
+        let mut zip_files = HashMap::new();
+        zip_files.insert("__agent.json".to_string(), agent_bytes);
+        Ok(zip_files)
+    };
+    if let Err(err) = zip_files {
+        return Err(err);
+    }
+    let zip_files = zip_files.unwrap();
+
+    let mut zip = ZipWriter::new(file);
+    for (file_name, file_bytes) in zip_files {
+        if let Err(err) = zip.start_file::<_, ()>(file_name, FileOptions::default()) {
+            return Err(internal_error(format!("Failed to create file in zip: {}", err)));
+        }
+        if let Err(err) = zip.write_all(&file_bytes) {
+            return Err(internal_error(format!("Failed to write file data to zip: {}", err)));
+        }
+    }
     // Finalize the zip file
     if let Err(err) = zip.finish() {
         return Err(internal_error(format!("Failed to finalize zip file: {}", err)));
     }
-
     // Read the zip file into memory
-    let file_bytes = fs::read(&path).await.map_err(|e| APIError {
+    let file_bytes: Vec<u8> = fs::read(&path).await.map_err(|e| APIError {
         code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
         error: "Internal Server Error".to_string(),
         message: format!("Failed to read zip file: {}", e),
@@ -331,7 +344,50 @@ pub async fn generate_tool_zip(
     let path = std::env::temp_dir().join(&name);
     let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
 
-    let mut zip = ZipWriter::new(file);
+    let zip_files: Result<HashMap<String, Vec<u8>>, NodeError> = if add_dependencies {
+        // Add the dependencies to the zip file
+        let mut tool_dependencies = HashMap::new();
+        let mut agent_dependencies = HashMap::new();
+        calculate_zip_dependencies(
+            db.clone(),
+            shinkai_name.clone(),
+            Some(tool.clone()),
+            None,
+            &mut agent_dependencies,
+            &mut tool_dependencies,
+        )
+        .await
+        .map_err(|e| NodeError {
+            message: format!("Failed to calculate dependencies: {}", e.message),
+        })?;
+        // Remove self from dependencies
+        tool_dependencies.remove(&tool.tool_router_key().to_string_with_version());
+        println!("For tool: {}", tool.tool_router_key().to_string_without_version());
+        println!("Agent dependencies: {:?}", agent_dependencies);
+        println!("Tool dependencies: {:?}", tool_dependencies);
+
+        let mut zip_files = get_dependencies_for_zip(
+            db.clone(),
+            shinkai_name,
+            node_env.clone(),
+            &agent_dependencies,
+            &tool_dependencies,
+        )
+        .await
+        .map_err(|e| NodeError {
+            message: format!("Failed to add dependencies to zip: {}", e.message),
+        })?;
+        zip_files.insert("__tool.json".to_string(), tool_bytes);
+        Ok(zip_files)
+    } else {
+        let mut zip_files: HashMap<String, Vec<u8>> = HashMap::new();
+        zip_files.insert("__tool.json".to_string(), tool_bytes);
+        Ok(zip_files)
+    };
+    if let Err(err) = zip_files {
+        return Err(err);
+    }
+    let mut zip_files = zip_files.unwrap();
 
     let assets = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
         .join(".tools_storage")
@@ -343,48 +399,20 @@ pub async fn generate_tool_zip(
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_file() {
-                zip.start_file::<_, ()>(path.file_name().unwrap().to_str().unwrap(), FileOptions::default())
-                    .unwrap();
-                zip.write_all(&fs::read(path).await.unwrap()).unwrap();
+                zip_files.insert(
+                    path.file_name().unwrap().to_str().unwrap().to_string(),
+                    fs::read(path).await.unwrap(),
+                );
             }
         }
     }
 
-    zip.start_file::<_, ()>("__tool.json", FileOptions::default())
-        .map_err(|e| NodeError::from(e.to_string()))?;
-    zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
-
-    if add_dependencies {
-        // Add the dependencies to the zip file
-        let mut tool_dependencies = HashMap::new();
-        let mut agent_dependencies = HashMap::new();
-        Box::pin(calculate_zip_dependencies(
-            db.clone(),
-            shinkai_name.clone(),
-            Some(tool),
-            None,
-            &mut agent_dependencies,
-            &mut tool_dependencies,
-        ))
-        .await
-        .map_err(|e| NodeError {
-            message: format!("Failed to calculate dependencies: {}", e.message),
-        })?;
-
-        Box::pin(add_dependencies_to_zip(
-            db.clone(),
-            shinkai_name,
-            node_env.clone(),
-            &mut zip,
-            &agent_dependencies,
-            &tool_dependencies,
-        ))
-        .await
-        .map_err(|e| NodeError {
-            message: format!("Failed to add dependencies to zip: {}", e.message),
-        })?;
+    let mut zip = ZipWriter::new(file);
+    for (file_name, file_bytes) in zip_files {
+        zip.start_file::<_, ()>(file_name, FileOptions::default())
+            .map_err(|e| NodeError::from(e.to_string()))?;
+        zip.write_all(&file_bytes).map_err(|e| NodeError::from(e.to_string()))?;
     }
-
     zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
 
     println!("Zip file created successfully!");
@@ -473,7 +501,7 @@ pub async fn import_dependencies_tools(
     let files = archive_clone.file_names();
     for file in files {
         if file.starts_with("__tools/") {
-            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string()).await {
+            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), true).await {
                 Ok(tool_zip) => tool_zip,
                 Err(err) => {
                     let api_error = APIError {
@@ -502,7 +530,7 @@ pub async fn import_dependencies_tools(
             }
         }
         if file.starts_with("__agents/") {
-            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string()).await {
+            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), false).await {
                 Ok(agent_zip) => agent_zip,
                 Err(err) => return Err(err),
             };
@@ -522,6 +550,11 @@ pub async fn import_tool(
     zip_contents: ZipFileContents,
     tool: ShinkaiTool,
 ) -> Result<Value, APIError> {
+    println!(
+        "[IMPORTING TOOL]: {}",
+        tool.tool_router_key().to_string_without_version()
+    );
+
     // Check if the tool can be enabled and enable it if possible
     let mut tool = tool.clone();
     if !tool.is_enabled() && tool.can_be_enabled() {
@@ -605,25 +638,46 @@ pub async fn import_tool(
 }
 
 pub async fn import_agent(db: Arc<SqliteManager>, agent: Agent) -> Result<Value, APIError> {
-    match db.add_agent(agent.clone(), &agent.full_identity_name) {
-        Ok(_) => {
-            let response = json!({
-                "status": "success",
-                "message": "Agent imported successfully",
-                "agent_id": agent.agent_id,
-                "agent": agent
-            });
-            return Ok(response);
-        }
-        Err(err) => {
-            let api_error = APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Database Error".to_string(),
-                message: format!("Failed to save agent to database: {}", err),
-            };
-            return Err(api_error);
+    println!("[IMPORTING AGENT]: {}", agent.agent_id);
+    // Do not overwrite existing agent
+    // There is no clear mechanism to determine the latest version of the agent
+    // So we just check if the agent exists in the database
+    let install = match db.get_agent(&agent.agent_id) {
+        Ok(agent) => match agent {
+            Some(_) => false,
+            None => true,
+        },
+        Err(_) => true,
+    };
+
+    if install {
+        match db.add_agent(agent.clone(), &agent.full_identity_name) {
+            Ok(_) => {
+                let response = json!({
+                    "status": "success",
+                    "message": "Agent imported successfully",
+                    "agent_id": agent.agent_id,
+                    "agent": agent
+                });
+                return Ok(response);
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Database Error".to_string(),
+                    message: format!("Failed to save agent to database: {}", err),
+                };
+                return Err(api_error);
+            }
         }
     }
+
+    return Ok(json!({
+        "status": "success",
+        "message": "Agent already installed",
+        "agent_id": agent.agent_id,
+        "agent": agent
+    }));
 }
 
 pub fn get_agent_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> Result<Agent, APIError> {
@@ -662,6 +716,7 @@ pub fn get_agent_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> 
 async fn bytes_to_zip_tool(
     mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>,
     file_name: String,
+    is_tool: bool, // if not is agent
 ) -> Result<ZipFileContents, APIError> {
     // Extract and parse file
     let mut zip_buffer = Vec::new();
@@ -691,9 +746,9 @@ async fn bytes_to_zip_tool(
     let return_cursor = std::io::Cursor::new(zip_buffer.clone());
     let mut return_archive = zip::ZipArchive::new(return_cursor).unwrap();
 
-    let mut tool_buffer: Vec<u8> = Vec::new();
+    let mut tool_agent_buffer: Vec<u8> = Vec::new();
     {
-        let mut file = match return_archive.by_name("__tool.json") {
+        let mut file = match return_archive.by_name(if is_tool { "__tool.json" } else { "__agent.json" }) {
             Ok(file) => file,
             Err(_) => {
                 return Err(APIError {
@@ -704,7 +759,7 @@ async fn bytes_to_zip_tool(
             }
         };
 
-        if let Err(err) = file.read_to_end(&mut tool_buffer) {
+        if let Err(err) = file.read_to_end(&mut tool_agent_buffer) {
             return Err(APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
                 error: "Invalid Tool JSON".to_string(),
@@ -714,7 +769,7 @@ async fn bytes_to_zip_tool(
     }
 
     Ok(ZipFileContents {
-        buffer: tool_buffer,
+        buffer: tool_agent_buffer,
         archive: return_archive,
     })
 }

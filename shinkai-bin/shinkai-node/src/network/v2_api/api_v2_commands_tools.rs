@@ -2215,7 +2215,7 @@ impl Node {
 
         match db.get_tool_by_key(&tool_key_path.clone()) {
             Ok(tool) => {
-                let file_bytes = generate_tool_zip(db.clone(), shinkai_name.clone(), node_env, tool, false).await;
+                let file_bytes = generate_tool_zip(db.clone(), shinkai_name.clone(), node_env, tool, true).await;
                 match file_bytes {
                     Ok(file_bytes) => {
                         let _ = res.send(Ok(file_bytes)).await;
