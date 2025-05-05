@@ -213,7 +213,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true)) {
+        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true), None) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -705,6 +705,8 @@ impl Node {
 
                 SerializedLLMProvider {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
+                    name: None,
+                    description: None,
                     full_identity_name: ShinkaiName::new(format!(
                         "{}/agent/o_{}",
                         requester_profile.full_name, sanitized_model

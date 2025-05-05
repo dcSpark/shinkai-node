@@ -16,7 +16,8 @@ impl TryFrom<String> for ToolRouterKey {
     type Error = String;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        ToolRouterKey::from_string(&s).map_err(|e| e.to_string())
+        let result = ToolRouterKey::from_string(&s);
+        result.map_err(|e| e.to_string())
     }
 }
 
@@ -34,18 +35,38 @@ impl ToolRouterKey {
     where
         D: serde::Deserializer<'de>,
     {
-        let string_vec: Vec<String> = Vec::deserialize(deserializer)?;
-        string_vec
+        let string_vec: Vec<String> = match Vec::deserialize(deserializer) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("Failed to deserialize string vector: {}", e);
+                return Err(e);
+            }
+        };
+
+        let result = string_vec
             .into_iter()
-            .map(|s| Self::from_string(&s).map_err(serde::de::Error::custom))
-            .collect()
+            .map(|s| {
+                Self::from_string(&s).map_err(|e| {
+                    println!("Failed to parse tool router key: {}", e);
+                    serde::de::Error::custom(e)
+                })
+            })
+            .collect();
+
+        result
     }
 
     pub fn serialize_tool_router_keys<S>(tools: &Vec<ToolRouterKey>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        let strings: Vec<String> = tools.iter().map(|k| k.to_string_with_version()).collect();
+        let strings: Vec<String> = tools
+            .iter()
+            .map(|k| {
+                let s = k.to_string_with_version();
+                s
+            })
+            .collect();
         strings.serialize(serializer)
     }
 

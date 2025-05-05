@@ -26,18 +26,16 @@ use shinkai_message_primitives::{
         inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
         shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
     },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
-};
-use shinkai_message_primitives::{
     schemas::{
         shinkai_name::ShinkaiName,
         shinkai_tools::{CodeLanguage, DynamicToolType},
     },
     shinkai_message::shinkai_message_schemas::JobMessage,
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
@@ -45,13 +43,11 @@ use shinkai_tools_primitives::tools::{
     error::ToolError,
     parameters::Parameters,
     python_tools::PythonTool,
+    shinkai_tool::ShinkaiToolHeader,
     shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
-};
-use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolHeader,
     tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::{collections::HashMap, path::PathBuf};
@@ -899,8 +895,15 @@ impl Node {
 
         let shinkai_tool = match payload.language {
             CodeLanguage::Typescript => {
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    payload.metadata.author.clone(),
+                    payload.metadata.name.clone(),
+                    None,
+                );
                 let tool = DenoTool {
                     name: payload.metadata.name.clone(),
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
                     version: payload.metadata.version.clone(),
@@ -927,8 +930,16 @@ impl Node {
                 ShinkaiTool::Deno(tool, false)
             }
             CodeLanguage::Python => {
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    payload.metadata.author.clone(),
+                    payload.metadata.name.clone(),
+                    None,
+                );
+
                 let tool = PythonTool {
                     name: payload.metadata.name.clone(),
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: payload.metadata.homepage.clone(),
                     version: payload.metadata.version.clone(),
                     author: payload.metadata.author.clone(),
@@ -2967,12 +2978,25 @@ impl Node {
 
         // Create a copy of the tool with "_copy" appended to the name
         let mut new_tool = original_tool.clone();
-        new_tool.update_name(format!(
+        let new_name = format!(
             "{}_{}",
             original_tool.name(),
             chrono::Local::now().format("%Y%m%d_%H%M%S")
-        ));
+        );
+        new_tool.update_name(new_name.clone());
         new_tool.update_author(node_name.node_name.clone());
+
+        // Update the tool_router_key for Deno tools since they store it explicitly
+        if let ShinkaiTool::Deno(deno_tool, enabled) = &mut new_tool {
+            if deno_tool.tool_router_key.is_some() {
+                deno_tool.tool_router_key = Some(ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name.node_name.clone(),
+                    new_name,
+                    None,
+                ));
+            }
+        }
 
         // Try to get the original playground tool, or create one from the tool data
         let (new_playground, is_new_playground) = match db.get_tool_playground(&tool_key_path) {
@@ -3441,7 +3465,7 @@ impl Node {
                 message: e.to_string(),
             })?
             .into_iter()
-            .filter_map(|tool| match (ToolRouterKey::from_string(&tool.tool_router_key)) {
+            .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
                 Ok(tool_router_key) => Some(tool_router_key),
                 Err(_) => None,
             })
@@ -3980,31 +4004,31 @@ LANGUAGE={env_language}
                     }
                     None => (),
                 }
-                let tool = DenoTool {
-                    name: "".to_string(),
-                    homepage: None,
-                    author: "".to_string(),
-                    mcp_enabled: Some(false),
-                    version: "".to_string(),
-                    js_code: code.clone(),
-                    tools: vec![],
-                    config: vec![],
-                    description: "".to_string(),
-                    keywords: vec![],
-                    input_args: Parameters::new(),
-                    output_arg: ToolOutputArg { json: "".to_string() },
-                    activated: true,
-                    embedding: None,
-                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-                    sql_tables: None,
-                    sql_queries: None,
-                    file_inbox: None,
-                    oauth: None,
-                    assets: None,
-                    runner: RunnerType::Any,
-                    operating_system: vec![],
-                    tool_set: None,
-                };
+                let tool = DenoTool::new(
+                    "".to_string(),
+                    None,
+                    "".to_string(),
+                    "".to_string(),
+                    Some(false),
+                    code.clone(),
+                    vec![],
+                    vec![],
+                    "".to_string(),
+                    vec![],
+                    Parameters::new(),
+                    ToolOutputArg { json: "".to_string() },
+                    true,
+                    None,
+                    ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    RunnerType::Any,
+                    vec![],
+                    None,
+                );
                 tool.check_code(code.clone(), support_files).await
             }
             CodeLanguage::Python => {
@@ -4024,6 +4048,7 @@ LANGUAGE={env_language}
                 let tool: PythonTool = PythonTool {
                     version: "".to_string(),
                     name: "".to_string(),
+                    tool_router_key: None,
                     homepage: None,
                     author: "".to_string(),
                     mcp_enabled: Some(false),

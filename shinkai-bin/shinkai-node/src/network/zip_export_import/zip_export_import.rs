@@ -780,6 +780,7 @@ mod tests {
     use shinkai_embedding::model_type::EmbeddingModelType;
     use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
     use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
@@ -808,11 +809,20 @@ mod tests {
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
         // Create three tools that form a cycle: A -> B -> C -> A
+        let tool_a_name = "Tool A";
+        let tool_a_version = "1.0.0";
+        let tool_a_author = "@@test.shinkai";
         let mut tool_a = DenoTool {
-            name: "Tool A".to_string(),
+            tool_router_key: Some(ToolRouterKey {
+                source: "local".to_string(),
+                author: tool_a_author.to_string(),
+                name: tool_a_name.to_string(),
+                version: Some(tool_a_version.to_string()),
+            }),
+            name: tool_a_name.to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            author: "@@test.shinkai".to_string(),
-            version: "1.0.0".to_string(),
+            author: tool_a_author.to_string(),
+            version: tool_a_version.to_string(),
             mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![], // A depends on B
@@ -834,11 +844,20 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_b_name = "Tool B";
+        let tool_b_version = "1.0.0";
+        let tool_b_author = "@@test.shinkai";
         let mut tool_b = DenoTool {
-            name: "Tool B".to_string(),
+            tool_router_key: Some(ToolRouterKey {
+                source: "local".to_string(),
+                author: tool_b_author.to_string(),
+                name: tool_b_name.to_string(),
+                version: Some(tool_b_version.to_string()),
+            }),
+            name: tool_b_name.to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            author: "@@test.shinkai".to_string(),
-            version: "1.0.0".to_string(),
+            author: tool_b_author.to_string(),
+            version: tool_b_version.to_string(),
             mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![], // B depends on C
@@ -860,11 +879,20 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_c_name = "Tool C";
+        let tool_c_version = "1.0.0";
+        let tool_c_author = "@@test.shinkai";
         let mut tool_c = DenoTool {
-            name: "Tool C".to_string(),
+            tool_router_key: Some(ToolRouterKey {
+                source: "local".to_string(),
+                author: tool_c_author.to_string(),
+                name: tool_c_name.to_string(),
+                version: Some(tool_c_version.to_string()),
+            }),
+            name: tool_c_name.to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            author: "@@test.shinkai".to_string(),
-            version: "1.0.0".to_string(),
+            author: tool_c_author.to_string(),
+            version: tool_c_version.to_string(),
             mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![], // C depends on A
@@ -962,11 +990,20 @@ mod tests {
             true,
         );
         // Create a tool that depends on an agent
+        let tool_a_name = "Tool A";
+        let tool_a_version = "1.0.0";
+        let tool_a_author = "@@test.shinkai";
         let mut tool_a = DenoTool {
-            name: "Tool A".to_string(),
+            tool_router_key: Some(ToolRouterKey {
+                source: "local".to_string(),
+                author: tool_a_author.to_string(),
+                name: tool_a_name.to_string(),
+                version: Some(tool_a_version.to_string()),
+            }),
+            name: tool_a_name.to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            author: "@@test.shinkai".to_string(),
-            version: "1.0.0".to_string(),
+            author: tool_a_author.to_string(),
+            version: tool_a_version.to_string(),
             mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![agent_tool_wrapper.tool_router_key()], // A depends on B
@@ -988,11 +1025,20 @@ mod tests {
             tool_set: None,
         };
 
-        let tool_b = DenoTool {
-            name: "Tool B".to_string(),
+        let tool_b_name = "Tool B";
+        let tool_b_version = "1.0.0";
+        let tool_b_author = "@@test.shinkai";
+        let mut tool_b = DenoTool {
+            tool_router_key: Some(ToolRouterKey {
+                source: "local".to_string(),
+                author: tool_b_author.to_string(),
+                name: tool_b_name.to_string(),
+                version: Some(tool_b_version.to_string()),
+            }),
+            name: tool_b_name.to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            author: "@@test.shinkai".to_string(),
-            version: "1.0.0".to_string(),
+            author: tool_b_author.to_string(),
+            version: tool_b_version.to_string(),
             mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![], // B depends on C
@@ -1055,11 +1101,20 @@ mod tests {
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
         // Create two tools that will be dependencies of the agent
-        let tool_a = DenoTool {
-            name: "Tool A".to_string(),
+        let tool_a_name = "Tool A";
+        let tool_a_version = "1.0.0";
+        let tool_a_author = "@@test.shinkai";
+        let mut tool_a = DenoTool {
+            tool_router_key: Some(ToolRouterKey {
+                source: "local".to_string(),
+                author: tool_a_author.to_string(),
+                name: tool_a_name.to_string(),
+                version: Some(tool_a_version.to_string()),
+            }),
+            name: tool_a_name.to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            author: "@@test.shinkai".to_string(),
-            version: "1.0.0".to_string(),
+            author: tool_a_author.to_string(),
+            version: tool_a_version.to_string(),
             mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![],
@@ -1081,11 +1136,20 @@ mod tests {
             tool_set: None,
         };
 
+        let tool_b_name = "Tool B";
+        let tool_b_version = "1.0.0";
+        let tool_b_author = "@@test.shinkai";
         let mut tool_b = DenoTool {
-            name: "Tool B".to_string(),
+            tool_router_key: Some(ToolRouterKey {
+                source: "local".to_string(),
+                author: tool_b_author.to_string(),
+                name: tool_b_name.to_string(),
+                version: Some(tool_b_version.to_string()),
+            }),
+            name: tool_b_name.to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
-            author: "@@test.shinkai".to_string(),
-            version: "1.0.0".to_string(),
+            author: tool_b_author.to_string(),
+            version: tool_b_version.to_string(),
             mcp_enabled: Some(false),
             js_code: "console.log('Hello, Deno!');".to_string(),
             tools: vec![],

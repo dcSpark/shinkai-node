@@ -1,6 +1,7 @@
 use crate::llm_provider::providers::shinkai_backend::check_quota;
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
+use crate::network::node_shareable_logic::download_zip_from_url;
 use crate::network::zip_export_import::zip_export_import::{
     generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools,
 };
@@ -8,7 +9,7 @@ use crate::utils::environment::NodeEnvironment;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, node_shareable_logic::download_zip_from_url, Node},
+    network::{node_error::NodeError, Node},
     tools::tool_generation,
     utils::update_global_identity::update_global_identity_name,
 };
@@ -27,10 +28,6 @@ use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaRe
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::{
     schemas::ws_types::WSUpdateHandler,
-    shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
-};
-use shinkai_message_primitives::{
     schemas::{
         identity::{Identity, IdentityType, RegistrationCode},
         inbox_name::InboxName,
@@ -38,6 +35,7 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
         tool_router_key::ToolRouterKey,
     },
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
@@ -49,6 +47,7 @@ use shinkai_message_primitives::{
         shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::signature_public_key_to_string,
     },
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
@@ -1427,6 +1426,8 @@ impl Node {
 
         let provider = SerializedLLMProvider {
             id: "llm_test".to_string(),
+            name: None,
+            description: None,
             full_identity_name: ShinkaiName::new(llm_name).unwrap(),
             external_url: provider.external_url.clone(),
             api_key: provider.api_key.clone(),

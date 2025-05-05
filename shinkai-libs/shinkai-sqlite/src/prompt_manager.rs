@@ -337,7 +337,8 @@ impl SqliteManager {
             if prompt.rowid.is_some() {
                 self.update_prompt_with_vector(&prompt, embedding)?;
             } else {
-                self.add_prompt_with_vector(&prompt, embedding).map_err(SqliteManagerError::DatabaseError)?;
+                self.add_prompt_with_vector(&prompt, embedding)
+                    .map_err(SqliteManagerError::DatabaseError)?;
             }
         }
         Ok(())
@@ -466,7 +467,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

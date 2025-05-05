@@ -152,7 +152,6 @@ impl ModelCapabilitiesManager {
                 }
                 _ => vec![],
             },
-            LLMProviderInterface::LocalLLM(_) => vec![],
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 match shinkai_backend.model_type().to_uppercase().as_str() {
                     "FREE_TEXT_INFERENCE" | "STANDARD_TEXT_INFERENCE" | "PREMIUM_TEXT_INFERENCE" => {
@@ -218,7 +217,6 @@ impl ModelCapabilitiesManager {
                 "yorickvp/llava-13b" => ModelCost::Expensive,
                 _ => ModelCost::Unknown,
             },
-            LLMProviderInterface::LocalLLM(_) => ModelCost::Cheap,
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "STANDARD_TEXT_INFERENCE" | "PREMIUM_TEXT_INFERENCE" => ModelCost::GoodValue,
                 "CODE_GENERATOR" | "CODE_GENERATOR_NO_FEEDBACK" => ModelCost::Expensive,
@@ -251,7 +249,6 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::TogetherAI(_) => ModelPrivacy::RemoteGreedy,
-            LLMProviderInterface::LocalLLM(_) => ModelPrivacy::Local,
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "FREE_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
                 "STANDARD_TEXT_INFERENCE" => ModelPrivacy::RemoteGreedy,
@@ -324,9 +321,6 @@ impl ModelCapabilitiesManager {
                         togetherai.model_type.clone(),
                     ))
                 }
-            }
-            LLMProviderInterface::LocalLLM(_) => {
-                Err(ModelCapabilitiesManagerError::NotImplemented("LocalLLM".to_string()))
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => Err(
                 ModelCapabilitiesManagerError::NotImplemented(shinkai_backend.model_type().clone()),
@@ -422,10 +416,6 @@ impl ModelCapabilitiesManager {
                 } else {
                     4096
                 }
-            }
-            LLMProviderInterface::LocalLLM(_) => {
-                // Fill in the appropriate logic for LocalLLM
-                0
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type().as_str() {
                 "FREE_TEXT_INFERENCE" => 1_047_576,
@@ -558,10 +548,6 @@ impl ModelCapabilitiesManager {
                 } else {
                     4096
                 }
-            }
-            LLMProviderInterface::LocalLLM(_) => {
-                // Fill in the appropriate logic for LocalLLM
-                4096
             }
             LLMProviderInterface::ShinkaiBackend(shinkai_backend) => {
                 // Fill in the appropriate logic for ShinkaiBackend

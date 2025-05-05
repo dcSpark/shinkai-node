@@ -27,7 +27,6 @@ use std::sync::Weak;
 use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 use tokio::time::sleep;
 use warp::ws::Message;
 use warp::ws::WebSocket;
@@ -404,7 +403,6 @@ impl WebSocketManager {
 
         // Determine the message type
         let message_type = match metadata {
-            WSMessageType::Sheet(_) => MessageType::Sheet,
             WSMessageType::Widget(_) => MessageType::Widget,
             _ => {
                 if is_stream {

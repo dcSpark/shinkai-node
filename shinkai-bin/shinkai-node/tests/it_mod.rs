@@ -1,7 +1,6 @@
 #![recursion_limit = "512"]
 
 mod it {
-    mod a2_sheet_workflow_tests;
     mod a3_micropayment_flow_tests;
     mod cron_job_tests;
     mod db_identity_tests;
