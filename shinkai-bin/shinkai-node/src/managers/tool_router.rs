@@ -105,8 +105,11 @@ impl ToolRouter {
             eprintln!("Error adding rust tools: {}", e);
         }
 
+        let node_env = fetch_node_environment();
+        let node_name: String = node_env.global_identity_name.clone();
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
+            node_name,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
         )
@@ -138,8 +141,12 @@ impl ToolRouter {
         if let Err(e) = self.add_static_prompts(generator).await {
             eprintln!("Error adding static prompts: {}", e);
         }
+
+        let node_env = fetch_node_environment();
+        let node_name: String = node_env.global_identity_name.clone();
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
+            node_name,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
         )
@@ -154,8 +161,11 @@ impl ToolRouter {
     }
 
     pub async fn sync_tools_from_directory(&self) -> Result<(), ToolError> {
+        let node_env = fetch_node_environment();
+        let node_name: String = node_env.global_identity_name.clone();
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
+            node_name,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
         )
@@ -170,6 +180,7 @@ impl ToolRouter {
     /// Now also checks if a tool is installed with an older version, and if so, calls `upgrade_tool`.
     async fn import_tools_from_directory(
         db: Arc<SqliteManager>,
+        node_name: String,
         signing_secret_key: SigningKey,
         default_tool_router_keys: Arc<Mutex<Vec<String>>>,
     ) -> Result<(), ToolError> {
@@ -259,7 +270,7 @@ impl ToolRouter {
             let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
                 let db = db.clone();
                 let node_env = node_env.clone();
-                let node_name = node_env.global_identity_name.clone();
+                let node_name: String = node_env.global_identity_name.clone();
                 let signing_secret_key = signing_secret_key.clone();
                 async move {
                     // Try to see if a tool with the same routerKey is already installed.

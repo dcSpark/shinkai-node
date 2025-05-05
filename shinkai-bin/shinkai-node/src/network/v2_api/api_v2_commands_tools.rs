@@ -2424,7 +2424,7 @@ impl Node {
         signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
         let zip_contents: ZipFileContents =
-            match download_zip_from_url(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
+            match download_zip_from_url(url, "__tool.json".to_string(), node_name.clone(), signing_secret_key).await {
                 Ok(contents) => contents,
                 Err(err) => return Err(err),
             };
@@ -2441,7 +2441,8 @@ impl Node {
             }
         };
 
-        let import_status = import_dependencies_tools(db.clone(), node_env.clone(), zip_contents.archive.clone()).await;
+        let import_status =
+            import_dependencies_tools(db.clone(), node_name, node_env.clone(), zip_contents.archive.clone()).await;
         if let Err(err) = import_status {
             return Err(err);
         }
@@ -3146,6 +3147,7 @@ impl Node {
 
     pub async fn install_tool_from_u8(
         db: Arc<SqliteManager>,
+        node_name: String,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
     ) -> Result<Value, APIError> {
@@ -3197,7 +3199,8 @@ impl Node {
             }
         };
         let zip_contents = ZipFileContents { buffer, archive };
-        let import_status = import_dependencies_tools(db.clone(), node_env.clone(), zip_contents.archive.clone()).await;
+        let import_status =
+            import_dependencies_tools(db.clone(), node_name, node_env.clone(), zip_contents.archive.clone()).await;
         if let Err(err) = import_status {
             return Err(err);
         }
@@ -3207,6 +3210,7 @@ impl Node {
     pub async fn v2_api_import_tool_zip(
         db: Arc<SqliteManager>,
         bearer: String,
+        node_name: String,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         res: Sender<Result<Value, APIError>>,
@@ -3216,7 +3220,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::install_tool_from_u8(db, node_env, file_data).await;
+        let result = Self::install_tool_from_u8(db, node_name, node_env, file_data).await;
         let _ = res.send(result).await;
         Ok(())
     }

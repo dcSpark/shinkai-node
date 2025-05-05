@@ -1690,7 +1690,7 @@ impl Node {
         }
 
         let zip_contents =
-            match download_zip_from_url(url, "__agent.json".to_string(), node_name, signing_secret_key).await {
+            match download_zip_from_url(url, "__agent.json".to_string(), node_name.clone(), signing_secret_key).await {
                 Ok(contents) => contents,
                 Err(err) => {
                     let api_error = APIError {
@@ -1717,13 +1717,14 @@ impl Node {
             }
         };
 
-        let status = import_dependencies_tools(db.clone(), node_env.clone(), zip_contents.archive).await;
+        let status =
+            import_dependencies_tools(db.clone(), node_name.clone(), node_env.clone(), zip_contents.archive).await;
         if let Err(err) = status {
             let _ = res.send(Err(err)).await;
             return Ok(());
         }
 
-        let _ = match import_agent(db.clone(), agent.clone()).await {
+        let _ = match import_agent(db.clone(), node_name, agent.clone()).await {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };
@@ -1734,6 +1735,7 @@ impl Node {
     pub async fn v2_api_import_agent_zip(
         db: Arc<SqliteManager>,
         bearer: String,
+        node_name: String,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         res: Sender<Result<Value, APIError>>,
@@ -1766,14 +1768,14 @@ impl Node {
             }
         };
 
-        let status = import_dependencies_tools(db.clone(), node_env.clone(), archive).await;
+        let status = import_dependencies_tools(db.clone(), node_name.clone(), node_env.clone(), archive).await;
         if let Err(err) = status {
             let _ = res.send(Err(err)).await;
             return Ok(());
         }
 
         // Parse the JSON into an Agent
-        let _ = match import_agent(db.clone(), agent.clone()).await {
+        let _ = match import_agent(db.clone(), node_name, agent.clone()).await {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };

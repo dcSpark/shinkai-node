@@ -293,7 +293,55 @@ pub async fn generate_agent_zip(
     if let Err(err) = zip_files {
         return Err(err);
     }
-    let zip_files = zip_files.unwrap();
+    let mut zip_files = zip_files.unwrap();
+
+    for item in agent.scope.vector_fs_items {
+        let p = item.full_path();
+        if item.exists() {
+            let file_bytes = fs::read(p).await.map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read file: {}", e),
+            })?;
+
+            zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
+        }
+    }
+
+    for item in agent.scope.vector_fs_folders {
+        if item.clone().exists() {
+            let files = std::fs::read_dir(item.clone().path).map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read file: {}", e),
+            })?;
+
+            for entry in files {
+                let file = entry.map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to read file: {}", e),
+                })?;
+                if file
+                    .file_type()
+                    .map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to read file: {}", e),
+                    })?
+                    .is_file()
+                {
+                    let file_bytes = fs::read(file.path()).await.map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to read file: {}", e),
+                    })?;
+
+                    zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
+                }
+            }
+        }
+    }
 
     let mut zip = ZipWriter::new(file);
     for (file_name, file_bytes) in zip_files {
@@ -493,6 +541,7 @@ async fn import_tool_assets(
 
 pub async fn import_dependencies_tools(
     db: Arc<SqliteManager>,
+    node_name: String,
     node_env: NodeEnvironment,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
 ) -> Result<(), APIError> {
@@ -535,7 +584,7 @@ pub async fn import_dependencies_tools(
                 Err(err) => return Err(err),
             };
             let agent = get_agent_from_zip(agent_zip.archive).unwrap();
-            let import_agent_result = import_agent(db.clone(), agent).await;
+            let import_agent_result = import_agent(db.clone(), node_name.clone(), agent).await;
             if let Err(err) = import_agent_result {
                 println!("Error importing agent: {:?}", err);
             }
@@ -637,7 +686,7 @@ pub async fn import_tool(
     }))
 }
 
-pub async fn import_agent(db: Arc<SqliteManager>, agent: Agent) -> Result<Value, APIError> {
+pub async fn import_agent(db: Arc<SqliteManager>, node_name: String, agent: Agent) -> Result<Value, APIError> {
     println!("[IMPORTING AGENT]: {}", agent.agent_id);
     // Do not overwrite existing agent
     // There is no clear mechanism to determine the latest version of the agent
@@ -653,6 +702,27 @@ pub async fn import_agent(db: Arc<SqliteManager>, agent: Agent) -> Result<Value,
     if install {
         match db.add_agent(agent.clone(), &agent.full_identity_name) {
             Ok(_) => {
+                let agent_tool_wrapper = AgentToolWrapper::new(
+                    agent.agent_id.clone(),
+                    agent.name.clone(),
+                    agent.ui_description.clone(),
+                    node_name.clone(),
+                    None,
+                );
+                let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
+                let install_tool = match db.get_tool_by_key(&shinkai_tool.tool_router_key().to_string_without_version())
+                {
+                    Ok(_) => false,
+                    Err(_) => true,
+                };
+                if install_tool {
+                    db.add_tool(shinkai_tool).await.map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Database Error".to_string(),
+                        message: format!("Failed to save tool to database: {}", e),
+                    })?;
+                }
+
                 let response = json!({
                     "status": "success",
                     "message": "Agent imported successfully",
