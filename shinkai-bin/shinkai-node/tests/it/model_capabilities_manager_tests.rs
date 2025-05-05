@@ -1,20 +1,19 @@
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-        LLMProviderInterface, OpenAI, SerializedLLMProvider,
+        LLMProviderInterface, OpenAI, SerializedLLMProvider
     };
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
     use shinkai_node::managers::model_capabilities_manager::{
-        ModelCapabilitiesManager, ModelCapability, ModelCost, ModelPrivacy,
+        ModelCapabilitiesManager, ModelCapability, ModelCost, ModelPrivacy
     };
     use std::env;
     use std::path::PathBuf;
     use std::sync::Arc;
-    use tokio::sync::RwLock;
 
-    use shinkai_sqlite::SqliteManager;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_sqlite::SqliteManager;
     use tempfile::NamedTempFile;
 
     fn setup_test_db() -> SqliteManager {
@@ -44,6 +43,8 @@ mod tests {
 
         let gpt_3_5_llm_provider = SerializedLLMProvider {
             id: llm_provider_id.clone(),
+            name: Some("Test Agent".to_string()),
+            description: Some("Test Agent Description".to_string()),
             full_identity_name: llm_provider_name,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
@@ -82,6 +83,8 @@ mod tests {
 
         let gpt_4_vision_llm_provider = SerializedLLMProvider {
             id: llm_provider_id.clone(),
+            name: Some("Test Agent".to_string()),
+            description: Some("Test Agent Description".to_string()),
             full_identity_name: llm_provider_name,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
@@ -115,6 +118,8 @@ mod tests {
 
         let fake_gpt_agent = SerializedLLMProvider {
             id: agent_id.clone(),
+            name: Some("Test Agent".to_string()),
+            description: Some("Test Agent Description".to_string()),
             full_identity_name: agent_name,
             external_url: Some("https://api.openai.com".to_string()),
             api_key: env::var("INITIAL_AGENT_API_KEY").ok(),

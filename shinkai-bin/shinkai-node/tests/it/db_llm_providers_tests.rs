@@ -17,8 +17,7 @@ fn setup_test_db() -> SqliteManager {
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::schemas::{
-        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider},
-        shinkai_name::ShinkaiName,
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI, SerializedLLMProvider}, shinkai_name::ShinkaiName
     };
     use shinkai_sqlite::errors::SqliteManagerError;
 
@@ -36,6 +35,8 @@ mod tests {
 
         // Create an instance of SerializedLLMProvider
         let test_agent = SerializedLLMProvider {
+            name: Some("Test Agent".to_string()),
+            description: Some("Test Agent Description".to_string()),
             id: "test_agent".to_string(),
             full_identity_name: identity,
             external_url: Some("http://localhost:8080".to_string()),
@@ -101,6 +102,8 @@ mod tests {
 
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
+            name: Some("Test Agent".to_string()),
+            description: Some("Test Agent Description".to_string()),
             full_identity_name: identity,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),

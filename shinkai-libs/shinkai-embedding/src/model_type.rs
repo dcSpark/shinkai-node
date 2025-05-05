@@ -47,6 +47,7 @@ impl fmt::Display for EmbeddingModelType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum OllamaTextEmbeddingsInference {
     AllMiniLML6v2,
+    #[serde(alias = "SnowflakeArcticEmbed_M")]
     SnowflakeArcticEmbedM,
     JinaEmbeddingsV2BaseEs,
     Other(String),

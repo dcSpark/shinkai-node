@@ -75,6 +75,8 @@ fn test_tool_execution_with_config_override() {
         let llm_provider = SerializedLLMProvider {
             id: node1_llm_provider_id.to_string(),
             full_identity_name: agent_name.clone(),
+            name: Some("Test Agent".to_string()),
+            description: Some("Test Agent Description".to_string()),
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),

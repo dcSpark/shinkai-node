@@ -31,7 +31,6 @@ pub mod prompt_manager;
 pub mod regex_pattern_manager;
 pub mod retry_manager;
 pub mod settings_manager;
-pub mod sheet_manager;
 pub mod shinkai_tool_manager;
 pub mod source_file_manager;
 pub mod tool_payment_req_manager;
@@ -188,6 +187,7 @@ impl SqliteManager {
     fn migrate_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::migrate_tools_table(conn)?;
         Self::migrate_agents_table(conn)?;
+        Self::migrate_llm_providers_table(conn)?;
         Ok(())
     }
 
@@ -200,6 +200,21 @@ impl SqliteManager {
         // Add the column if it doesn't exist
         if column_exists == 0 {
             conn.execute("ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT", [])?;
+        }
+        Ok(())
+    }
+
+    fn migrate_llm_providers_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if 'name' column exists
+        let mut stmt = conn.prepare("PRAGMA table_info(llm_providers)")?;
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get(1))?
+            .collect::<Result<Vec<String>, _>>()?;
+        if !columns.contains(&"name".to_string()) {
+            conn.execute("ALTER TABLE llm_providers ADD COLUMN name TEXT", [])?;
+        }
+        if !columns.contains(&"description".to_string()) {
+            conn.execute("ALTER TABLE llm_providers ADD COLUMN description TEXT", [])?;
         }
         Ok(())
     }
@@ -405,7 +420,9 @@ impl SqliteManager {
                 full_identity_name TEXT NOT NULL,
                 external_url TEXT,
                 api_key TEXT,
-                model TEXT
+                model TEXT,
+                name TEXT,
+                description TEXT
             );",
             [],
         )?;

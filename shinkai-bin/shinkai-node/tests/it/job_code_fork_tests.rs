@@ -113,6 +113,8 @@ fn test_job_code_fork() {
 
                 let agent = SerializedLLMProvider {
                     id: node1_llm_provider.clone().to_string(),
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     full_identity_name: agent_name,
                     external_url: Some(server.url()),
                     api_key: Some("".to_string()),

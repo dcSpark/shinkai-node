@@ -2,7 +2,6 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -78,7 +77,6 @@ pub trait InferenceChainContextTrait: Send + Sync {
     fn raw_files(&self) -> &RawFiles;
     fn ws_manager_trait(&self) -> Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>;
     fn tool_router(&self) -> Option<Arc<ToolRouter>>;
-    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>>;
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>>;
     fn ext_agent_payments_manager(&self) -> Option<Arc<Mutex<ExtAgentOfferingsManager>>>;
     fn job_callback_manager(&self) -> Option<Arc<Mutex<JobCallbackManager>>>;
@@ -177,10 +175,6 @@ impl InferenceChainContextTrait for InferenceChainContext {
         self.tool_router.clone()
     }
 
-    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
-        self.sheet_manager.clone()
-    }
-
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>> {
         self.my_agent_payments_manager.clone()
     }
@@ -243,7 +237,6 @@ pub struct InferenceChainContext {
     pub raw_files: RawFiles,
     pub ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     pub tool_router: Option<Arc<ToolRouter>>,
-    pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     pub my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
     pub ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
     pub job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
@@ -270,7 +263,6 @@ impl InferenceChainContext {
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
@@ -295,7 +287,6 @@ impl InferenceChainContext {
             raw_files: None,
             ws_manager_trait,
             tool_router,
-            sheet_manager,
             my_agent_payments_manager,
             ext_agent_payments_manager,
             job_callback_manager,
@@ -336,7 +327,6 @@ impl fmt::Debug for InferenceChainContext {
             .field("raw_files", &self.raw_files)
             .field("ws_manager_trait", &self.ws_manager_trait.is_some())
             .field("tool_router", &self.tool_router.is_some())
-            .field("sheet_manager", &self.sheet_manager.is_some())
             .field("my_agent_payments_manager", &self.my_agent_payments_manager.is_some())
             .field("ext_agent_payments_manager", &self.ext_agent_payments_manager.is_some())
             .field("job_callback_manager", &self.job_callback_manager.is_some())
@@ -511,10 +501,6 @@ impl InferenceChainContextTrait for Box<dyn InferenceChainContextTrait> {
 
     fn tool_router(&self) -> Option<Arc<ToolRouter>> {
         (**self).tool_router()
-    }
-
-    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
-        (**self).sheet_manager()
     }
 
     fn my_agent_payments_manager(&self) -> Option<Arc<Mutex<MyAgentOfferingsManager>>> {
@@ -714,10 +700,6 @@ impl InferenceChainContextTrait for MockInferenceChainContext {
     }
 
     fn tool_router(&self) -> Option<Arc<ToolRouter>> {
-        unimplemented!()
-    }
-
-    fn sheet_manager(&self) -> Option<Arc<Mutex<SheetManager>>> {
         unimplemented!()
     }
 

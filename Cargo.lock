@@ -7035,13 +7035,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shinkai_mini_libs"
-version = "1.0.0"
-dependencies = [
- "base64 0.22.1",
-]
-
-[[package]]
 name = "shinkai_node"
 version = "1.0.0"
 dependencies = [
@@ -7096,7 +7089,6 @@ dependencies = [
  "shinkai_http_api",
  "shinkai_job_queue_manager",
  "shinkai_message_primitives",
- "shinkai_sheet",
  "shinkai_sqlite",
  "shinkai_tcp_relayer",
  "shinkai_tools_primitives",
@@ -7131,20 +7123,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "shinkai_sheet"
-version = "1.0.0"
-dependencies = [
- "async-channel 1.9.0",
- "chrono",
- "regex",
- "serde",
- "serde_json",
- "shinkai_message_primitives",
- "tokio",
- "uuid 1.11.0",
-]
-
-[[package]]
 name = "shinkai_sqlite"
 version = "1.0.0"
 dependencies = [
@@ -7166,7 +7144,6 @@ dependencies = [
  "serde_json",
  "shinkai_embedding",
  "shinkai_message_primitives",
- "shinkai_sheet",
  "shinkai_tools_primitives",
  "sqlite-vec",
  "tempfile",

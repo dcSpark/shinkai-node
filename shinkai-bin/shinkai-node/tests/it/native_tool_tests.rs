@@ -116,6 +116,8 @@ fn native_tool_test_knowledge() {
         let agent = SerializedLLMProvider {
             id: node1_agent.to_string(),
             full_identity_name: agent_name,
+            name: Some("Test Agent".to_string()),
+            description: Some("Test Agent Description".to_string()),
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
