@@ -1620,6 +1620,8 @@ impl Node {
         vec![
             SerializedLLMProvider {
                 id: "shinkai_free_trial".to_string(),
+                name: Some("Shinkai Free Trial".to_string()),
+                description: Some("Shinkai Free Trial LLM Provider".to_string()),
                 full_identity_name: ShinkaiName::new(format!("{}/main/agent/shinkai_free_trial", node_name.full_name))
                     .unwrap(),
                 external_url: Some("https://api.shinkai.com/inference".to_string()),
@@ -1630,6 +1632,8 @@ impl Node {
             },
             SerializedLLMProvider {
                 id: "shinkai_code_generator".to_string(),
+                name: Some("Shinkai Code Generator".to_string()),
+                description: Some("Shinkai Code Generator LLM Provider".to_string()),
                 full_identity_name: ShinkaiName::new(format!(
                     "{}/main/agent/shinkai_code_generator",
                     node_name.full_name

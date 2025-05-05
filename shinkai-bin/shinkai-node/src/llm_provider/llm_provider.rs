@@ -13,8 +13,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
-    shinkai_name::ShinkaiName,
+    llm_providers::serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}, shinkai_name::ShinkaiName
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -22,6 +21,8 @@ use tokio::sync::Mutex;
 #[derive(Debug, Clone)]
 pub struct LLMProvider {
     pub id: String,
+    pub name: Option<String>,        // Optional name for the provider
+    pub description: Option<String>, // Optional description for the provider
     pub full_identity_name: ShinkaiName,
     pub client: Client,
     pub external_url: Option<String>, // external API URL
@@ -35,6 +36,8 @@ impl LLMProvider {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
+        name: Option<String>,
+        description: Option<String>,
         full_identity_name: ShinkaiName,
         external_url: Option<String>,
         api_key: Option<String>,
@@ -52,6 +55,8 @@ impl LLMProvider {
             .unwrap();
         Self {
             id,
+            name,
+            description,
             full_identity_name,
             client,
             external_url,
@@ -63,7 +68,8 @@ impl LLMProvider {
     }
 
     /// Inferences an LLM locally based on info held in the LLM Provider
-    /// TODO: For now just mocked, eventually get around to this, and create a struct that implements the Provider trait to unify local with remote interface.
+    /// TODO: For now just mocked, eventually get around to this, and create a struct that implements the Provider trait
+    /// to unify local with remote interface.
     async fn inference_locally(&self, content: String) -> Result<LLMInferenceResponse, LLMProviderError> {
         // Here we run our GPU-intensive task on a separate thread
         let handle = tokio::task::spawn_blocking(move || {
@@ -246,9 +252,6 @@ impl LLMProvider {
                     )
                     .await
             }
-            LLMProviderInterface::LocalLLM(_local_llm) => {
-                self.inference_locally(prompt.generate_single_output_string()?).await
-            }
             LLMProviderInterface::DeepSeek(deepseek) => {
                 deepseek
                     .call_api(
@@ -264,7 +267,7 @@ impl LLMProvider {
                         self.db.clone(),
                     )
                     .await
-            },
+            }
             LLMProviderInterface::LocalRegex(local_regex) => {
                 local_regex
                     .call_api(
@@ -287,9 +290,14 @@ impl LLMProvider {
 }
 
 impl LLMProvider {
-    pub fn from_serialized_llm_provider(serialized_llm_provider: SerializedLLMProvider, db: Arc<SqliteManager>) -> Self {
+    pub fn from_serialized_llm_provider(
+        serialized_llm_provider: SerializedLLMProvider,
+        db: Arc<SqliteManager>,
+    ) -> Self {
         Self::new(
             serialized_llm_provider.id,
+            serialized_llm_provider.name,
+            serialized_llm_provider.description,
             serialized_llm_provider.full_identity_name,
             serialized_llm_provider.external_url,
             serialized_llm_provider.api_key,

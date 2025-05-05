@@ -705,6 +705,8 @@ impl Node {
 
                 SerializedLLMProvider {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
+                    name: None,
+                    description: None,
                     full_identity_name: ShinkaiName::new(format!(
                         "{}/agent/o_{}",
                         requester_profile.full_name, sanitized_model

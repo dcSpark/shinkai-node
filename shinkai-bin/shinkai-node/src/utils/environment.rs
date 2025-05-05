@@ -81,6 +81,8 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
 
         let agent = SerializedLLMProvider {
             id: initial_agent_names[i].clone(),
+            name: Some(initial_agent_names[i].clone()),
+            description: Some(initial_agent_names[i].clone()),
             full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_names[i]))
                 .unwrap(),
             external_url: Some(initial_agent_urls[i].clone()),
