@@ -235,8 +235,9 @@ impl Node {
             NodeCommand::V2ApiExportAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let shinkai_name = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_export_agent(db_clone, bearer, node_env, agent_id, res).await;
+                    let _ = Node::v2_api_export_agent(db_clone, bearer, shinkai_name, node_env, agent_id, res).await;
                 });
             }
             NodeCommand::V2ApiImportAgent { bearer, url, res } => {
@@ -245,9 +246,16 @@ impl Node {
                 let signing_secret_key = self.identity_secret_key.clone();
                 let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_import_agent(db_clone, bearer, url, node_name, node_env, signing_secret_key, res)
-                            .await;
+                    let _ = Node::v2_api_import_agent_url(
+                        db_clone,
+                        bearer,
+                        url,
+                        node_name,
+                        node_env,
+                        signing_secret_key,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiImportAgentZip { bearer, file_data, res } => {
@@ -2659,8 +2667,10 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let shinkai_name = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_export_tool(db_clone, bearer, node_env, tool_key_path, res).await;
+                    let _ =
+                        Node::v2_api_export_tool(db_clone, bearer, shinkai_name, node_env, tool_key_path, res).await;
                 });
             }
             NodeCommand::V2ApiPublishTool {
@@ -2670,12 +2680,14 @@ impl Node {
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let shinkai_name = self.node_name.clone();
                 let identity_manager = self.identity_manager.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_publish_tool(
                         db_clone,
                         bearer,
+                        shinkai_name,
                         node_env,
                         tool_key_path,
                         identity_manager,
