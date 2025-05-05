@@ -59,7 +59,7 @@ use crate::managers::tool_router::ToolRouter;
 use crate::{
     llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_from_url, Node},
     tools::tool_generation,
     utils::update_global_identity::update_global_identity_name,
 };
@@ -1699,7 +1699,7 @@ impl Node {
             let tool = db.get_tool_by_key(&tool_key.to_string_without_version());
             match tool {
                 Ok(tool) => {
-                    let tool_bytes = Node::get_tool_zip(tool, node_env.clone()).await;
+                    let tool_bytes = Node::generate_tool_zip(tool, node_env.clone()).await;
                     if let Err(err) = tool_bytes {
                         return Err(internal_error(format!("Failed to get tool zip: {}", err)));
                     }
@@ -1847,19 +1847,19 @@ impl Node {
             return Ok(());
         }
 
-        let zip_contents = match download_zip_file(url, "__agent.json".to_string(), node_name, signing_secret_key).await
-        {
-            Ok(contents) => contents,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Invalid Agent Zip".to_string(),
-                    message: format!("Failed to extract agent.json: {:?}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let zip_contents =
+            match download_zip_from_url(url, "__agent.json".to_string(), node_name, signing_secret_key).await {
+                Ok(contents) => contents,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Agent Zip".to_string(),
+                        message: format!("Failed to extract agent.json: {:?}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         if let Err(err) = Node::import_agent_tools(db.clone(), node_env.clone(), zip_contents.archive).await {
             let api_error = APIError {

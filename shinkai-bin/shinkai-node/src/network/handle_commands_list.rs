@@ -2691,9 +2691,16 @@ impl Node {
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_import_tool(db_clone, bearer, node_env, url, node_name, signing_secret_key, res)
-                            .await;
+                    let _ = Node::v2_api_import_tool_url(
+                        db_clone,
+                        bearer,
+                        node_env,
+                        url,
+                        node_name,
+                        signing_secret_key,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiImportToolZip { bearer, file_data, res } => {

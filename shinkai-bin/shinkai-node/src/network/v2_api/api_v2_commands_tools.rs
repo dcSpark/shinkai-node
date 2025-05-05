@@ -3,7 +3,7 @@ use crate::{
     managers::{tool_router::ToolRouter, IdentityManager},
     network::{
         node_error::NodeError,
-        node_shareable_logic::{download_zip_file, ZipFileContents},
+        node_shareable_logic::{download_zip_from_url, ZipFileContents},
         Node,
     },
     tools::{
@@ -2206,7 +2206,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn get_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
+    pub async fn generate_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
         let mut tool = tool;
         tool.sanitize_config();
 
@@ -2265,7 +2265,7 @@ impl Node {
         let sqlite_manager_read = db;
         match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
             Ok(tool) => {
-                let file_bytes = Self::get_tool_zip(tool, node_env).await;
+                let file_bytes = Self::generate_tool_zip(tool, node_env).await;
                 match file_bytes {
                     Ok(file_bytes) => {
                         let _ = res.send(Ok(file_bytes)).await;
@@ -2332,7 +2332,7 @@ impl Node {
             message: format!("Failed to get tool: {}", e),
         })?;
 
-        let file_bytes: Vec<u8> = Self::get_tool_zip(tool, node_env).await.map_err(|e| APIError {
+        let file_bytes: Vec<u8> = Self::generate_tool_zip(tool, node_env).await.map_err(|e| APIError {
             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             error: "Internal Server Error".to_string(),
             message: format!("Failed to get tool zip: {}", e),
@@ -2421,7 +2421,7 @@ impl Node {
         }
     }
 
-    pub async fn v2_api_import_tool(
+    pub async fn v2_api_import_tool_url(
         db: Arc<SqliteManager>,
         bearer: String,
         node_env: NodeEnvironment,
@@ -2435,19 +2435,15 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::v2_api_import_tool_internal(db, node_env, url, node_name, signing_secret_key).await;
-        match result {
-            Ok(response) => {
-                let _ = res.send(Ok(response)).await;
-            }
-            Err(err) => {
-                let _ = res.send(Err(err)).await;
-            }
-        }
+        let result = Self::v2_api_import_tool_url_internal(db, node_env, url, node_name, signing_secret_key).await;
+        let _ = match result {
+            Ok(response) => res.send(Ok(response)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
         Ok(())
     }
 
-    pub async fn v2_api_import_tool_internal(
+    pub async fn v2_api_import_tool_url_internal(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         url: String,
@@ -2455,11 +2451,9 @@ impl Node {
         signing_secret_key: SigningKey,
     ) -> Result<Value, APIError> {
         let zip_contents: ZipFileContents =
-            match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
+            match download_zip_from_url(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
                 Ok(contents) => contents,
-                Err(err) => {
-                    return Err(err);
-                }
+                Err(err) => return Err(err),
             };
 
         // Parse the JSON into a ShinkaiTool
@@ -2605,7 +2599,7 @@ impl Node {
                 }
             }
             file_path.push(file);
-            let s = std::fs::write(&file_path, &buffer);
+            let s: Result<(), std::io::Error> = std::fs::write(&file_path, &buffer);
             if s.is_err() {
                 return Err(APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
@@ -3306,7 +3300,7 @@ impl Node {
         Ok(response)
     }
 
-    pub async fn process_tool_zip(
+    pub async fn install_tool_from_u8(
         db: Arc<SqliteManager>,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
@@ -3358,71 +3352,8 @@ impl Node {
                 });
             }
         };
-
-        // Save the tool to the database
-        match db.add_tool(tool).await {
-            Ok(tool) => {
-                // Process all files except __tool.json
-                let mut files_to_process = Vec::new();
-                for i in 0..archive.len() {
-                    if let Ok(mut file) = archive.by_index(i) {
-                        let name = file.name().to_string();
-                        if name != "__tool.json" {
-                            // Read the file data into memory
-                            let mut buffer = Vec::new();
-                            if let Err(err) = file.read_to_end(&mut buffer) {
-                                return Err(APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Read Error".to_string(),
-                                    message: format!("Failed to read file {}: {}", name, err),
-                                });
-                            }
-                            files_to_process.push((name, buffer));
-                        }
-                    }
-                }
-
-                // Process the files after reading them all into memory
-                for (name, buffer) in files_to_process {
-                    // Create the directory structure if it doesn't exist
-                    let file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
-                        .join(".tools_storage")
-                        .join("tools")
-                        .join(tool.tool_router_key().convert_to_path());
-                    if !file_path.exists() {
-                        if let Err(err) = std::fs::create_dir_all(&file_path) {
-                            return Err(APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Failed to create directory".to_string(),
-                                message: format!("Failed to create directory: {}", err),
-                            });
-                        }
-                    }
-
-                    // Write the file
-                    let asset_path = file_path.join(&name);
-                    if let Err(err) = std::fs::write(asset_path, buffer) {
-                        return Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Failed to write file".to_string(),
-                            message: format!("Failed to write file {}: {}", name, err),
-                        });
-                    }
-                }
-
-                Ok(json!({
-                    "status": "success",
-                    "message": "Tool imported successfully",
-                    "tool_key": tool.tool_router_key().to_string_without_version(),
-                    "tool": tool
-                }))
-            }
-            Err(err) => Err(APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Database Error".to_string(),
-                message: format!("Failed to save tool to database: {}", err),
-            }),
-        }
+        let zip_contents = ZipFileContents { buffer, archive };
+        return Node::import_tool(db, node_env, zip_contents, tool).await;
     }
 
     pub async fn v2_api_import_tool_zip(
@@ -3437,7 +3368,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::process_tool_zip(db, node_env, file_data).await;
+        let result = Self::install_tool_from_u8(db, node_env, file_data).await;
         let _ = res.send(result).await;
         Ok(())
     }

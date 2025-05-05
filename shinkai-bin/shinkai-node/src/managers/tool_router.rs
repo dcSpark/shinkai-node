@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -282,7 +282,7 @@ impl ToolRouter {
                         return Ok::<(), ToolError>(());
                     }
 
-                    let val: Value = Node::v2_api_import_tool_internal(
+                    let val: Value = Node::v2_api_import_tool_url_internal(
                         db.clone(),
                         node_env.clone(),
                         tool_url.to_string(),
