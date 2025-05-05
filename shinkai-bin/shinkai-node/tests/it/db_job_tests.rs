@@ -752,7 +752,7 @@ mod tests {
             .unwrap();
 
         let smart_inboxes = shinkai_db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), None)
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), None, None)
             .unwrap();
         assert_eq!(smart_inboxes.len(), 2);
 
@@ -767,7 +767,7 @@ mod tests {
 
         // Check if the smart_inbox is removed
         let smart_inboxes = shinkai_db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), None)
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), None, None)
             .unwrap();
         assert_eq!(smart_inboxes.len(), 1);
         assert!(smart_inboxes[0].inbox_id != inbox1_name.to_string());
