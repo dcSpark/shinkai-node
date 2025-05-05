@@ -87,7 +87,7 @@ impl ShinkaiTool {
             enabled: self.is_enabled(),
             mcp_enabled: Some(self.is_mcp_enabled()),
             input_args: self.input_args(),
-            output_arg: ToolOutputArg::empty(),
+            output_arg: self.get_output_args(),
             config: self.get_js_tool_config().cloned(),
             usage_type: self.get_usage_type(),
             tool_offering: None,
@@ -158,6 +158,23 @@ impl ShinkaiTool {
             ShinkaiTool::Python(p, _) => p.input_args.clone(),
             ShinkaiTool::Agent(a, _) => a.input_args.clone(),
             ShinkaiTool::Simulated(s, _) => s.input_args.clone(),
+        }
+    }
+
+    pub fn get_output_args(&self) -> ToolOutputArg {
+        match self {
+            ShinkaiTool::Rust(r, _) => r.output_arg.clone(),
+            ShinkaiTool::Network(n, _) => n.output_arg.clone(),
+            ShinkaiTool::Deno(d, _) => ToolOutputArg {
+                json: serde_json::to_string(&d.result).unwrap_or_default(),
+            },
+            ShinkaiTool::Python(p, _) => ToolOutputArg {
+                json: serde_json::to_string(&p.result).unwrap_or_default(),
+            },
+            ShinkaiTool::Agent(a, _) => a.output_arg.clone(),
+            ShinkaiTool::Simulated(s, _) => ToolOutputArg {
+                json: serde_json::to_string(&s.result).unwrap_or_default(),
+            },
         }
     }
 
