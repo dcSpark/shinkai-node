@@ -6,7 +6,6 @@ use super::api_v2_handlers_general::general_routes;
 use super::api_v2_handlers_jobs::job_routes;
 use super::api_v2_handlers_oauth::oauth_routes;
 use super::api_v2_handlers_prompts::prompt_routes;
-use super::api_v2_handlers_sheets::sheets_routes;
 use super::api_v2_handlers_swagger_ui::swagger_ui_routes;
 use super::api_v2_handlers_tools::tool_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
@@ -28,7 +27,6 @@ pub fn v2_routes(
     let wallet_routes = wallet_routes(node_commands_sender.clone());
     let custom_prompt = prompt_routes(node_commands_sender.clone());
     let swagger_ui_routes = swagger_ui_routes();
-    let sheets_routes = sheets_routes(node_commands_sender.clone());
     let tool_routes = tool_routes(node_commands_sender.clone());
     let cron_routes = cron_routes(node_commands_sender.clone(), node_name.clone());
     let oauth_routes = oauth_routes(node_commands_sender.clone());
@@ -40,7 +38,6 @@ pub fn v2_routes(
         .or(wallet_routes)
         .or(custom_prompt)
         .or(swagger_ui_routes)
-        .or(sheets_routes)
         .or(tool_routes)
         .or(cron_routes)
         .or(oauth_routes)

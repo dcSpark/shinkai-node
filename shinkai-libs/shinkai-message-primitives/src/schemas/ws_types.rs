@@ -7,13 +7,12 @@ use tokio::sync::Mutex;
 
 use crate::shinkai_message::shinkai_message_schemas::WSTopic;
 
-use super::{sheet::CellUpdateInfo, shinkai_tool_offering::UsageType};
+use super::shinkai_tool_offering::UsageType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MessageType {
     ShinkaiMessage,
     Stream,
-    Sheet,
     Widget,
 }
 
@@ -81,7 +80,6 @@ pub trait WSUpdateHandler {
 #[derive(Debug, Clone)]
 pub enum WSMessageType {
     Metadata(WSMetadata),
-    Sheet(CellUpdateInfo),
     Widget(WidgetMetadata),
     None,
 }

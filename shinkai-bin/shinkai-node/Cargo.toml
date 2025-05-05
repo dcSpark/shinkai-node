@@ -53,7 +53,6 @@ shinkai_tools_primitives = { workspace = true }
 shinkai_tcp_relayer = { workspace = true }
 shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
-shinkai_sheet = { workspace = true }
 shinkai_embedding = { workspace = true }
 shinkai_fs = { workspace = true }
 # shinkai_baml = { workspace = true }

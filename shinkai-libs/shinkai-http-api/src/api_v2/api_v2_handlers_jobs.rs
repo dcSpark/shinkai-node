@@ -11,7 +11,7 @@ use shinkai_message_primitives::{
         }, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, V2SmartInbox}
     }, shinkai_message::{
         shinkai_message::NodeApiData, shinkai_message_schemas::{
-            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, SheetJobAction, SheetManagerAction, V2ChatMessage
+            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, V2ChatMessage
         }
     }, shinkai_utils::job_scope::MinimalJobScope
 };
@@ -1342,8 +1342,7 @@ pub async fn get_job_provider_handler(
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, MinimalJobScope, CallbackAction, ShinkaiName,
             LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest, ExportInboxMessagesFormat, ExportInboxMessagesRequest,
-            ShinkaiSubidentityType, OpenAI, Ollama, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
-            SheetJobAction, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)
+            ShinkaiSubidentityType, OpenAI, Ollama, Groq, Gemini, Exo, ShinkaiBackend, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)
     ),
     tags(
         (name = "jobs", description = "Job API endpoints")
