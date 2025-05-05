@@ -8,7 +8,6 @@ use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::identity_manager::IdentityManagerTrait;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
@@ -126,8 +125,6 @@ pub struct Node {
     pub tool_router: Option<Arc<ToolRouter>>,
     // Callback Manager. Option so it is compatible with the Option (timing wise) inputs.
     pub callback_manager: Arc<Mutex<JobCallbackManager>>,
-    // Sheet Manager.
-    pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Default embedding model for new profiles
     pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
@@ -354,14 +351,6 @@ impl Node {
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
 
-        let sheet_manager_result = SheetManager::new(
-            Arc::downgrade(&db_arc.clone()),
-            node_name.clone(),
-            ws_manager_trait.clone(),
-        )
-        .await;
-        let sheet_manager = sheet_manager_result.unwrap();
-
         // It reads the api_v2_key from env, if not from db and if not, then it generates a new one that gets saved in
         // the db
         let api_v2_key = if let Some(key) = api_v2_key {
@@ -412,7 +401,6 @@ impl Node {
             ws_manager_trait,
             ws_server: None,
             callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
-            sheet_manager: Arc::new(Mutex::new(sheet_manager)),
             tool_router: Some(tool_router),
             default_embedding_model,
             supported_embedding_models,
@@ -452,7 +440,6 @@ impl Node {
                 self.embedding_generator.clone(),
                 self.ws_manager_trait.clone(),
                 self.tool_router.clone(),
-                self.sheet_manager.clone(),
                 self.callback_manager.clone(),
                 self.my_agent_payments_manager.clone(),
                 self.ext_agent_payments_manager.clone(),
@@ -461,11 +448,6 @@ impl Node {
             .await,
         ));
         self.job_manager = Some(job_manager.clone());
-
-        {
-            let mut sheet_manager = self.sheet_manager.lock().await;
-            sheet_manager.set_job_manager(job_manager.clone());
-        }
 
         shinkai_log(
             ShinkaiLogOption::Node,
@@ -492,7 +474,6 @@ impl Node {
         {
             let mut callback_manager = self.callback_manager.lock().await;
             callback_manager.update_job_manager(job_manager.clone());
-            callback_manager.update_sheet_manager(self.sheet_manager.clone());
             callback_manager.update_cron_manager(cron_manager.clone());
         }
 

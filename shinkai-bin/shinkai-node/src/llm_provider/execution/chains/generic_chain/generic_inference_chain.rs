@@ -8,7 +8,6 @@ use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -87,7 +86,6 @@ impl InferenceChain for GenericInferenceChain {
             self.context.max_tokens_in_prompt,
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
-            self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
             self.context.job_callback_manager.clone(),
@@ -213,7 +211,6 @@ impl GenericInferenceChain {
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
@@ -716,7 +713,6 @@ impl GenericInferenceChain {
                         max_tokens_in_prompt,
                         ws_manager_trait.clone(),
                         tool_router.clone(),
-                        sheet_manager.clone(),
                         my_agent_payments_manager.clone(),
                         ext_agent_payments_manager.clone(),
                         job_callback_manager.clone(),

@@ -31,7 +31,6 @@ pub mod prompt_manager;
 pub mod regex_pattern_manager;
 pub mod retry_manager;
 pub mod settings_manager;
-pub mod sheet_manager;
 pub mod shinkai_tool_manager;
 pub mod source_file_manager;
 pub mod tool_payment_req_manager;
