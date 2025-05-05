@@ -94,7 +94,6 @@ async fn test_process_job_queue_concurrency() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: Arc<Mutex<SheetManager>>,
                               _: Arc<Mutex<JobCallbackManager>>,
                               _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
@@ -170,7 +169,6 @@ async fn test_process_job_queue_concurrency() {
                 node_name.clone(),
                 identity_sk,
                 generator,
-                sheet_manager.clone(),
                 callback_manager.clone(),
                 job_queue_manager.clone(),
             )
@@ -239,7 +237,6 @@ async fn test_sequential_process_for_same_job_id() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: Arc<Mutex<SheetManager>>,
                               _: Arc<Mutex<JobCallbackManager>>,
                               _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
