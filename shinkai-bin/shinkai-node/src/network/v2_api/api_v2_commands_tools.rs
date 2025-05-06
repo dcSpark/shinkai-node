@@ -24,17 +24,19 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey,
-    },
-    schemas::{
+        inbox_name::InboxName,
+        indexable_version::IndexableVersion,
+        job::JobLike,
+        job_config::JobConfig,
+        shinkai_name::ShinkaiSubidentityType,
+        tool_router_key::ToolRouterKey,
         shinkai_name::ShinkaiName,
         shinkai_tools::{CodeLanguage, DynamicToolType},
     },
-    shinkai_message::shinkai_message_schemas::JobMessage,
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType},
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType, JobMessage},
     shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        job_scope::MinimalJobScope,
+        shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::clone_signature_secret_key,
     },
 };
@@ -51,8 +53,15 @@ use shinkai_tools_primitives::tools::{
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
     tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
-use std::{collections::HashMap, path::PathBuf};
-use std::{env, io::Read, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    env,
+    fs::File,
+    io::{Read, Write},
+    path::{absolute, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
@@ -2621,6 +2630,43 @@ impl Node {
             "message": "Tool asset uploaded successfully",
             "file": file_data.len(),
             "file_name": file_name
+        });
+        let _ = res.send(Ok(response)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_upload_playground_file(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        _tool_id: String,
+        app_id: String,
+        file_name: String,
+        file_data: Vec<u8>,
+        node_env: NodeEnvironment,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
+        file_path.push(".tools_storage");
+        file_path.push("playground_files");
+        file_path.push(app_id);
+        // Create directories if they don't exist
+        if !file_path.exists() {
+            std::fs::create_dir_all(&file_path)?;
+        }
+        file_path.push(&file_name);
+        std::fs::write(&file_path, &file_data)?;
+        let absolute_file_path = absolute(&file_path)?;
+        let response = json!({
+            "status": "success",
+            "message": "Playground file uploaded successfully",
+            "file": file_data.len(),
+            "file_name": file_name,
+            "file_path": absolute_file_path.to_string_lossy().to_string()
         });
         let _ = res.send(Ok(response)).await;
         Ok(())

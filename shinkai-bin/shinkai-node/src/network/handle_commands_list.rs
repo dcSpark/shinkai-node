@@ -2792,6 +2792,23 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiUploadPlaygroundFile {
+                bearer,
+                tool_id,
+                app_id,
+                file_name,
+                file_data,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_upload_playground_file(
+                        db_clone, bearer, tool_id, app_id, file_name, file_data, node_env, res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiListToolAssets {
                 bearer,
                 tool_id,
