@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType
+    IdentityPermissions, JobMessage, MessageSchemaType, RegistrationCodeType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -404,12 +404,12 @@ pub async fn api_llm_provider_registration(
 #[allow(clippy::too_many_arguments)]
 pub async fn api_message_job(
     node_commands_sender: Sender<NodeCommand>,
-    subidentity_encryption_sk: EncryptionStaticKey,
-    node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SigningKey,
-    sender: &str,
-    sender_subidentity: &str,
-    recipient_subidentity: &str,
+    _subidentity_encryption_sk: EncryptionStaticKey,
+    _node_encryption_pk: EncryptionPublicKey,
+    _subidentity_signature_sk: SigningKey,
+    _sender: &str,
+    _sender_subidentity: &str,
+    _recipient_subidentity: &str,
     job_id: &str,
     content: &str,
     files: &[&str],
@@ -417,25 +417,24 @@ pub async fn api_message_job(
 ) {
     {
         let files_vec = files.iter().map(|f| ShinkaiPath::new(f)).collect::<Vec<_>>();
-        let job_message = ShinkaiMessageBuilder::job_message(
-            job_id.to_string(),
-            content.to_string(),
-            files_vec,
-            parent.to_string(),
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-            sender.to_string(),
-            sender_subidentity.to_string(),
-            sender.to_string(),
-            recipient_subidentity.to_string(),
-        )
-        .unwrap();
+
+        let job_message = JobMessage {
+            job_id: job_id.to_string(),
+            content: content.to_string(),
+            fs_files_paths: files_vec,
+            parent: Some(parent.to_string()),
+            sheet_job_data: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+            job_filenames: vec![],
+            tools: None,
+        };
 
         let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APIJobMessage {
-                msg: job_message.clone(),
+            .send(NodeCommand::InternalV2ApiJobMessage {
+                job_message,
                 res: res_message_job_sender,
             })
             .await

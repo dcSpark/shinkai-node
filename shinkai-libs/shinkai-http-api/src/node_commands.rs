@@ -24,10 +24,10 @@ use shinkai_tools_primitives::tools::{
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::node_api_router::SendResponseBody;
-
-use super::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData}
+use crate::{
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{
+        APIError, APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData
+    }
 };
 
 pub enum NodeCommand {
@@ -182,14 +182,9 @@ pub enum NodeCommand {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     },
-    APIJobMessage {
-        msg: ShinkaiMessage,
+    InternalV2ApiJobMessage {
+        job_message: JobMessage,
         res: Sender<Result<SendResponseBodyData, APIError>>,
-    },
-    #[allow(dead_code)]
-    JobMessage {
-        shinkai_message: ShinkaiMessage,
-        res: Sender<(String, String)>,
     },
     APIAddAgent {
         msg: ShinkaiMessage,

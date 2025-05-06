@@ -11,16 +11,14 @@ use shinkai_message_primitives::schemas::identity::Identity;
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
-    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName},
-    shinkai_message::{
-        shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
-    },
+    schemas::{llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName}, shinkai_message::{
+        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType}
+    }
 };
 use shinkai_sqlite::SqliteManager;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 impl Node {
     pub async fn local_get_last_unread_messages_from_inbox(
