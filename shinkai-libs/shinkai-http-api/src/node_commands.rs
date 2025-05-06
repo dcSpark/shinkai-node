@@ -24,10 +24,10 @@ use shinkai_tools_primitives::tools::{
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::node_api_router::SendResponseBody;
-
-use super::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData}
+use crate::{
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{
+        APIError, APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, SendResponseBody, SendResponseBodyData
+    }
 };
 
 pub enum NodeCommand {
@@ -37,10 +37,10 @@ pub enum NodeCommand {
     // Command to request the node's public keys for signing and encryption. The sender will receive the keys.
     GetPublicKeys(Sender<(VerifyingKey, EncryptionPublicKey)>),
     // Command to make the node send a `ShinkaiMessage` in an onionized (i.e., anonymous and encrypted) way.
-    SendOnionizedMessage {
-        msg: ShinkaiMessage,
-        res: async_channel::Sender<Result<SendResponseBodyData, APIError>>,
-    },
+    // SendOnionizedMessage {
+    //     msg: ShinkaiMessage,
+    //     res: async_channel::Sender<Result<SendResponseBodyData, APIError>>,
+    // },
     GetNodeName {
         res: Sender<String>,
     },
@@ -57,12 +57,6 @@ pub enum NodeCommand {
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
         res: Sender<String>,
-    },
-    // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive
-    // the result.
-    APIUseRegistrationCode {
-        msg: ShinkaiMessage,
-        res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     },
     // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {
@@ -181,10 +175,6 @@ pub enum NodeCommand {
     CreateJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
-    },
-    APIJobMessage {
-        msg: ShinkaiMessage,
-        res: Sender<Result<SendResponseBodyData, APIError>>,
     },
     #[allow(dead_code)]
     JobMessage {

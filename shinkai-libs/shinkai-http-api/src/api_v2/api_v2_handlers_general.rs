@@ -24,7 +24,6 @@ use warp::filters::multipart::FormData;
 use warp::Filter;
 use std::collections::HashMap;
 
-use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
 use crate::{
     node_api_router::{APIError, GetPublicKeysResponse},
     node_commands::NodeCommand,
@@ -1459,7 +1458,7 @@ pub async fn get_preferences_handler(
             OpenAI, Ollama, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
             ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
             NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
-            APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError, Agent,
+            GetPublicKeysResponse, APIError, Agent,
             AddRegexPatternRequest, QuotaResponse)
     ),
     tags(
