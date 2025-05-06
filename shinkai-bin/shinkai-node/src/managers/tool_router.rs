@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry
+    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -86,7 +86,7 @@ impl ToolRouter {
         }
     }
 
-    pub async fn initialization(&self, generator: Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    pub async fn initialization(&self, embedding_generator: Arc<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         let is_empty;
         let has_any_js_tools;
         {
@@ -105,10 +105,14 @@ impl ToolRouter {
             eprintln!("Error adding rust tools: {}", e);
         }
 
+        let node_env = fetch_node_environment();
+        let node_name: String = node_env.global_identity_name.clone();
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
+            node_name,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
+            embedding_generator.clone(),
         )
         .await
         {
@@ -116,7 +120,7 @@ impl ToolRouter {
         }
 
         if is_empty {
-            if let Err(e) = self.add_static_prompts(&generator).await {
+            if let Err(e) = self.add_static_prompts(embedding_generator).await {
                 eprintln!("Error adding static prompts: {}", e);
             }
             if let Err(e) = self.add_testing_network_tools().await {
@@ -131,17 +135,22 @@ impl ToolRouter {
         Ok(())
     }
 
-    pub async fn force_reinstall_all(&self, generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    pub async fn force_reinstall_all(&self, embedding_generator: Arc<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         if let Err(e) = self.add_rust_tools().await {
             eprintln!("Error adding rust tools: {}", e);
         }
-        if let Err(e) = self.add_static_prompts(generator).await {
+        if let Err(e) = self.add_static_prompts(embedding_generator.clone()).await {
             eprintln!("Error adding static prompts: {}", e);
         }
+
+        let node_env = fetch_node_environment();
+        let node_name: String = node_env.global_identity_name.clone();
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
+            node_name,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
+            embedding_generator,
         )
         .await
         {
@@ -153,11 +162,18 @@ impl ToolRouter {
         Ok(())
     }
 
-    pub async fn sync_tools_from_directory(&self) -> Result<(), ToolError> {
+    pub async fn sync_tools_from_directory(
+        &self,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+    ) -> Result<(), ToolError> {
+        let node_env = fetch_node_environment();
+        let node_name: String = node_env.global_identity_name.clone();
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
+            node_name,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
+            embedding_generator.clone(),
         )
         .await
         {
@@ -170,8 +186,10 @@ impl ToolRouter {
     /// Now also checks if a tool is installed with an older version, and if so, calls `upgrade_tool`.
     async fn import_tools_from_directory(
         db: Arc<SqliteManager>,
+        node_name: String,
         signing_secret_key: SigningKey,
         default_tool_router_keys: Arc<Mutex<Vec<String>>>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
@@ -259,8 +277,9 @@ impl ToolRouter {
             let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
                 let db = db.clone();
                 let node_env = node_env.clone();
-                let node_name = node_env.global_identity_name.clone();
+                let node_name = node_name.clone();
                 let signing_secret_key = signing_secret_key.clone();
+                let embedding_generator = embedding_generator.clone();
                 async move {
                     // Try to see if a tool with the same routerKey is already installed.
                     let do_install = match db.get_tool_by_key(router_key) {
@@ -282,12 +301,13 @@ impl ToolRouter {
                         return Ok::<(), ToolError>(());
                     }
 
-                    let val: Value = Node::v2_api_import_tool_internal(
+                    let val: Value = Node::v2_api_import_tool_url_internal(
                         db.clone(),
                         node_env.clone(),
                         tool_url.to_string(),
                         node_name,
                         signing_secret_key,
+                        embedding_generator,
                     )
                     .await
                     .map_err(|e| ToolError::ExecutionError(e.message))?;
@@ -325,7 +345,7 @@ impl ToolRouter {
         Ok(())
     }
 
-    pub async fn add_static_prompts(&self, _generator: &Box<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
+    pub async fn add_static_prompts(&self, _: Arc<dyn EmbeddingGenerator>) -> Result<(), ToolError> {
         // Check if ONLY_TESTING_PROMPTS is set
         if env::var("ONLY_TESTING_PROMPTS").unwrap_or_default() == "1"
             || env::var("ONLY_TESTING_PROMPTS").unwrap_or_default().to_lowercase() == "true"
