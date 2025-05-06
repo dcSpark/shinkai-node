@@ -40,9 +40,12 @@ pub async fn parse_xlsx_to_matrix(xlsx_file_path: PathBuf) -> Result<Vec<Vec<Str
         Some(DenoRunnerOptions {
             deno_binary_path: PathBuf::from(
                 env::var("SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH")
-                    .unwrap_or_else(|_| "/opt/homebrew/bin/deno".to_string()),
+                    .unwrap_or_else(|_| "./shinkai-tools-runner-resources/deno".to_string()),
             ),
             context: ExecutionContext {
+                storage: PathBuf::from(env::var("NODE_STORAGE_PATH").unwrap_or_else(|_| "./".to_string()))
+                    .join("internal_tools_storage"),
+                context_id: "shinkai-node-xlsx-parsing".to_string(),
                 mount_files: vec![xlsx_file_path.clone()],
                 ..Default::default()
             },

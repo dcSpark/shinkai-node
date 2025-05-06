@@ -110,7 +110,7 @@ impl SimpleParser {
             SupportedFileType::Csv => LocalFileParser::process_csv_file(file_buffer, max_node_text_size),
             SupportedFileType::Html => LocalFileParser::process_html_file(file_buffer, "filename", max_node_text_size),
             SupportedFileType::Md => LocalFileParser::process_md_file(file_buffer, max_node_text_size),
-            SupportedFileType::Pdf => LocalFileParser::process_pdf_file(file_buffer, max_node_text_size),
+            SupportedFileType::Pdf => LocalFileParser::process_pdf_file(file_path, max_node_text_size).await,
             SupportedFileType::Docx => LocalFileParser::process_docx_file(file_buffer, max_node_text_size),
             SupportedFileType::Xlsx => {
                 LocalFileParser::process_xlsx_file(file_path.as_path().to_path_buf(), max_node_text_size).await
