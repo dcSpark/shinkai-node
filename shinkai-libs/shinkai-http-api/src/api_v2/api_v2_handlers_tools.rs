@@ -72,6 +72,13 @@ pub fn tool_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(get_tools_from_toolset_handler);
 
+    let set_common_toolset_config_route = warp::path("set_common_toolset_config")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(set_common_toolset_config_handler);
+
     let add_shinkai_tool_route = warp::path("add_shinkai_tool")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -300,6 +307,7 @@ pub fn tool_routes(
         .or(get_shinkai_tool_route)
         .or(search_shinkai_tool_route)
         .or(get_shinkai_tools_by_tool_set_route)
+        .or(set_common_toolset_config_route)
         .or(add_shinkai_tool_route)
         .or(duplicate_tool_route)
         .or(set_playground_tool_route)
@@ -2339,6 +2347,66 @@ pub async fn get_tools_from_toolset_handler(
         }
     }
 }
+#[derive(Deserialize, ToSchema)]
+pub struct SetCommonToolSetConfigRequest {
+    pub tool_set_key: String,
+    pub value: HashMap<String, Value>,
+}
+#[derive(serde::Serialize, ToSchema)]
+pub struct SetCommonToolSetConfigResponse {
+    pub updated_tool_keys: Vec<String>,
+}
+#[utoipa::path(
+    post,
+    path = "/v2/set_common_toolset_config",
+    request_body = SetCommonToolSetConfigRequest,
+    responses(
+        (status = 200, description = "Successfully configured tools from toolset", body = SetCommonToolSetConfigResponse), // Updated body type
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn set_common_toolset_config_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: SetCommonToolSetConfigRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    let command = NodeCommand::V2SetCommonToolSetConfig {
+        bearer,
+        tool_set_key: payload.tool_set_key,
+        value: payload.value,
+        res: res_sender,
+    };
+
+    sender.send(command).await.map_err(|e| {
+        eprintln!("Failed to send V2SetCommonToolSetConfig command: {}", e);
+        warp::reject::reject()
+    })?;
+
+    let result = res_receiver.recv().await.map_err(|e| {
+        eprintln!("Failed to receive result for V2SetCommonToolSetConfig: {}", e);
+        warp::reject::reject()
+    })?;
+
+    match result {
+        Ok(updated_tool_keys) => {
+            let response = SetCommonToolSetConfigResponse { updated_tool_keys };
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                StatusCode::OK,
+            ))
+        }
+        Err(e) => { // fallback
+            Ok(warp::reply::with_status(
+                warp::reply::json(&e),
+                StatusCode::from_u16(e.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), // Fallback to 500 if code is invalid
+            ))
+        }
+    }
+}
 #[utoipa::path(
     post,
     path = "/v2/copy_tool_assets",
@@ -2470,6 +2538,7 @@ pub async fn tool_check_handler(
         copy_tool_assets_handler,
         tool_check_handler,
         get_tools_from_toolset_handler,
+        set_common_toolset_config_handler,
     ),
     components(
         schemas(
@@ -2477,6 +2546,8 @@ pub async fn tool_check_handler(
             ToolExecutionRequest,
             SetToolEnabledRequest,
             SetToolMcpEnabledRequest,
+            SetCommonToolSetConfigRequest,
+            SetCommonToolSetConfigResponse,
         )
     ),
     tags(
