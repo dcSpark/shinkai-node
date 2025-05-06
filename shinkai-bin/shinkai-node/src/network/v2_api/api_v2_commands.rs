@@ -18,6 +18,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 use rusqlite::params;
 use serde_json::{json, Value};
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
@@ -1682,6 +1683,7 @@ impl Node {
         node_name: String,
         node_env: NodeEnvironment,
         signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1717,14 +1719,28 @@ impl Node {
             }
         };
 
-        let status =
-            import_dependencies_tools(db.clone(), node_name.clone(), node_env.clone(), zip_contents.archive).await;
+        let status = import_dependencies_tools(
+            db.clone(),
+            node_name.clone(),
+            node_env.clone(),
+            zip_contents.archive.clone(),
+            embedding_generator.clone(),
+        )
+        .await;
         if let Err(err) = status {
             let _ = res.send(Err(err)).await;
             return Ok(());
         }
 
-        let _ = match import_agent(db.clone(), node_name, agent.clone()).await {
+        let _ = match import_agent(
+            db.clone(),
+            node_name,
+            zip_contents.archive,
+            agent.clone(),
+            embedding_generator.clone(),
+        )
+        .await
+        {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };
@@ -1738,6 +1754,7 @@ impl Node {
         node_name: String,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1768,14 +1785,21 @@ impl Node {
             }
         };
 
-        let status = import_dependencies_tools(db.clone(), node_name.clone(), node_env.clone(), archive).await;
+        let status = import_dependencies_tools(
+            db.clone(),
+            node_name.clone(),
+            node_env.clone(),
+            archive.clone(),
+            embedding_generator.clone(),
+        )
+        .await;
         if let Err(err) = status {
             let _ = res.send(Err(err)).await;
             return Ok(());
         }
 
         // Parse the JSON into an Agent
-        let _ = match import_agent(db.clone(), node_name, agent.clone()).await {
+        let _ = match import_agent(db.clone(), node_name, archive, agent.clone(), embedding_generator).await {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };
@@ -1831,14 +1855,15 @@ impl Node {
     }
 
     pub async fn handle_periodic_maintenance(
-        db: Arc<SqliteManager>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _: Arc<SqliteManager>,
+        _: ShinkaiName,
+        _: Arc<Mutex<IdentityManager>>,
         tool_router: Option<Arc<ToolRouter>>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), NodeError> {
         // Import tools from directory if tool_router is available
         if let Some(tool_router) = tool_router {
-            if let Err(e) = tool_router.sync_tools_from_directory().await {
+            if let Err(e) = tool_router.sync_tools_from_directory(embedding_generator.clone()).await {
                 eprintln!("Error during periodic tool import: {}", e);
             }
         }

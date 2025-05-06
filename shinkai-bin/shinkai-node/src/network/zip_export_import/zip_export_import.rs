@@ -3,11 +3,14 @@ use crate::network::node_shareable_logic::ZipFileContents;
 use crate::utils::environment::NodeEnvironment;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
+use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::agent_tool_wrapper::{self, AgentToolWrapper};
+use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::collections::HashMap;
 use std::fs::File;
@@ -69,7 +72,7 @@ async fn calculate_zip_dependencies(
         // Only Deno & Python tools have get_tools()
         for dependency in tool.get_tools() {
             let tool_dependency =
-                match db.get_tool_by_key_and_version(&dependency.to_string_with_version(), dependency.version()) {
+                match db.get_tool_by_key_and_version(&dependency.to_string_without_version(), dependency.version()) {
                     Ok(tool) => tool,
                     Err(err) => {
                         return Err(APIError {
@@ -116,16 +119,17 @@ async fn calculate_zip_dependencies(
         );
 
         for tool in agent.tools {
-            let tool_dependency = match db.get_tool_by_key_and_version(&tool.to_string_with_version(), tool.version()) {
-                Ok(tool) => tool,
-                Err(err) => {
-                    return Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: format!("Failed to get tool dependency: {}", err),
-                    });
-                }
-            };
+            let tool_dependency =
+                match db.get_tool_by_key_and_version(&tool.to_string_without_version(), tool.version()) {
+                    Ok(tool) => tool,
+                    Err(err) => {
+                        return Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: format!("Failed to get tool dependency: {}", err),
+                        });
+                    }
+                };
             Box::pin(calculate_zip_dependencies(
                 db.clone(),
                 shinkai_name.clone(),
@@ -485,9 +489,10 @@ async fn import_tool_assets(
         if file == "__tool.json" {
             continue;
         }
-        if file.starts_with("__agents/") || file.starts_with("__tools/") {
+        if file.starts_with("__agents/") || file.starts_with("__tools/") || file.starts_with("__knowledge/") {
             continue;
         }
+        println!("[IMPORTING ASSETS]: {}", file);
         let mut buffer = Vec::new();
         {
             let file = zip_contents.archive.by_name(file);
@@ -539,11 +544,67 @@ async fn import_tool_assets(
     Ok(())
 }
 
+async fn import_agent_knowledge(
+    mut zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
+    db: Arc<SqliteManager>,
+    embedding_generator: Arc<dyn EmbeddingGenerator>,
+) -> Result<(), APIError> {
+    let archive_clone = zip_contents.clone();
+    let files = archive_clone.file_names();
+    for file in files {
+        if file.starts_with("__knowledge/") {
+            let mut buffer = Vec::new();
+            {
+                println!("[IMPORTING KNOWLEDGE]: {}", file);
+                let file: Result<zip::read::ZipFile<'_>, zip::result::ZipError> = zip_contents.by_name(file);
+                let mut tool_file = match file {
+                    Ok(file) => file,
+                    Err(_) => {
+                        return Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid Tool Archive".to_string(),
+                            message: "Archive does not contain tool.json".to_string(),
+                        });
+                    }
+                };
+
+                // Read the tool file contents into a buffer
+                if let Err(err) = tool_file.read_to_end(&mut buffer) {
+                    return Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Read Error".to_string(),
+                        message: format!("Failed to read tool.json contents: {}", err),
+                    });
+                }
+            } // `tool_file` goes out of scope here
+
+            let relative_path = file.replace("__knowledge/", "");
+            let dest_path = ShinkaiPath::from_str(&relative_path);
+            ShinkaiFileManager::save_and_process_file(
+                dest_path,
+                buffer,
+                &db,
+                FileProcessingMode::Auto,
+                &*embedding_generator,
+            )
+            .await
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Failed to save and process file".to_string(),
+                message: format!("Failed to save and process file: {}", e),
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn import_dependencies_tools(
     db: Arc<SqliteManager>,
     node_name: String,
     node_env: NodeEnvironment,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
+    embedding_generator: Arc<dyn EmbeddingGenerator>,
 ) -> Result<(), APIError> {
     // Import tools from the zip file
     let archive_clone = zip_contents.clone();
@@ -584,7 +645,14 @@ pub async fn import_dependencies_tools(
                 Err(err) => return Err(err),
             };
             let agent = get_agent_from_zip(agent_zip.archive).unwrap();
-            let import_agent_result = import_agent(db.clone(), node_name.clone(), agent).await;
+            let import_agent_result = import_agent(
+                db.clone(),
+                node_name.clone(),
+                zip_contents.clone(),
+                agent,
+                embedding_generator.clone(),
+            )
+            .await;
             if let Err(err) = import_agent_result {
                 println!("Error importing agent: {:?}", err);
             }
@@ -686,7 +754,13 @@ pub async fn import_tool(
     }))
 }
 
-pub async fn import_agent(db: Arc<SqliteManager>, node_name: String, agent: Agent) -> Result<Value, APIError> {
+pub async fn import_agent(
+    db: Arc<SqliteManager>,
+    node_name: String,
+    zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
+    agent: Agent,
+    embedding_generator: Arc<dyn EmbeddingGenerator>,
+) -> Result<Value, APIError> {
     println!("[IMPORTING AGENT]: {}", agent.agent_id);
     // Do not overwrite existing agent
     // There is no clear mechanism to determine the latest version of the agent
@@ -741,6 +815,8 @@ pub async fn import_agent(db: Arc<SqliteManager>, node_name: String, agent: Agen
             }
         }
     }
+
+    import_agent_knowledge(zip_contents, db, embedding_generator).await?;
 
     return Ok(json!({
         "status": "success",
@@ -867,7 +943,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
         println!("Creating test db at {:?}", db_path);
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

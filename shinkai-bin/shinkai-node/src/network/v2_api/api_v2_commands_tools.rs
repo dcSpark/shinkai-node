@@ -20,6 +20,7 @@ use chrono::Utc;
 use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
@@ -2401,6 +2402,7 @@ impl Node {
         url: String,
         node_name: String,
         signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -2408,7 +2410,15 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::v2_api_import_tool_url_internal(db, node_env, url, node_name, signing_secret_key).await;
+        let result = Self::v2_api_import_tool_url_internal(
+            db,
+            node_env,
+            url,
+            node_name,
+            signing_secret_key,
+            embedding_generator,
+        )
+        .await;
         let _ = match result {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
@@ -2422,6 +2432,7 @@ impl Node {
         url: String,
         node_name: String,
         signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<Value, APIError> {
         let zip_contents: ZipFileContents =
             match download_zip_from_url(url, "__tool.json".to_string(), node_name.clone(), signing_secret_key).await {
@@ -2441,8 +2452,14 @@ impl Node {
             }
         };
 
-        let import_status =
-            import_dependencies_tools(db.clone(), node_name, node_env.clone(), zip_contents.archive.clone()).await;
+        let import_status = import_dependencies_tools(
+            db.clone(),
+            node_name,
+            node_env.clone(),
+            zip_contents.archive.clone(),
+            embedding_generator,
+        )
+        .await;
         if let Err(err) = import_status {
             return Err(err);
         }
@@ -3150,6 +3167,7 @@ impl Node {
         node_name: String,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<Value, APIError> {
         // Create a cursor from the zip data
         let cursor = std::io::Cursor::new(zip_data);
@@ -3199,8 +3217,14 @@ impl Node {
             }
         };
         let zip_contents = ZipFileContents { buffer, archive };
-        let import_status =
-            import_dependencies_tools(db.clone(), node_name, node_env.clone(), zip_contents.archive.clone()).await;
+        let import_status = import_dependencies_tools(
+            db.clone(),
+            node_name,
+            node_env.clone(),
+            zip_contents.archive.clone(),
+            embedding_generator.clone(),
+        )
+        .await;
         if let Err(err) = import_status {
             return Err(err);
         }
@@ -3213,6 +3237,7 @@ impl Node {
         node_name: String,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -3220,7 +3245,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::install_tool_from_u8(db, node_name, node_env, file_data).await;
+        let result = Self::install_tool_from_u8(db, node_name, node_env, file_data, embedding_generator).await;
         let _ = res.send(result).await;
         Ok(())
     }

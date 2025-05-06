@@ -245,6 +245,7 @@ impl Node {
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 let node_env = fetch_node_environment();
+                let embedding_generator = Arc::new(self.embedding_generator.clone());
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_agent_url(
                         db_clone,
@@ -253,6 +254,7 @@ impl Node {
                         node_name,
                         node_env,
                         signing_secret_key,
+                        embedding_generator,
                         res,
                     )
                     .await;
@@ -262,8 +264,18 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
                 let node_name = self.node_name.node_name.clone();
+                let embedding_generator = Arc::new(self.embedding_generator.clone());
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent_zip(db_clone, bearer, node_name, node_env, file_data, res).await;
+                    let _ = Node::v2_api_import_agent_zip(
+                        db_clone,
+                        bearer,
+                        node_name,
+                        node_env,
+                        file_data,
+                        embedding_generator,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
@@ -2473,6 +2485,7 @@ impl Node {
                 let node_env = fetch_node_environment();
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
+                let embedding_generator = self.embedding_generator.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_tool_url(
                         db_clone,
@@ -2481,6 +2494,7 @@ impl Node {
                         url,
                         node_name,
                         signing_secret_key,
+                        Arc::new(embedding_generator),
                         res,
                     )
                     .await;
@@ -2490,8 +2504,18 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
                 let node_name = self.node_name.node_name.clone();
+                let embedding_generator = self.embedding_generator.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_tool_zip(db_clone, bearer, node_name, node_env, file_data, res).await;
+                    let _ = Node::v2_api_import_tool_zip(
+                        db_clone,
+                        bearer,
+                        node_name,
+                        node_env,
+                        file_data,
+                        Arc::new(embedding_generator),
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiRemoveTool { bearer, tool_key, res } => {
