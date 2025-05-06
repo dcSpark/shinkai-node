@@ -5,7 +5,8 @@ use rusqlite::{params, Result};
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use serde_json::Value;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
@@ -959,6 +960,80 @@ impl SqliteManager {
 
         Ok(tools)
     }
+
+    /// Sets the value for common configuration keys across all tools within a specified toolset.
+    /// It iterates through all tools in the set, finds matching BasicConfig entries by key_name,
+    /// and updates their key_value.
+    pub async fn set_common_toolset_config(
+        &self,
+        tool_set_name: &str,
+        values: HashMap<String, Value>,
+    ) -> Result<Vec<String>, SqliteManagerError> {
+        // 1. Retrieve all tools from the toolset
+        let tools = self.get_tools_by_tool_set(tool_set_name)?;
+
+        let mut updated_tool_keys = Vec::new();
+
+        for tool in tools {
+            let mut modified_tool = tool.clone();
+            let mut config_updated = false;
+
+            // 2. Match the tool type and get mutable access to its config
+            match &mut modified_tool {
+                ShinkaiTool::Deno(deno_tool, _) => {
+                    // Iterate through the key-value pairs provided
+                    for (key_to_set, value_to_set) in &values {
+                        // Iterate through the tool's config entries
+                        for config_entry in &mut deno_tool.config {
+                            let ToolConfig::BasicConfig(basic_config) = config_entry else { continue; };
+                                // 2.1 Check if the key_name matches
+                                if &basic_config.key_name == key_to_set {
+                                    // 2.2 Set the key_value
+                                    basic_config.key_value = Some(value_to_set.clone());
+                                    config_updated = true;
+                                    break; // Move to the next key-value pair once matched
+                                }
+                            }
+                        }
+                    }
+                ShinkaiTool::Python(python_tool, _) => {
+                    // Iterate through the key-value pairs provided
+                    for (key_to_set, value_to_set) in &values {
+                        // Iterate through the tool's config entries
+                        for config_entry in &mut python_tool.config {
+                            let ToolConfig::BasicConfig(basic_config) = config_entry else { continue };
+                            // 2.1 Check if the key_name matches
+                            if &basic_config.key_name == key_to_set {
+                                // 2.2 Set the key_value
+                                basic_config.key_value = Some(value_to_set.clone());
+                                config_updated = true;
+                                break; // Move to the next key-value pair once matched
+                            }
+                        }
+                    }
+                }
+                // Handle other tool types if they have configurations in the future
+                _ => continue, // Skip tools without applicable config structures
+            }
+
+            // 3. Update the tool in the db only if its config was modified
+            if config_updated {
+                if let Err(e) = self.update_tool(modified_tool).await {
+                    eprintln!(
+                        "Failed to update tool {} in toolset {}: {}",
+                        tool.name(),
+                        tool_set_name,
+                        e
+                    );
+                    // Decide whether to continue updating others or return immediately
+                    // For now, we continue and report overall success at the end.
+                }
+                updated_tool_keys.push(tool.tool_router_key().to_string_without_version());
+            }
+            // 4. Return vector of successfully updated tool keys
+        }
+        Ok(updated_tool_keys)
+    }
 }
 
 #[cfg(test)]
@@ -985,6 +1060,8 @@ mod tests {
     use shinkai_tools_primitives::tools::tool_types::ToolResult;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
+    use std::collections::HashMap;
+    use serde_json::json;
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
@@ -2577,5 +2654,153 @@ mod tests {
         // Retrieve tools for a non-existent set
         let set_c_tools = manager.get_tools_by_tool_set("Set C").unwrap();
         assert_eq!(set_c_tools.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_set_common_toolset_config() {
+        let manager = setup_test_db().await;
+        let tool_set_name = "MySet";
+
+        // Tool 1: Part of "MySet" with config
+        let tool1 = DenoTool {
+            name: "Tool Set Member 1".to_string(),
+            author: "Author A".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "console.log('TS1');".to_string(),
+            description: "Tool TS1 description".to_string(),
+            tool_set: Some(tool_set_name.to_string()),
+            config: vec![
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "api_key".to_string(),
+                    description: "API Key".to_string(),
+                    required: true,
+                    type_name: Some("string".to_string()),
+                    key_value: Some(json!("old_key_1")),
+                }),
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "feature_flag".to_string(),
+                    description: "Feature Flag".to_string(),
+                    required: false,
+                    type_name: Some("boolean".to_string()),
+                    key_value: Some(json!(false)),
+                }),
+            ],
+            // Fill in other required fields...
+            tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author A".to_string(), "Tool Set Member 1".to_string(), None)),
+            homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
+            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
+        };
+
+        // Tool 2: Part of "MySet" with different config
+        let tool2 = PythonTool {
+            name: "Tool Set Member 2".to_string(),
+            author: "Author B".to_string(),
+            version: "1.0.0".to_string(),
+            py_code: "print('PY1')".to_string(),
+            description: "Tool PY1 description".to_string(),
+            tool_set: Some(tool_set_name.to_string()),
+            config: vec![
+                ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "api_key".to_string(), // Same key as tool1
+                    description: "API Key".to_string(),
+                    required: true,
+                    type_name: Some("string".to_string()),
+                    key_value: Some(json!("old_key_2")),
+                }),
+                 ToolConfig::BasicConfig(BasicConfig { // Different key
+                    key_name: "timeout".to_string(),
+                    description: "Timeout".to_string(),
+                    required: false,
+                    type_name: Some("number".to_string()),
+                    key_value: Some(json!(100)),
+                }),
+            ],
+            // Fill in other required fields...
+             tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author B".to_string(), "Tool Set Member 2".to_string(), None)),
+             homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
+             input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: None,
+             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+             sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
+        };
+
+        // Tool 3: Not part of "MySet"
+         let tool3 = DenoTool {
+            name: "Tool Not In Set".to_string(),
+            author: "Author C".to_string(),
+            version: "1.0.0".to_string(),
+            js_code: "console.log('TS2');".to_string(),
+            description: "Tool TS2 description".to_string(),
+            tool_set: Some("AnotherSet".to_string()), // Different set
+            config: vec![
+                 ToolConfig::BasicConfig(BasicConfig {
+                    key_name: "api_key".to_string(),
+                    description: "API Key".to_string(),
+                    required: true,
+                    type_name: Some("string".to_string()),
+                    key_value: Some(json!("old_key_3")),
+                }),
+            ],
+             // Fill in other required fields...
+             tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author C".to_string(), "Tool Not In Set".to_string(), None)),
+            homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
+            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
+        };
+
+        // Add tools
+        let shinkai_tool1 = ShinkaiTool::Deno(tool1, true);
+        let shinkai_tool2 = ShinkaiTool::Python(tool2, true);
+        let shinkai_tool3 = ShinkaiTool::Deno(tool3, true);
+
+        manager.add_tool(shinkai_tool1.clone()).await.unwrap();
+        manager.add_tool(shinkai_tool2.clone()).await.unwrap();
+        manager.add_tool(shinkai_tool3.clone()).await.unwrap();
+
+        // Values to set
+        let mut values_to_set = HashMap::new();
+        values_to_set.insert("api_key".to_string(), json!("new_common_key"));
+        values_to_set.insert("feature_flag".to_string(), json!(true)); // Only tool1 has this
+        values_to_set.insert("non_existent_key".to_string(), json!("some_value")); // This key doesn't exist in any config
+
+        // Set the common config
+        let result = manager.set_common_toolset_config(tool_set_name, values_to_set).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap()); // Expect success
+
+        // Verify Tool 1 config
+        let updated_tool1 = manager.get_tool_by_key(&shinkai_tool1.tool_router_key().to_string_without_version()).unwrap();
+        if let ShinkaiTool::Deno(t, _) = updated_tool1 {
+            let api_key_config = t.config.iter().find(|c| c.name() == "api_key").unwrap();
+            assert_eq!(api_key_config.header(), json!("new_common_key"));
+            let feature_flag_config = t.config.iter().find(|c| c.name() == "feature_flag").unwrap();
+            assert_eq!(feature_flag_config.header(), json!(true));
+        } else {
+            panic!("Tool 1 is not DenoTool");
+        }
+
+        // Verify Tool 2 config
+        let updated_tool2 = manager.get_tool_by_key(&shinkai_tool2.tool_router_key().to_string_without_version()).unwrap();
+         if let ShinkaiTool::Python(t, _) = updated_tool2 {
+            let api_key_config = t.config.iter().find(|c| c.name() == "api_key").unwrap();
+            assert_eq!(api_key_config.header(), json!("new_common_key"));
+             let timeout_config = t.config.iter().find(|c| c.name() == "timeout").unwrap();
+             assert_eq!(timeout_config.header(), json!(100)); // Should remain unchanged
+        } else {
+            panic!("Tool 2 is not PythonTool");
+        }
+
+
+        // Verify Tool 3 config (should be unchanged)
+        let updated_tool3 = manager.get_tool_by_key(&shinkai_tool3.tool_router_key().to_string_without_version()).unwrap();
+        if let ShinkaiTool::Deno(t, _) = updated_tool3 {
+             let api_key_config = t.config.iter().find(|c| c.name() == "api_key").unwrap();
+            assert_eq!(api_key_config.header(), json!("old_key_3")); // Should be unchanged
+        } else {
+            panic!("Tool 3 is not DenoTool");
+        }
+
     }
 }

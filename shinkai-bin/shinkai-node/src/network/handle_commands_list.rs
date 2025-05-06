@@ -3218,6 +3218,17 @@ impl Node {
                     let _ = Node::v2_api_get_tools_from_toolset(db_clone, bearer, tool_set_key, res).await;
                 });
             }
+            NodeCommand::V2SetCommonToolSetConfig {
+                bearer,
+                tool_set_key,
+                value,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_common_toolset_config(db_clone, bearer, tool_set_key, value, res).await;
+                });    
+            }
             NodeCommand::V2ApiCheckTool {
                 bearer,
                 code,
