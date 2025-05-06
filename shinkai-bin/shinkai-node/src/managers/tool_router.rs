@@ -1,47 +1,55 @@
-use std::env;
-use std::sync::Arc;
-use std::time::Instant;
-
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::GenericInferenceChain;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
 use crate::llm_provider::job_manager::JobManager;
+use crate::network::node_shareable_logic::ZipFileContents;
+use crate::network::zip_export_import::zip_export_import::{
+    get_agent_from_zip, get_tool_from_zip, import_agent, import_tool,
+};
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
-use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
-use crate::tools::tool_execution::execution_coordinator::override_tool_config;
-use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
-use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
-use crate::utils::environment::fetch_node_environment;
+use crate::tools::tool_execution::{
+    execute_agent_dynamic::execute_agent_tool,
+    execution_coordinator::override_tool_config,
+    execution_custom::try_to_execute_rust_tool,
+    execution_header_generator::{check_tool, generate_execution_environment},
+};
+use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
+use async_std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
-use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
-use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
-use shinkai_message_primitives::schemas::job::JobLike;
-use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ToolPrice, UsageType, UsageTypeInquiry,
-};
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
-use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
-use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
-use shinkai_message_primitives::schemas::ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata};
+use shinkai_message_primitives::schemas::{
+    indexable_version::IndexableVersion,
+    invoices::{Invoice, InvoiceStatusEnum},
+    job::JobLike,
+    llm_providers::common_agent_llm_provider::ProviderOrAgent,
+    shinkai_name::ShinkaiName,
+    shinkai_preferences::ShinkaiInternalComms,
+    shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry},
+    tool_router_key::ToolRouterKey,
+    wallet_mixed::{Asset, NetworkIdentifier},
+    ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata},
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::error::ToolError;
-use shinkai_tools_primitives::tools::network_tool::NetworkTool;
-use shinkai_tools_primitives::tools::parameters::Parameters;
-use shinkai_tools_primitives::tools::rust_tools::RustTool;
-use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
-use shinkai_tools_primitives::tools::tool_config::ToolConfig;
-use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
+use shinkai_tools_primitives::tools::{
+    error::ToolError,
+    network_tool::NetworkTool,
+    parameters::Parameters,
+    rust_tools::RustTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    tool_config::ToolConfig,
+    tool_output_arg::ToolOutputArg,
+};
+use std::env;
+use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::Mutex;
 
 use ed25519_dalek::SigningKey;
@@ -182,6 +190,84 @@ impl ToolRouter {
         Ok(())
     }
 
+    async fn import_from_local_directory(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+    ) -> Result<(), ToolError> {
+        let directory_path = match env::var("INSTALL_FOLDER_PATH") {
+            Ok(path) => PathBuf::from(&path),
+            Err(_) => {
+                eprintln!("INSTALL_FOLDER_PATH is not set, skipping import from local directory");
+                return Ok(());
+            }
+        };
+
+        if !directory_path.exists().await {
+            eprintln!("Install directory not found: {}", directory_path.display());
+            return Ok(());
+        }
+
+        let files = std::fs::read_dir(directory_path).map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+        for file in files {
+            let file = file.unwrap();
+            let file_path = file.path();
+            if !file_path.is_file() {
+                println!("Skipping non-file: {}", file_path.display());
+                continue;
+            }
+
+            let file_extension = file_path.extension().unwrap_or_default();
+            if file_extension != "zip" {
+                println!("Skipping non-zip file: {}", file_path.display());
+                continue;
+            }
+
+            let file_content =
+                std::fs::read(file_path.clone()).map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+            let cursor = std::io::Cursor::new(file_content);
+            let mut archive = match zip::ZipArchive::new(cursor) {
+                Ok(archive) => archive,
+                Err(e) => {
+                    eprintln!("Error opening zip file: {}", e);
+                    continue;
+                }
+            };
+            let is_agent = match archive.by_name("__agent.json") {
+                Ok(_) => true,
+                Err(_) => false,
+            };
+
+            let is_tool = match archive.by_name("__tool.json") {
+                Ok(_) => true,
+                Err(_) => false,
+            };
+            if (is_agent && is_tool) || (!is_agent && !is_tool) {
+                eprintln!("Invalid zip file {}", file_path.clone().display());
+                continue;
+            }
+
+            if is_agent {
+                let agent = get_agent_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
+                import_agent(db.clone(), archive.clone(), agent, embedding_generator.clone())
+                    .await
+                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+            }
+            if is_tool {
+                let tool = get_tool_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
+                let tool_archive = ZipFileContents {
+                    buffer: serde_json::to_vec(&tool).unwrap(),
+                    archive: archive.clone(),
+                };
+                import_tool(db.clone(), node_env.clone(), tool_archive, tool)
+                    .await
+                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Attempts to import each tool from a remote directory JSON.
     /// Now also checks if a tool is installed with an older version, and if so, calls `upgrade_tool`.
     async fn import_tools_from_directory(
@@ -191,6 +277,9 @@ impl ToolRouter {
         default_tool_router_keys: Arc<Mutex<Vec<String>>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
+        let node_env = fetch_node_environment();
+        Self::import_from_local_directory(db.clone(), node_env.clone(), embedding_generator.clone()).await?;
+
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
             .to_lowercase()
