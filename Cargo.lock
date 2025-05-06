@@ -6687,7 +6687,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "dashmap",
@@ -6703,7 +6703,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_embedding"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6724,7 +6724,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6759,7 +6759,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
@@ -6796,7 +6796,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "serde",
@@ -6810,7 +6810,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -6838,7 +6838,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -6909,7 +6909,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_ocr"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "image 0.25.5",
@@ -6924,7 +6924,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "bincode",
  "blake3",
@@ -6955,7 +6955,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -6974,7 +6974,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
