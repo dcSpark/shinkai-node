@@ -8,7 +8,6 @@ authors = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_embedding = { workspace = true }
 shinkai_sqlite = { workspace = true }
-shinkai_ocr = { workspace = true }
 shinkai_tools_runner = { workspace = true }
 bincode = { workspace = true }
 serde_json = { workspace = true }
