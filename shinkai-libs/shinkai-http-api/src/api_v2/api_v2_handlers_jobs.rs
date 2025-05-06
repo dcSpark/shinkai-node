@@ -6,29 +6,21 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::{
     schemas::{
-        job_config::JobConfig,
-        llm_providers::serialized_llm_provider::{
-            Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend,
-        },
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-        smart_inbox::{LLMProviderSubset, V2SmartInbox},
-    },
-    shinkai_message::{
-        shinkai_message::NodeApiData,
-        shinkai_message_schemas::{
-            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, ExportInboxMessagesFormat, JobCreationInfo,
-            JobMessage, SheetJobAction, SheetManagerAction, V2ChatMessage,
-        },
-    },
-    shinkai_utils::job_scope::MinimalJobScope,
+        job_config::JobConfig, llm_providers::serialized_llm_provider::{
+            Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, SerializedLLMProvider, ShinkaiBackend
+        }, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, V2SmartInbox}
+    }, shinkai_message::{
+        shinkai_message::NodeApiData, shinkai_message_schemas::{
+            APIChangeJobAgentRequest, AssociatedUI, CallbackAction, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, V2ChatMessage
+        }
+    }, shinkai_utils::job_scope::MinimalJobScope
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::multipart::FormData;
 use warp::Filter;
 
 use crate::{
-    node_api_router::{APIError, SendResponseBody, SendResponseBodyData},
-    node_commands::NodeCommand,
+    node_api_router::{APIError, SendResponseBody, SendResponseBodyData}, node_commands::NodeCommand
 };
 
 use super::api_v2_router::{create_success_response, with_sender};
@@ -294,6 +286,7 @@ pub struct GetAllSmartInboxesRequest {
     pub limit: Option<usize>,
     pub offset: Option<String>,
     pub show_hidden: Option<bool>,
+    pub agent_id: Option<String>,
 }
 
 #[utoipa::path(
@@ -486,6 +479,7 @@ pub async fn get_all_smart_inboxes_handler(
             limit: query.limit,
             offset: query.offset,
             show_hidden: query.show_hidden,
+            agent_id: query.agent_id,
             res: res_sender,
         })
         .await
@@ -532,6 +526,7 @@ pub async fn get_all_smart_inboxes_paginated_handler(
             limit: query.limit,
             offset: query.offset,
             show_hidden: query.show_hidden,
+            agent_id: query.agent_id,
             res: res_sender,
         })
         .await
@@ -1347,8 +1342,7 @@ pub async fn get_job_provider_handler(
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, MinimalJobScope, CallbackAction, ShinkaiName,
             LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest, ExportInboxMessagesFormat, ExportInboxMessagesRequest,
-            ShinkaiSubidentityType, OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, ShinkaiBackend, SheetManagerAction,
-            SheetJobAction, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)
+            ShinkaiSubidentityType, OpenAI, Ollama, Groq, Gemini, Exo, ShinkaiBackend, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)
     ),
     tags(
         (name = "jobs", description = "Job API endpoints")

@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use crate::errors::SqliteManagerError;
 use crate::SqliteManager;
+use crate::preferences::serde_json::Value;
 use rusqlite::{OptionalExtension, Result, ToSql};
 use serde;
 use serde_json;
@@ -123,6 +125,65 @@ impl SqliteManager {
         }
         Ok(preferences)
     }
+
+    /// Retrieves all preferences stored in the database as a HashMap.
+    ///
+    /// Includes a special `__meta` key containing metadata (description, updated_at)
+    /// for each preference.
+    ///
+    /// Deserializes the stored JSON string values into `serde_json::Value`.
+    /// If a value cannot be deserialized, it will be skipped and an error logged.
+    ///
+    /// # Returns
+    /// Returns a `HashMap<String, serde_json::Value>` containing preferences and metadata.
+    pub fn get_all_preferences(&self) -> Result<HashMap<String, serde_json::Value>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        // Select key, value, description, and updated_at
+        let mut stmt = conn.prepare("SELECT key, value, description, updated_at FROM preferences ORDER BY key")?;
+        let rows_iter = stmt.query_map([], |row| {
+            let key: String = row.get(0)?;
+            let value_str: String = row.get(1)?;
+            let description: Option<String> = row.get(2)?;
+            let updated_at: String = row.get(3)?; // Assuming updated_at is stored as TEXT or compatible
+
+            // Parse the value string into serde_json::Value
+            let value_result = serde_json::from_str::<serde_json::Value>(&value_str);
+
+            Ok((key, value_result, description, updated_at))
+        })?;
+
+        let mut preferences = HashMap::new();
+        let mut metadata = HashMap::new();
+
+        for row_result in rows_iter {
+            match row_result {
+                Ok((key, value_result, description, updated_at)) => {
+                    match value_result {
+                        Ok(value) => {
+                            preferences.insert(key.clone(), value); // Insert the actual preference key-value
+                        }
+                        Err(e) => {
+                            eprintln!("Error deserializing preference value for key '{}': {}. Skipping value.", key, e);
+                        }
+                    }
+
+                    let meta_entry = serde_json::json!({
+                        "description": description,
+                        "updated_at": updated_at
+                    });
+                    metadata.insert(key, meta_entry);
+                }
+                Err(e) => {
+                    eprintln!("Error retrieving preference row: {}. Skipping row.", e);
+                }
+            }
+        }
+        if !metadata.is_empty() {
+            preferences.insert("__meta".to_string(), serde_json::Value::Object(metadata.into_iter().collect()));
+        }
+
+        Ok(preferences)
+    }
 }
 
 #[cfg(test)]
@@ -141,7 +202,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -350,5 +411,64 @@ mod tests {
         let final_extended: ExtendedConfig = manager.get_preference("evolving_config").unwrap().unwrap();
         assert_eq!(final_extended.name, "test");
         assert_eq!(final_extended.count, 42);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_preferences() {
+        let manager = setup_test_db().await;
+
+        // Set some preferences with different types and descriptions
+        manager.set_preference("key_string", &"value_string", Some("String preference description")).unwrap();
+        manager.set_preference("key_int", &123, Some("Integer preference description")).unwrap();
+        manager.set_preference("key_bool", &true, None).unwrap(); // Preference without description
+
+        // Call the function to test
+        let all_prefs_result = manager.get_all_preferences();
+        assert!(all_prefs_result.is_ok());
+        let all_prefs = all_prefs_result.unwrap();
+
+        // Assert the number of preferences retrieved (3 prefs + 1 __meta key)
+        assert_eq!(all_prefs.len(), 4);
+
+        // Assert the preference values are correct
+        assert_eq!(all_prefs.get("key_string"), Some(&serde_json::json!("value_string")));
+        assert_eq!(all_prefs.get("key_int"), Some(&serde_json::json!(123)));
+        assert_eq!(all_prefs.get("key_bool"), Some(&serde_json::json!(true)));
+
+        // Check for a non-existent key in the main map
+        assert!(all_prefs.get("non_existent_key").is_none());
+
+        // Assert the __meta key exists and is an object
+        assert!(all_prefs.contains_key("__meta"));
+        let meta = all_prefs.get("__meta").unwrap();
+        assert!(meta.is_object());
+        let meta_map = meta.as_object().unwrap();
+
+        // Assert the number of entries in __meta matches the number of actual preferences
+        assert_eq!(meta_map.len(), 3);
+
+        // Verify metadata for "key_string"
+        assert!(meta_map.contains_key("key_string"));
+        let string_meta = meta_map.get("key_string").unwrap();
+        assert!(string_meta.is_object());
+        assert_eq!(string_meta.get("description"), Some(&serde_json::json!("String preference description")));
+        assert!(string_meta.get("updated_at").is_some()); // Check updated_at exists
+
+        // Verify metadata for "key_int"
+        assert!(meta_map.contains_key("key_int"));
+        let int_meta = meta_map.get("key_int").unwrap();
+        assert!(int_meta.is_object());
+        assert_eq!(int_meta.get("description"), Some(&serde_json::json!("Integer preference description")));
+        assert!(int_meta.get("updated_at").is_some());
+
+        // Verify metadata for "key_bool" (should have null description)
+        assert!(meta_map.contains_key("key_bool"));
+        let bool_meta = meta_map.get("key_bool").unwrap();
+        assert!(bool_meta.is_object());
+        assert_eq!(bool_meta.get("description"), Some(&serde_json::Value::Null));
+        assert!(bool_meta.get("updated_at").is_some());
+
+        // Verify non-existent key is not in metadata
+        assert!(meta_map.get("non_existent_key").is_none());
     }
 }

@@ -19,11 +19,13 @@ use shinkai_message_primitives::{
 };
 
 use shinkai_sqlite::SqliteManager;
+use shinkai_sqlite::inbox_manager::PaginatedSmartInboxes;
+
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node},
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -414,6 +416,7 @@ impl Node {
         _limit: Option<usize>,
         _offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -439,7 +442,7 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden) {
+        let smart_inboxes: Vec<SmartInbox> = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden, agent_id) {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {
@@ -452,13 +455,20 @@ impl Node {
             }
         };
 
-        // Convert SmartInbox to V2SmartInbox
-        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
+        // Convert SmartInbox to V2SmartInbox, collecting into a Result
+        let v2_smart_inboxes_result: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
 
-        match v2_smart_inboxes {
+        // Handle the Result and filter based on agent_id if necessary
+        let final_result = match v2_smart_inboxes_result {
+            Ok(inboxes) => Ok(inboxes), // Return the Vec wrapped in Ok
+            Err(e) => Err(e), // Propagate the error if conversion failed
+        };
+
+        // Send the final result
+        match final_result {
             Ok(inboxes) => {
                 let _ = res.send(Ok(inboxes)).await;
             }
@@ -466,7 +476,8 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert smart inboxes: {}", err),
+                    // Updated error message to reflect potential conversion error
+                    message: format!("Failed to process smart inboxes: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
@@ -482,6 +493,7 @@ impl Node {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -507,8 +519,8 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let paginated_inboxes =
-            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden) {
+        let paginated_inboxes: PaginatedSmartInboxes =
+            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden, agent_id) {
                 Ok(inboxes) => inboxes,
                 Err(err) => {
                     let api_error = APIError {
@@ -521,14 +533,21 @@ impl Node {
                 }
             };
 
-        // Convert SmartInbox to V2SmartInbox
-        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
+        // Convert SmartInbox to V2SmartInbox, collecting into a Result
+        let v2_smart_inboxes_result: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
             .inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
 
-        match v2_smart_inboxes {
+        // Handle the Result and filter based on agent_id if necessary
+        let final_result = match v2_smart_inboxes_result {
+            Ok(inboxes) => Ok(inboxes),
+            Err(e) => Err(e), // Propagate the error if conversion failed
+        };
+
+        // Send the final result, preserving pagination info
+        match final_result {
             Ok(inboxes) => {
                 let response = json!({
                     "inboxes": inboxes,
@@ -540,7 +559,8 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert smart inboxes: {}", err),
+                    // Updated error message
+                    message: format!("Failed to process smart inboxes: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }

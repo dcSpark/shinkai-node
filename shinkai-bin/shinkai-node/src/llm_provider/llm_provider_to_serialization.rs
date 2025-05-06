@@ -6,6 +6,8 @@ impl From<LLMProvider> for SerializedLLMProvider {
     fn from(agent: LLMProvider) -> Self {
         SerializedLLMProvider {
             id: agent.id,
+            name: agent.name,
+            description: agent.description,
             full_identity_name: agent.full_identity_name,
             external_url: agent.external_url,
             api_key: agent.api_key,

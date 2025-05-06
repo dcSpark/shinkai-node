@@ -5,7 +5,6 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -16,11 +15,9 @@ use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_message_primitives::schemas::job::{Job, JobLike};
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
-use shinkai_message_primitives::schemas::sheet::WorkflowSheetJobData;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{CallbackAction, MessageMetadata};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
@@ -42,9 +39,8 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Arc<Mutex<SheetManager>>,
         job_callback_manager: Arc<Mutex<JobCallbackManager>>,
-        job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
+        _job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         // sqlite_logger: Option<Arc<SqliteLogger>>,
@@ -87,31 +83,6 @@ impl JobManager {
         )
         .unwrap();
 
-        // 1.- *If* a sheet job is found, processing job message is taken over by this alternate logic
-        let sheet_job_found = JobManager::process_sheet_job(
-            db.clone(),
-            &job_message.job_message,
-            job_message.message_hash_id.clone(),
-            llm_provider_found.clone(),
-            full_job.clone(),
-            user_profile.clone(),
-            generator.clone(),
-            ws_manager.clone(),
-            Some(sheet_manager.clone()),
-            tool_router.clone(),
-            job_queue_manager.clone(),
-            my_agent_payments_manager.clone(),
-            ext_agent_payments_manager.clone(),
-            job_callback_manager.clone(),
-            // sqlite_logger.clone(),
-            llm_stopper.clone(),
-        )
-        .await?;
-        if sheet_job_found {
-            return Ok(job_id);
-        }
-
-        // Otherwise proceed forward with rest of logic.
         let inference_chain_result = JobManager::process_inference_chain(
             db.clone(),
             clone_signature_secret_key(&identity_secret_key),
@@ -123,7 +94,6 @@ impl JobManager {
             generator,
             ws_manager.clone(),
             tool_router.clone(),
-            Some(sheet_manager.clone()),
             job_callback_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
@@ -194,7 +164,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         job_callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -251,7 +220,6 @@ impl JobManager {
             user_profile.clone(),
             ws_manager.clone(),
             tool_router.clone(),
-            sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
             job_callback_manager.clone(),
@@ -329,136 +297,6 @@ impl JobManager {
         }
 
         Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub async fn process_sheet_job(
-        db: Arc<SqliteManager>,
-        job_message: &JobMessage,
-        message_hash_id: Option<String>,
-        llm_provider_found: Option<ProviderOrAgent>,
-        full_job: Job,
-        user_profile: ShinkaiName,
-        generator: RemoteEmbeddingGenerator,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
-        tool_router: Option<Arc<ToolRouter>>,
-        job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
-        my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
-        ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
-        job_callback_manager: Arc<Mutex<JobCallbackManager>>,
-        // sqlite_logger: Option<Arc<SqliteLogger>>,
-        llm_stopper: Arc<LLMStopper>,
-    ) -> Result<bool, LLMProviderError> {
-        if let Some(sheet_job_data) = &job_message.sheet_job_data {
-            let sheet_job_data: WorkflowSheetJobData = serde_json::from_str(sheet_job_data)
-                .map_err(|e| LLMProviderError::SerializationError(e.to_string()))?;
-
-            // Check SheetManager for the latest inputs
-            let sheet_manager = sheet_manager.ok_or(LLMProviderError::SheetManagerNotFound)?;
-
-            // Get the processed input string within the lock scope
-            let input_string = {
-                let sheet_manager = sheet_manager.lock().await;
-                let sheet = sheet_manager.get_sheet(&sheet_job_data.sheet_id)?;
-                sheet
-                    .get_processed_input(sheet_job_data.row.clone(), sheet_job_data.col.clone())
-                    .ok_or(LLMProviderError::InputProcessingError(format!("{:?}", sheet_job_data)))?
-            };
-
-            // Create a mutable copy of full_job
-            let mut mutable_job = full_job.clone();
-
-            if input_string.uploaded_files.len() > 0 {
-                // Decompose the uploaded_files into two separate vectors
-                let (files_inbox, file_names): (Vec<String>, Vec<String>) =
-                    input_string.uploaded_files.iter().cloned().unzip();
-
-                unimplemented!();
-
-                // TODO: fix this
-                // Self::process_specified_files_for_vector_resources(
-                //     db.clone(),
-                //     files_inbox.first().unwrap().clone(),
-                //     file_names,
-                //     None,
-                //     &mut mutable_job,
-                //     user_profile.clone(),
-                //     None,
-                //     generator.clone(),
-                //     ws_manager.clone(),
-                // )
-                // .await?;
-            }
-
-            for (local_file_path, local_file_name) in &input_string.local_files {
-                let path = ShinkaiPath::from_string(local_file_path.to_string());
-
-                // Unwrap the scope_with_files since you are sure it is always Some
-                mutable_job.scope.vector_fs_items.push(path);
-            }
-
-            let mut job_message = job_message.clone();
-            job_message.content = input_string.content;
-
-            let empty_files = HashMap::new();
-
-            let inference_result = JobManager::inference_chain_router(
-                db.clone(),
-                llm_provider_found,
-                mutable_job.clone(),
-                job_message.clone(),
-                message_hash_id,
-                empty_files,
-                generator,
-                user_profile.clone(),
-                ws_manager.clone(),
-                tool_router.clone(),
-                Some(sheet_manager.clone()),
-                my_agent_payments_manager.clone(),
-                ext_agent_payments_manager.clone(),
-                job_callback_manager.clone(),
-                // sqlite_logger.clone(),
-                llm_stopper.clone(),
-            )
-            .await?;
-
-            let response = inference_result.response;
-
-            // Update the sheet using the callback manager. "sheet" is just a local copy
-            // In { } to avoid locking the mutex for too long
-            {
-                let mut sheet_manager = sheet_manager.lock().await;
-                sheet_manager
-                    .set_cell_value(
-                        &sheet_job_data.sheet_id,
-                        sheet_job_data.row.clone(),
-                        sheet_job_data.col.clone(),
-                        response.clone(),
-                    )
-                    .await
-                    .map_err(|e| LLMProviderError::SheetManagerError(e.to_string()))?;
-            }
-
-            // Check for callbacks and add them to the JobManagerQueue if required
-            if let Some(callback) = &job_message.callback {
-                if let CallbackAction::Sheet(sheet_action) = callback.as_ref() {
-                    if let Some(next_job_message) = &sheet_action.job_message_next {
-                        let mut job_queue_manager = job_queue_manager.lock().await;
-                        job_queue_manager
-                            .push(
-                                &next_job_message.job_id,
-                                JobForProcessing::new(next_job_message.clone(), user_profile, None),
-                            )
-                            .await?;
-                    }
-                }
-            }
-
-            Ok(true)
-        } else {
-            Ok(false)
-        }
     }
 
     /// Retrieves image files associated with a job message and converts them to base64

@@ -3,7 +3,7 @@ use crate::it::utils::vecfs_test_utils::{get_files_for_job, get_folder_name_for_
 use super::utils::test_boilerplate::run_test_one_node_network;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider,
+    LLMProviderInterface, Ollama, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -15,7 +15,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job
 };
 use mockito::Server;
 
@@ -96,6 +96,8 @@ fn job_image_analysis() {
 
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     full_identity_name: agent_name,
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
@@ -164,7 +166,9 @@ fn job_image_analysis() {
                 let expected_file_name = "blue_64x64.png";
                 eprintln!("file_paths: {:?}", file_paths);
                 assert!(
-                    file_paths.iter().any(|file_name| file_name.ends_with(expected_file_name)),
+                    file_paths
+                        .iter()
+                        .any(|file_name| file_name.ends_with(expected_file_name)),
                     "Expected file not found in job files"
                 );
 

@@ -234,22 +234,27 @@ impl Node {
             }
             NodeCommand::V2ApiExportAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_export_agent(db_clone, bearer, agent_id, res).await;
+                    let _ = Node::v2_api_export_agent(db_clone, bearer, node_env, agent_id, res).await;
                 });
             }
             NodeCommand::V2ApiImportAgent { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent(db_clone, bearer, url, node_name, signing_secret_key, res).await;
+                    let _ =
+                        Node::v2_api_import_agent(db_clone, bearer, url, node_name, node_env, signing_secret_key, res)
+                            .await;
                 });
             }
             NodeCommand::V2ApiImportAgentZip { bearer, file_data, res } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent_zip(db_clone, bearer, file_data, res).await;
+                    let _ = Node::v2_api_import_agent_zip(db_clone, bearer, node_env, file_data, res).await;
                 });
             }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
@@ -655,204 +660,6 @@ impl Node {
                 tokio::spawn(async move {
                     let _ = Node::api_get_shinkai_tool(
                         db_clone,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APISetColumn { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
-            NodeCommand::APISetColumn { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_set_column(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIRemoveColumn { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
-            NodeCommand::APIRemoveColumn { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_remove_column(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIAddRows { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
-            NodeCommand::APIAddRows { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_add_rows(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIRemoveRows { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
-            NodeCommand::APIRemoveRows { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_remove_rows(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIUserSheets { msg: ShinkaiMessage, res: Sender<Result<Value, APIError>> },
-            NodeCommand::APIUserSheets { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_user_sheets(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APICreateSheet { msg, res }
-            NodeCommand::APICreateSheet { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_create_empty_sheet(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIRemoveSheet { msg, res }
-            NodeCommand::APIRemoveSheet { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_remove_sheet(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APISetCellValue { msg, res }
-            NodeCommand::APISetCellValue { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_set_cell_value(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIGetSheet { msg, res }
-            NodeCommand::APIGetSheet { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_get_sheet(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIGetSheet { msg, res }
-            NodeCommand::APIImportSheet { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_import_sheet(
-                        sheet_manager,
-                        node_name_clone,
-                        identity_manager_clone,
-                        encryption_secret_key_clone,
-                        msg,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            // NodeCommand::APIExportSheet { msg, res }
-            NodeCommand::APIExportSheet { msg, res } => {
-                let node_name_clone = self.node_name.clone();
-                let identity_manager_clone = self.identity_manager.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let sheet_manager = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::api_export_sheet(
-                        sheet_manager,
                         node_name_clone,
                         identity_manager_clone,
                         encryption_secret_key_clone,
@@ -1448,6 +1255,7 @@ impl Node {
                 limit,
                 offset,
                 show_hidden,
+                agent_id,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1460,6 +1268,7 @@ impl Node {
                         limit,
                         offset,
                         show_hidden,
+                        agent_id,
                         res,
                     )
                     .await;
@@ -1470,6 +1279,7 @@ impl Node {
                 limit,
                 offset,
                 show_hidden,
+                agent_id,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1482,6 +1292,7 @@ impl Node {
                         limit,
                         offset,
                         show_hidden,
+                        agent_id,
                         res,
                     )
                     .await;
@@ -2363,38 +2174,6 @@ impl Node {
             //         let _ = Node::v2_api_get_tooling_logs(db_clone, sqlite_logger_clone, bearer, message_id,
             // res).await;     });
             // }
-            NodeCommand::V2ApiImportSheet { bearer, payload, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let sheet_manager_clone = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_import_sheet(db_clone, sheet_manager_clone, payload, bearer, res).await;
-                });
-            }
-            NodeCommand::V2ApiExportSheet { bearer, payload, res } => {
-                let db_clone = Arc::clone(&self.db);
-                let sheet_manager_clone = self.sheet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_export_sheet(db_clone, sheet_manager_clone, payload, bearer, res).await;
-                });
-            }
-            NodeCommand::V2ApiSetSheetUploadedFiles { bearer, payload, res } => {
-                let db_clone = Arc::clone(&self.db);
-
-                let identity_manager_clone = self.identity_manager.clone();
-                let sheet_manager_clone = self.sheet_manager.clone();
-
-                tokio::spawn(async move {
-                    let _ = Node::v2_set_sheet_uploaded_files(
-                        db_clone,
-                        identity_manager_clone,
-                        sheet_manager_clone,
-                        payload,
-                        bearer,
-                        res,
-                    )
-                    .await;
-                });
-            }
             NodeCommand::V2ApiExecuteTool {
                 bearer,
                 tool_router_key,
@@ -3232,6 +3011,12 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_preferences(db_clone, bearer, payload, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetPreferences { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_preferences(db_clone, bearer, res).await;
                 });
             }
             _ => (),
