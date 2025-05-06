@@ -232,6 +232,26 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiPublishAgent { bearer, agent_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                let shinkai_name = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_publish_agent(
+                        db_clone,
+                        bearer,
+                        shinkai_name,
+                        node_env,
+                        agent_id,
+                        identity_manager_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiExportAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
