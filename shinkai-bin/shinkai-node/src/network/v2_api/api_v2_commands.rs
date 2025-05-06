@@ -1719,7 +1719,7 @@ impl Node {
     ) -> Result<Value, APIError> {
         // Generate zip file.
         let file_bytes: Vec<u8> =
-            generate_agent_zip(db.clone(), shinkai_name.clone(), node_env, agent_id, true).await?;
+            generate_agent_zip(db.clone(), shinkai_name.clone(), node_env, agent_id.clone(), true).await?;
 
         let identity_manager = identity_manager.lock().await;
         let local_node_name = identity_manager.local_node_name.clone();
