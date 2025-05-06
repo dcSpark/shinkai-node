@@ -113,9 +113,11 @@ impl SimpleParser {
             SupportedFileType::Pdf => LocalFileParser::process_pdf_file(file_buffer, max_node_text_size),
             SupportedFileType::Docx => LocalFileParser::process_docx_file(file_buffer, max_node_text_size),
             SupportedFileType::Xlsx => {
-                LocalFileParser::process_xlsx_file_async(file_path.as_path().to_path_buf(), max_node_text_size).await
+                LocalFileParser::process_xlsx_file(file_path.as_path().to_path_buf(), max_node_text_size).await
             }
-            SupportedFileType::Xls => LocalFileParser::process_xls_file(file_buffer, max_node_text_size),
+            SupportedFileType::Xls => {
+                LocalFileParser::process_xlsx_file(file_path.as_path().to_path_buf(), max_node_text_size).await
+            }
             _ => Err(ShinkaiFsError::UnsupportedFileType(file_type.to_string())),
         }
     }
