@@ -1,5 +1,4 @@
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, SerializedLLMProvider
 };
@@ -111,6 +110,8 @@ fn test_fork_job_messages() {
                 let agent = SerializedLLMProvider {
                     id: node1_llm_provider.clone().to_string(),
                     full_identity_name: agent_name,
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     external_url: Some(server.url()),
                     api_key: Some("".to_string()),
                     model: LLMProviderInterface::Ollama(ollama),
@@ -314,6 +315,7 @@ fn test_fork_job_messages() {
                         limit: None,
                         offset: None,
                         show_hidden: None,
+                        agent_id: None,
                         res: res2_sender,
                     })
                     .await

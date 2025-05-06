@@ -4,7 +4,6 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
-use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::managers::tool_router::ToolRouter;
 use shinkai_sqlite::SqliteManager;
 
@@ -19,7 +18,7 @@ use std::sync::Arc;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair
 };
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
@@ -49,7 +48,6 @@ pub struct TestEnvironment {
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
     pub node1_db: Arc<SqliteManager>,
-    pub node1_sheet_manager: Arc<Mutex<SheetManager>>,
     pub node1_callback_manager: Arc<Mutex<JobCallbackManager>>,
     pub node1_tool_router: Option<Arc<ToolRouter>>,
     pub node1_api_key: String,
@@ -60,7 +58,7 @@ pub fn default_embedding_model() -> EmbeddingModelType {
     env::var("DEFAULT_EMBEDDING_MODEL")
         .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
         .unwrap_or_else(|_| {
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M)
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)
         })
 }
 
@@ -73,7 +71,7 @@ pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
         })
         .unwrap_or_else(|_| {
             vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
             )]
         })
 }
@@ -137,7 +135,6 @@ where
 
         let node1_locked = node1.lock().await;
         let node1_db = node1_locked.db.clone();
-        let node1_sheet_manager = node1_locked.sheet_manager.clone();
         let node1_callback_manager = node1_locked.callback_manager.clone();
         let node1_tool_router = node1_locked.tool_router.clone();
         drop(node1_locked);
@@ -171,7 +168,6 @@ where
             node1_device_encryption_sk,
             node1_device_encryption_pk,
             node1_db,
-            node1_sheet_manager,
             node1_callback_manager,
             node1_tool_router,
             node1_abort_handler,

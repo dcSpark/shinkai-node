@@ -99,7 +99,7 @@ fn get_folder_path(app_id: String) -> Result<PathBuf, ToolError> {
         .join("db.sqlite"))
 }
 
-fn get_database_path_from_db_name_config(database_name: String) -> Result<PathBuf, ToolError> {
+pub fn get_database_path_from_db_name_config(database_name: String) -> Result<PathBuf, ToolError> {
     let node_env = fetch_node_environment();
     let node_storage_path = node_env
         .node_storage_path

@@ -1,13 +1,11 @@
 use super::generic_chain::generic_inference_chain::GenericInferenceChain;
 use super::inference_chain_trait::{InferenceChain, InferenceChainContext, InferenceChainResult};
-use super::sheet_ui_chain::sheet_ui_inference_chain::SheetUIInferenceChain;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
 use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -16,7 +14,7 @@ use shinkai_message_primitives::schemas::job::Job;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, JobMessage};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_sqlite::SqliteManager;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -38,7 +36,6 @@ impl JobManager {
         user_profile: ShinkaiName,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Arc<Mutex<JobCallbackManager>>,
@@ -63,6 +60,19 @@ impl JobManager {
         let max_tokens_in_prompt = ModelCapabilitiesManager::get_max_input_tokens(&model);
         let parsed_user_message = ParsedUserMessage::new(job_message.content.to_string());
 
+        // Get max_iterations from preferences, default to 10 if not found
+        // Try first as u64, then as String (in case it's stored as a string)
+        let max_iterations = match db.get_preference::<u64>("max_iterations") {
+            Ok(Some(value)) => value,
+            _ => {
+                // If it fails or is None, try as string and parse
+                match db.get_preference::<String>("max_iterations") {
+                    Ok(Some(str_value)) => str_value.parse::<u64>().unwrap_or(10),
+                    _ => 10, // Default if nothing works
+                }
+            }
+        };
+
         // Create the inference chain context
         let chain_context = InferenceChainContext::new(
             db,
@@ -77,11 +87,10 @@ impl JobManager {
             llm_provider,
             generator,
             user_profile,
-            10, // TODO: Make this dynamic so you can control it from the UI
+            max_iterations,
             max_tokens_in_prompt,
             ws_manager_trait.clone(),
             tool_router.clone(),
-            sheet_manager.clone(),
             my_agent_payments_manager.clone(),
             ext_agent_payments_manager.clone(),
             Some(job_callback_manager.clone()),
@@ -89,13 +98,8 @@ impl JobManager {
             llm_stopper.clone(),
         );
 
-        // Check for associated_ui and choose the appropriate chain
-        if let Some(AssociatedUI::Sheet(sheet_string)) = &full_job.associated_ui {
-            let mut sheet_ui_chain = SheetUIInferenceChain::new(chain_context, ws_manager_trait, sheet_string.clone());
-            sheet_ui_chain.run_chain().await
-        } else {
-            let mut generic_chain = GenericInferenceChain::new(chain_context, ws_manager_trait);
-            generic_chain.run_chain().await
-        }
+        // Check for associated_ui and choose the appropriate chain (check AssociatedUI)
+        let mut generic_chain = GenericInferenceChain::new(chain_context, ws_manager_trait);
+        generic_chain.run_chain().await
     }
 }

@@ -193,7 +193,7 @@ pub async fn validate_message_main_logic(
 
 pub struct ZipFileContents {
     pub buffer: Vec<u8>,
-    pub archive: zip::ZipArchive<std::io::Cursor<Bytes>>,
+    pub archive: zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
 }
 
 pub async fn download_zip_file(
@@ -258,6 +258,7 @@ pub async fn download_zip_file(
             });
         }
     };
+    let bytes = bytes.to_vec();
 
     // Create a cursor from the bytes
     let cursor = std::io::Cursor::new(bytes.clone());

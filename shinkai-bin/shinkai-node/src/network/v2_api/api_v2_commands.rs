@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::{env, sync::Arc};
 use tokio::fs;
+use zip::ZipArchive;
 use zip::{write::FileOptions, ZipWriter};
 
 use async_channel::Sender;
@@ -36,6 +37,8 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::llm_provider::providers::shinkai_backend::check_quota;
+use crate::network::node_shareable_logic::ZipFileContents;
+use crate::utils::environment::NodeEnvironment;
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 
 use crate::managers::galxe_quests::{compute_quests, generate_proof};
@@ -1279,6 +1282,11 @@ impl Node {
             }),
             cron_tasks: None,
             full_identity_name, // Set the constructed full identity name
+            tools_config_override: partial_agent
+                .get("tools_config_override")
+                .map_or(existing_agent.tools_config_override.clone(), |v| {
+                    serde_json::from_value(v.clone()).unwrap_or(existing_agent.tools_config_override.clone())
+                }),
         };
 
         // Update the agent in the database
@@ -1410,6 +1418,8 @@ impl Node {
 
         let provider = SerializedLLMProvider {
             id: "llm_test".to_string(),
+            name: None,
+            description: None,
             full_identity_name: ShinkaiName::new(llm_name).unwrap(),
             external_url: provider.external_url.clone(),
             api_key: provider.api_key.clone(),
@@ -1634,9 +1644,102 @@ impl Node {
         Ok(())
     }
 
+    async fn generate_agent_zip(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        agent_id: String,
+    ) -> Result<Vec<u8>, APIError> {
+        fn internal_error(err: String) -> APIError {
+            APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to generate agent zip: {}", err),
+            }
+        }
+
+        // Retrieve the agent from the database
+        let agent = match db.get_agent(&agent_id) {
+            Ok(Some(agent)) => agent,
+            Ok(None) => return Err(internal_error(format!("Agent not found: {}", agent_id))),
+            Err(err) => return Err(internal_error(format!("Failed to retrieve agent: {}", err))),
+        };
+
+        // Serialize the agent to JSON bytes
+        let agent_bytes = match serde_json::to_vec(&agent) {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(internal_error(format!("Failed to serialize agent: {}", err))),
+        };
+
+        // Create a temporary zip file
+        let name = format!("{}.zip", agent.agent_id.replace(':', "_"));
+        let path = std::env::temp_dir().join(&name);
+        let file = match File::create(&path) {
+            Ok(file) => file,
+            Err(err) => return Err(internal_error(format!("Failed to create zip file: {}", err))),
+        };
+
+        let mut zip = ZipWriter::new(file);
+
+        for tool_key in agent.tools {
+            let tool = db.get_tool_by_key(&tool_key.to_string_without_version());
+            match tool {
+                Ok(tool) => {
+                    let tool_bytes = Node::get_tool_zip(tool, node_env.clone()).await;
+                    if let Err(err) = tool_bytes {
+                        return Err(internal_error(format!("Failed to get tool zip: {}", err)));
+                    }
+                    let tool_bytes = tool_bytes.unwrap();
+                    if let Err(err) = zip.start_file::<_, ()>(
+                        format!("__tools/{}.zip", tool_key.to_string_without_version().replace(':', "_")),
+                        FileOptions::default(),
+                    ) {
+                        return Err(internal_error(format!("Failed to create tool file in zip: {}", err)));
+                    }
+                    if let Err(err) = zip.write_all(&tool_bytes) {
+                        return Err(internal_error(format!("Failed to write tool data to zip: {}", err)));
+                    }
+                }
+                Err(err) => {
+                    eprintln!(
+                        "Warning: Failed to get tool {}: {}",
+                        tool_key.to_string_without_version(),
+                        err
+                    );
+                }
+            }
+        }
+
+        // Add the agent JSON to the zip file
+        if let Err(err) = zip.start_file::<_, ()>("__agent.json", FileOptions::default()) {
+            return Err(internal_error(format!("Failed to create agent file in zip: {}", err)));
+        }
+
+        if let Err(err) = zip.write_all(&agent_bytes) {
+            return Err(internal_error(format!("Failed to write agent data to zip: {}", err)));
+        }
+
+        // Finalize the zip file
+        if let Err(err) = zip.finish() {
+            return Err(internal_error(format!("Failed to finalize zip file: {}", err)));
+        }
+
+        // Read the zip file into memory
+        match fs::read(&path).await {
+            Ok(file_bytes) => {
+                // Clean up the temporary file
+                if let Err(err) = fs::remove_file(&path).await {
+                    eprintln!("Warning: Failed to remove temporary file: {}", err);
+                }
+                Ok(file_bytes)
+            }
+            Err(err) => return Err(internal_error(format!("Failed to read zip file: {}", err))),
+        }
+    }
+
     pub async fn v2_api_export_agent(
         db: Arc<SqliteManager>,
         bearer: String,
+        node_env: NodeEnvironment,
         agent_id: String,
         res: Sender<Result<Vec<u8>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1644,112 +1747,75 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
+        let agent_zip: Result<Vec<u8>, APIError> = Node::generate_agent_zip(db, node_env, agent_id).await;
+        if let Err(err) = agent_zip {
+            let _ = res.send(Err(err)).await;
+            return Ok(());
+        }
+        let agent_zip = agent_zip.unwrap();
+        let _ = res.send(Ok(agent_zip)).await;
 
-        // Retrieve the agent from the database
-        match db.get_agent(&agent_id) {
-            Ok(Some(agent)) => {
-                // Serialize the agent to JSON bytes
-                let agent_bytes = match serde_json::to_vec(&agent) {
-                    Ok(bytes) => bytes,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to serialize agent: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                };
+        Ok(())
+    }
 
-                // Create a temporary zip file
-                let name = format!("{}.zip", agent.agent_id.replace(':', "_"));
-                let path = std::env::temp_dir().join(&name);
-                let file = match File::create(&path) {
-                    Ok(file) => file,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to create zip file: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                };
-
-                let mut zip = ZipWriter::new(file);
-
-                // Add the agent JSON to the zip file
-                if let Err(err) = zip.start_file::<_, ()>("__agent.json", FileOptions::default()) {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to create agent file in zip: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+    pub async fn bytes_to_zip_tool(
+        mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>,
+        file_name: String,
+    ) -> Result<ZipFileContents, APIError> {
+        // Extract and parse file
+        let mut zip_buffer = Vec::new();
+        {
+            let mut file = match archive.by_name(&file_name) {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Zip File".to_string(),
+                        message: format!("Archive does not contain {}", file_name),
+                    });
                 }
+            };
 
-                if let Err(err) = zip.write_all(&agent_bytes) {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to write agent data to zip: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-
-                // Finalize the zip file
-                if let Err(err) = zip.finish() {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to finalize zip file: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-
-                // Read the zip file into memory
-                match fs::read(&path).await {
-                    Ok(file_bytes) => {
-                        // Clean up the temporary file
-                        if let Err(err) = fs::remove_file(&path).await {
-                            eprintln!("Warning: Failed to remove temporary file: {}", err);
-                        }
-                        let _ = res.send(Ok(file_bytes)).await;
-                    }
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to read zip file: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                    }
-                }
-            }
-            Ok(None) => {
-                let api_error = APIError {
-                    code: StatusCode::NOT_FOUND.as_u16(),
-                    error: "Not Found".to_string(),
-                    message: format!("Agent not found: {}", agent_id),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
+            // Read the file contents into a buffer
+            if let Err(err) = file.read_to_end(&mut zip_buffer) {
+                return Err(APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve agent: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
+                    error: "Read Error".to_string(),
+                    message: format!("Failed to read file contents: {}", err),
+                });
             }
         }
 
-        Ok(())
+        // Create a new cursor and archive for returning
+        let return_cursor = std::io::Cursor::new(zip_buffer.clone());
+        let mut return_archive = zip::ZipArchive::new(return_cursor).unwrap();
+
+        let mut tool_buffer: Vec<u8> = Vec::new();
+        {
+            let mut file = match return_archive.by_name("__tool.json") {
+                Ok(file) => file,
+                Err(_) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Zip File".to_string(),
+                        message: "Archive does not contain __tool.json".to_string(),
+                    });
+                }
+            };
+
+            if let Err(err) = file.read_to_end(&mut tool_buffer) {
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool JSON".to_string(),
+                    message: format!("Failed to read tool.json: {}", err),
+                });
+            }
+        }
+
+        Ok(ZipFileContents {
+            buffer: tool_buffer,
+            archive: return_archive,
+        })
     }
 
     pub async fn v2_api_import_agent(
@@ -1757,6 +1823,7 @@ impl Node {
         bearer: String,
         url: String,
         node_name: String,
+        node_env: NodeEnvironment,
         signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1779,10 +1846,19 @@ impl Node {
             }
         };
 
+        if let Err(err) = Node::import_agent_tools(db.clone(), node_env.clone(), zip_contents.archive).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to import agent tools: {:?}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+        }
+
+        // Save the agent to the database
         // Parse the JSON into an Agent
         let agent: Agent = serde_json::from_slice(&zip_contents.buffer).map_err(|e| NodeError::from(e.to_string()))?;
 
-        // Save the agent to the database
         match db.add_agent(agent.clone(), &agent.full_identity_name) {
             Ok(_) => {
                 let response = json!({
@@ -1806,9 +1882,54 @@ impl Node {
         Ok(())
     }
 
+    async fn import_agent_tools(
+        db: Arc<SqliteManager>,
+        node_env: NodeEnvironment,
+        zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
+    ) -> Result<(), APIError> {
+        // Import tools from the zip file
+        let archive_clone = zip_contents.clone();
+        let files = archive_clone.file_names();
+        for file in files {
+            if !file.starts_with("__tools/") {
+                continue;
+            }
+
+            let tool_zip = Node::bytes_to_zip_tool(zip_contents.clone(), file.to_string()).await;
+
+            if let Err(err) = tool_zip {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool Archive".to_string(),
+                    message: format!("Failed to extract tool.json: {:?}", err),
+                };
+                return Err(api_error);
+            }
+            let tool_zip: ZipFileContents = tool_zip.unwrap();
+
+            let tool: ShinkaiTool = match serde_json::from_slice(&tool_zip.buffer) {
+                Ok(tool) => tool,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Tool JSON".to_string(),
+                        message: format!("Failed to parse tool.json: {}", err),
+                    };
+                    return Err(api_error);
+                }
+            };
+            let import_tool_result = Node::import_tool(db.clone(), node_env.clone(), tool_zip, tool).await;
+            if let Err(err) = import_tool_result {
+                println!("Error importing tool: {:?}", err);
+            }
+        }
+        Ok(())
+    }
+
     pub async fn v2_api_import_agent_zip(
         db: Arc<SqliteManager>,
         bearer: String,
+        node_env: NodeEnvironment,
         file_data: Vec<u8>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1841,29 +1962,36 @@ impl Node {
             }
         }
 
+        if let Err(err) = Node::import_agent_tools(db.clone(), node_env.clone(), archive).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to import agent tools: {:?}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+        }
+
         // Parse the JSON into an Agent
         let agent: Agent = serde_json::from_slice(&buffer).map_err(|e| NodeError::from(e.to_string()))?;
-
         // Save the agent to the database
-        match db.add_agent(agent.clone(), &agent.full_identity_name) {
-            Ok(_) => {
-                let response = json!({
-                    "status": "success",
-                    "message": "Agent imported successfully",
-                    "agent_id": agent.agent_id,
-                    "agent": agent
-                });
-                let _ = res.send(Ok(response)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Database Error".to_string(),
-                    message: format!("Failed to save agent to database: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
+        let agent_status = db.add_agent(agent.clone(), &agent.full_identity_name);
+        if agent_status.is_err() {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save agent to database: {}", agent_status.err().unwrap()),
+            };
+            let _ = res.send(Err(api_error)).await;
         }
+
+        let response = json!({
+            "status": "success",
+            "message": "Agent imported successfully",
+            "agent_id": agent.agent_id,
+            "agent": agent
+        });
+        let _ = res.send(Ok(response)).await;
+
         Ok(())
     }
 
@@ -2154,6 +2282,31 @@ impl Node {
             let _ = res.send(Err(api_error)).await;
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_api_get_preferences(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_all_preferences() {
+            Ok(preferences) => {
+                let _ = res.send(Ok(json!(preferences))).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get preferences: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
         Ok(())
     }
 }

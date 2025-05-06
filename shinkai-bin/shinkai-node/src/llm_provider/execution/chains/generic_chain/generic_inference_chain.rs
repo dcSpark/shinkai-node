@@ -8,7 +8,6 @@ use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -87,7 +86,6 @@ impl InferenceChain for GenericInferenceChain {
             self.context.max_tokens_in_prompt,
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
-            self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
             self.context.job_callback_manager.clone(),
@@ -213,7 +211,6 @@ impl GenericInferenceChain {
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
@@ -538,22 +535,58 @@ impl GenericInferenceChain {
         // First, attempt to use the custom_prompt from the job's config.
         // If it doesn't exist, fall back to the agent's custom_prompt if the
         // llm_provider is an Agent.
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone()).or_else(|| {
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                agent.config.as_ref().and_then(|config| config.custom_prompt.clone())
-            } else {
-                None
-            }
-        });
-
-        let custom_system_prompt = job_config
-            .and_then(|config| config.custom_system_prompt.clone())
+        let custom_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_prompt exists and is not empty
+                config
+                    .custom_prompt
+                    .clone()
+                    .and_then(|prompt| if prompt.is_empty() { None } else { Some(prompt) })
+            })
             .or_else(|| {
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                    agent
-                        .config
-                        .as_ref()
-                        .and_then(|config| config.custom_system_prompt.clone())
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_prompt.clone().and_then(
+                            |prompt| {
+                                if prompt.is_empty() {
+                                    None
+                                } else {
+                                    Some(prompt)
+                                }
+                            },
+                        )
+                    })
+                } else {
+                    None
+                }
+            });
+
+        let custom_system_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_system_prompt exists and is not empty
+                config.custom_system_prompt.clone().and_then(
+                    |prompt| {
+                        if prompt.is_empty() {
+                            None
+                        } else {
+                            Some(prompt)
+                        }
+                    },
+                )
+            })
+            .or_else(|| {
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_system_prompt.clone().and_then(|prompt| {
+                            if prompt.is_empty() {
+                                None
+                            } else {
+                                Some(prompt)
+                            }
+                        })
+                    })
                 } else {
                     None
                 }
@@ -576,6 +609,9 @@ impl GenericInferenceChain {
 
         // We'll keep a record of *every* function call + response across all iterations:
         let mut all_function_responses = Vec::new();
+
+        // NEW: Accumulate all LLM response messages
+        let mut all_llm_messages = Vec::new();
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
@@ -605,8 +641,16 @@ impl GenericInferenceChain {
                     tool_calls_history.len()
                 );
 
+                // NEW: Join all accumulated messages for the result
+                let full_conversation = all_llm_messages
+                    .iter()
+                    .map(|msg: &String| msg.trim())
+                    .filter(|msg| !msg.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n\n");
+
                 let inference_result = InferenceChainResult::with_full_details(
-                    max_iterations_message,
+                    format!("{}\n\n{}", full_conversation, max_iterations_message),
                     None,
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
@@ -641,6 +685,9 @@ impl GenericInferenceChain {
 
             let response = response_res?;
 
+            // NEW: Accumulate this LLM message
+            all_llm_messages.push(response.response_string.clone());
+
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
                 let mut iteration_function_responses = Vec::new();
@@ -666,7 +713,6 @@ impl GenericInferenceChain {
                         max_tokens_in_prompt,
                         ws_manager_trait.clone(),
                         tool_router.clone(),
-                        sheet_manager.clone(),
                         my_agent_payments_manager.clone(),
                         ext_agent_payments_manager.clone(),
                         job_callback_manager.clone(),
@@ -815,8 +861,16 @@ impl GenericInferenceChain {
                 // No more function calls required, return the final response
                 let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
 
+                // NEW: Join all accumulated messages for the result
+                let full_conversation = all_llm_messages
+                    .iter()
+                    .map(|msg: &String| msg.trim())
+                    .filter(|msg| !msg.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n\n");
+
                 let inference_result = InferenceChainResult::with_full_details(
-                    response.response_string,
+                    full_conversation,
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),

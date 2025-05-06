@@ -152,7 +152,6 @@ mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
     #[test]
     fn test_deepseek_provider_creation() {
@@ -166,6 +165,8 @@ mod tests {
     fn test_deepseek_serialized_provider() {
         let provider = SerializedLLMProvider {
             id: "test-id".to_string(),
+            name: None,
+            description: None,
             full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/deepseek_test".to_string()).unwrap(),
             model: LLMProviderInterface::DeepSeek(DeepSeek {
                 model_type: "deepseek-chat".to_string(),

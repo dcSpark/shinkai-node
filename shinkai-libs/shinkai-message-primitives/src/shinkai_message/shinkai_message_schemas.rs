@@ -1,4 +1,3 @@
-use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
 use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::tool_router_key::ToolRouterKey;
@@ -78,18 +77,6 @@ pub enum MessageSchemaType {
     ListWorkflows,
     UpdateSupportedEmbeddingModels,
     UpdateDefaultEmbeddingModel,
-    UserSheets,
-    SetColumn,
-    RemoveColumn,
-    RemoveSheet,
-    CreateEmptySheet,
-    SetCellValue,
-    GetSheet,
-    RemoveRows,
-    AddRows,
-    ImportSheet,
-    ExportSheet,
-    SetSheetUploadedFiles,
     SetShinkaiTool,
     ListAllShinkaiTools,
     GetShinkaiTool,
@@ -167,18 +154,6 @@ impl MessageSchemaType {
             "ListWorkflows" => Some(Self::ListWorkflows),
             "UpdateSupportedEmbeddingModels" => Some(Self::UpdateSupportedEmbeddingModels),
             "UpdateDefaultEmbeddingModel" => Some(Self::UpdateDefaultEmbeddingModel),
-            "UserSheets" => Some(Self::UserSheets),
-            "SetColumn" => Some(Self::SetColumn),
-            "RemoveColumn" => Some(Self::RemoveColumn),
-            "RemoveSheet" => Some(Self::RemoveSheet),
-            "CreateEmptySheet" => Some(Self::CreateEmptySheet),
-            "SetCellValue" => Some(Self::SetCellValue),
-            "GetSheet" => Some(Self::GetSheet),
-            "RemoveRows" => Some(Self::RemoveRows),
-            "AddRows" => Some(Self::AddRows),
-            "ImportSheet" => Some(Self::ImportSheet),
-            "ExportSheet" => Some(Self::ExportSheet),
-            "SetSheetUploadedFiles" => Some(Self::SetSheetUploadedFiles),
             "SetShinkaiTool" => Some(Self::SetShinkaiTool),
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
@@ -256,18 +231,6 @@ impl MessageSchemaType {
             Self::ListWorkflows => "ListWorkflows",
             Self::UpdateSupportedEmbeddingModels => "UpdateSupportedEmbeddingModels",
             Self::UpdateDefaultEmbeddingModel => "UpdateDefaultEmbeddingModel",
-            Self::UserSheets => "UserSheets",
-            Self::SetColumn => "SetColumn",
-            Self::RemoveColumn => "RemoveColumn",
-            Self::RemoveSheet => "RemoveSheet",
-            Self::CreateEmptySheet => "CreateEmptySheet",
-            Self::SetCellValue => "SetCellValue",
-            Self::GetSheet => "GetSheet",
-            Self::RemoveRows => "RemoveRows",
-            Self::AddRows => "AddRows",
-            Self::ImportSheet => "ImportSheet",
-            Self::ExportSheet => "ExportSheet",
-            Self::SetSheetUploadedFiles => "SetSheetUploadedFiles",
             Self::SetShinkaiTool => "SetShinkaiTool",
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
@@ -294,7 +257,6 @@ pub struct SymmetricKeyExchange {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum AssociatedUI {
-    Sheet(String),
     Playground,
     Cron(String),
     // Add more variants as needed
@@ -310,7 +272,6 @@ pub struct JobCreationInfo {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum CallbackAction {
     Job(JobMessage),
-    Sheet(SheetManagerAction),
     ToolPlayground(ToolPlaygroundAction),
     // ImplementationCheck: (DynamicToolType, available_tools)
     ImplementationCheck(DynamicToolType, Vec<ToolRouterKey>),
@@ -321,6 +282,7 @@ pub struct JobMessage {
     pub job_id: String,
     pub content: String,
     pub parent: Option<String>,
+    // TODO: remove this after checking is safe
     pub sheet_job_data: Option<String>,
     // This is added to force specific tools to be used in the LLM scope
     pub tools: Option<Vec<String>>,
@@ -365,25 +327,9 @@ pub struct V2ChatMessage {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
-pub struct SheetManagerAction {
-    pub job_message_next: Option<JobMessage>,
-    // TODO: should this be m0re complex and have the actual desired action?
-    pub sheet_action: SheetJobAction,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct ToolPlaygroundAction {
     pub tool_router_key: String,
     pub code: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
-pub struct SheetJobAction {
-    pub sheet_id: String,
-    #[schema(value_type = String)]
-    pub row: RowUuid,
-    #[schema(value_type = String)]
-    pub col: ColumnUuid,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
@@ -649,82 +595,6 @@ pub struct TopicSubscription {
     pub subtopic: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
-pub struct APISetWorkflow {
-    pub workflow_raw: String,
-    pub description: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct APISetColumnPayload {
-    pub sheet_id: String,
-    pub column: APIColumnDefinition,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct APIRemoveColumnPayload {
-    pub sheet_id: String,
-    pub column_id: ColumnUuid,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct APISetCellValuePayload {
-    pub sheet_id: String,
-    pub row: RowUuid,
-    pub col: ColumnUuid,
-    pub value: String,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct APIRemoveRowsPayload {
-    pub sheet_id: String,
-    pub row_indices: Vec<UuidString>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct APIAddRowsPayload {
-    pub sheet_id: String,
-    pub number_of_rows: usize,
-    pub starting_row: Option<usize>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct APIImportSheetPayload {
-    pub sheet_data: SpreadSheetPayload,
-    pub sheet_name: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone, ToSchema)]
-pub struct APIExportSheetPayload {
-    pub sheet_id: String,
-    pub file_format: SheetFileFormat,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "type", content = "content")]
-pub enum SpreadSheetPayload {
-    CSV(String),
-    XLSX(Vec<u8>),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum SheetFileFormat {
-    CSV,
-    XLSX,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct APISetSheetUploadedFilesPayload {
-    pub sheet_id: String,
-    pub files: HashMap<(UuidString, UuidString), Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
-pub struct APIWorkflowKeyname {
-    pub tool_router_key: String,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportInboxMessagesFormat {
@@ -941,36 +811,6 @@ mod tests {
             serde_json::from_str(&serialized).expect("Failed to deserialize minimal JobMessage");
 
         assert_eq!(minimal_message, deserialized);
-    }
-
-    #[test]
-    fn test_job_message_with_sheet_callback() {
-        let message_with_sheet_callback = JobMessage {
-            job_id: "sheet_job".to_string(),
-            content: "sheet content".to_string(),
-            parent: None,
-            sheet_job_data: Some("sheet1".to_string()),
-            tools: None,
-            callback: Some(Box::new(CallbackAction::Sheet(SheetManagerAction {
-                job_message_next: None,
-                sheet_action: SheetJobAction {
-                    sheet_id: "sheet1".to_string(),
-                    row: RowUuid::from("row1"),
-                    col: ColumnUuid::from("col1"),
-                },
-            }))),
-            metadata: None,
-            tool_key: None,
-            fs_files_paths: vec![],
-            job_filenames: vec![],
-        };
-
-        let serialized = serde_json::to_string(&message_with_sheet_callback)
-            .expect("Failed to serialize JobMessage with sheet callback");
-        let deserialized: JobMessage =
-            serde_json::from_str(&serialized).expect("Failed to deserialize JobMessage with sheet callback");
-
-        assert_eq!(message_with_sheet_callback, deserialized);
     }
 
     #[test]

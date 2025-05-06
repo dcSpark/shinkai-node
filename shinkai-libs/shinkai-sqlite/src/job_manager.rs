@@ -475,7 +475,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -1049,7 +1049,7 @@ mod tests {
         .unwrap();
 
         let smart_inboxes = db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false))
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false), None)
             .unwrap();
         assert_eq!(smart_inboxes.len(), 2);
 
@@ -1064,7 +1064,7 @@ mod tests {
 
         // Check if the smart_inbox is removed
         let smart_inboxes = db
-            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false))
+            .get_all_smart_inboxes_for_profile(node1_profile_identity.clone(), Some(false), None)
             .unwrap();
         assert_eq!(smart_inboxes.len(), 1);
         assert!(smart_inboxes[0].inbox_id != inbox1_name.to_string());
