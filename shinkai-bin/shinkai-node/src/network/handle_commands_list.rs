@@ -2503,13 +2503,11 @@ impl Node {
             NodeCommand::V2ApiImportToolZip { bearer, file_data, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
-                let node_name = self.node_name.node_name.clone();
                 let embedding_generator = self.embedding_generator.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_tool_zip(
                         db_clone,
                         bearer,
-                        node_name,
                         node_env,
                         file_data,
                         Arc::new(embedding_generator),

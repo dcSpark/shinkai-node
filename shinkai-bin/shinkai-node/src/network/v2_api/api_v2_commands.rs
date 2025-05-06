@@ -1721,7 +1721,6 @@ impl Node {
 
         let status = import_dependencies_tools(
             db.clone(),
-            node_name.clone(),
             node_env.clone(),
             zip_contents.archive.clone(),
             embedding_generator.clone(),
@@ -1734,7 +1733,6 @@ impl Node {
 
         let _ = match import_agent(
             db.clone(),
-            node_name,
             zip_contents.archive,
             agent.clone(),
             embedding_generator.clone(),
@@ -1787,7 +1785,6 @@ impl Node {
 
         let status = import_dependencies_tools(
             db.clone(),
-            node_name.clone(),
             node_env.clone(),
             archive.clone(),
             embedding_generator.clone(),
@@ -1799,7 +1796,7 @@ impl Node {
         }
 
         // Parse the JSON into an Agent
-        let _ = match import_agent(db.clone(), node_name, archive, agent.clone(), embedding_generator).await {
+        let _ = match import_agent(db.clone(), archive, agent.clone(), embedding_generator).await {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };
