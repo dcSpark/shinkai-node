@@ -1,15 +1,17 @@
 use log::error;
 use rusqlite::params;
 use serde_json::{json, Value};
-use shinkai_http_api::node_api_router::APIUseRegistrationCodeSuccessResponse;
+use shinkai_http_api::node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{DeviceIdentity, StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::identity_registration::RegistrationCodeInfo;
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiSubidentityType;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::RegistrationCodeType;
-use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
+use shinkai_message_primitives::shinkai_utils::encryption::{clone_static_secret_key, string_to_encryption_public_key};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_message_primitives::shinkai_utils::signatures::string_to_signature_public_key;
+use shinkai_message_primitives::shinkai_utils::signatures::{
+    clone_signature_secret_key, string_to_signature_public_key
+};
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
@@ -48,7 +50,8 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::llm_provider::providers::shinkai_backend::check_quota;
-use crate::network::node_shareable_logic::ZipFileContents;
+use crate::network::node::ProxyConnectionInfo;
+use crate::network::node_shareable_logic::{validate_message_main_logic, ZipFileContents};
 use crate::utils::environment::NodeEnvironment;
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 
@@ -2915,5 +2918,226 @@ impl Node {
                 ),
             }),
         }
+    }
+
+    pub async fn validate_message(
+        encryption_secret_key: EncryptionStaticKey,
+        identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        node_name: &ShinkaiName,
+        potentially_encrypted_msg: ShinkaiMessage,
+        schema_type: Option<MessageSchemaType>,
+    ) -> Result<(ShinkaiMessage, Identity), APIError> {
+        validate_message_main_logic(
+            &encryption_secret_key,
+            identity_manager,
+            &node_name.clone(),
+            potentially_encrypted_msg,
+            schema_type,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn api_handle_send_onionized_message(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        identity_secret_key: SigningKey,
+        potentially_encrypted_msg: ShinkaiMessage,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        res: Sender<Result<SendResponseBodyData, APIError>>,
+    ) -> Result<(), NodeError> {
+        // This command is used to send messages that are already signed and (potentially) encrypted
+        if node_name.get_node_name_string().starts_with("@@localhost.") {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid node name: @@localhost".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        let validation_result = Self::validate_message(
+            encryption_secret_key.clone(),
+            identity_manager.clone(),
+            &node_name,
+            potentially_encrypted_msg.clone(),
+            None,
+        )
+        .await;
+        let (mut msg, _) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Error validating message: {}", api_error.message),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+        //
+        // Part 2: Check if the message needs to be sent to another node or not
+        //
+        let recipient_node_name = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
+            .unwrap()
+            .get_node_name_string();
+
+        let sender_node_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&msg.clone())
+            .unwrap()
+            .get_node_name_string();
+
+        if recipient_node_name == sender_node_name {
+            //
+            // Part 3A: Validate and store message locally
+            //
+
+            // Has sender access to the inbox specified in the message?
+            let inbox = InboxName::from_message(&msg.clone());
+            match inbox {
+                Ok(inbox) => {
+                    // TODO: extend and verify that the sender may have access to the inbox using the access db method
+                    match inbox.has_sender_creation_access(msg.clone()) {
+                        Ok(_) => {
+                            // use unsafe_insert_inbox_message because we already validated the message
+                            let parent_message_id = match msg.get_message_parent_key() {
+                                Ok(key) => Some(key),
+                                Err(_) => None,
+                            };
+
+                            db.unsafe_insert_inbox_message(&msg.clone(), parent_message_id, ws_manager.clone())
+                                .await
+                                .map_err(|e| {
+                                    shinkai_log(
+                                        ShinkaiLogOption::DetailedAPI,
+                                        ShinkaiLogLevel::Error,
+                                        format!("Error inserting message into db: {}", e).as_str(),
+                                    );
+                                    std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
+                                })?;
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::DetailedAPI,
+                                ShinkaiLogLevel::Error,
+                                format!("Error checking if sender has access to inbox: {}", e).as_str(),
+                            );
+                            let _ = res
+                                .send(Err(APIError {
+                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                    error: "Bad Request".to_string(),
+                                    message: format!("Error checking if sender has access to inbox: {}", e),
+                                }))
+                                .await;
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("handle_onionized_message > Error getting inbox from message: {}", e);
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: format!("Error getting inbox from message: {}", e),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        }
+
+        //
+        // Part 3B: Preparing to externally send Message
+        //
+        // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
+        // we know the node that we want to send the message to from the recipient profile name
+        let recipient_node_name_string = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
+            .unwrap()
+            .to_string();
+
+        let external_global_identity_result = identity_manager
+            .lock()
+            .await
+            .external_profile_to_global_identity(&recipient_node_name_string.clone(), None)
+            .await;
+
+        let external_global_identity = match external_global_identity_result {
+            Ok(identity) => identity,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Error".to_string(),
+                        message: err,
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        msg.external_metadata.intra_sender = "".to_string();
+        msg.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
+
+        let encrypted_msg = msg.encrypt_outer_layer(
+            &encryption_secret_key.clone(),
+            &external_global_identity.node_encryption_public_key,
+        )?;
+
+        // We update the signature so it comes from the node and not the profile
+        // that way the recipient will be able to verify it
+        let signature_sk = clone_signature_secret_key(&identity_secret_key);
+        let encrypted_msg = encrypted_msg.sign_outer_layer(&signature_sk)?;
+        let node_addr = external_global_identity.addr.unwrap();
+
+        Node::send(
+            encrypted_msg,
+            Arc::new(clone_static_secret_key(&encryption_secret_key)),
+            (node_addr, recipient_node_name_string),
+            proxy_connection_info,
+            db.clone(),
+            identity_manager.clone(),
+            ws_manager.clone(),
+            true,
+            None,
+        );
+
+        {
+            let inbox_name = match InboxName::from_message(&msg.clone()) {
+                Ok(inbox) => inbox.to_string(),
+                Err(_) => "".to_string(),
+            };
+
+            let scheduled_time = msg.external_metadata.scheduled_time;
+            let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
+
+            let parent_key = if !inbox_name.is_empty() {
+                match db.get_parent_message_hash(&inbox_name, &message_hash) {
+                    Ok(result) => result,
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            let response = SendResponseBodyData {
+                message_id: message_hash,
+                parent_message_id: parent_key,
+                inbox: inbox_name,
+                scheduled_time,
+            };
+
+            if res.send(Ok(response)).await.is_err() {
+                eprintln!("Failed to send response");
+            }
+        }
+
+        Ok(())
     }
 }
