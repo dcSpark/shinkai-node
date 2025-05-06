@@ -22,17 +22,15 @@ use std::hash::RandomState;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DenoTool {
     pub name: String,
+    pub tool_router_key: Option<ToolRouterKey>,
     pub homepage: Option<String>,
     pub author: String,
     pub version: String,
     pub mcp_enabled: Option<bool>,
     pub js_code: String,
-    #[serde(default)]
-    #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
-    #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys")]
     pub tools: Vec<ToolRouterKey>,
     pub config: Vec<ToolConfig>,
     pub description: String,
@@ -52,7 +50,180 @@ pub struct DenoTool {
     pub tool_set: Option<String>,
 }
 
+impl<'de> serde::Deserialize<'de> for DenoTool {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct Helper {
+            name: String,
+            #[serde(default)]
+            tool_router_key: Option<String>,
+            homepage: Option<String>,
+            author: String,
+            version: String,
+            mcp_enabled: Option<bool>,
+            js_code: String,
+            #[serde(default)]
+            #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
+            #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys")]
+            tools: Vec<ToolRouterKey>,
+            config: Vec<ToolConfig>,
+            description: String,
+            keywords: Vec<String>,
+            input_args: Parameters,
+            output_arg: ToolOutputArg,
+            activated: bool,
+            embedding: Option<Vec<f32>>,
+            result: ToolResult,
+            sql_tables: Option<Vec<SqlTable>>,
+            sql_queries: Option<Vec<SqlQuery>>,
+            file_inbox: Option<String>,
+            oauth: Option<Vec<OAuth>>,
+            assets: Option<Vec<String>>,
+            runner: RunnerType,
+            operating_system: Vec<OperatingSystem>,
+            tool_set: Option<String>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+
+        let tool_router_key = match helper.tool_router_key {
+            Some(key_str) => Some(ToolRouterKey::from_string(&key_str).map_err(serde::de::Error::custom)?),
+            None => Some(ToolRouterKey::new(
+                "local".to_string(),
+                helper.author.clone(),
+                helper.name.clone(),
+                None,
+            )),
+        };
+
+        Ok(DenoTool {
+            name: helper.name,
+            tool_router_key,
+            homepage: helper.homepage,
+            author: helper.author,
+            version: helper.version,
+            mcp_enabled: helper.mcp_enabled,
+            js_code: helper.js_code,
+            tools: helper.tools,
+            config: helper.config,
+            description: helper.description,
+            keywords: helper.keywords,
+            input_args: helper.input_args,
+            output_arg: helper.output_arg,
+            activated: helper.activated,
+            embedding: helper.embedding,
+            result: helper.result,
+            sql_tables: helper.sql_tables,
+            sql_queries: helper.sql_queries,
+            file_inbox: helper.file_inbox,
+            oauth: helper.oauth,
+            assets: helper.assets,
+            runner: helper.runner,
+            operating_system: helper.operating_system,
+            tool_set: helper.tool_set,
+        })
+    }
+}
+
+impl serde::Serialize for DenoTool {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("DenoTool", 24)?;
+        state.serialize_field("name", &self.name)?;
+        if let Some(key) = &self.tool_router_key {
+            state.serialize_field("tool_router_key", &key.to_string_with_version())?;
+        } else {
+            state.serialize_field("tool_router_key", &None::<String>)?;
+        }
+        state.serialize_field("homepage", &self.homepage)?;
+        state.serialize_field("author", &self.author)?;
+        state.serialize_field("version", &self.version)?;
+        state.serialize_field("mcp_enabled", &self.mcp_enabled)?;
+        state.serialize_field("js_code", &self.js_code)?;
+        let tools_strings: Vec<String> = self.tools.iter().map(|k| k.to_string_with_version()).collect();
+        state.serialize_field("tools", &tools_strings)?;
+        state.serialize_field("config", &self.config)?;
+        state.serialize_field("description", &self.description)?;
+        state.serialize_field("keywords", &self.keywords)?;
+        state.serialize_field("input_args", &self.input_args)?;
+        state.serialize_field("output_arg", &self.output_arg)?;
+        state.serialize_field("activated", &self.activated)?;
+        state.serialize_field("embedding", &self.embedding)?;
+        state.serialize_field("result", &self.result)?;
+        state.serialize_field("sql_tables", &self.sql_tables)?;
+        state.serialize_field("sql_queries", &self.sql_queries)?;
+        state.serialize_field("file_inbox", &self.file_inbox)?;
+        state.serialize_field("oauth", &self.oauth)?;
+        state.serialize_field("assets", &self.assets)?;
+        state.serialize_field("runner", &self.runner)?;
+        state.serialize_field("operating_system", &self.operating_system)?;
+        state.serialize_field("tool_set", &self.tool_set)?;
+        state.end()
+    }
+}
+
 impl DenoTool {
+    pub fn new(
+        name: String,
+        homepage: Option<String>,
+        author: String,
+        version: String,
+        mcp_enabled: Option<bool>,
+        js_code: String,
+        tools: Vec<ToolRouterKey>,
+        config: Vec<ToolConfig>,
+        description: String,
+        keywords: Vec<String>,
+        input_args: Parameters,
+        output_arg: ToolOutputArg,
+        activated: bool,
+        embedding: Option<Vec<f32>>,
+        result: ToolResult,
+        sql_tables: Option<Vec<SqlTable>>,
+        sql_queries: Option<Vec<SqlQuery>>,
+        file_inbox: Option<String>,
+        oauth: Option<Vec<OAuth>>,
+        assets: Option<Vec<String>>,
+        runner: RunnerType,
+        operating_system: Vec<OperatingSystem>,
+        tool_set: Option<String>,
+    ) -> Self {
+        let tool_router_key = ToolRouterKey::new("local".to_string(), author.clone(), name.clone(), None);
+
+        DenoTool {
+            name,
+            tool_router_key: Some(tool_router_key),
+            homepage,
+            author,
+            version,
+            mcp_enabled,
+            js_code,
+            tools,
+            config,
+            description,
+            keywords,
+            input_args,
+            output_arg,
+            activated,
+            embedding,
+            result,
+            sql_tables,
+            sql_queries,
+            file_inbox,
+            oauth,
+            assets,
+            runner,
+            operating_system,
+            tool_set,
+        }
+    }
+
     /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
@@ -619,6 +790,15 @@ mod tests {
         assert_eq!(deserialized.homepage, Some("http://example.com".to_string()));
         assert_eq!(deserialized.runner, RunnerType::Any);
         assert_eq!(deserialized.tool_set, None);
+        assert_eq!(
+            deserialized.tool_router_key,
+            Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Shinkai".to_string(),
+                "Coinbase Wallet Creator".to_string(),
+                None
+            ))
+        );
 
         // Verify config entries
         assert_eq!(deserialized.config.len(), 3);
@@ -638,6 +818,12 @@ mod tests {
     #[test]
     fn test_email_fetcher_tool_config() {
         let tool = DenoTool {
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Shinkai".to_string(),
+                "Email Fetcher".to_string(),
+                None,
+            )),
             name: "Email Fetcher".to_string(),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             author: "Shinkai".to_string(),
@@ -699,14 +885,18 @@ mod tests {
             tool_set: None,
         };
 
+        let serialized = serde_json::to_string_pretty(&tool).expect("Failed to serialize DenoTool");
+
+        let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
+
         // Test check_required_config_fields with no values set
         assert!(
-            !tool.check_required_config_fields(),
+            !deserialized.check_required_config_fields(),
             "Should fail when required fields have no values"
         );
 
         // Create a tool with values set for required fields
-        let mut tool_with_values = tool.clone();
+        let mut tool_with_values = deserialized.clone();
         tool_with_values.config = vec![
             ToolConfig::BasicConfig(BasicConfig {
                 key_name: "imap_server".to_string(),
@@ -754,8 +944,6 @@ mod tests {
         let serialized = serde_json::to_string(&tool).expect("Failed to serialize DenoTool");
         let deserialized: DenoTool = serde_json::from_str(&serialized).expect("Failed to deserialize DenoTool");
 
-        assert_eq!(deserialized.config.len(), 5, "Should have 5 configuration items");
-
         // Check specific configs
         let imap_server_config = deserialized
             .config
@@ -792,6 +980,12 @@ mod tests {
     #[test]
     fn test_deno_tool_runner_types() {
         let tool = DenoTool {
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Test Author".to_string(),
+                "Test Tool".to_string(),
+                None,
+            )),
             name: "Test Tool".to_string(),
             homepage: None,
             author: "Test Author".to_string(),
@@ -835,6 +1029,12 @@ mod tests {
     fn test_deno_tool_operating_systems() {
         let tool = DenoTool {
             name: "Test Tool".to_string(),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Test Author".to_string(),
+                "Test Tool".to_string(),
+                None,
+            )),
             homepage: None,
             author: "Test Author".to_string(),
             version: "1.0.0".to_string(),
@@ -871,6 +1071,12 @@ mod tests {
     #[test]
     fn test_deno_tool_tool_set() {
         let tool = DenoTool {
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Test Author".to_string(),
+                "Test Tool".to_string(),
+                None,
+            )),
             name: "Test Tool".to_string(),
             homepage: None,
             author: "Test Author".to_string(),

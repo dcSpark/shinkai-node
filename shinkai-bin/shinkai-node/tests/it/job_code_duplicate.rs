@@ -1,6 +1,6 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider,
+    LLMProviderInterface, Ollama, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -11,16 +11,14 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolWith
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::{
-    parameters::Parameters,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    parameters::Parameters, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_initial_registration_with_no_code_for_device, api_llm_provider_registration, wait_for_default_tools,
+    api_initial_registration_with_no_code_for_device, api_llm_provider_registration, wait_for_default_tools
 };
 use mockito::Server;
 
@@ -65,7 +63,7 @@ fn tool_duplicate_tests() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     node1_api_key.clone(),
-                    20, // Wait up to 30 seconds
+                    30, // Wait up to 30 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
@@ -118,6 +116,8 @@ fn tool_duplicate_tests() {
                 let agent = SerializedLLMProvider {
                     id: node1_llm_provider.clone().to_string(),
                     full_identity_name: agent_name,
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     external_url: Some(server.url()),
                     api_key: Some("".to_string()),
                     model: LLMProviderInterface::Ollama(ollama),
@@ -137,9 +137,17 @@ fn tool_duplicate_tests() {
             let tool_key_name: String = "local:::__node1_test_sep_shinkai:::demo_tool".to_string();
             println!("Creating tool");
             {
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    "@@node1_test.sep-shinkai".to_string(),
+                    "demo_tool".to_string(),
+                    None,
+                );
+
                 // Create a tool offering
                 let deno = DenoTool {
                     name: "demo_tool".to_string(),
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: Some("http://127.0.0.1/index.html".to_string()),
                     author: "@@node1_test.sep-shinkai".to_string(),
                     version: "1.0.0".to_string(),
@@ -227,7 +235,9 @@ fn tool_duplicate_tests() {
                 assert!(result.is_ok(), "Tool fork failed");
                 let fork_result = result.unwrap();
                 eprintln!("Fork result: {:?}", fork_result);
-                // Fork result: Object {"job_id": String("jobid_5ae1f3e2-874a-47a1-b98a-23cd255f0456"), "tool_router_key": String("local:::__node1_test_sep_shinkai:::demo_tool_20250331_163342"), "version": String("1.0.0")}
+                // Fork result: Object {"job_id": String("jobid_5ae1f3e2-874a-47a1-b98a-23cd255f0456"),
+                // "tool_router_key": String("local:::__node1_test_sep_shinkai:::demo_tool_20250331_163342"), "version":
+                // String("1.0.0")}
                 fork_result
                     .get("tool_router_key")
                     .unwrap()
@@ -297,12 +307,13 @@ fn tool_duplicate_tests() {
                 //     "operating_system": Array [String("windows")],
                 //     "parameters": Object {
                 //         "properties": Object {
-                //             "prompt": Object {"description": String("The prompt to process"), "type": String("string")}},
-                //         "required": Array [String("prompt")],
+                //             "prompt": Object {"description": String("The prompt to process"), "type":
+                // String("string")}},         "required": Array [String("prompt")],
                 //         "type": String("object")},
                 //     "result": Object {"properties": Null, "required": Array [], "type": String("object")},
                 //     "runner": String("only_host"),
-                //     "sqlQueries": Array [], "sqlTables": Array [], "tool_set": Null, "tools": Array [String("local:::__official_shinkai:::shinkai_llm_prompt_processor")], "version": String("1.0.0")}
+                //     "sqlQueries": Array [], "sqlTables": Array [], "tool_set": Null, "tools": Array
+                // [String("local:::__official_shinkai:::shinkai_llm_prompt_processor")], "version": String("1.0.0")}
                 let author = metadata.get("author").unwrap().as_str().unwrap();
                 eprintln!("Author: {:?}", author);
                 assert_eq!(author, "@@node1_test.sep-shinkai");

@@ -442,7 +442,7 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let smart_inboxes: Vec<SmartInbox> = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden) {
+        let smart_inboxes: Vec<SmartInbox> = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden, agent_id) {
             Ok(inboxes) => inboxes,
             Err(err) => {
                 let api_error = APIError {
@@ -463,15 +463,7 @@ impl Node {
 
         // Handle the Result and filter based on agent_id if necessary
         let final_result = match v2_smart_inboxes_result {
-            Ok(mut inboxes) => {
-                if let Some(agent_id) = agent_id {
-                    // Use retain for in-place filtering
-                    inboxes.retain(|inbox| {
-                        inbox.agent.as_ref().map_or(false, |agent_subset| agent_subset.id == agent_id)
-                    });
-                }
-                Ok(inboxes) // Return the potentially filtered Vec wrapped in Ok
-            }
+            Ok(inboxes) => Ok(inboxes), // Return the Vec wrapped in Ok
             Err(e) => Err(e), // Propagate the error if conversion failed
         };
 
@@ -528,7 +520,7 @@ impl Node {
 
         // Retrieve all smart inboxes for the profile with pagination
         let paginated_inboxes: PaginatedSmartInboxes =
-            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden) {
+            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden, agent_id) {
                 Ok(inboxes) => inboxes,
                 Err(err) => {
                     let api_error = APIError {
@@ -550,15 +542,7 @@ impl Node {
 
         // Handle the Result and filter based on agent_id if necessary
         let final_result = match v2_smart_inboxes_result {
-            Ok(mut inboxes) => {
-                if let Some(agent_id) = agent_id {
-                    // Use retain for in-place filtering
-                    inboxes.retain(|inbox| {
-                        inbox.agent.as_ref().map_or(false, |agent_subset| agent_subset.id == agent_id)
-                    });
-                }
-                Ok(inboxes) // Return the potentially filtered Vec wrapped in Ok
-            }
+            Ok(inboxes) => Ok(inboxes),
             Err(e) => Err(e), // Propagate the error if conversion failed
         };
 

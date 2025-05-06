@@ -1,15 +1,3 @@
-use std::env;
-
-use crate::tools::error::ToolError;
-use crate::tools::rust_tools::RustTool;
-use serde_json::{self, Value};
-
-use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
-use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion,
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
-};
-
 use super::agent_tool_wrapper::AgentToolWrapper;
 use super::simulated_tool::SimulatedTool;
 use super::tool_config::OAuth;
@@ -19,6 +7,15 @@ use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
     tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
 };
+use crate::tools::error::ToolError;
+use crate::tools::rust_tools::RustTool;
+use serde_json::{self, Value};
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+use shinkai_message_primitives::schemas::{
+    indexable_version::IndexableVersion,
+    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
+};
+use std::env;
 
 pub type IsEnabled = bool;
 
@@ -96,15 +93,30 @@ impl ShinkaiTool {
 
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> ToolRouterKey {
-        let (provider, author, name) = match self {
-            ShinkaiTool::Rust(r, _) => ("local".to_string(), r.author(), r.name.clone()),
-            ShinkaiTool::Network(n, _) => (n.provider.to_string(), n.author.to_string(), n.name.clone()),
-            ShinkaiTool::Deno(d, _) => ("local".to_string(), d.author.clone(), d.name.clone()),
-            ShinkaiTool::Python(p, _) => ("local".to_string(), p.author.clone(), p.name.clone()),
-            ShinkaiTool::Agent(a, _) => ("local".to_string(), a.author.clone(), a.agent_id.clone()),
-            ShinkaiTool::Simulated(s, _) => (s.get_source(), s.get_author(), s.name.clone()),
-        };
-        ToolRouterKey::new(provider, author, name, None)
+        match self {
+            ShinkaiTool::Rust(r, _) => ToolRouterKey::new("local".to_string(), r.author(), r.name.clone(), None),
+            ShinkaiTool::Network(n, _) => {
+                ToolRouterKey::new(n.provider.to_string(), n.author.to_string(), n.name.clone(), None)
+            }
+            ShinkaiTool::Deno(d, _) => {
+                if let Some(key) = &d.tool_router_key {
+                    key.clone()
+                } else {
+                    ToolRouterKey::new("local".to_string(), d.author.clone(), d.name.clone(), None)
+                }
+            }
+            ShinkaiTool::Python(p, _) => {
+                if let Some(key) = &p.tool_router_key {
+                    key.clone()
+                } else {
+                    ToolRouterKey::new("local".to_string(), p.author.clone(), p.name.clone(), None)
+                }
+            }
+            ShinkaiTool::Agent(a, _) => {
+                ToolRouterKey::new("local".to_string(), a.author.clone(), a.agent_id.clone(), None)
+            }
+            ShinkaiTool::Simulated(s, _) => ToolRouterKey::new(s.get_source(), s.get_author(), s.name.clone(), None),
+        }
     }
 
     /// Sanitize the config by removing key-values from BasicConfig
@@ -118,12 +130,6 @@ impl ShinkaiTool {
             }
             _ => (),
         }
-    }
-
-    /// Generate the key that this tool will be stored under in the tool router
-    pub fn gen_router_key(source: String, author: String, name: String) -> String {
-        let tool_router_key = ToolRouterKey::new(source, author, name, None);
-        tool_router_key.to_string_without_version()
     }
 
     /// Tool name
@@ -391,7 +397,7 @@ impl ShinkaiTool {
             ShinkaiTool::Deno(d, _) => d.version.clone(),
             ShinkaiTool::Python(p, _) => p.version.clone(),
             ShinkaiTool::Agent(_a, _) => "1.0.0".to_string(),
-            ShinkaiTool::Simulated(s, _) => "1.0.0".to_string(),
+            ShinkaiTool::Simulated(_s, _) => "1.0.0".to_string(),
         }
     }
 
@@ -606,13 +612,22 @@ mod tests {
     use crate::tools::parameters::Property;
     use crate::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use serde_json::json;
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
     #[test]
     fn test_gen_router_key() {
         // Create a mock DenoTool with all required fields
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "@@official.shinkai".to_string(),
+            "Shinkai: Download Pages".to_string(),
+            None,
+        );
+
         let deno_tool = DenoTool {
             name: "Shinkai: Download Pages".to_string(),
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
             mcp_enabled: Some(false),
@@ -694,8 +709,16 @@ mod tests {
 
         let input_args = Parameters::with_single_property("url", "string", "The URL to fetch", true);
 
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            tool_definition.author.clone(),
+            "shinkai__download_website".to_string(),
+            None,
+        );
+
         let deno_tool = DenoTool {
             name: "shinkai__download_website".to_string(),
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
             mcp_enabled: Some(false),

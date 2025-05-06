@@ -309,6 +309,7 @@ mod tests {
     use super::*;
 
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_tools_primitives::tools::tool_config::BasicConfig;
     use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use shinkai_tools_primitives::tools::{deno_tools::DenoTool, shinkai_tool::ShinkaiTool};
@@ -321,7 +322,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -336,9 +337,17 @@ mod tests {
     }
 
     fn create_deno_tool() -> ShinkaiTool {
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Test Author".to_string(),
+            "Test Tool".to_string(),
+            None,
+        );
+
         let mut initial_tool = ShinkaiTool::Deno(
             DenoTool {
                 name: "Test Tool".to_string(),
+                tool_router_key: Some(tool_router_key),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),
                 version: "1.0.0".to_string(),

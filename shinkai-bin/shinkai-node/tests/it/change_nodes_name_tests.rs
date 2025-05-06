@@ -1,16 +1,12 @@
 use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::Path,
+    fs, net::{IpAddr, Ipv4Addr, SocketAddr}, path::Path
 };
 
 use crate::it::utils::node_test_api::api_registration_device_node_profile_main;
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::{
-    encryption::unsafe_deterministic_encryption_keypair,
-    shinkai_message_builder::ShinkaiMessageBuilder,
-    signatures::{clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair},
+    encryption::unsafe_deterministic_encryption_keypair, shinkai_message_builder::ShinkaiMessageBuilder, signatures::{clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair}
 };
 use shinkai_node::network::Node;
 use tokio::runtime::Runtime;
@@ -158,7 +154,6 @@ fn change_nodes_name_test() {
             None,
             true,
             vec![],
-            
             None,
             None,
             default_embedding_model(),

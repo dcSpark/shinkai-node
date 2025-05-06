@@ -69,7 +69,10 @@ impl SqliteManager {
         }
     }
 
-    pub fn get_cron_tasks_by_llm_provider_id(&self, llm_provider_id: &str) -> Result<Vec<CronTask>, SqliteManagerError> {
+    pub fn get_cron_tasks_by_llm_provider_id(
+        &self,
+        llm_provider_id: &str,
+    ) -> Result<Vec<CronTask>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "SELECT task_id, name, description, cron, created_at, last_modified, action, paused 
@@ -77,14 +80,12 @@ impl SqliteManager {
         )?;
         let cron_task_iter = stmt.query_map([], |row| {
             let action_json: String = row.get(6)?;
-            let action: CronTaskAction = serde_json::from_str(&action_json)
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            let action: CronTaskAction =
+                serde_json::from_str(&action_json).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
             // Check if the action contains the matching llm_provider_id
             let matches = match &action {
-                CronTaskAction::CreateJobWithConfigAndMessage { llm_provider, .. } => {
-                    llm_provider == llm_provider_id
-                }
+                CronTaskAction::CreateJobWithConfigAndMessage { llm_provider, .. } => llm_provider == llm_provider_id,
                 _ => false,
             };
 
@@ -268,7 +269,7 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::{
-        shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::shinkai_path::ShinkaiPath,
+        shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::shinkai_path::ShinkaiPath
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -278,7 +279,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

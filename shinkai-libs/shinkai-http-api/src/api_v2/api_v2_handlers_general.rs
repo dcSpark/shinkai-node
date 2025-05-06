@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    Exo, Gemini, Groq, LLMProviderInterface, LocalLLM, Ollama, OpenAI, ShinkaiBackend,
+    Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, ShinkaiBackend,
 };
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
@@ -1456,7 +1456,7 @@ pub async fn get_preferences_handler(
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
             ShinkaiMessage, MessageBody, EncryptionMethod, ExternalMetadata, ShinkaiVersion,
-            OpenAI, Ollama, LocalLLM, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
+            OpenAI, Ollama, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
             ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
             NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
             APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError, Agent,
