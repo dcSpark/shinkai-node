@@ -601,7 +601,6 @@ async fn import_agent_knowledge(
 
 pub async fn import_dependencies_tools(
     db: Arc<SqliteManager>,
-    node_name: String,
     node_env: NodeEnvironment,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
     embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -645,14 +644,8 @@ pub async fn import_dependencies_tools(
                 Err(err) => return Err(err),
             };
             let agent = get_agent_from_zip(agent_zip.archive).unwrap();
-            let import_agent_result = import_agent(
-                db.clone(),
-                node_name.clone(),
-                zip_contents.clone(),
-                agent,
-                embedding_generator.clone(),
-            )
-            .await;
+            let import_agent_result =
+                import_agent(db.clone(), zip_contents.clone(), agent, embedding_generator.clone()).await;
             if let Err(err) = import_agent_result {
                 println!("Error importing agent: {:?}", err);
             }
@@ -756,7 +749,6 @@ pub async fn import_tool(
 
 pub async fn import_agent(
     db: Arc<SqliteManager>,
-    node_name: String,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
     agent: Agent,
     embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -776,11 +768,12 @@ pub async fn import_agent(
     if install {
         match db.add_agent(agent.clone(), &agent.full_identity_name) {
             Ok(_) => {
+                let author = agent.full_identity_name.node_name.clone();
                 let agent_tool_wrapper = AgentToolWrapper::new(
                     agent.agent_id.clone(),
                     agent.name.clone(),
                     agent.ui_description.clone(),
-                    node_name.clone(),
+                    author,
                     None,
                 );
                 let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
@@ -1174,7 +1167,7 @@ mod tests {
         let tool_b_name = "Tool B";
         let tool_b_version = "1.0.0";
         let tool_b_author = "@@test.shinkai";
-        let mut tool_b = DenoTool {
+        let tool_b = DenoTool {
             tool_router_key: Some(ToolRouterKey {
                 source: "local".to_string(),
                 author: tool_b_author.to_string(),
@@ -1250,7 +1243,7 @@ mod tests {
         let tool_a_name = "Tool A";
         let tool_a_version = "1.0.0";
         let tool_a_author = "@@test.shinkai";
-        let mut tool_a = DenoTool {
+        let tool_a = DenoTool {
             tool_router_key: Some(ToolRouterKey {
                 source: "local".to_string(),
                 author: tool_a_author.to_string(),

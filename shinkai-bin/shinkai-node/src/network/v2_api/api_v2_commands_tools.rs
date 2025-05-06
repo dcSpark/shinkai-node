@@ -2454,7 +2454,6 @@ impl Node {
 
         let import_status = import_dependencies_tools(
             db.clone(),
-            node_name,
             node_env.clone(),
             zip_contents.archive.clone(),
             embedding_generator,
@@ -3164,7 +3163,6 @@ impl Node {
 
     pub async fn install_tool_from_u8(
         db: Arc<SqliteManager>,
-        node_name: String,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -3219,7 +3217,6 @@ impl Node {
         let zip_contents = ZipFileContents { buffer, archive };
         let import_status = import_dependencies_tools(
             db.clone(),
-            node_name,
             node_env.clone(),
             zip_contents.archive.clone(),
             embedding_generator.clone(),
@@ -3234,7 +3231,6 @@ impl Node {
     pub async fn v2_api_import_tool_zip(
         db: Arc<SqliteManager>,
         bearer: String,
-        node_name: String,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -3245,7 +3241,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::install_tool_from_u8(db, node_name, node_env, file_data, embedding_generator).await;
+        let result = Self::install_tool_from_u8(db, node_env, file_data, embedding_generator).await;
         let _ = res.send(result).await;
         Ok(())
     }
