@@ -283,19 +283,11 @@ impl Node {
             NodeCommand::V2ApiImportAgentZip { bearer, file_data, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
-                let node_name = self.node_name.node_name.clone();
                 let embedding_generator = Arc::new(self.embedding_generator.clone());
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent_zip(
-                        db_clone,
-                        bearer,
-                        node_name,
-                        node_env,
-                        file_data,
-                        embedding_generator,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_api_import_agent_zip(db_clone, bearer, node_env, file_data, embedding_generator, res)
+                            .await;
                 });
             }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {

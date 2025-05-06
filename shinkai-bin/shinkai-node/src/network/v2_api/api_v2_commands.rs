@@ -1701,7 +1701,7 @@ impl Node {
         )
         .await;
 
-        match response {
+        let _ = match response {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };
@@ -1876,7 +1876,6 @@ impl Node {
     pub async fn v2_api_import_agent_zip(
         db: Arc<SqliteManager>,
         bearer: String,
-        node_name: String,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
