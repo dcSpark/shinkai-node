@@ -2520,12 +2520,12 @@ mod tests {
         // Tool 1: Part of "Set A"
         let tool1 = DenoTool {
             name: "Tool A1".to_string(),
+            tool_router_key: None,
             author: "Author A".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('A1');".to_string(),
             description: "Tool A1 description".to_string(),
             tool_set: Some("Set A".to_string()),
-            // Fill in other required fields...
             homepage: None,
             mcp_enabled: Some(false),
             tools: vec![],
@@ -2549,11 +2549,11 @@ mod tests {
         let tool2 = DenoTool {
             name: "Tool B1".to_string(),
             author: "Author B".to_string(),
+            tool_router_key: None,
             version: "1.0.0".to_string(),
             js_code: "console.log('B1');".to_string(),
             description: "Tool B1 description".to_string(),
             tool_set: Some("Set B".to_string()),
-            // Fill in other required fields...
              homepage: None,
             mcp_enabled: Some(false),
             tools: vec![],
@@ -2576,12 +2576,12 @@ mod tests {
         // Tool 3: Part of "Set A"
         let tool3 = PythonTool {
             name: "Tool A2".to_string(),
+            tool_router_key: None,
             author: "Author A".to_string(),
             version: "1.0.0".to_string(),
             py_code: "print('A2')".to_string(),
             description: "Tool A2 description".to_string(),
             tool_set: Some("Set A".to_string()),
-             // Fill in other required fields...
             homepage: None,
             mcp_enabled: Some(false),
             tools: vec![],
@@ -2605,11 +2605,11 @@ mod tests {
         let tool4 = DenoTool {
             name: "Tool C1".to_string(),
             author: "Author C".to_string(),
+            tool_router_key: None,
             version: "1.0.0".to_string(),
             js_code: "console.log('C1');".to_string(),
             description: "Tool C1 description".to_string(),
             tool_set: None, // No tool set assigned
-             // Fill in other required fields...
             homepage: None,
             mcp_enabled: Some(false),
             tools: vec![],
@@ -2767,8 +2767,18 @@ mod tests {
 
         // Set the common config
         let result = manager.set_common_toolset_config(tool_set_name, values_to_set).await;
-        assert!(result.is_ok());
-        assert!(result.unwrap()); // Expect success
+        assert!(result.is_ok(), "set_common_toolset_config should succeed");
+        let updated_keys = result.unwrap(); // This returns Vec<String> of updated tool keys
+
+        // Check if the expected tools were updated
+        let expected_updated_count = 2; // tool1 and tool2 should be updated
+        assert_eq!(updated_keys.len(), expected_updated_count, "Expected {} tools to be updated, but {} were.", expected_updated_count, updated_keys.len());
+
+        // Optionally, check if the specific keys are present (order doesn't matter)
+        use std::collections::HashSet;
+        let updated_keys_set: HashSet<_> = updated_keys.into_iter().collect();
+        assert!(updated_keys_set.contains(&shinkai_tool1.tool_router_key().to_string_without_version()));
+        assert!(updated_keys_set.contains(&shinkai_tool2.tool_router_key().to_string_without_version()));
 
         // Verify Tool 1 config
         let updated_tool1 = manager.get_tool_by_key(&shinkai_tool1.tool_router_key().to_string_without_version()).unwrap();
