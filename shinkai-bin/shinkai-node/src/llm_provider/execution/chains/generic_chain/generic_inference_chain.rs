@@ -673,6 +673,7 @@ impl GenericInferenceChain {
                 job_config.cloned(),
                 llm_stopper.clone(),
                 db.clone(),
+                message_hash_id.clone(),
             )
             .await;
 
@@ -734,6 +735,8 @@ impl GenericInferenceChain {
                     }
                     let shinkai_tool = shinkai_tool.unwrap();
 
+                    // TODO: add tracing to what tool is being called
+
                     // Note: here we can add logic to handle the case that we have network tools
                     // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
                     let function_response = match tool_router
@@ -748,6 +751,8 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("Invalid function arguments") =>
                                 {
+                                    // TODO: add tracing to what error is being returned
+
                                     // For invalid arguments, we'll retry with the LLM by including the error
                                     // message in the next prompt to help it fix
                                     // the parameters
@@ -793,6 +798,8 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("MissingConfigError") =>
                                 {
+                                    // TODO: add tracing to what error is being returned
+
                                     // For missing config, we'll pass through the error directly
                                     // This will show up in the UI prompting the user to update their config
                                     eprintln!("Missing config error: {:?}", error_msg);
@@ -805,6 +812,8 @@ impl GenericInferenceChain {
                             }
                         }
                     };
+
+                    // TODO: add tracing to the tool response
 
                     let mut function_call_with_router_key = function_call.clone();
                     function_call_with_router_key.tool_router_key =
