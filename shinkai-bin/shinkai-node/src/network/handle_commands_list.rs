@@ -2709,7 +2709,6 @@ impl Node {
                     let _ = Node::v2_api_remove_tool(db_clone, bearer, tool_key, res).await;
                 });
             }
-            // Implement Here
             NodeCommand::V2ApiResolveShinkaiFileProtocol {
                 bearer,
                 shinkai_file_protocol,
