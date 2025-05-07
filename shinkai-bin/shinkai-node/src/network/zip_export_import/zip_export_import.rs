@@ -673,15 +673,9 @@ pub async fn import_tool(
 
     let tool_router_key = tool.tool_router_key().to_string_without_version();
     match tool.clone() {
-        ShinkaiTool::Deno(_, _) => {
-            println!("Deno tool detected {}", tool_router_key);
-        }
-        ShinkaiTool::Python(_, _) => {
-            println!("Python tool detected {}", tool_router_key);
-        }
-        ShinkaiTool::Network(_, _) => {
-            println!("Network tool detected {}", tool_router_key);
-        }
+        ShinkaiTool::Deno(_, _) => {}
+        ShinkaiTool::Python(_, _) => {}
+        ShinkaiTool::Network(_, _) => {}
         ShinkaiTool::Rust(_, _) => {
             println!("Rust tool detected {}. Skipping installation.", tool_router_key);
             return Ok(json!({
@@ -817,6 +811,39 @@ pub async fn import_agent(
         "agent_id": agent.agent_id,
         "agent": agent
     }));
+}
+
+pub fn get_tool_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> Result<ShinkaiTool, APIError> {
+    // Extract and parse tool.json
+    let mut buffer = Vec::new();
+    {
+        let mut file = match archive.by_name("__tool.json") {
+            Ok(file) => file,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool Zip".to_string(),
+                    message: "Archive does not contain __tool.json".to_string(),
+                };
+                return Err(api_error);
+            }
+        };
+
+        if let Err(err) = file.read_to_end(&mut buffer) {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read tool.json: {}", err),
+            };
+            return Err(api_error);
+        }
+    }
+    let tool: ShinkaiTool = serde_json::from_slice(&buffer).map_err(|e| APIError {
+        code: StatusCode::BAD_REQUEST.as_u16(),
+        error: "Invalid Tool JSON".to_string(),
+        message: format!("Failed to parse tool.json: {}", e),
+    })?;
+    Ok(tool)
 }
 
 pub fn get_agent_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> Result<Agent, APIError> {
