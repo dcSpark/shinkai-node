@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::{
     indexable_version::IndexableVersion,
@@ -357,62 +358,101 @@ impl ToolRouter {
                 let router_key = tool["routerKey"].as_str()?;
                 // It's OK if no version is specified in the JSON; default to 1.0.0
                 let version = tool["version"].as_str().unwrap_or("1.0.0").to_owned();
-                Some((name.to_owned(), file.to_owned(), router_key.to_owned(), version))
+                let r#type = tool["type"].as_str().unwrap_or("").to_owned();
+                Some((name.to_owned(), file.to_owned(), router_key.to_owned(), version, r#type))
             })
             .collect::<Vec<_>>();
 
         let chunk_size = 5;
         for chunk in tool_infos.chunks(chunk_size) {
-            let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
-                let db = db.clone();
-                let node_env = node_env.clone();
-                let node_name = node_name.clone();
-                let signing_secret_key = signing_secret_key.clone();
-                let embedding_generator = embedding_generator.clone();
-                async move {
-                    // Try to see if a tool with the same routerKey is already installed.
-                    let do_install = match db.get_tool_by_key(router_key) {
-                        Ok(existing_tool) => {
-                            // Compare version numbers:
-                            // The local version is existing_tool.version(),
-                            // the remote version is new_version (string from the JSON).
-                            // We parse them into IndexableVersion and compare.
-                            let local_ver = existing_tool.version_indexable()?;
-                            let remote_ver = IndexableVersion::from_string(new_version)?;
-                            Ok(remote_ver > local_ver)
-                        }
-                        Err(SqliteManagerError::ToolNotFound(_)) => Ok(true), // Update needed
-                        Err(e) => Err(ToolError::DatabaseError(e.to_string())),
-                    }?;
+            let futures = chunk
+                .iter()
+                .map(|(tool_name, tool_url, router_key, new_version, r#type)| {
+                    let db = db.clone();
+                    let node_env = node_env.clone();
+                    let node_name = node_name.clone();
+                    let signing_secret_key = signing_secret_key.clone();
+                    let embedding_generator = embedding_generator.clone();
+                    async move {
+                        if r#type == "Tool" {
+                            // Try to see if a tool with the same routerKey is already installed.
+                            let do_install = match db.get_tool_by_key(router_key) {
+                                Ok(existing_tool) => {
+                                    // Compare version numbers:
+                                    // The local version is existing_tool.version(),
+                                    // the remote version is new_version (string from the JSON).
+                                    // We parse them into IndexableVersion and compare.
+                                    let local_ver = existing_tool.version_indexable()?;
+                                    let remote_ver = IndexableVersion::from_string(new_version)?;
+                                    Ok(remote_ver > local_ver)
+                                }
+                                Err(SqliteManagerError::ToolNotFound(_)) => Ok(true), // Update needed
+                                Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+                            }?;
 
-                    if !do_install {
-                        // Skip installation
-                        return Ok::<(), ToolError>(());
+                            if !do_install {
+                                // Skip installation
+                                return Ok::<(), ToolError>(());
+                            }
+
+                            let val: Value = Node::v2_api_import_tool_url_internal(
+                                db.clone(),
+                                node_env.clone(),
+                                tool_url.to_string(),
+                                node_name,
+                                signing_secret_key,
+                                embedding_generator,
+                            )
+                            .await
+                            .map_err(|e| ToolError::ExecutionError(e.message))?;
+
+                            // We stored the tool under val["tool"] in the JSON response
+                            match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
+                                Ok(_tool) => {
+                                    println!("Successfully imported tool {} (version: {})", tool_name, new_version);
+                                }
+                                Err(err) => {
+                                    eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
+                                }
+                            }
+                        } else if r#type == "Agent" {
+                            let tool_router_key = ToolRouterKey::from_string(router_key)?;
+                            let agent_id = tool_router_key.name;
+                            let do_install = match db.get_agent(&agent_id) {
+                                Ok(agent) => match agent {
+                                    Some(_) => Ok(false),
+                                    None => Ok(true),
+                                },
+                                Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+                            }?;
+                            if !do_install {
+                                // Skip installation
+                                return Ok::<(), ToolError>(());
+                            }
+
+                            let val: Value = Node::v2_api_import_agent_url_internal(
+                                db.clone(),
+                                tool_url.to_string(),
+                                node_name,
+                                node_env.clone(),
+                                signing_secret_key,
+                                embedding_generator,
+                            )
+                            .await
+                            .map_err(|e| ToolError::ExecutionError(e.message))?;
+
+                            match serde_json::from_value::<Agent>(val["agent"].clone()) {
+                                Ok(agent) => {
+                                    println!("Successfully imported agent {}", agent.name);
+                                }
+                                Err(err) => {
+                                    eprintln!("Couldn't parse 'agent' field as Agent: {}", err);
+                                }
+                            }
+                        }
+                        Ok::<(), ToolError>(())
                     }
-
-                    let val: Value = Node::v2_api_import_tool_url_internal(
-                        db.clone(),
-                        node_env.clone(),
-                        tool_url.to_string(),
-                        node_name,
-                        signing_secret_key,
-                        embedding_generator,
-                    )
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.message))?;
-
-                    // We stored the tool under val["tool"] in the JSON response
-                    match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
-                        Ok(_tool) => {
-                            println!("Successfully imported tool {} (version: {})", tool_name, new_version);
-                        }
-                        Err(err) => {
-                            eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
-                        }
-                    }
-                    Ok::<(), ToolError>(())
-                }
-            });
+                });
             futures::future::join_all(futures).await;
         }
 
