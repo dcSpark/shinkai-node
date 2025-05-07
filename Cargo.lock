@@ -3474,6 +3474,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
+name = "identicon-rs"
+version = "6.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1958c906c3817974e9ee3c02571993db21fc7c48b98e86b6670d9e131e80e861"
+dependencies = [
+ "image 0.25.5",
+ "sha3",
+ "thiserror 2.0.3",
+]
+
+[[package]]
 name = "idna"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6866,6 +6877,7 @@ dependencies = [
  "futures",
  "governor",
  "hex",
+ "identicon-rs",
  "image 0.23.14",
  "keyphrases",
  "lazy_static",

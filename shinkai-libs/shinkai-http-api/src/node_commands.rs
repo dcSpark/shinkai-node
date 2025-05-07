@@ -941,6 +941,10 @@ pub enum NodeCommand {
         agent_id: String,
         res: Sender<Result<Agent, APIError>>,
     },
+    V2ApiGetAgentAvatar {
+        agent_id: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    },
     V2ApiGetAllAgents {
         bearer: String,
         res: Sender<Result<Vec<Agent>, APIError>>,
