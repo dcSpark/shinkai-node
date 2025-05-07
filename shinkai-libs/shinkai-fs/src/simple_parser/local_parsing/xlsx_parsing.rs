@@ -5,7 +5,9 @@ use shinkai_tools_runner::tools::{
 
 use crate::{shinkai_fs_error::ShinkaiFsError, simple_parser::text_group::TextGroup};
 
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{
+    collections::HashMap, env, path::{Path, PathBuf}
+};
 
 use super::LocalFileParser;
 
@@ -120,6 +122,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_xlsx_to_matrix() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+
         let xlsx_file_path = path::absolute(Path::new("./src/test_data/test.xlsx"))
             .unwrap()
             .to_path_buf();
@@ -192,6 +196,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_xlsx() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+
         let xlsx_file_path = path::absolute(Path::new("./src/test_data/test.xlsx"))
             .unwrap()
             .to_path_buf();
@@ -210,6 +216,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_xls() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+
         let xlsx_file_path = path::absolute(Path::new("./src/test_data/test.xls"))
             .unwrap()
             .to_path_buf();
@@ -227,13 +235,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_file() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+
         let xlsx_file_path = path::absolute(Path::new("./src/test_data/potato.xlsx"))
+            .unwrap()
+            .to_path_buf();
+        let xls_file_path = path::absolute(Path::new("./src/test_data/potato.xls"))
             .unwrap()
             .to_path_buf();
         let max_node_text_size = 1024;
 
         let result_xlsx = LocalFileParser::process_xlsx_file(xlsx_file_path.clone(), max_node_text_size).await;
-        let result_xls = LocalFileParser::process_xlsx_file(xlsx_file_path, max_node_text_size).await;
+        let result_xls = LocalFileParser::process_xlsx_file(xls_file_path, max_node_text_size).await;
 
         assert!(result_xlsx.is_err());
         assert!(result_xls.is_err());

@@ -127,12 +127,16 @@ impl LocalFileParser {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::testing_create_tempdir_and_set_env_var;
+
     use super::*;
     use std::path;
     use std::path::Path;
 
     #[tokio::test]
     async fn test_parse_pdf_file() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+
         let file_path = path::absolute(Path::new("../../files/Shinkai_Protocol_Whitepaper.pdf"))
             .unwrap()
             .to_path_buf();
