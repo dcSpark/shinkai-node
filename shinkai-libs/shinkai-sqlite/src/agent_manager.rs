@@ -82,14 +82,16 @@ impl SqliteManager {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM shinkai_agents")?;
         let agents = stmt.query_map([], |row| {
+            let agent_id: String = row.get(0)?;
             let full_identity_name: String = row.get(2)?;
             let knowledge: String = row.get(5)?;
             let tools: String = row.get(7)?;
             let config: Option<String> = row.get(9)?;
             let scope: String = row.get(10)?;
             let tools_config_override: Option<String> = row.get(11).unwrap_or(None);
+            let avatar_url: Option<String> = row.get(12)?;
             Ok(Agent {
-                agent_id: row.get(0)?,
+                agent_id: agent_id.clone(),
                 name: row.get(1)?,
                 full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
@@ -131,6 +133,10 @@ impl SqliteManager {
                         )))
                     })?),
                     None => None,
+                },
+                avatar_url: match avatar_url {
+                    Some(avatar_url) => Some(avatar_url),
+                    None => Some(format!("/v2/get_agent_avatar/{}", agent_id)),
                 },
             })
         })?;
@@ -147,15 +153,16 @@ impl SqliteManager {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT * FROM shinkai_agents WHERE agent_id = ?")?;
         let agent = stmt.query_row([&agent_id], |row| {
+            let agent_id: String = row.get(0)?;
             let full_identity_name: String = row.get(2)?;
             let knowledge: String = row.get(5)?;
             let tools: String = row.get(7)?;
             let config: Option<String> = row.get(9)?;
             let scope: String = row.get(10)?;
             let tools_config_override: Option<String> = row.get(11).unwrap_or(None);
-
+            let avatar_url: Option<String> = row.get(12)?;
             Ok(Agent {
-                agent_id: row.get(0)?,
+                agent_id: agent_id.clone(),
                 name: row.get(1)?,
                 full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
@@ -197,6 +204,10 @@ impl SqliteManager {
                         )))
                     })?),
                     None => None,
+                },
+                avatar_url: match avatar_url {
+                    Some(avatar_url) => Some(avatar_url),
+                    None => Some(format!("/v2/get_agent_avatar/{}", agent_id)),
                 },
             })
         });
@@ -227,7 +238,9 @@ impl SqliteManager {
         let tools: Vec<String> = updated_agent.tools.iter().map(|t| t.to_string_with_version()).collect();
         let tools = serde_json::to_string(&tools).unwrap();
         let scope = serde_json::to_string(&updated_agent.scope).unwrap();
-        let tools_config_override = updated_agent.tools_config_override.map(|c| serde_json::to_string(&c).unwrap());
+        let tools_config_override = updated_agent
+            .tools_config_override
+            .map(|c| serde_json::to_string(&c).unwrap());
 
         tx.execute(
             "UPDATE shinkai_agents
@@ -259,9 +272,9 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey};
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
-    use std::collections::HashMap;
 
     fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
@@ -290,6 +303,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
+            avatar_url: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -317,6 +331,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
+            avatar_url: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -346,6 +361,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
+            avatar_url: None,
         };
         let agent2 = Agent {
             agent_id: "test_agent2".to_string(),
@@ -361,6 +377,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
+            avatar_url: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -390,6 +407,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
+            avatar_url: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -429,6 +447,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
+            avatar_url: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
@@ -448,6 +467,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
+            avatar_url: None,
         };
 
         let result = db.update_agent(updated_agent.clone());
@@ -464,7 +484,7 @@ mod tests {
     #[test]
     fn test_agent_with_tool_config_override() {
         let db = setup_test_db();
-        
+
         // Create a proper ToolRouterKey
         let tool = ToolRouterKey::new(
             "local".to_string(),
@@ -472,14 +492,17 @@ mod tests {
             "test_tool".to_string(),
             Some("1.0".to_string()),
         );
-        
+
         // Create a tool configuration override map
         let mut tool_config = HashMap::new();
         let mut params = HashMap::new();
         params.insert("api_key".to_string(), serde_json::Value::String("test_key".to_string()));
-        params.insert("timeout".to_string(), serde_json::Value::Number(serde_json::Number::from(30)));
+        params.insert(
+            "timeout".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(30)),
+        );
         tool_config.insert(tool.to_string_with_version(), params);
-        
+
         let agent = Agent {
             agent_id: "test_agent_with_config".to_string(),
             name: "Test Agent With Config".to_string(),
@@ -494,15 +517,16 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: Some(tool_config),
+            avatar_url: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
-        
+
         // Add the agent
         db.add_agent(agent.clone(), &profile).unwrap();
-        
+
         // Retrieve the agent
         let retrieved_agent = db.get_agent(&agent.agent_id).unwrap().unwrap();
-        
+
         // Verify the tools_config_override was correctly stored and retrieved
         assert!(retrieved_agent.tools_config_override.is_some());
         let retrieved_config = retrieved_agent.tools_config_override.unwrap();

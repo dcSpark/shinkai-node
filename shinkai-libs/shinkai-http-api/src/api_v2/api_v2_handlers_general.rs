@@ -177,6 +177,12 @@ pub fn general_routes(
         .and(warp::path::param::<String>())
         .and_then(get_agent_handler);
 
+    let get_agent_avatar_route = warp::path("get_agent_avatar")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::path::param::<String>())
+        .and_then(get_agent_avatar_handler);
+
     let get_all_agents_route = warp::path("get_all_agents")
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
@@ -272,6 +278,7 @@ pub fn general_routes(
         .or(remove_agent_route)
         .or(update_agent_route)
         .or(get_agent_route)
+        .or(get_agent_avatar_route)
         .or(get_all_agents_route)
         .or(export_agent_route)
         .or(publish_agent_route)
@@ -968,6 +975,49 @@ pub async fn get_agent_handler(
     match result {
         Ok(agent) => Ok(warp::reply::json(&agent)),
         Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_agent_avatar/{agent_id}",
+    responses(
+        (status = 200, description = "Successfully retrieved agent avatar", body = Vec<u8>),
+        (status = 404, description = "Agent not found", body = APIError),
+    )
+)]
+pub async fn get_agent_avatar_handler(
+    sender: Sender<NodeCommand>,
+    agent_id: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetAgentAvatar {
+            agent_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(file_bytes) => {
+            // Return the raw bytes with appropriate headers
+            Ok(warp::reply::with_header(
+                warp::reply::with_status(file_bytes, StatusCode::OK),
+                "Content-Type",
+                "image/png",
+            ))
+        }
+        Err(error) => Ok(warp::reply::with_header(
+            warp::reply::with_status(
+                error.message.as_bytes().to_vec(),
+                StatusCode::from_u16(error.code).unwrap()
+            ),
+            "Content-Type",
+            "text/plain",
+        ))
     }
 }
 

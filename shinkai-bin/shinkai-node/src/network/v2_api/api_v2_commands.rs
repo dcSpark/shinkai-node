@@ -16,6 +16,7 @@ use crate::{
 use async_channel::Sender;
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{SigningKey, VerifyingKey};
+use identicon_rs::Identicon;
 use reqwest::StatusCode;
 use rusqlite::params;
 use serde_json::{json, Value};
@@ -1297,6 +1298,9 @@ impl Node {
                 .map_or(existing_agent.tools_config_override.clone(), |v| {
                     serde_json::from_value(v.clone()).unwrap_or(existing_agent.tools_config_override.clone())
                 }),
+            avatar_url: partial_agent
+                .get("avatar_url")
+                .map_or(existing_agent.avatar_url.clone(), |v| v.as_str().map(String::from)),
         };
 
         // Update the agent in the database
@@ -1360,6 +1364,26 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_api_get_agent_avatar(
+        agent_id: String,
+        res: Sender<Result<Vec<u8>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let mut identicon = Identicon::new(&agent_id);
+        identicon.set_border(0);
+        let _ = match identicon.export_png_data() {
+            Ok(data) => res.send(Ok(data)).await,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to generate agent avatar: {}", e),
+                };
+                res.send(Err(api_error)).await
+            }
+        };
         Ok(())
     }
 

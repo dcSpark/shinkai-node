@@ -2146,6 +2146,11 @@ impl Node {
                     let _ = Node::v2_api_get_agent(db_clone, bearer, agent_id, res).await;
                 });
             }
+            NodeCommand::V2ApiGetAgentAvatar { agent_id, res } => {
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_agent_avatar(agent_id, res).await;
+                });
+            }
             NodeCommand::V2ApiGetAllAgents { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {

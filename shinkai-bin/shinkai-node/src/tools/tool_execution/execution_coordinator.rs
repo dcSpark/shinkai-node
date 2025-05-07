@@ -838,6 +838,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
         };
         agent.tools_config_override = None;
 
@@ -877,6 +878,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
         };
         let mut overrides = HashMap::new();
         overrides.insert("test_tool".to_string(), HashMap::new());
@@ -927,6 +929,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
         };
         let mut overrides = HashMap::new();
         overrides.insert("test_tool".to_string(), HashMap::new());
@@ -1000,6 +1003,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
         };
         let mut overrides = HashMap::new();
         overrides.insert("different_tool".to_string(), HashMap::new());
