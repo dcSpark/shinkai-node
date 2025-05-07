@@ -641,7 +641,7 @@ impl GenericInferenceChain {
                     tool_calls_history.len()
                 );
 
-                // NEW: Join all accumulated messages for the result
+                // Use the accumulator to show the full conversation if max_iterations is reached
                 let full_conversation = all_llm_messages
                     .iter()
                     .map(|msg: &String| msg.trim())
@@ -861,16 +861,11 @@ impl GenericInferenceChain {
                 // No more function calls required, return the final response
                 let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
 
-                // NEW: Join all accumulated messages for the result
-                let full_conversation = all_llm_messages
-                    .iter()
-                    .map(|msg: &String| msg.trim())
-                    .filter(|msg| !msg.is_empty())
-                    .collect::<Vec<&str>>()
-                    .join("\n\n");
+                // We'll use the last message as the final response to not sound spammy
+                let last_message = all_llm_messages.last().cloned().unwrap_or_default();
 
                 let inference_result = InferenceChainResult::with_full_details(
-                    full_conversation,
+                    last_message,
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),

@@ -10,13 +10,12 @@ members = [
   "shinkai-libs/shinkai-http-api",
   "shinkai-libs/shinkai-tools-primitives",
   "shinkai-libs/shinkai-sqlite",
-  "shinkai-libs/shinkai-spreadsheet-llm",
   "shinkai-bin/*",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
