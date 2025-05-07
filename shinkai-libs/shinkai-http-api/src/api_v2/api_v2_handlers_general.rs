@@ -190,6 +190,13 @@ pub fn general_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(export_agent_handler);
 
+    let publish_agent_route = warp::path("publish_agent")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(publish_agent_handler);
+
     let import_agent_route = warp::path("import_agent")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -267,6 +274,7 @@ pub fn general_routes(
         .or(get_agent_route)
         .or(get_all_agents_route)
         .or(export_agent_route)
+        .or(publish_agent_route)
         .or(import_agent_route)
         .or(import_agent_zip_route)
         .or(test_llm_provider_route)
@@ -1052,6 +1060,60 @@ pub async fn export_agent_handler(
             "Content-Type",
             "text/plain",
         ))
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/publish_agent",
+    params(
+        ("agent_id" = String, Query, description = "Agent identifier"),
+    ),
+    responses(
+        (status = 200, description = "Exported agent", body = Vec<u8>),
+        (status = 400, description = "Invalid agent identifier", body = APIError),
+    )
+)]
+pub async fn publish_agent_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let agent_id = query_params
+        .get("agent_id")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid agent identifier".to_string(),
+                message: "Agent identifier is required".to_string(),
+            })
+        })?
+        .to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    
+    sender
+        .send(NodeCommand::V2ApiPublishAgent {
+            bearer,
+            agent_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
     }
 }
 
