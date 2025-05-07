@@ -27,7 +27,6 @@ WORKDIR /app
 COPY . .
 
 # Build the dependencies (cached)
-RUN ./shinkai-libs/shinkai-ocr/ocrs/download-models.sh
 RUN cargo clean
 RUN rustup component add rustfmt
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build $([ "$BUILD_TYPE" = "release" ] && echo "--release")
