@@ -10,6 +10,7 @@ members = [
   "shinkai-libs/shinkai-http-api",
   "shinkai-libs/shinkai-tools-primitives",
   "shinkai-libs/shinkai-sqlite",
+  "shinkai-libs/shinkai-non-rust-code",
   "shinkai-bin/*",
 ]
 resolver = "2"
@@ -30,6 +31,7 @@ shinkai_tools_primitives = { path = "./shinkai-libs/shinkai-tools-primitives" }
 shinkai_sqlite = { path = "./shinkai-libs/shinkai-sqlite" }
 shinkai_fs = { path = "./shinkai-libs/shinkai-fs" }
 shinkai_embedding = { path = "./shinkai-libs/shinkai-embedding" }
+shinkai_non_rust_code = { path = "./shinkai-libs/shinkai-non-rust-code" }
 
 futures = "0.3.30"
 keyphrases = "0.3.3"

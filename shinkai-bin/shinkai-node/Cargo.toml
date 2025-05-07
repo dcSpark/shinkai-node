@@ -84,11 +84,11 @@ async-std = { version = "1.5.0", features = ["unstable"] }
 env_logger = { workspace = true }
 zip = "2.2.1"
 open = "5.3.2"
-sha2 = "0.10" 
+sha2 = "0.10"
 
 [dev-dependencies]
 mockito = "1.0.2"
 tokio-tungstenite = "0.15.0"
-tempfile = "3.10.1"
+tempfile = "3.19"
 fs_extra = "1.2.0"
 utoipa = { version = "4.2.3", features = ["yaml"] }

@@ -8,7 +8,6 @@ authors = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_embedding = { workspace = true }
 shinkai_sqlite = { workspace = true }
-shinkai_tools_runner = { workspace = true }
 bincode = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
@@ -25,19 +24,19 @@ futures = { workspace = true }
 scraper = "0.19.0"
 urlencoding = "2.1.0"
 walkdir = "2.5.0"
-docx-rs = "0.4.17"
 csv = "1.1.6"
 utoipa = "4.2.3"
 regex = { workspace = true }
 os_path = "0.8.0"
 tempfile = "3.19"
+shinkai_non_rust_code = { workspace = true }
 
 [dependencies.serde]
 workspace = true
 features = ["derive"]
 
 [dev-dependencies]
-tempfile = "3.10.1"
+tempfile = "3.19"
 serial_test = "0.5"
 
 [[test]]
