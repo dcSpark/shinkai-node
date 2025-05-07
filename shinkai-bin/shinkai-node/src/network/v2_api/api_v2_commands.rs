@@ -14,6 +14,7 @@ use crate::{
     utils::update_global_identity::update_global_identity_name,
 };
 use async_channel::Sender;
+use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
 use rusqlite::params;
@@ -1676,6 +1677,132 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_api_publish_agent(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        shinkai_name: ShinkaiName,
+        node_env: NodeEnvironment,
+        agent_id: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        signing_secret_key: SigningKey,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let response = Self::publish_agent(
+            db.clone(),
+            shinkai_name,
+            node_env,
+            agent_id,
+            identity_manager,
+            signing_secret_key,
+        )
+        .await;
+
+        let _ = match response {
+            Ok(response) => res.send(Ok(response)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+
+        Ok(())
+    }
+
+    async fn publish_agent(
+        db: Arc<SqliteManager>,
+        shinkai_name: ShinkaiName,
+        node_env: NodeEnvironment,
+        agent_id: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        signing_secret_key: SigningKey,
+    ) -> Result<Value, APIError> {
+        // Generate zip file.
+        let file_bytes: Vec<u8> =
+            generate_agent_zip(db.clone(), shinkai_name.clone(), node_env, agent_id.clone(), true).await?;
+
+        let identity_manager = identity_manager.lock().await;
+        let local_node_name = identity_manager.local_node_name.clone();
+        let identity_name = local_node_name.to_string();
+        drop(identity_manager);
+
+        // Hash
+        let hash_raw = blake3::hash(&file_bytes.clone());
+        let hash_hex = hash_raw.to_hex();
+        let hash = hash_hex.to_string();
+
+        // Signature
+        let signature = signing_secret_key
+            .clone()
+            .try_sign(hash_hex.as_bytes())
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to sign tool: {}", e),
+            })?;
+
+        let signature_bytes = signature.to_bytes();
+        let signature_hex = hex::encode(signature_bytes);
+
+        // Publish the tool to the store.
+        let client = reqwest::Client::new();
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(file_bytes).file_name(format!("{}.zip", agent_id.clone())),
+            )
+            .text("type", "Agent")
+            .text("routerKey", agent_id.clone())
+            .text("hash", hash.clone())
+            .text("signature", signature_hex.clone())
+            .text("identity", identity_name.clone());
+
+        println!("[Publish Agent] Type: {}", "agent");
+        println!("[Publish Agent] Agent ID: {}", agent_id.clone());
+        println!("[Publish Agent] Hash: {}", hash.clone());
+        println!("[Publish Agent] Signature: {}", signature_hex.clone());
+        println!("[Publish Agent] Identity: {}", identity_name.clone());
+
+        let store_url = env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com".to_string());
+        let response = client
+            .post(format!("{}/store/revisions", store_url))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to publish tool: {}", e),
+            })?;
+
+        let status = response.status();
+        let response_text = response.text().await.unwrap_or_default().clone();
+        println!("Response: {:?}", response_text);
+
+        if !status.is_success() {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Store Upload Error".to_string(),
+                message: format!("Failed to upload to store: {}: {}", status, response_text),
+            });
+        }
+
+        let r = json!({
+            "status": "success",
+            "message": "Agent published successfully",
+            "agent_id": agent_id.clone(),
+        });
+        let r: Value = match r {
+            Value::Object(mut map) => {
+                let response_json = serde_json::from_str(&response_text).unwrap_or_default();
+                map.insert("response".to_string(), response_json);
+                Value::Object(map)
+            }
+            _ => unreachable!(),
+        };
+        return Ok(r);
+    }
+
     pub async fn v2_api_import_agent_url(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -1749,7 +1876,6 @@ impl Node {
     pub async fn v2_api_import_agent_zip(
         db: Arc<SqliteManager>,
         bearer: String,
-        node_name: String,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,

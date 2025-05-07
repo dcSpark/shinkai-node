@@ -2,15 +2,11 @@
   <img src="files/icon.png"/><br/>
   Shinkai Node
 </h1>
-<p align="center">The Shinkai Node is the central unit within the Shinkai Network that links user devices and oversees AI agents. Its diverse functions include processing user inputs, managing AI models, handling external containerized tooling for AI, coordinating computing tasks, generating proofs, converting and indexing data into vector embeddings, and ensuring efficient task execution according to user needs. The nodes play a crucial role in maintaining the network's decentralized structure, which enhances both security and privacy.<br/><br/> There is a companion repo called Shinkai Apps, that allows you to locally run the node and also easily manage AI models using Ollama, you can find it <a href="https://github.com/dcSpark/shinkai-apps">here</a>.</p><br/>
-
-[![Mutable.ai Auto Wiki](https://img.shields.io/badge/Auto_Wiki-Mutable.ai-blue)](https://wiki.mutable.ai/dcSpark/shinkai-node)
+<p align="center">Shinkai allows you to create AI agents without touching code. Define tasks, schedule actions, and let Shinkai write custom code for you. Native crypto support included.<br/><br/> There is a companion repo called Shinkai Apps which contains the frontend that encapsulates this project, you can find it <a href="https://github.com/dcSpark/shinkai-apps">here</a>.</p><br/>
 
 ## Documentation
 
 General Documentation: [https://docs.shinkai.com](https://docs.shinkai.com)
-
-More In Depth Codebase Documentation (Mutable.ai): [https://wiki.mutable.ai/dcSpark/shinkai-node](https://wiki.mutable.ai/dcSpark/shinkai-node)
 
 ## Installation (Local Compilation)
 
