@@ -196,7 +196,7 @@ pub struct ZipFileContents {
     pub archive: zip::ZipArchive<std::io::Cursor<Vec<u8>>>,
 }
 
-pub async fn download_zip_file(
+pub async fn download_zip_from_url(
     url: String,
     file_name: String,
     node_name: String,
