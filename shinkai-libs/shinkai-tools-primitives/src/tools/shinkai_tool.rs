@@ -839,14 +839,14 @@ mod tests {
                     let mut props = std::collections::HashMap::new();
                     props.insert(
                         "prompt".to_string(),
-                        Property::new("string".to_string(), "Message to the agent".to_string()),
+                        Property::new("string".to_string(), "Message to the agent".to_string(), None),
                     );
                     props.insert(
                         "session_id".to_string(),
-                        Property::new("string".to_string(), "Session identifier".to_string()),
+                        Property::new("string".to_string(), "Session identifier".to_string(), None),
                     );
 
-                    let item_prop = Property::new("string".to_string(), "Image URL".to_string());
+                    let item_prop = Property::new("string".to_string(), "Image URL".to_string(), None);
                     props.insert(
                         "images".to_string(),
                         Property::with_array_items("Array of image URLs".to_string(), item_prop),
