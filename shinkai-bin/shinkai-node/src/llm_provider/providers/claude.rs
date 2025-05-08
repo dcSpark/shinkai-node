@@ -46,7 +46,8 @@ impl LLMService for Claude {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
@@ -181,9 +182,13 @@ async fn handle_streaming_response(
         let error_json: serde_json::Value = res.json().await?;
         if let Some(error) = error_json.get("error") {
             let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+            return Err(LLMProviderError::APIError(
+                "AI Provider API Error: ".to_string() + error_message,
+            ));
         }
-        return Err(LLMProviderError::APIError("AI Provider API Error: Unknown error occurred".to_string()));
+        return Err(LLMProviderError::APIError(
+            "AI Provider API Error: Unknown error occurred".to_string(),
+        ));
     }
 
     // Check content type to determine if it's a stream
@@ -201,9 +206,13 @@ async fn handle_streaming_response(
         let response_json: serde_json::Value = res.json().await?;
         if let Some(error) = response_json.get("error") {
             let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
-            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+            return Err(LLMProviderError::APIError(
+                "AI Provider API Error: ".to_string() + error_message,
+            ));
         }
-        return Err(LLMProviderError::APIError("AI Provider API Error: Expected streaming response but received regular JSON".to_string()));
+        return Err(LLMProviderError::APIError(
+            "AI Provider API Error: Expected streaming response but received regular JSON".to_string(),
+        ));
     }
 
     let mut stream = res.bytes_stream();

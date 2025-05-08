@@ -129,6 +129,7 @@ impl LLMService for Gemini {
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
         _db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {

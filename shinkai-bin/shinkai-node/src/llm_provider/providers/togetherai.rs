@@ -3,9 +3,9 @@ use std::sync::Arc;
 use crate::llm_provider::execution::chains::inference_chain_trait::LLMInferenceResponse;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_sqlite::SqliteManager;
 
 use super::super::error::LLMProviderError;
@@ -35,6 +35,7 @@ impl LLMService for TogetherAI {
         _config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
         _db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
@@ -105,8 +106,9 @@ impl LLMService for TogetherAI {
 
                 match data_resp {
                     Ok(data) => {
-                        // Comment(Nico): maybe we could go over all the choices and check for the ones that can convert to json with our format
-                        // and from those the longest one. I haven't see multiple choices so far though.
+                        // Comment(Nico): maybe we could go over all the choices and check for the ones that can convert
+                        // to json with our format and from those the longest one. I haven't see
+                        // multiple choices so far though.
                         let response_string: String = data
                             .output
                             .choices

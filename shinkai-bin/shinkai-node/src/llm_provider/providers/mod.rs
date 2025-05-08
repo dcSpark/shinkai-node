@@ -45,5 +45,6 @@ pub trait LLMService {
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
         db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError>;
 }

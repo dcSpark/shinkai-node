@@ -35,6 +35,7 @@ pub mod shinkai_tool_manager;
 pub mod source_file_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
+pub mod tracing;
 pub mod wallet_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
@@ -147,8 +148,6 @@ impl SqliteManager {
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
-        // TODO: remove this
-        Self::initialize_file_inboxes_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
         Self::initialize_inbox_profile_permissions_table(conn)?;
@@ -177,6 +176,8 @@ impl SqliteManager {
         Self::initialize_filesystem_tables(conn)?;
         Self::initialize_oauth_table(conn)?;
         Self::initialize_regex_patterns_table(conn)?;
+        Self::initialize_tracing_table(conn)?;
+
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
@@ -546,7 +547,7 @@ impl SqliteManager {
     }
 
     fn initialize_tools_table(conn: &rusqlite::Connection) -> Result<()> {
-        let result = conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
@@ -565,8 +566,6 @@ impl SqliteManager {
             );",
             [],
         )?;
-        println!("shinkai_tools table created");
-        // The index is automatically created by the PRIMARY KEY constraint
 
         Ok(())
     }
@@ -795,26 +794,6 @@ impl SqliteManager {
             );",
             [],
         )?;
-        Ok(())
-    }
-
-    fn initialize_file_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS file_inboxes (
-                file_inbox_name TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-
-                PRIMARY KEY (file_inbox_name, file_name)
-            );",
-            [],
-        )?;
-
-        // Create an index for the file_inbox_name column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
-            [],
-        )?;
-
         Ok(())
     }
 

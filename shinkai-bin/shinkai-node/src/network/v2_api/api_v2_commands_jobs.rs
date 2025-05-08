@@ -18,14 +18,14 @@ use shinkai_message_primitives::{
     }
 };
 
-use shinkai_sqlite::SqliteManager;
 use shinkai_sqlite::inbox_manager::PaginatedSmartInboxes;
+use shinkai_sqlite::SqliteManager;
 
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node},
+    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -442,18 +442,19 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let smart_inboxes: Vec<SmartInbox> = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden, agent_id) {
-            Ok(inboxes) => inboxes,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve smart inboxes: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let smart_inboxes: Vec<SmartInbox> =
+            match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden, agent_id) {
+                Ok(inboxes) => inboxes,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve smart inboxes: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
         // Convert SmartInbox to V2SmartInbox, collecting into a Result
         let v2_smart_inboxes_result: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
@@ -464,7 +465,7 @@ impl Node {
         // Handle the Result and filter based on agent_id if necessary
         let final_result = match v2_smart_inboxes_result {
             Ok(inboxes) => Ok(inboxes), // Return the Vec wrapped in Ok
-            Err(e) => Err(e), // Propagate the error if conversion failed
+            Err(e) => Err(e),           // Propagate the error if conversion failed
         };
 
         // Send the final result
@@ -519,19 +520,24 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let paginated_inboxes: PaginatedSmartInboxes =
-            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden, agent_id) {
-                Ok(inboxes) => inboxes,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to retrieve smart inboxes: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
+        let paginated_inboxes: PaginatedSmartInboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(
+            main_identity,
+            limit,
+            offset,
+            show_hidden,
+            agent_id,
+        ) {
+            Ok(inboxes) => inboxes,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve smart inboxes: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         // Convert SmartInbox to V2SmartInbox, collecting into a Result
         let v2_smart_inboxes_result: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
@@ -1550,23 +1556,6 @@ impl Node {
             }
         }
 
-        // TODO: remove the files from the job folder
-        // Remove the file inboxes
-        // for file_inbox in file_inboxes {
-        //     match db.remove_inbox(&file_inbox) {
-        //         Ok(_) => {}
-        //         Err(err) => {
-        //             let api_error = APIError {
-        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //                 error: "Internal Server Error".to_string(),
-        //                 message: format!("Failed to remove file inbox: {}", err),
-        //             };
-        //             let _ = res.send(Err(api_error)).await;
-        //             return Ok(());
-        //         }
-        //     }
-        // }
-
         let _ = res
             .send(Ok(SendResponseBody {
                 status: "success".to_string(),
@@ -1616,15 +1605,6 @@ impl Node {
                 return Ok(());
             }
         };
-
-        // TODO: Review and fix this
-
-        // Retrieve the filenames in the inboxes
-        let file_inboxes = v2_chat_messages
-            .iter()
-            .flatten()
-            .map(|message| message.job_message.fs_files_paths.clone())
-            .collect::<Vec<_>>();
 
         // Export the messages in the requested format
         match format {
