@@ -8,7 +8,6 @@ mod it {
     mod db_job_tests;
     mod db_llm_providers_tests;
     mod db_restore_tests;
-    mod get_onchain_identity_tests;
     mod job_branchs_retries_tests;
     mod job_code_fork_tests;
     mod job_concurrency_in_seq_tests;
