@@ -3049,10 +3049,19 @@ impl Node {
         new_tool.update_name(new_name.clone());
         new_tool.update_author(node_name.node_name.clone());
 
-        // Update the tool_router_key for Deno tools since they store it explicitly
-        if let ShinkaiTool::Deno(deno_tool, enabled) = &mut new_tool {
+        // Update the tool_router_key for Deno and Python tools since they store it explicitly
+        if let ShinkaiTool::Deno(deno_tool, _enabled) = &mut new_tool {
             if deno_tool.tool_router_key.is_some() {
                 deno_tool.tool_router_key = Some(ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name.node_name.clone(),
+                    new_name,
+                    None,
+                ));
+            }
+        } else if let ShinkaiTool::Python(python_tool, _enabled) = &mut new_tool {
+            if python_tool.tool_router_key.is_some() {
+                python_tool.tool_router_key = Some(ToolRouterKey::new(
                     "local".to_string(),
                     node_name.node_name.clone(),
                     new_name,
