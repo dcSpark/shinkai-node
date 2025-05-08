@@ -251,6 +251,13 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(get_preferences_handler);
 
+    let get_last_used_agents_llms_route = warp::path("last_used_agents_llms")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(get_last_used_agents_llms_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -283,6 +290,7 @@ pub fn general_routes(
         .or(compute_and_send_quests_status_route)
         .or(set_preferences_route)
         .or(get_preferences_route)
+        .or(get_last_used_agents_llms_route)
 }
 
 #[derive(Deserialize)]
@@ -1479,6 +1487,46 @@ pub async fn get_preferences_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/last_used_agents_llms",
+    params(
+        ("last" = Option<usize>, Query, description = "Number of last used agents/LLMs to return (default 4)")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved last used agents/LLMs", body = Vec<String>),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_last_used_agents_llms_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let last = query_params
+        .get("last")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(4);
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetLastUsedAgentsAndLLMs {
+            bearer,
+            last,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    match result {
+        Ok(ids) => Ok(warp::reply::json(&ids)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1514,6 +1562,7 @@ pub async fn get_preferences_handler(
         compute_and_send_quests_status_handler,
         set_preferences_handler,
         get_preferences_handler,
+        get_last_used_agents_llms_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
