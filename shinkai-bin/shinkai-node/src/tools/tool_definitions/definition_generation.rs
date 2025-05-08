@@ -30,7 +30,7 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
 }
 
 pub async fn get_all_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeader> {
-    let mut all_tools = match sqlite_manager.get_all_tool_headers() {
+    let mut all_tools = match sqlite_manager.get_all_tool_headers(false) {
         Ok(data) => data,
         Err(_) => Vec::new(),
     };

@@ -108,6 +108,7 @@ fn default_input_args() -> Parameters {
 
 fn default_output_arg() -> ToolOutputArg {
     ToolOutputArg {
-        json: r#"{"type":"string","description":"Agent response"}"#.to_string(),
+        json: r#"{"type": "object", "properties": {"message": {"type": "string", "description":"Agent response"}}}"#
+            .to_string(),
     }
 }

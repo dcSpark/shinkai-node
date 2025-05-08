@@ -203,7 +203,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            &format!("Retrieved {} image files", image_files.len()),
+            &format!("Retrieved: {} image files", image_files.len()),
         );
 
         let start = Instant::now();
