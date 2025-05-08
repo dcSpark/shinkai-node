@@ -1776,7 +1776,13 @@ mod tests {
             amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
         }]));
 
-        let input_args = Parameters::with_single_property("message", "string", "The message to send", true);
+        let input_args = Parameters::with_single_property(
+            "message",
+            "string",
+            "The message to send",
+            true,
+            Some("Hello, world!".to_string()),
+        );
 
         let enabled_network_tool = NetworkTool {
             name: "Enabled Network Tool".to_string(),
