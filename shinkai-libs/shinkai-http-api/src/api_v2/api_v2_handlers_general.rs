@@ -181,7 +181,8 @@ pub fn general_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and_then(get_all_agents_handler);
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(|sender, auth, params| get_all_agents_handler(sender, auth, Some(params)));
 
     let export_agent_route = warp::path("export_agent")
         .and(warp::get())
@@ -974,6 +975,9 @@ pub async fn get_agent_handler(
 #[utoipa::path(
     get,
     path = "/v2/get_all_agents",
+    params(
+        ("filter" = Option<String>, Query, description = "Optional filter for agents, e.g., 'recently_used' to only return recently used agents.")
+    ),
     responses(
         (status = 200, description = "Successfully retrieved all agents", body = Vec<Agent>),
         (status = 500, description = "Internal server error", body = APIError)
@@ -982,12 +986,15 @@ pub async fn get_agent_handler(
 pub async fn get_all_agents_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    query_params: Option<HashMap<String, String>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let filter = query_params.as_ref().and_then(|q| q.get("filter").cloned());
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetAllAgents {
             bearer,
+            filter,
             res: res_sender,
         })
         .await

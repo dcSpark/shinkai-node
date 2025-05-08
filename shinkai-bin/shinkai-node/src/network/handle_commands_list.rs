@@ -2146,10 +2146,10 @@ impl Node {
                     let _ = Node::v2_api_get_agent(db_clone, bearer, agent_id, res).await;
                 });
             }
-            NodeCommand::V2ApiGetAllAgents { bearer, res } => {
+            NodeCommand::V2ApiGetAllAgents { bearer, filter, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_all_agents(db_clone, bearer, res).await;
+                    let _ = Node::v2_api_get_all_agents(db_clone, bearer, filter, res).await;
                 });
             }
             NodeCommand::V2ApiRetryMessage {
@@ -3072,6 +3072,12 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_preferences(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetLastUsedAgentsAndLLMs { bearer, last, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_last_used_agents_and_llms(db_clone, bearer, last, res).await;
                 });
             }
             _ => (),
