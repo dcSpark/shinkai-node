@@ -5214,6 +5214,7 @@ dependencies = [
  "serde_json",
  "shinkai_crypto_identities",
  "shinkai_message_primitives",
+ "tempfile",
  "tokio",
  "uuid",
  "x25519-dalek",
