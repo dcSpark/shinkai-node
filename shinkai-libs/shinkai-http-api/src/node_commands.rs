@@ -231,6 +231,11 @@ pub enum NodeCommand {
         agent_id: String,
         res: Sender<Result<Vec<u8>, APIError>>,
     },
+    V2ApiPublishAgent {
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     AvailableLLMProviders {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedLLMProvider>, String>>,
@@ -913,6 +918,7 @@ pub enum NodeCommand {
     },
     V2ApiGetAllAgents {
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     },
     V2ApiRetryMessage {
@@ -1153,6 +1159,14 @@ pub enum NodeCommand {
         file_data: Vec<u8>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiUploadPlaygroundFile {
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        file_name: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiListToolAssets {
         bearer: String,
         tool_id: String,
@@ -1300,5 +1314,10 @@ pub enum NodeCommand {
     V2ApiGetPreferences {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetLastUsedAgentsAndLLMs {
+        bearer: String,
+        last: usize,
+        res: Sender<Result<Vec<String>, APIError>>,
     },
 }

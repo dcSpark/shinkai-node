@@ -91,7 +91,7 @@ impl ShinkaiFileManager {
 
         // 1- Parse the file
         let max_node_text_size = generator.model_type().max_input_token_count();
-        let mut text_groups = SimpleParser::parse_file(path.clone(), max_node_text_size.try_into().unwrap())?;
+        let mut text_groups = SimpleParser::parse_file(path.clone(), max_node_text_size.try_into().unwrap()).await?;
 
         // Generate embeddings for each text group and assign them directly
         for text_group in &mut text_groups {
@@ -278,7 +278,7 @@ impl ShinkaiFileManager {
         path: ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/ 0, /*max_depth=*/ 0)
+        Self::gather_directory_contents(&path, sqlite_manager, /* current_depth= */ 0, /* max_depth= */ 0)
     }
 
     /// Recursively list files/folders up to `max_depth`.
@@ -287,7 +287,7 @@ impl ShinkaiFileManager {
         sqlite_manager: &SqliteManager,
         max_depth: usize,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/ 0, max_depth)
+        Self::gather_directory_contents(&path, sqlite_manager, /* current_depth= */ 0, max_depth)
     }
 
     /// Private helper that does the actual directory reading.
@@ -312,7 +312,7 @@ impl ShinkaiFileManager {
             if entry.depth() == 0 {
                 continue;
             }
-            
+
             let file_name = entry.file_name().to_str().unwrap_or_default();
             let shinkai_path = ShinkaiPath::new(&format!("{}/{}", rel_path, file_name));
 
@@ -323,7 +323,11 @@ impl ShinkaiFileManager {
                 modified_time: entry.metadata().ok().and_then(|m| m.modified().ok()),
                 has_embeddings: false,
                 children: None,
-                size: if entry.file_type().is_file() { Some(entry.metadata().unwrap().len()) } else { None },
+                size: if entry.file_type().is_file() {
+                    Some(entry.metadata().unwrap().len())
+                } else {
+                    None
+                },
                 name: file_name.to_string(),
             };
 
@@ -418,7 +422,7 @@ impl ShinkaiFileManager {
                             // Convert the path to a relative path from the base directory
                             if let Ok(relative_path) = entry.path().strip_prefix(base_dir) {
                                 let relative_path_str = relative_path.to_string_lossy().to_string();
-                                
+
                                 // Check if the file has embeddings
                                 let has_embeddings = sqlite_manager
                                     .get_parsed_file_by_rel_path(&relative_path_str)
@@ -467,10 +471,10 @@ impl ShinkaiFileManager {
             if entry.depth() == 0 {
                 continue;
             }
-            
+
             // Get the file name and check if it matches the search criteria
             let file_name = entry.file_name().to_string_lossy().to_string();
-            
+
             // Perform case-insensitive search on the filename
             if file_name.to_lowercase().contains(&search_text_lower) {
                 // Get file metadata
@@ -478,7 +482,7 @@ impl ShinkaiFileManager {
                     // Convert the path to a relative path from the base directory
                     if let Ok(relative_path) = entry.path().strip_prefix(base_dir) {
                         let relative_path_str = relative_path.to_string_lossy().to_string();
-                        
+
                         // Check if the file has embeddings (only if it's a file)
                         let has_embeddings = if !entry.file_type().is_dir() {
                             sqlite_manager
@@ -495,10 +499,10 @@ impl ShinkaiFileManager {
                             modified_time: metadata.modified().ok(),
                             has_embeddings,
                             children: None,
-                            size: if entry.file_type().is_file() { 
-                                Some(metadata.len()) 
-                            } else { 
-                                None 
+                            size: if entry.file_type().is_file() {
+                                Some(metadata.len())
+                            } else {
+                                None
                             },
                             name: file_name,
                         };
@@ -510,7 +514,7 @@ impl ShinkaiFileManager {
 
         Ok(matching_files)
     }
-    
+
     /// Search files based on both their names and content, returning combined results
     /// with duplicates removed. This performs a case-insensitive search.
     pub fn search_files_by_name_and_content(
@@ -521,23 +525,23 @@ impl ShinkaiFileManager {
         // Get results from both search methods
         let name_results = Self::search_files_by_name(base_path.clone(), search_text, sqlite_manager)?;
         let content_results = Self::search_files_by_content(base_path, search_text, sqlite_manager)?;
-        
+
         // Use a HashMap to keep track of unique paths
         let mut unique_results = std::collections::HashMap::new();
-        
+
         // Add all name search results
         for file_info in name_results {
             unique_results.insert(file_info.path.clone(), file_info);
         }
-        
+
         // Add content search results, not replacing existing entries
         for file_info in content_results {
             unique_results.entry(file_info.path.clone()).or_insert(file_info);
         }
-        
+
         // Convert HashMap values into a Vec
         let combined_results = unique_results.into_values().collect();
-        
+
         Ok(combined_results)
     }
 }
@@ -1171,7 +1175,10 @@ mod tests {
                 }
             }
             assert!(file_info.created_time.is_some(), "All entries should have created_time");
-            assert!(file_info.modified_time.is_some(), "All entries should have modified_time");
+            assert!(
+                file_info.modified_time.is_some(),
+                "All entries should have modified_time"
+            );
         }
     }
 
@@ -1220,59 +1227,59 @@ mod tests {
         let pf = create_test_parsed_file(6, content_match_path);
         db.add_parsed_file(&pf).unwrap();
 
-        // Test simple by-name match 
+        // Test simple by-name match
         let name_results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "january.txt", &db).unwrap();
         assert_eq!(name_results.len(), 1);
         assert_eq!(name_results[0].path, "docs/reports/2024/january.txt");
 
         // Test simple by-content match
-        let content_results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "monthly report", &db).unwrap();
+        let content_results =
+            ShinkaiFileManager::search_files_by_content(base_path.clone(), "monthly report", &db).unwrap();
         assert_eq!(content_results.len(), 1);
         assert_eq!(content_results[0].path, "docs/reports/2024/january.txt");
 
         // Test combined search - exact match by name
-        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
-            base_path.clone(), "january.txt", &db
-        ).unwrap();
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "january.txt", &db).unwrap();
         assert_eq!(combined_results.len(), 1);
         assert_eq!(combined_results[0].path, "docs/reports/2024/january.txt");
 
         // Test combined search - exact match by content
-        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
-            base_path.clone(), "quarterly update", &db
-        ).unwrap();
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "quarterly update", &db).unwrap();
         assert_eq!(combined_results.len(), 1);
         assert_eq!(combined_results[0].path, "docs/reports/2024/february.txt");
 
         // Test combined search - matches both name and content
-        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
-            base_path.clone(), "2024", &db
-        ).unwrap();
-        
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "2024", &db).unwrap();
+
         // Should find:
         // - 4 files with "2024" in their name
-        // - The "reports-2024" directory  
+        // - The "reports-2024" directory
         // - All 5 files containing "2024" in their content
         // With duplicates removed, so counting unique paths
-        assert!(combined_results.len() >= 6, 
+        assert!(
+            combined_results.len() >= 6,
             "Expected at least 6 results (4 name-matching files + directory + content-only match), found {}",
-            combined_results.len());
+            combined_results.len()
+        );
 
         // Test content-only match
-        let combined_results = ShinkaiFileManager::search_files_by_name_and_content(
-            base_path.clone(), "meeting", &db
-        ).unwrap();
-        
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "meeting", &db).unwrap();
+
         // Should find:
-        // - Zero files with "meeting" in name 
+        // - Zero files with "meeting" in name
         // - At least 2 files containing "meeting" in content
-        assert!(combined_results.len() >= 2, 
-            "Expected at least 2 results for content-only search, found {}", 
-            combined_results.len());
-        
+        assert!(
+            combined_results.len() >= 2,
+            "Expected at least 2 results for content-only search, found {}",
+            combined_results.len()
+        );
+
         // Make sure we find the content-only file
-        let content_only_match = combined_results.iter()
-            .find(|info| info.path == content_match_path);
+        let content_only_match = combined_results.iter().find(|info| info.path == content_match_path);
         assert!(content_only_match.is_some(), "Should find the content-only match file");
 
         // Verify file and directory metadata
@@ -1284,14 +1291,17 @@ mod tests {
             } else {
                 assert!(file_info.size.is_some(), "Files should have size");
                 // Only check for embeddings on files we explicitly added to the database
-                let has_expected_embeddings = test_files.iter().any(|(path, _, _)| file_info.path == *path) ||
-                                               file_info.path == content_match_path;
+                let has_expected_embeddings = test_files.iter().any(|(path, _, _)| file_info.path == *path)
+                    || file_info.path == content_match_path;
                 if has_expected_embeddings {
                     assert!(file_info.has_embeddings, "Expected file should have embeddings");
                 }
             }
             assert!(file_info.created_time.is_some(), "All entries should have created_time");
-            assert!(file_info.modified_time.is_some(), "All entries should have modified_time");
+            assert!(
+                file_info.modified_time.is_some(),
+                "All entries should have modified_time"
+            );
         }
     }
 }

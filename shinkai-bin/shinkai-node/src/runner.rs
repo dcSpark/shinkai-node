@@ -248,17 +248,6 @@ pub async fn initialize_node() -> Result<
         }
     });
 
-    tokio::spawn(async {
-        match ShinkaiFileParser::initialize_local_file_parser().await {
-            Ok(_) => {}
-            Err(e) => shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                &format!("Error downloading ocrs models: {:?}", e),
-            ),
-        }
-    });
-
     // Return the node_commands_sender_copy and the tasks
     Ok((node_commands_sender_copy, api_server, node_task, node_copy))
 }

@@ -1,8 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::vecfs_test_utils::{
-    create_folder, generate_message_with_payload, make_folder_shareable, make_folder_shareable_http_free,
-    print_tree_simple, remove_folder, remove_item, retrieve_file_info, show_available_shared_items, upload_file,
+    create_folder, generate_message_with_payload, make_folder_shareable, make_folder_shareable_http_free, print_tree_simple, remove_folder, remove_item, retrieve_file_info, show_available_shared_items, upload_file
 };
 use async_channel::Sender;
 use ed25519_dalek::SigningKey;
@@ -11,9 +10,8 @@ use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
 use shinkai_http_api::{node_api_router::APIError, node_commands::NodeCommand};
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::{
-        APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType,
-    },
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+        APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType
+    }, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -129,13 +127,7 @@ impl ShinkaiTestingFramework {
     /// Uploads a file to a specified folder.
     pub async fn upload_file(&self, folder_name: &str, file_path: &str) {
         let file_path = Path::new(file_path);
-        upload_file(
-            &self.node_commands_sender,
-            folder_name,
-            file_path,
-            &self.bearer_token,
-        )
-        .await;
+        upload_file(&self.node_commands_sender, folder_name, file_path, &self.bearer_token).await;
     }
 
     /// Retrieves file information.
@@ -239,34 +231,5 @@ impl ShinkaiTestingFramework {
         }
 
         response_json
-    }
-
-    // Initialize PDF parser, check and download dependencies
-    pub async fn initialize_pdfium() {
-        #[cfg(target_os = "linux")]
-        let os = "linux";
-
-        #[cfg(target_os = "macos")]
-        let os = "mac";
-
-        #[cfg(target_os = "windows")]
-        let os = "win";
-
-        #[cfg(target_arch = "aarch64")]
-        let arch = "arm64";
-
-        #[cfg(target_arch = "x86_64")]
-        let arch = "x64";
-
-        let current_directory = std::env::current_dir().unwrap();
-        let current_directory = current_directory.iter().collect::<Vec<_>>();
-        let project_directory = current_directory
-            .iter()
-            .take(current_directory.len() - 2)
-            .collect::<PathBuf>();
-        let pdfium_directory = project_directory.join(format!("shinkai-libs/shinkai-ocr/pdfium/{}-{}", os, arch));
-        std::env::set_var("PDFIUM_DYNAMIC_LIB_PATH", pdfium_directory);
-
-        ShinkaiFileParser::initialize_local_file_parser().await.unwrap();
     }
 }
