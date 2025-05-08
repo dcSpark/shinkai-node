@@ -8,11 +8,11 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
+use std::boxed::Box;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::result::Result::Ok;
 use std::sync::Arc;
-use std::boxed::Box;
 
 impl JobManager {
     /// Helper function to process folders and collect file information
@@ -109,11 +109,10 @@ impl JobManager {
 
         // Process job_filenames
         for filename in &job_filenames {
-            let file_path =
-                match ShinkaiFileManager::construct_job_file_path(&job_id, filename, &sqlite_manager) {
-                    Ok(path) => path,
-                    Err(_) => continue,
-                };
+            let file_path = match ShinkaiFileManager::construct_job_file_path(&job_id, filename, &sqlite_manager) {
+                Ok(path) => path,
+                Err(_) => continue,
+            };
 
             if let Some(parsed_file) = sqlite_manager.get_parsed_file_by_shinkai_path(&file_path).unwrap() {
                 let file_id = parsed_file.id.unwrap();

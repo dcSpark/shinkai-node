@@ -7,23 +7,20 @@ use reqwest::StatusCode;
 use serde_json::Value;
 
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
-use shinkai_fs::{shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager}, shinkai_fs_error::ShinkaiFsError};
+use shinkai_fs::{
+    shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager}, shinkai_fs_error::ShinkaiFsError
+};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
-    schemas::shinkai_fs::ShinkaiFileChunkCollection,
-    shinkai_message::shinkai_message_schemas::{
-        APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
-        APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile,
-        APIVecFsSearchItems,
-    },
-    shinkai_utils::shinkai_path::ShinkaiPath,
+    schemas::shinkai_fs::ShinkaiFileChunkCollection, shinkai_message::shinkai_message_schemas::{
+        APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems
+    }, shinkai_utils::shinkai_path::ShinkaiPath
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
 
 use crate::{
-    managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 
 impl Node {
@@ -723,29 +720,74 @@ impl Node {
             return Ok(());
         }
 
-        // Convert the input path to a ShinkaiPath
+        // Determine which file to return: processed or original
+        let use_processed = input_payload.processed_file.unwrap_or(false);
         let vr_path = ShinkaiPath::from_string(input_payload.path.clone());
 
-        // Read the file content
-        let file_content = match std::fs::read(vr_path.as_path()) {
-            Ok(content) => content,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to read file content: {:?}", e),
+        if use_processed {
+            // Retrieve the parsed file from the database
+            let parsed_file =
+                match db.get_parsed_file_by_shinkai_path(&ShinkaiPath::from_string(input_payload.path.clone())) {
+                    Ok(Some(pf)) => pf,
+                    Ok(None) => {
+                        let api_error = APIError {
+                            code: StatusCode::NOT_FOUND.as_u16(),
+                            error: "Not Found".to_string(),
+                            message: format!("Processed file not found in database: {}", input_payload.path),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Database error: {:?}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
                 };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
 
-        // Encode the file content in base64
-        let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
+            // Retrieve all chunks for the parsed file, sort by position, and concatenate
+            let mut chunks = match db.get_chunks_for_parsed_file(parsed_file.id.unwrap()) {
+                Ok(chunks) => chunks,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get file chunks: {:?}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+            chunks.sort_by_key(|c| c.position);
+            let file_content: String = chunks.into_iter().map(|c| c.content).collect();
+            let _ = res.send(Ok(file_content)).await.map_err(|_| ());
+            return Ok(());
+        } else {
+            // Read the file content
+            let file_content = match std::fs::read(vr_path.as_path()) {
+                Ok(content) => content,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to read file content: {:?}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
-        // Send the encoded file content as a response
-        let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
-        Ok(())
+            // Encode the file content in base64
+            let encoded_file_content = base64::engine::general_purpose::STANDARD.encode(&file_content);
+
+            // Send the encoded file content as a response
+            let _ = res.send(Ok(encoded_file_content)).await.map_err(|_| ());
+            Ok(())
+        }
     }
 
     pub async fn v2_upload_file_to_job(
