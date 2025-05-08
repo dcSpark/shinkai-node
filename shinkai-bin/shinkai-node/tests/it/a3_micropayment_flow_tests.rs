@@ -319,6 +319,7 @@ fn micropayment_flow_test() {
                 "string".to_string(),
                 "The message to echo".to_string(),
                 true,
+                None,
             );
 
             let shinkai_tool_header = ShinkaiToolHeader {

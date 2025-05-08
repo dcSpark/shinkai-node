@@ -333,11 +333,11 @@ mod tests {
                 let mut params = Parameters::new();
                 params.properties.insert(
                     "string_param".to_string(),
-                    Property::new("string".to_string(), "A string parameter".to_string()),
+                    Property::new("string".to_string(), "A string parameter".to_string(), None),
                 );
                 params.properties.insert(
                     "number_param".to_string(),
-                    Property::new("number".to_string(), "A number parameter".to_string()),
+                    Property::new("number".to_string(), "A number parameter".to_string(), None),
                 );
                 params.required.push("string_param".to_string());
                 params

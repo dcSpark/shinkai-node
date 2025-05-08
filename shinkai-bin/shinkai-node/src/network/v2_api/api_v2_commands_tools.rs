@@ -3054,15 +3054,59 @@ impl Node {
         new_tool.update_name(new_name.clone());
         new_tool.update_author(node_name.node_name.clone());
 
-        // Update the tool_router_key for Deno tools since they store it explicitly
-        if let ShinkaiTool::Deno(deno_tool, enabled) = &mut new_tool {
-            if deno_tool.tool_router_key.is_some() {
-                deno_tool.tool_router_key = Some(ToolRouterKey::new(
-                    "local".to_string(),
-                    node_name.node_name.clone(),
-                    new_name,
-                    None,
-                ));
+        // Update the tool_router_key for Deno and Python tools since they store it explicitly
+        match &mut new_tool {
+            ShinkaiTool::Deno(deno_tool, _enabled) => {
+                if deno_tool.tool_router_key.is_some() {
+                    deno_tool.tool_router_key = Some(ToolRouterKey::new(
+                        "local".to_string(),
+                        node_name.node_name.clone(),
+                        new_name,
+                        None,
+                    ));
+                }
+            }
+            ShinkaiTool::Python(python_tool, _enabled) => {
+                if python_tool.tool_router_key.is_some() {
+                    python_tool.tool_router_key = Some(ToolRouterKey::new(
+                        "local".to_string(),
+                        node_name.node_name.clone(),
+                        new_name,
+                        None,
+                    ));
+                }
+            }
+            ShinkaiTool::Simulated(_, _) => {
+                // TODO Simulated tools do not have a implicit tool_router_key.
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Agent tools cannot be duplicated".to_string(),
+                });
+            }
+            ShinkaiTool::Agent(_, _) => {
+                // AgentsTools are created/destroyed when the agent is created/destroyed.
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Agent tools cannot be duplicated".to_string(),
+                });
+            }
+            ShinkaiTool::Network(_, _) => {
+                // TOOD: How to handle this
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Network tools cannot be duplicated".to_string(),
+                });
+            }
+            ShinkaiTool::Rust(_, _) => {
+                // These tools cannot be duplicated, as they are implemented in the node.
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Rust tools cannot be duplicated".to_string(),
+                });
             }
         }
 
@@ -3088,37 +3132,6 @@ impl Node {
                 (new_playground, false)
             }
             Err(_) => {
-                // Create a new playground from the tool data
-                let output = ToolOutputArg::empty();
-                let output_json = output.json;
-                // Attempt to parse the output_json into a meaningful result
-                let result: ToolResult = if !output_json.is_empty() {
-                    match serde_json::from_str::<serde_json::Value>(&output_json) {
-                        Ok(value) => {
-                            // Extract type from the value if possible
-                            let result_type = if value.is_object() {
-                                "object"
-                            } else if value.is_array() {
-                                "array"
-                            } else if value.is_string() {
-                                "string"
-                            } else if value.is_number() {
-                                "number"
-                            } else if value.is_boolean() {
-                                "boolean"
-                            } else {
-                                "object"
-                            };
-
-                            ToolResult::new(result_type.to_string(), value, vec![])
-                        }
-                        Err(_) => ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-                    }
-                } else {
-                    // Default to a basic object result when we can't extract anything meaningful
-                    ToolResult::new("object".to_string(), serde_json::Value::Null, vec![])
-                };
-
                 // Properly extract metadata from the original tool
                 let language = match original_tool {
                     ShinkaiTool::Deno(_, _) => CodeLanguage::Typescript,
@@ -3138,7 +3151,11 @@ impl Node {
                         keywords: new_tool.get_keywords(),
                         configurations: new_tool.get_config(),
                         parameters: new_tool.input_args(),
-                        result,
+                        result: match new_tool.clone() {
+                            ShinkaiTool::Deno(deno_tool, _) => deno_tool.result,
+                            ShinkaiTool::Python(python_tool, _) => python_tool.result,
+                            _ => unreachable!(),
+                        },
                         sql_tables: new_tool.sql_tables(),
                         sql_queries: new_tool.sql_queries(),
                         tools: Some(new_tool.get_tools()),

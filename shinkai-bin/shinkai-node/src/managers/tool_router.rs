@@ -1,3 +1,4 @@
+use super::IdentityManager;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::GenericInferenceChain;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
@@ -16,6 +17,7 @@ use crate::tools::tool_execution::{
 };
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_std::path::PathBuf;
+use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
@@ -51,11 +53,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
-
-use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
-use super::IdentityManager;
 
 #[derive(Clone)]
 pub struct ToolRouter {
@@ -535,6 +533,7 @@ impl ToolRouter {
                         "string".to_string(),
                         "The message to echo".to_string(),
                         true,
+                        None,
                     );
                     params
                 },
@@ -564,7 +563,7 @@ impl ToolRouter {
                 config: vec![],
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true);
+                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true, None);
                     params
                 },
                 output_arg: ToolOutputArg { json: "".to_string() },

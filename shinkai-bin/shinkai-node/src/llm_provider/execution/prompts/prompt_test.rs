@@ -1,10 +1,12 @@
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::schemas::{
-        llm_message::{DetailedFunctionCall, FunctionDetails, FunctionParameters, LlmMessage}, prompts::Prompt, subprompts::{SubPrompt, SubPromptType}
+        llm_message::{DetailedFunctionCall, FunctionDetails, FunctionParameters, LlmMessage},
+        prompts::Prompt,
+        subprompts::{SubPrompt, SubPromptType},
     };
     use shinkai_tools_primitives::tools::{
-        parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg
+        parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg,
     };
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
@@ -22,24 +24,28 @@ mod tests {
                     "string".to_string(),
                     "The first string to concatenate".to_string(),
                     true,
+                    None,
                 );
                 params.add_property(
                     "second_string".to_string(),
                     "string".to_string(),
                     "The second string to concatenate".to_string(),
                     true,
+                    None,
                 );
                 params.add_property(
                     "third_string".to_string(),
                     "string".to_string(),
                     "The third string to concatenate (optional)".to_string(),
                     false,
+                    None,
                 );
                 params.add_property(
                     "fourth_string".to_string(),
                     "string".to_string(),
                     "The fourth string to concatenate (optional)".to_string(),
                     false,
+                    None,
                 );
                 params
             },
@@ -170,24 +176,28 @@ mod tests {
                     "string".to_string(),
                     "The first string to concatenate".to_string(),
                     true,
+                    None,
                 );
                 params.add_property(
                     "second_string".to_string(),
                     "string".to_string(),
                     "The second string to concatenate".to_string(),
                     true,
+                    None,
                 );
                 params.add_property(
                     "third_string".to_string(),
                     "string".to_string(),
                     "The third string to concatenate (optional)".to_string(),
                     false,
+                    None,
                 );
                 params.add_property(
                     "fourth_string".to_string(),
                     "string".to_string(),
                     "The fourth string to concatenate (optional)".to_string(),
                     false,
+                    None,
                 );
                 params
             },

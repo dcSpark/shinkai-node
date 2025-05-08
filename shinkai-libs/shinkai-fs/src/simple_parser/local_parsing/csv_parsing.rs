@@ -1,6 +1,5 @@
 use crate::{
-    shinkai_fs_error::ShinkaiFsError,
-    simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup},
+    shinkai_fs_error::ShinkaiFsError, simple_parser::{file_parser_helper::ShinkaiFileParser, text_group::TextGroup}
 };
 
 use csv::ReaderBuilder;
@@ -129,7 +128,6 @@ impl LocalFileParser {
                 text_groups.push(TextGroup::new(parsed_line, metadata, None));
             }
         }
-
         Ok(text_groups)
     }
 }
@@ -154,14 +152,7 @@ mod tests {
 
         // Verify the output
         assert_eq!(text_groups.len(), 6); // Expecting 6 TextGroups due to max_node_text_size
-        let expected_texts = vec![
-            "header1|he",
-            "ader2",
-            "value1|val",
-            "ue2",
-            "value3|val",
-            "ue4",
-        ];
+        let expected_texts = vec!["header1|he", "ader2", "value1|val", "ue2", "value3|val", "ue4"];
         for (i, text_group) in text_groups.iter().enumerate() {
             assert_eq!(text_group.text, expected_texts[i]);
         }

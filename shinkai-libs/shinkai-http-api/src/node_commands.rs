@@ -950,6 +950,7 @@ pub enum NodeCommand {
     },
     V2ApiGetAllAgents {
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     },
     V2ApiRetryMessage {
@@ -1353,5 +1354,10 @@ pub enum NodeCommand {
         agent_id: String,
         llm_provider: String,
         res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetLastUsedAgentsAndLLMs {
+        bearer: String,
+        last: usize,
+        res: Sender<Result<Vec<String>, APIError>>,
     },
 }

@@ -83,6 +83,7 @@ fn default_input_args() -> Parameters {
         "string".to_string(),
         "Message to the agent".to_string(),
         true,
+        None,
     );
 
     // TODO: add later
@@ -99,6 +100,7 @@ fn default_input_args() -> Parameters {
         "string".to_string(),
         "Session identifier to continue a previous conversation (Optional)".to_string(),
         false,
+        None,
     );
 
     params

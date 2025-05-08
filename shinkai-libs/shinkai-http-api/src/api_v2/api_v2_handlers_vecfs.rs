@@ -2,9 +2,7 @@ use async_channel::Sender;
 use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder,
-    APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
-    APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
+    APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems
 };
 
 use crate::api_v2::api_v2_handlers_jobs::AddFileToJob;
@@ -12,10 +10,10 @@ use crate::node_commands::NodeCommand;
 use crate::{api_v2::api_v2_handlers_jobs::AddFileToFolder, node_api_router::APIError};
 use bytes::Buf;
 use futures::StreamExt;
+use std::collections::HashMap;
 use utoipa::OpenApi;
 use warp::multipart::FormData;
 use warp::Filter;
-use std::collections::HashMap;
 
 use super::api_v2_router::{create_success_response, with_sender};
 
@@ -688,9 +686,13 @@ pub async fn upload_file_to_folder_handler(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/download_file",
-    request_body = APIVecFsSearchItems,
+    params(
+        ("path" = String, Query, description = "Path to the file to download"),
+        ("processed_file" = Option<bool>, Query, description = "If true, download the processed file instead of the original. Defaults to false.")
+    ),
+    request_body = APIVecFsRetrieveSourceFile,
     responses(
         (status = 200, description = "Successfully searched items", body = String),
         (status = 400, description = "Bad request", body = APIError),
@@ -848,11 +850,7 @@ pub async fn upload_file_to_job_handler(
         match part.name() {
             "job_id" => {
                 let content = part.data().await.ok_or_else(|| {
-                    warp::reject::custom(APIError::new(
-                        StatusCode::BAD_REQUEST,
-                        "Bad Request",
-                        "Missing job_id",
-                    ))
+                    warp::reject::custom(APIError::new(StatusCode::BAD_REQUEST, "Bad Request", "Missing job_id"))
                 })?;
                 let mut content = content.map_err(|_| {
                     warp::reject::custom(APIError::new(

@@ -18,7 +18,7 @@ use std::sync::Arc;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::Node;
 use std::net::SocketAddr;
@@ -84,7 +84,7 @@ where
     setup_node_storage_path();
     let rt = Runtime::new().unwrap();
 
-    rt.block_on(async {
+    let runtime_result = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
@@ -178,17 +178,23 @@ where
 
         let result = tokio::try_join!(node1_handler, interactions_handler);
         match result {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
                     eprintln!("One of the tasks was aborted, but this is expected.");
+                    return Ok(());
                 } else {
                     // If the error is not due to an abort, then it's unexpected
-                    panic!("An unexpected error occurred: {:?}", e);
+                    // Do not panic or assert here as it will be not bubbled up to the test runner
+                    return Err(e);
                 }
             }
         }
     });
+    // First shutdown the runtime to ensure all tasks are finished, then assert - or it will not be bubbled up.
     rt.shutdown_background();
+    if let Err(e) = runtime_result {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 }

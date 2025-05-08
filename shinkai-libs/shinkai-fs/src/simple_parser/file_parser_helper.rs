@@ -89,11 +89,6 @@ impl ShinkaiFileParser {
     //     cleaned_name
     // }
 
-    pub async fn initialize_local_file_parser() -> Result<(), Box<dyn std::error::Error>> {
-        use shinkai_ocr::image_parser::ImageParser;
-        ImageParser::check_and_download_dependencies().await
-    }
-
     /// Helper function that processes groups into a list of descriptions.
     /// Only takes the top-level group text, does not recurse into subgroups.
     pub fn process_groups_into_descriptions_list(
@@ -211,7 +206,11 @@ impl ShinkaiFileParser {
                 match datetime {
                     Ok(_) => {
                         metadata.insert(ShinkaiFileParser::datetime_metadata_key(), value.to_string());
-                        if is_pure { "".to_string() } else { value.to_string() }
+                        if is_pure {
+                            "".to_string()
+                        } else {
+                            value.to_string()
+                        }
                     }
                     Err(_) => {
                         // Attempt a less strict format
@@ -220,7 +219,11 @@ impl ShinkaiFileParser {
                             Ok(parsed_datetime) => {
                                 let formatted_datetime = Utc.from_utc_datetime(&parsed_datetime).to_rfc3339();
                                 metadata.insert(key.to_string(), formatted_datetime.clone());
-                                if is_pure { "".to_string() } else { formatted_datetime }
+                                if is_pure {
+                                    "".to_string()
+                                } else {
+                                    formatted_datetime
+                                }
                             }
                             Err(_) => value.to_string(),
                         }
@@ -238,7 +241,11 @@ impl ShinkaiFileParser {
                 match page_numbers {
                     Ok(_) => {
                         metadata.insert(key.to_string(), value.to_string());
-                        if is_pure { "".to_string() } else { value.to_string() }
+                        if is_pure {
+                            "".to_string()
+                        } else {
+                            value.to_string()
+                        }
                     }
                     Err(_) => value.to_string(),
                 }
@@ -246,7 +253,11 @@ impl ShinkaiFileParser {
             // Fallback
             _ => {
                 metadata.insert(key.to_string(), value.to_string());
-                if is_pure { "".to_string() } else { value.to_string() }
+                if is_pure {
+                    "".to_string()
+                } else {
+                    value.to_string()
+                }
             }
         }
     }
@@ -258,8 +269,8 @@ impl ShinkaiFileParser {
 
         let parsed_result = md_url_re.replace_all(input_text, |caps: &Captures| {
             let prefix = caps.get(1).map_or("", |m| m.as_str());
-            let text   = caps.get(2).map_or("", |m| m.as_str());
-            let url    = caps.get(3).map_or("", |m| m.as_str());
+            let text = caps.get(2).map_or("", |m| m.as_str());
+            let url = caps.get(3).map_or("", |m| m.as_str());
 
             let mut shortened_url = Url::parse(url)
                 .ok()
@@ -306,10 +317,8 @@ impl ShinkaiFileParser {
         page_number: Option<u32>,
     ) -> Vec<TextGroup> {
         let mut text_groups = Vec::new();
-        let (parsed_text, metadata, parsed_any_metadata) =
-            ShinkaiFileParser::parse_and_extract_metadata(&text);
-        let (parsed_md_text, md_metadata) =
-            ShinkaiFileParser::parse_and_extract_md_metadata(&parsed_text);
+        let (parsed_text, metadata, parsed_any_metadata) = ShinkaiFileParser::parse_and_extract_metadata(&text);
+        let (parsed_md_text, md_metadata) = ShinkaiFileParser::parse_and_extract_md_metadata(&parsed_text);
 
         // Merge the two sets of metadata
         let all_metadata = metadata.into_iter().chain(md_metadata).collect::<HashMap<_, _>>();
@@ -359,11 +368,7 @@ impl ShinkaiFileParser {
         page_number: Option<u32>,
     ) {
         if !text.is_empty() {
-            let created_text_groups = Self::parse_and_split_into_text_groups(
-                text,
-                max_node_text_size,
-                page_number
-            );
+            let created_text_groups = Self::parse_and_split_into_text_groups(text, max_node_text_size, page_number);
             // Just extend the top-level list, ignoring `_depth`.
             text_groups.extend(created_text_groups);
         }

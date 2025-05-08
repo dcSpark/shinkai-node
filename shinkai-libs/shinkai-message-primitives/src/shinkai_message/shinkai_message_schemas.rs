@@ -517,6 +517,8 @@ pub struct APIVecFsCopyItem {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIVecFsRetrieveSourceFile {
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub processed_file: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]

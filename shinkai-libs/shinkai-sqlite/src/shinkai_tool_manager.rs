@@ -1010,7 +1010,7 @@ mod tests {
                     let mut props = std::collections::HashMap::new();
                     props.insert(
                         "seed".to_string(),
-                        Property::new("number".to_string(), "seed for the random number".to_string()),
+                        Property::new("number".to_string(), "seed for the random number".to_string(), None),
                     );
                     props
                 },
@@ -1056,6 +1056,7 @@ mod tests {
                             Property::new(
                                 "string".to_string(),
                                 "the crypto symbols to get the price of".to_string(),
+                                None,
                             ),
                         ),
                     );
@@ -1064,6 +1065,7 @@ mod tests {
                         Property::new(
                             "string".to_string(),
                             "the start date of the price. Default 10 days ago.".to_string(),
+                            None,
                         ),
                     );
                     props.insert(
@@ -1071,6 +1073,7 @@ mod tests {
                         Property::new(
                             "string".to_string(),
                             "the end date of the price. Default is now.".to_string(),
+                            None,
                         ),
                     );
                     props.insert(
@@ -1079,6 +1082,7 @@ mod tests {
                             "string".to_string(),
                             "the interval of the price. e.g., 5m, 15m, 1h, 4h, 12h, 1D, 1W, 1M, 1Y. Default is 1D."
                                 .to_string(),
+                            None,
                         ),
                     );
                     props
@@ -2009,7 +2013,13 @@ mod tests {
             amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
         }]));
 
-        let input_args = Parameters::with_single_property("message", "string", "The message to send", true);
+        let input_args = Parameters::with_single_property(
+            "message",
+            "string",
+            "The message to send",
+            true,
+            Some("Hello, world!".to_string()),
+        );
 
         let enabled_network_tool = NetworkTool {
             name: "Enabled Network Tool".to_string(),
@@ -2690,5 +2700,63 @@ mod tests {
         } else {
             panic!("Retrieved tool is not a PythonTool");
         }
+    }
+
+    #[tokio::test]
+    async fn test_add_duplicate_python_tool() {
+        let manager = setup_test_db().await;
+
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Python Author".to_string(),
+            "Python Duplicate Tool".to_string(),
+            None,
+        );
+
+        // Create a PythonTool instance
+        let python_tool_data = PythonTool {
+            name: "Python Duplicate Tool".to_string(),
+            tool_router_key: Some(tool_router_key.clone()),
+            homepage: None,
+            author: "Python Author".to_string(),
+            version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
+            py_code: "print('Hello, Python!')".to_string(),
+            tools: vec![],
+            config: vec![],
+            oauth: None,
+            description: "A Python tool for testing duplicates".to_string(),
+            keywords: vec!["python".to_string(), "duplicate".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: None,
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: Some(vec![]),
+            sql_queries: Some(vec![]),
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Linux],
+            tool_set: None,
+        };
+
+        // Wrap the PythonTool in a ShinkaiTool::Python variant
+        let shinkai_tool = ShinkaiTool::Python(python_tool_data, true);
+
+        // Add the tool to the database
+        let vector = SqliteManager::generate_vector_for_testing(0.1);
+        let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone());
+        assert!(result.is_ok(), "Initial add failed: {:?}", result.err());
+
+        // Attempt to add the same tool again
+        let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
+
+        // Assert that the error is ToolAlreadyExists
+        assert!(
+            matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))),
+            "Expected ToolAlreadyExists error, but got: {:?}",
+            duplicate_result
+        );
     }
 }
