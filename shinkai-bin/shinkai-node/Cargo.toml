@@ -64,15 +64,14 @@ hex = { workspace = true }
 aes-gcm = "0.10.3"
 blake3 = { workspace = true }
 cron-parser = "0.8.1"
-ethers = "2.0"
 dashmap = "5.5.3"
 tiny-bip39 = "0.8.0"
 async-lock = "2.4.0"
 governor = "0.6.3"
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 console-subscriber = { version = "0.1", optional = true }
-downcast-rs = "1.2.1"
 bip32 = "0.5.2"
+downcast-rs = "1.2.1"
 bigdecimal = "0.2.2"
 rust_decimal = "1.17.0"
 rcgen = "0.13.1"

@@ -458,4 +458,34 @@ mod tests {
             assert_eq!(result, expected);
         }
     }
+
+    #[tokio::test]
+    async fn test_get_identity_record() {
+        let registry = ShinkaiRegistry::new(
+            "https://sepolia.base.org",
+            "0x425fb20ba3874e887336aaa7f3fab32d08135ba9",
+            None, // ABI path is optional
+        )
+        .await
+        .unwrap();
+
+        let identity = "node1_test.sep-shinkai".to_string();
+
+        let record = registry.get_identity_record(identity.clone(), None).await.unwrap();
+
+        let expected_record = OnchainIdentity {
+            shinkai_identity: "node1_test.sep-shinkai".to_string(),
+            bound_nft: U256::from_dec_str("9").unwrap(),
+            staked_tokens: U256::from_dec_str("55000000000000000000").unwrap(),
+            encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
+            signature_key: "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e".to_string(),
+            routing: false,
+            address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
+            delegated_tokens: U256::from_dec_str("0").unwrap(),
+            last_updated: chrono::DateTime::<chrono::Utc>::from(
+                std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1738389678),
+            ),
+        };
+        assert_eq!(record, expected_record);
+    }
 }

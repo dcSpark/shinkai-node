@@ -1,4 +1,3 @@
-use ethers::{core::k256::elliptic_curve, utils::hex::FromHexError};
 use std::{error::Error, fmt};
 
 #[derive(Debug)]
@@ -6,8 +5,6 @@ pub enum WalletError {
     UuidError(uuid::Error),
     InvalidRpcUrl(String),
     Bip39Error(String),
-    EllipticCurveError(elliptic_curve::Error),
-    HexError(FromHexError),
     ProviderError(String),
     DetailedJsonRpcError {
         code: i32,
@@ -47,8 +44,6 @@ impl fmt::Display for WalletError {
             WalletError::UuidError(e) => write!(f, "UuidError: {}", e),
             WalletError::InvalidRpcUrl(e) => write!(f, "InvalidRpcUrl: {}", e),
             WalletError::Bip39Error(e) => write!(f, "Bip39Error: {}", e),
-            WalletError::EllipticCurveError(e) => write!(f, "EllipticCurveError: {}", e),
-            WalletError::HexError(e) => write!(f, "HexError: {}", e),
             WalletError::ProviderError(e) => write!(f, "ProviderError: {}", e),
             WalletError::DetailedJsonRpcError { code, message, data } => {
                 write!(
@@ -93,8 +88,6 @@ impl Error for WalletError {
             WalletError::UuidError(e) => Some(e),
             WalletError::InvalidRpcUrl(_) => None,
             WalletError::Bip39Error(_) => None,
-            WalletError::EllipticCurveError(e) => Some(e),
-            WalletError::HexError(e) => Some(e),
             WalletError::ProviderError(_) => None,
             WalletError::NetworkMismatch => None,
             WalletError::InvalidAmount(_) => None,
@@ -128,46 +121,5 @@ impl Error for WalletError {
 impl From<uuid::Error> for WalletError {
     fn from(error: uuid::Error) -> Self {
         WalletError::UuidError(error)
-    }
-}
-
-impl From<elliptic_curve::Error> for WalletError {
-    fn from(error: elliptic_curve::Error) -> Self {
-        WalletError::EllipticCurveError(error)
-    }
-}
-
-impl From<FromHexError> for WalletError {
-    fn from(error: FromHexError) -> Self {
-        WalletError::HexError(error)
-    }
-}
-
-impl From<ethers::providers::ProviderError> for WalletError {
-    fn from(error: ethers::providers::ProviderError) -> Self {
-        match error {
-            ethers::providers::ProviderError::JsonRpcClientError(e) => {
-                WalletError::ProviderError(format!("JsonRpcClientError: {:?}", e))
-            }
-            ethers::providers::ProviderError::EnsError(e) => WalletError::ProviderError(format!("EnsError: {}", e)),
-            ethers::providers::ProviderError::EnsNotOwned(e) => {
-                WalletError::ProviderError(format!("EnsNotOwned: {}", e))
-            }
-            ethers::providers::ProviderError::SerdeJson(e) => WalletError::ProviderError(format!("SerdeJson: {}", e)),
-            ethers::providers::ProviderError::HexError(e) => WalletError::ProviderError(format!("HexError: {}", e)),
-            ethers::providers::ProviderError::HTTPError(e) => WalletError::ProviderError(format!("HTTPError: {}", e)),
-            ethers::providers::ProviderError::CustomError(e) => {
-                WalletError::ProviderError(format!("CustomError: {}", e))
-            }
-            ethers::providers::ProviderError::UnsupportedRPC => {
-                WalletError::ProviderError("UnsupportedRPC".to_string())
-            }
-            ethers::providers::ProviderError::UnsupportedNodeClient => {
-                WalletError::ProviderError("UnsupportedNodeClient".to_string())
-            }
-            ethers::providers::ProviderError::SignerUnavailable => {
-                WalletError::ProviderError("SignerUnavailable".to_string())
-            }
-        }
     }
 }
