@@ -1809,6 +1809,30 @@ impl Node {
             return Ok(());
         }
 
+        let _ = match Self::v2_api_import_agent_url_internal(
+            db.clone(),
+            url.clone(),
+            node_name.clone(),
+            node_env.clone(),
+            signing_secret_key,
+            embedding_generator,
+        )
+        .await
+        {
+            Ok(response) => res.send(Ok(response)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+        Ok(())
+    }
+
+    pub async fn v2_api_import_agent_url_internal(
+        db: Arc<SqliteManager>,
+        url: String,
+        node_name: String,
+        node_env: NodeEnvironment,
+        signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+    ) -> Result<Value, APIError> {
         let zip_contents =
             match download_zip_from_url(url, "__agent.json".to_string(), node_name.clone(), signing_secret_key).await {
                 Ok(contents) => contents,
@@ -1818,8 +1842,7 @@ impl Node {
                         error: "Invalid Agent Zip".to_string(),
                         message: format!("Failed to extract agent.json: {:?}", err),
                     };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    return Err(api_error);
                 }
             };
         // Save the agent to the database
@@ -1832,8 +1855,7 @@ impl Node {
                     error: "Invalid Agent Zip".to_string(),
                     message: format!("Failed to parse agent.json: {}", err),
                 };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                return Err(api_error);
             }
         };
 
@@ -1845,23 +1867,16 @@ impl Node {
         )
         .await;
         if let Err(err) = status {
-            let _ = res.send(Err(err)).await;
-            return Ok(());
+            return Err(err);
         }
 
-        let _ = match import_agent(
+        import_agent(
             db.clone(),
             zip_contents.archive,
             agent.clone(),
             embedding_generator.clone(),
         )
         .await
-        {
-            Ok(response) => res.send(Ok(response)).await,
-            Err(err) => res.send(Err(err)).await,
-        };
-
-        Ok(())
     }
 
     pub async fn v2_api_import_agent_zip(
