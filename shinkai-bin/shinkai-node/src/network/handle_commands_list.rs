@@ -232,6 +232,26 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiPublishAgent { bearer, agent_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                let shinkai_name = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_publish_agent(
+                        db_clone,
+                        bearer,
+                        shinkai_name,
+                        node_env,
+                        agent_id,
+                        identity_manager_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiExportAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
@@ -263,19 +283,11 @@ impl Node {
             NodeCommand::V2ApiImportAgentZip { bearer, file_data, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
-                let node_name = self.node_name.node_name.clone();
                 let embedding_generator = Arc::new(self.embedding_generator.clone());
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_import_agent_zip(
-                        db_clone,
-                        bearer,
-                        node_name,
-                        node_env,
-                        file_data,
-                        embedding_generator,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_api_import_agent_zip(db_clone, bearer, node_env, file_data, embedding_generator, res)
+                            .await;
                 });
             }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {

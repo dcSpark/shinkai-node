@@ -2391,7 +2391,7 @@ impl Node {
                     map.insert("response".to_string(), response_json);
                     Value::Object(map)
                 }
-                o => o,
+                _ => unreachable!(),
             };
             return Ok(r);
         } else {
