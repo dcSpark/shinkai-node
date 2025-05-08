@@ -27,7 +27,6 @@ RUN apt-get update && apt-get install -y libssl3 ca-certificates
 WORKDIR /app
 COPY --from=builder /app/cloud-node/run_node.sh /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai_node /app/
-COPY --from=builder /app/target/${BUILD_TYPE:-debug}/libpdfium.so /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai-tools-runner-resources /app/shinkai-tools-runner-resources
 
 # Use environment variables if they exist, otherwise use default values

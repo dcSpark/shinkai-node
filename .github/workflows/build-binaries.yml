@@ -3,7 +3,7 @@ name: Build shinkai-node binaries
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
   build-binaries:
@@ -19,73 +19,71 @@ jobs:
             os: windows-2022
     runs-on: ${{ matrix.os }}
     steps:
-        - name: Checkout sources
-          uses: actions/checkout@v4
-    
-        - name: Cache cargo assets
-          id: cache
-          uses: actions/cache@v4
-          with:
-            path: |
-              ~/.cargo/bin/
-              ~/.cargo/registry/index/
-              ~/.cargo/registry/cache/
-              ~/.cargo/git/db/
-              target/
-            key: ${{ matrix.arch }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Checkout sources
+        uses: actions/checkout@v4
 
-        - name: (MACOS) Install build deps
-          if: ${{ matrix.arch == 'aarch64-apple-darwin' }}
-          run: |
-            brew install protobuf
+      - name: Cache cargo assets
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ matrix.arch }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-        - name: (Windows) Install build deps
-          if: ${{ matrix.arch == 'x86_64-pc-windows-msvc' }}
-          run: |
-            choco install -y protoc
+      - name: (MACOS) Install build deps
+        if: ${{ matrix.arch == 'aarch64-apple-darwin' }}
+        run: |
+          brew install protobuf
 
-        - name: (Linux) Install build deps
-          if: ${{ matrix.arch == 'x86_64-unknown-linux-gnu' }}
-          run: |
-            sudo apt-get install -y protobuf-compiler
+      - name: (Windows) Install build deps
+        if: ${{ matrix.arch == 'x86_64-pc-windows-msvc' }}
+        run: |
+          choco install -y protoc
 
-        - name: Build
-          run: cargo build --release
+      - name: (Linux) Install build deps
+        if: ${{ matrix.arch == 'x86_64-unknown-linux-gnu' }}
+        run: |
+          sudo apt-get install -y protobuf-compiler
 
-        - name: Prepare bundle files
-          env:
-            ZIP_FILE_NAME: ${{ github.ref_name }}.zip
-            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
-            PDFIUM_LIB_FILE: ${{ matrix.arch == 'x86_64-unknown-linux-gnu' && 'libpdfium.so' || matrix.arch == 'aarch64-apple-darwin' && 'libpdfium.dylib' || matrix.arch == 'x86_64-pc-windows-msvc' && 'pdfium.dll' || '' }}
-          run: |
-            mkdir files-to-r2
-            cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node${{ env.EXTENSION }}
-            cp -r target/release/shinkai-tools-runner-resources files-to-r2/
-            cp target/release/${{ env.PDFIUM_LIB_FILE }} files-to-r2/
-            cd ./files-to-r2
-            7z a -tzip ${{ env.ZIP_FILE_NAME}} . -sdel
-            cp ${{ env.ZIP_FILE_NAME}} latest.zip
+      - name: Build
+        run: cargo build --release
 
-        - name: Upload bundle to R2 bucket
-          uses: shallwefootball/s3-upload-action@master
-          with:
-            endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
-            aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
-            aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-            aws_bucket: shinkai-download
-            source_dir: files-to-r2
-            destination_dir: ./shinkai-node/binaries/production/${{ matrix.arch }}/
+      - name: Prepare bundle files
+        env:
+          ZIP_FILE_NAME: ${{ github.ref_name }}.zip
+          EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
+        run: |
+          mkdir files-to-r2
+          cp target/release/shinkai_node${{ env.EXTENSION }} files-to-r2/shinkai-node${{ env.EXTENSION }}
+          cp -r target/release/shinkai-tools-runner-resources files-to-r2/
+          cd ./files-to-r2
+          7z a -tzip ${{ env.ZIP_FILE_NAME}} . -sdel
+          cp ${{ env.ZIP_FILE_NAME}} latest.zip
 
-        - name: Upload bundle to release
-          uses: svenstaro/upload-release-action@v2
-          env:
-            EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
-          with:
-            repo_token: ${{ secrets.GITHUB_TOKEN }}
-            file: files-to-r2/${{ github.ref_name }}.zip
-            asset_name: shinkai-node-${{ matrix.arch }}.zip
-            tag: ${{ github.ref }}
-            overwrite: true
+      - name: Upload bundle to R2 bucket
+        uses: shallwefootball/s3-upload-action@master
+        with:
+          endpoint: https://54bf1bf573b3e6471e574cc4d318db64.r2.cloudflarestorage.com
+          aws_key_id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws_bucket: shinkai-download
+          source_dir: files-to-r2
+          destination_dir: ./shinkai-node/binaries/production/${{ matrix.arch }}/
+
+      - name: Upload bundle to release
+        uses: svenstaro/upload-release-action@v2
+        env:
+          EXTENSION: ${{ matrix.arch == 'x86_64-pc-windows-msvc' && '.exe' || '' }}
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: files-to-r2/${{ github.ref_name }}.zip
+          asset_name: shinkai-node-${{ matrix.arch }}.zip
+          tag: ${{ github.ref }}
+          overwrite: true
   build-docker-image:
     name: Build and push Docker image to Docker Hub
     runs-on: ubuntu-latest
