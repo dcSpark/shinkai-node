@@ -90,6 +90,17 @@ pub enum RunError {
     ParseOutputError(String),
 }
 
+impl std::fmt::Display for RunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunError::CodeExecutionError(err) => write!(f, "code execution error: {}", err),
+            RunError::SerializeConfigurationsError(err) => write!(f, "failed to serialize configurations: {}", err),
+            RunError::SerializeParamsError(err) => write!(f, "failed to serialize parameters: {}", err),
+            RunError::ParseOutputError(err) => write!(f, "failed to parse output: {}", err),
+        }
+    }
+}
+
 pub struct NonRustCodeRunnerFactory {
     function_name: String,
     code: String,
@@ -172,6 +183,7 @@ where
                     .map_err(|e| RunError::CodeExecutionError(e.to_string()))?
             }
         };
+        println!("result: {:?}", result);
         serde_json::from_value(result.data).map_err(|e| RunError::ParseOutputError(e.to_string()))
     }
 }
