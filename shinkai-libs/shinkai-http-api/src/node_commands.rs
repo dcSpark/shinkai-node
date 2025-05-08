@@ -918,6 +918,7 @@ pub enum NodeCommand {
     },
     V2ApiGetAllAgents {
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     },
     V2ApiRetryMessage {

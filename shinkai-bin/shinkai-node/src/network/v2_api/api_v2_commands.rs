@@ -1348,6 +1348,7 @@ impl Node {
     pub async fn v2_api_get_all_agents(
         db: Arc<SqliteManager>,
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1355,16 +1356,24 @@ impl Node {
             return Ok(());
         }
 
-        // Retrieve all agents from the database
-        match db.get_all_agents() {
+        let agents_result = db.get_all_agents();
+        match agents_result {
             Ok(mut agents) => {
+                // If filter is Some("recently_used"), filter agents by recently used
+                if let Some(ref filter_val) = filter {
+                    if filter_val == "recently_used" {
+                        // Get the last N recently used agent IDs (let's use 10 as a default)
+                        let recent_ids = db.get_last_n_parent_agent_or_llm_provider_ids(10).unwrap_or_default();
+                        agents.retain(|agent| recent_ids.contains(&agent.agent_id));
+                    }
+                }
                 // Get cron tasks for each agent
                 for agent in &mut agents {
                     match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
                         Ok(cron_tasks) => {
                             agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             agent.cron_tasks = None;
                         }
                     }
