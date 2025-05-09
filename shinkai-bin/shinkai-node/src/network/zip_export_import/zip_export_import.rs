@@ -553,7 +553,7 @@ async fn import_agent_knowledge(
     let archive_clone = zip_contents.clone();
     let files = archive_clone.file_names();
     for file in files {
-        if file.starts_with("__knowledge/") {
+        if file.starts_with("__knowledge/") && !file.ends_with("/") {
             let mut buffer = Vec::new();
             {
                 println!("[IMPORTING KNOWLEDGE]: {}", file);
@@ -608,10 +608,11 @@ pub async fn import_dependencies_tools(
 ) -> Result<(), APIError> {
     // Import tools from the zip file
     let archive_clone = zip_contents.clone();
-    let files = archive_clone.file_names();
-    for file in files {
-        if file.starts_with("__tools/") {
-            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), true).await {
+    let file_list: Vec<&str> = archive_clone.file_names().collect();
+    println!("Files:\n{}", file_list.join("\n"));
+    for file_name_str in file_list {
+        if file_name_str.starts_with("__tools/") && file_name_str != "__tools/" {
+            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file_name_str.to_string(), true).await {
                 Ok(tool_zip) => tool_zip,
                 Err(err) => {
                     let api_error = APIError {
@@ -637,10 +638,12 @@ pub async fn import_dependencies_tools(
             let import_tool_result = import_tool(db.clone(), node_env.clone(), tool_zip, tool).await;
             if let Err(err) = import_tool_result {
                 println!("Error importing tool: {:?}", err);
+            } else {
+                println!("Successfully imported tool.");
             }
         }
-        if file.starts_with("__agents/") {
-            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), false).await {
+        if file_name_str.starts_with("__agents/") && file_name_str != "__agents/" {
+            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file_name_str.to_string(), false).await {
                 Ok(agent_zip) => agent_zip,
                 Err(err) => return Err(err),
             };
@@ -649,6 +652,8 @@ pub async fn import_dependencies_tools(
                 import_agent(db.clone(), zip_contents.clone(), agent, embedding_generator.clone()).await;
             if let Err(err) = import_agent_result {
                 println!("Error importing agent: {:?}", err);
+            } else {
+                println!("Successfully imported agent.");
             }
         }
     }
@@ -776,6 +781,8 @@ pub async fn import_agent(
 
     agent.llm_provider_id = preferences_llm_provider_result;
 
+    import_agent_knowledge(zip_contents, db.clone(), embedding_generator.clone()).await?;
+
     if install {
         match db.add_agent(agent.clone(), &agent.full_identity_name) {
             Ok(_) => {
@@ -819,8 +826,6 @@ pub async fn import_agent(
             }
         }
     }
-
-    import_agent_knowledge(zip_contents, db, embedding_generator).await?;
 
     return Ok(json!({
         "status": "success",
