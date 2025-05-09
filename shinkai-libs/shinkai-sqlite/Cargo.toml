@@ -15,7 +15,6 @@ r2d2_sqlite = "0.25"
 keyphrases = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
 shinkai_message_primitives = { workspace = true }
-shinkai_sheet = { workspace = true }
 shinkai_embedding = { workspace = true }
 reqwest = { workspace = true }
 bincode = { workspace = true }
@@ -34,5 +33,5 @@ workspace = true
 features = ["derive"]
 
 [dev-dependencies]
-tempfile = "3.2"
+tempfile = "3.19"
 rust_decimal = "1.17.0"

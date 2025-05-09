@@ -112,3 +112,7 @@ output.txt
 file_aggregator.sh
 shinkai-libs/shinkai-sqlite/dumped_prompts.rs
 storage_debug_localhost
+shinkai-libs/shinkai-fs/internal_tools_storage
+shinkai-libs/shinkai-crypto-identities/internal_tools_storage
+shinkai-bin/shinkai-node/internal_tools_storage
+shinkai-libs/shinkai-tcp-relayer/internal_tools_storage

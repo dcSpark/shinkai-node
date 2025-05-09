@@ -1,20 +1,20 @@
 use crate::{
     cron_tasks::cron_manager::CronManager,
-    network::{node_error::NodeError, Node, node_shareable_logic::download_zip_file},
+    network::{node_error::NodeError, node_shareable_logic::download_zip_from_url, Node},
 };
 use async_channel::Sender;
+use chrono::Local;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::crontab::{CronTask, CronTaskAction};
 use shinkai_sqlite::SqliteManager;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use chrono::Local;
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 use tokio::fs;
+use tokio::sync::Mutex;
 use zip::{write::FileOptions, ZipWriter};
 
 impl Node {
@@ -326,13 +326,14 @@ impl Node {
         }
 
         // Download and validate the zip file
-        let zip_contents = match download_zip_file(url, "__cron_task.json".to_string(), node_name, signing_secret_key).await {
-            Ok(contents) => contents,
-            Err(err) => {
-                let _ = res.send(Err(err)).await;
-                return Ok(());
-            }
-        };
+        let zip_contents =
+            match download_zip_from_url(url, "__cron_task.json".to_string(), node_name, signing_secret_key).await {
+                Ok(contents) => contents,
+                Err(err) => {
+                    let _ = res.send(Err(err)).await;
+                    return Ok(());
+                }
+            };
 
         // Parse the JSON content
         let cron_data: Value = match serde_json::from_slice(&zip_contents.buffer) {
@@ -351,11 +352,20 @@ impl Node {
         // Extract and validate required fields
         let cron_task = match cron_data.as_object() {
             Some(obj) => {
-                let name = obj.get("name").and_then(|v| v.as_str()).ok_or_else(|| NodeError::from("Missing or invalid 'name' field".to_string()))?;
-                let cron = obj.get("cron").and_then(|v| v.as_str()).ok_or_else(|| NodeError::from("Missing or invalid 'cron' field".to_string()))?;
-                let action: CronTaskAction = serde_json::from_value(obj.get("action").cloned()
-                    .ok_or_else(|| NodeError::from("Missing 'action' field".to_string()))?)
-                    .map_err(|e| NodeError::from(format!("Invalid action format: {}", e)))?;
+                let name = obj
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| NodeError::from("Missing or invalid 'name' field".to_string()))?;
+                let cron = obj
+                    .get("cron")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| NodeError::from("Missing or invalid 'cron' field".to_string()))?;
+                let action: CronTaskAction = serde_json::from_value(
+                    obj.get("action")
+                        .cloned()
+                        .ok_or_else(|| NodeError::from("Missing 'action' field".to_string()))?,
+                )
+                .map_err(|e| NodeError::from(format!("Invalid action format: {}", e)))?;
                 let description = obj.get("description").and_then(|v| v.as_str()).map(String::from);
 
                 (name.to_string(), cron.to_string(), action, description)

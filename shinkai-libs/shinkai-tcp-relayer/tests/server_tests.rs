@@ -29,8 +29,37 @@ const RELAYER_IDENTITY: &str = "@@tcp_tests_proxy.sep-shinkai";
 const RELAYER_ENCRYPTION_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
 const RELAYER_SIGNATURE_PRIVATE_KEY: &str = "f03bf86f79d121cbfd774dec4a65912e99f5f17c33852bbc45e819160e62b53b";
 
+/// Create a temporary directory and set the NODE_STORAGE_PATH environment variable
+/// Return the TempDir object (required so it doesn't get deleted when the function returns)
+pub fn testing_create_tempdir_and_set_env_var() -> tempfile::TempDir {
+    use std::env;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
+
+    env::set_var(
+        "SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH",
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/debug/shinkai-tools-runner-resources/deno")
+            .to_string_lossy()
+            .to_string(),
+    );
+
+    env::set_var(
+        "SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH",
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/debug/shinkai-tools-runner-resources/uv")
+            .to_string_lossy()
+            .to_string(),
+    );
+    dir // Return the TempDir object
+}
+
 #[tokio::test]
 async fn test_handle_client_localhost() {
+    testing_create_tempdir_and_set_env_var();
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -100,6 +129,8 @@ async fn test_handle_client_localhost() {
 
 #[tokio::test]
 async fn test_handle_client_identity() {
+    testing_create_tempdir_and_set_env_var();
+
     // Setup a TCP listener
     let listener = TcpListener::bind("127.0.0.1:8084").await.unwrap();
     let addr = listener.local_addr().unwrap();

@@ -434,19 +434,14 @@ impl DenoTool {
                     .collect::<Vec<String>>()
                     .join("\n");
 
-                let code = format!(
-                    "<shinkaicode>\n\n  ```typescript\n{}\n```\n\n  </shinkaicode>",
-                    self.js_code.replace("```", "` ` `")
-                );
-
-                let title: String = format!("**Tool {} execution failed.**", self.name);
-                let parameters: String = format!("*Inputs:*\n `{}`", serde_json::to_string(&parameters).unwrap());
-                let error: String = format!("```typescript\n{}\n```", error_message);
-                let files: String = format!("Files: {}", files);
-                Err(ToolError::AutocontainedError(format!(
-                    "{}\n\n  {}\n\n  {}\n\n  {}\n\n  {}",
-                    title, parameters, error, files, code
-                )))
+                Ok(RunResult {
+                    data: serde_json::json!({
+                        "status": "error",
+                        "message": format!("Tool {} execution failed.", self.name),
+                        "error": error_message,
+                        "__created_files__": files,
+                    }),
+                })
             }
         }
     }

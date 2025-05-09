@@ -48,12 +48,12 @@ This can be used to process complex requests, text analysis, text matching, text
                 mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt the agent will process".to_string(), true);
+                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt the agent will process".to_string(), true, None);
                     // Add the optional llm_provider parameter
-                    params.add_property("agent".to_string(), "string".to_string(), "The Agent to use.".to_string(), true);
+                    params.add_property("agent".to_string(), "string".to_string(), "The Agent to use.".to_string(), true, None);
                     let image_paths_property = Property::with_array_items(
                         "List of image file paths to be used with the prompt".to_string(),
-                        Property::new("string".to_string(), "Image path".to_string())
+                        Property::new("string".to_string(), "Image path".to_string(), None)
                     );
                     params.properties.insert("image_paths".to_string(), image_paths_property);
                     params

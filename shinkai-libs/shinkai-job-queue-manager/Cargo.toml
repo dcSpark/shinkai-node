@@ -18,4 +18,4 @@ features = ["derive"]
 
 [dev-dependencies]
 # shinkai_vector_resources = { workspace = true }
-tempfile = "3.2"
+tempfile = "3.19"
