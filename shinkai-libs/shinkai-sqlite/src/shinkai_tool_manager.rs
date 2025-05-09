@@ -2694,7 +2694,7 @@ mod tests {
             // Fill in other required fields...
             tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author A".to_string(), "Tool Set Member 1".to_string(), None)),
             homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
-            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: None,
+            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
         };
@@ -2726,7 +2726,7 @@ mod tests {
             // Fill in other required fields...
              tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author B".to_string(), "Tool Set Member 2".to_string(), None)),
              homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
-             input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: None,
+             input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
              result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
              sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
         };
@@ -2751,7 +2751,7 @@ mod tests {
              // Fill in other required fields...
              tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author C".to_string(), "Tool Not In Set".to_string(), None)),
             homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
-            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: None,
+            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
         };
@@ -2864,7 +2864,7 @@ mod tests {
         // Add the tool to the database
         let vector = SqliteManager::generate_vector_for_testing(0.1);
         let result = manager.add_tool_with_vector(shinkai_tool.clone(), vector.clone());
-        assert!(result.is_ok(), "Initial add failed: {:?}", result.err());
+        assert!(result.is_ok());
 
         // Attempt to add the same tool again
         let duplicate_result = manager.add_tool_with_vector(shinkai_tool.clone(), vector);
