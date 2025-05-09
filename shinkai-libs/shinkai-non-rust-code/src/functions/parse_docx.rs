@@ -39,7 +39,7 @@ pub async fn parse_docx(file_path: PathBuf) -> Result<Output, RunError> {
             }
             "#
     .to_string();
-    let runner = NonRustCodeRunnerFactory::new("parse_xlsx", code, vec![file_path.clone()])
+    let runner = NonRustCodeRunnerFactory::new("parse_docx", code, vec![file_path.clone()])
         .with_runtime(NonRustRuntime::Deno)
         .create_runner(json!({}));
     runner.run::<_, Output>(Input { file_path }).await

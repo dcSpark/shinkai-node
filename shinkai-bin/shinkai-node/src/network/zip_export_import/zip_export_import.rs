@@ -1,5 +1,6 @@
 use crate::network::node_error::NodeError;
 use crate::network::node_shareable_logic::ZipFileContents;
+use crate::network::Node;
 use crate::utils::environment::NodeEnvironment;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
@@ -744,7 +745,7 @@ pub async fn import_tool(
 pub async fn import_agent(
     db: Arc<SqliteManager>,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
-    agent: Agent,
+    mut agent: Agent,
     embedding_generator: Arc<dyn EmbeddingGenerator>,
 ) -> Result<Value, APIError> {
     println!("[IMPORTING AGENT]: {}", agent.agent_id);
@@ -758,6 +759,22 @@ pub async fn import_agent(
         },
         Err(_) => true,
     };
+
+    let preferences_llm_provider_result = match db.get_preference::<String>("default_llm_provider") {
+        Ok(llm_provider) => match llm_provider {
+            Some(llm_provider) => llm_provider,
+            None => Node::shinkai_free_provider_id(),
+        },
+        Err(_) => {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: "Failed to get default LLM provider".to_string(),
+            })
+        }
+    };
+
+    agent.llm_provider_id = preferences_llm_provider_result;
 
     if install {
         match db.add_agent(agent.clone(), &agent.full_identity_name) {
