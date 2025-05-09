@@ -4177,6 +4177,52 @@ LANGUAGE={env_language}
 
         Ok(())
     }
+
+    pub async fn v2_api_get_shinkai_tool_metadata(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tool = db.get_tool_by_key(&tool_router_key);
+        
+        match tool {
+            Ok(tool) => {
+                let metadata_struct = tool.get_metadata();
+                match serde_json::to_value(metadata_struct) {
+                    Ok(metadata_value) => {
+                        if res.send(Ok(metadata_value)).await.is_err() {
+                            eprintln!("Failed to send metadata response");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to serialize metadata: {}", e);
+                        if res.send(Err(APIError {
+                            code: 500,
+                            error: "Serialization Error".to_string(),
+                            message: format!("Failed to serialize tool metadata: {}", e),
+                        })).await.is_err() {
+                            eprintln!("Failed to send serialization error response");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: 500,
+                        error: "Failed to get tool metadata".to_string(),
+                        message: format!("Failed to get tool metadata: {}", e),
+                    }))
+                    .await;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

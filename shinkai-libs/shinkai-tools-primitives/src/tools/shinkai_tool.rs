@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::{
 
 use super::agent_tool_wrapper::AgentToolWrapper;
 use super::tool_config::OAuth;
-use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_playground::{SqlQuery, SqlTable, ToolPlaygroundMetadata};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
@@ -560,6 +560,14 @@ impl ShinkaiTool {
             ShinkaiTool::Deno(d, _) => d.keywords.clone(),
             ShinkaiTool::Python(p, _) => p.keywords.clone(),
             ShinkaiTool::Agent(_a, _) => vec![],
+        }
+    }
+
+    pub fn get_metadata(&self) -> Option<ToolPlaygroundMetadata> {
+        match self {
+            ShinkaiTool::Deno(d, _) => Some(d.get_metadata()),
+            ShinkaiTool::Python(p, _) => Some(p.get_metadata()),
+            _ => None,
         }
     }
 }

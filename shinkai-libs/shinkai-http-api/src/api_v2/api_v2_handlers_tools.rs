@@ -292,6 +292,13 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(tool_check_handler);
 
+    let get_shinkai_tool_metadata_route = warp::path("get_shinkai_tool_metadata")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(get_shinkai_tool_metadata_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -329,6 +336,7 @@ pub fn tool_routes(
         .or(set_tool_mcp_enabled_route)
         .or(copy_tool_asset_route)
         .or(tool_check_route)
+        .or(get_shinkai_tool_metadata_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -2507,6 +2515,7 @@ pub async fn tool_check_handler(
         copy_tool_assets_handler,
         tool_check_handler,
         playground_file_handler,
+        get_shinkai_tool_metadata_handler,
     ),
     components(
         schemas(
@@ -2514,6 +2523,7 @@ pub async fn tool_check_handler(
             ToolExecutionRequest,
             SetToolEnabledRequest,
             SetToolMcpEnabledRequest,
+            GetShinkaiToolMetadataResponse,
         )
     ),
     tags(
@@ -2522,3 +2532,61 @@ pub async fn tool_check_handler(
 )]
 
 pub struct ToolsApiDoc;
+
+#[derive(serde::Serialize, ToSchema)]
+pub struct GetShinkaiToolMetadataResponse {
+    pub tool_router_key: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_shinkai_tool_metadata",
+    params(
+        ("tool_router_key" = String, Query, description = "Tool router key of the Shinkai tool metadata to retrieve")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved Shinkai tool metadata", body = GetShinkaiToolMetadataResponse),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_shinkai_tool_metadata_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_router_key = query_params
+        .get("tool_router_key")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid, missing tool_router_key.".to_string(),
+            })
+        })?
+        .to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetShinkaiToolMetadata {
+            bearer,
+            tool_router_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}

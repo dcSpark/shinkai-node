@@ -1795,6 +1795,16 @@ impl Node {
                     let _ = Node::v2_api_list_all_shinkai_tools_versions(db_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiGetShinkaiToolMetadata {
+                bearer,
+                tool_router_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_shinkai_tool_metadata(db_clone, bearer, tool_router_key, res).await;
+                });
+            }
             NodeCommand::V2ApiSetShinkaiTool {
                 bearer,
                 tool_key,
