@@ -387,6 +387,7 @@ impl ModelCapabilitiesManager {
                 if openai.model_type.starts_with("gpt-4o")
                     || openai.model_type.starts_with("gpt-4-1106-preview")
                     || openai.model_type.starts_with("gpt-4o-mini")
+                    || openai.model_type.starts_with("4o-mini")
                     || openai.model_type.starts_with("gpt-4-vision-preview")
                     || openai.model_type.starts_with("o1-mini")
                     || openai.model_type.starts_with("o1-preview")
