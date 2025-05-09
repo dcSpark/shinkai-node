@@ -1781,7 +1781,16 @@ mod tests {
             "string",
             "The message to send",
             true,
-            Some("Hello, world!".to_string()),
+            Some(serde_json::Value::String("Hello, world!".to_string())),
+        );
+
+        // Add assertion to validate the input_args
+        let message_property = input_args.properties.get("message").unwrap();
+
+        assert_eq!(
+            message_property.default,
+            Some(serde_json::Value::String("Hello, world!".to_string())),
+            "Input args should contain 'Hello, world!' message"
         );
 
         let enabled_network_tool = NetworkTool {
@@ -2418,7 +2427,7 @@ mod tests {
 
         let tool_router_key = ToolRouterKey::new(
             "local".to_string(),
-            "Python Author".to_string(), 
+            "Python Author".to_string(),
             "Python Duplicate Tool".to_string(),
             None,
         );
@@ -2447,7 +2456,7 @@ mod tests {
             file_inbox: None,
             assets: None,
             runner: RunnerType::OnlyHost,
-            operating_system: vec![OperatingSystem::Linux], 
+            operating_system: vec![OperatingSystem::Linux],
             tool_set: None,
         };
 
@@ -2464,11 +2473,9 @@ mod tests {
 
         // Assert that the error is ToolAlreadyExists
         assert!(
-            matches!(
-                duplicate_result,
-                Err(SqliteManagerError::ToolAlreadyExists(_))
-            ),
-            "Expected ToolAlreadyExists error, but got: {:?}", duplicate_result
+            matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))),
+            "Expected ToolAlreadyExists error, but got: {:?}",
+            duplicate_result
         );
     }
 }

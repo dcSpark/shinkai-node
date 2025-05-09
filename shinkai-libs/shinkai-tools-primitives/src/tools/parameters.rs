@@ -1,3 +1,5 @@
+use serde_json::Value;
+
 use super::deprecated_argument::DeprecatedArgument;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -18,11 +20,11 @@ pub struct Property {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Box<Property>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub default: Option<String>,
+    pub default: Option<Value>,
 }
 
 impl Property {
-    pub fn new(property_type: String, description: String, default_value: Option<String>) -> Self {
+    pub fn new(property_type: String, description: String, default_value: Option<Value>) -> Self {
         Self {
             property_type,
             description,
@@ -72,7 +74,7 @@ impl Parameters {
         property_type: String,
         description: String,
         is_required: bool,
-        default_value: Option<String>,
+        default_value: Option<Value>,
     ) {
         self.properties
             .insert(name.clone(), Property::new(property_type, description, default_value));
@@ -104,7 +106,7 @@ impl Parameters {
         property_type: &str,
         description: &str,
         is_required: bool,
-        default_value: Option<String>,
+        default_value: Option<Value>,
     ) -> Self {
         let mut params = Self {
             schema_type: "object".to_string(),
@@ -488,7 +490,7 @@ mod tests {
             "integer".to_string(),
             "The port number for the server".to_string(),
             false,
-            Some("8080".to_string()),
+            Some(serde_json::Value::String("8080".to_string())),
         );
 
         // Serialize to JSON and verify the structure
@@ -513,6 +515,9 @@ mod tests {
 
         // Verify the default value is correctly set
         let port_property = deserialized.properties.get("port").unwrap();
-        assert_eq!(port_property.default, Some("8080".to_string()));
+        assert_eq!(
+            port_property.default,
+            Some(serde_json::Value::String("8080".to_string()))
+        );
     }
 }
