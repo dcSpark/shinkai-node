@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
+use utoipa::ToSchema;
 
 use crate::{
     schemas::{crontab::CronTask, job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey}, shinkai_utils::job_scope::MinimalJobScope
@@ -134,7 +134,7 @@ mod tests {
         });
 
         let agent: Agent = serde_json::from_value(json_data).unwrap();
-        
+
         // Verify tools_config_override was correctly deserialized
         assert!(agent.tools_config_override.is_some());
         let config_map = agent.tools_config_override.unwrap();
