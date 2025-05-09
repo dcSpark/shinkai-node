@@ -9,18 +9,18 @@ pub struct Input {
     file_path: PathBuf,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct Output {
     pub pages: Vec<Page>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct Page {
     pub metadata: Metadata,
     pub text: String,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct Metadata {
     pub page: u32,
 }
@@ -31,7 +31,7 @@ pub async fn parse_pdf(file_path: PathBuf) -> Result<Output, RunError> {
 # /// script
 # requires-python = ">=3.10,<3.13"
 # dependencies = [
-#   "pymupdf4llm",
+#   "pymupdf4llm==0.0.22",
 # ]
 # ///
 import pymupdf4llm
