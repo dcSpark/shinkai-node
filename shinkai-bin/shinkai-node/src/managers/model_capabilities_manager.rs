@@ -531,7 +531,7 @@ impl ModelCapabilitiesManager {
         match model {
             LLMProviderInterface::OpenAI(openai) => {
                 if openai.model_type.contains("4o-mini") {
-                    16_000
+                    16_384
                 } else if openai.model_type.starts_with("o1-preview")
                     || openai.model_type.starts_with("o1-mini")
                     || openai.model_type.starts_with("gpt-4.1")
