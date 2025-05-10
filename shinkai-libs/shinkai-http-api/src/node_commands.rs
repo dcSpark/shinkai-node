@@ -1331,4 +1331,9 @@ pub enum NodeCommand {
         last: usize,
         res: Sender<Result<Vec<String>, APIError>>,
     },
+    V2ApiGetShinkaiToolMetadata {
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    }
 }
