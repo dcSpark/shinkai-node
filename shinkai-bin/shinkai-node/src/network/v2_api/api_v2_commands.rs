@@ -3,7 +3,7 @@ use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
 use crate::network::node_shareable_logic::download_zip_from_url;
 use crate::network::zip_export_import::zip_export_import::{
-    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools
+    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools,
 };
 use crate::utils::environment::NodeEnvironment;
 use crate::{
