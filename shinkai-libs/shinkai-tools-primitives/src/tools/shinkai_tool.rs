@@ -567,6 +567,7 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Deno(d, _) => Some(d.get_metadata()),
             ShinkaiTool::Python(p, _) => Some(p.get_metadata()),
+            ShinkaiTool::Rust(r, _) => Some(r.get_metadata()),
             _ => None,
         }
     }
