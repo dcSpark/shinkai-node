@@ -156,7 +156,9 @@ impl SqliteManager {
             let config: Option<String> = row.get(9)?;
             let scope: String = row.get(10)?;
             let tools_config_override: Option<String> = row.get(11).unwrap_or(None);
+            let debug_mode: bool = row.get(8)?;
             let edited: bool = row.get(12)?;
+            let storage_path: String = row.get(6)?;
             Ok(Agent {
                 agent_id: row.get(0)?,
                 name: row.get(1)?,
@@ -172,13 +174,13 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?,
-                storage_path: row.get(6)?,
+                storage_path,
                 tools: serde_json::from_str(&tools).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
                     )))
                 })?,
-                debug_mode: row.get(8)?,
+                debug_mode,
                 config: match config {
                     Some(c) => Some(serde_json::from_str(&c).map_err(|e| {
                         rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
@@ -251,7 +253,7 @@ impl SqliteManager {
                 config,
                 scope,
                 tools_config_override,
-                "TRUE",
+                1,
                 updated_agent.agent_id,
                 
             ],
@@ -462,7 +464,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
-            edited: false,
+            edited: true,
         };
 
         let result = db.update_agent(updated_agent.clone());
@@ -529,5 +531,62 @@ mod tests {
         let params = retrieved_config.get(&tool.to_string_with_version()).unwrap();
         assert_eq!(params.get("api_key").unwrap().as_str().unwrap(), "test_key");
         assert_eq!(params.get("timeout").unwrap().as_i64().unwrap(), 30);
+        assert!(!retrieved_agent.edited);
+    }
+
+    #[test]
+    fn test_agent_with_tool_config_override_edit() {
+        let db = setup_test_db();
+
+        // Create a proper ToolRouterKey
+        let tool = ToolRouterKey::new(
+            "local".to_string(),
+            "__author_shinkai".to_string(),
+            "test_tool".to_string(),
+            Some("1.0".to_string()),
+        );
+
+        // Create a tool configuration override map
+        let mut tool_config = HashMap::new();
+        let mut params = HashMap::new();
+        params.insert("api_key".to_string(), serde_json::Value::String("test_key".to_string()));
+        params.insert(
+            "timeout".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(30)),
+        );
+        tool_config.insert(tool.to_string_with_version(), params);
+
+        let agent = Agent {
+            agent_id: "test_agent_with_config".to_string(),
+            name: "Test Agent With Config".to_string(),
+            full_identity_name: ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap(),
+            llm_provider_id: "test_llm_provider".to_string(),
+            ui_description: "Test description".to_string(),
+            knowledge: Default::default(),
+            storage_path: "test_storage_path".to_string(),
+            tools: vec![tool.clone()],
+            debug_mode: false,
+            config: None,
+            scope: Default::default(),
+            cron_tasks: None,
+            tools_config_override: Some(tool_config),
+            edited: true,
+        };
+        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
+
+        // Add the agent
+        db.add_agent(agent.clone(), &profile).unwrap();
+
+        // Retrieve the agent
+        let retrieved_agent = db.get_agent(&agent.agent_id).unwrap().unwrap();
+
+        // Verify the tools_config_override was correctly stored and retrieved
+        assert!(retrieved_agent.tools_config_override.is_some());
+        let retrieved_config = retrieved_agent.tools_config_override.unwrap();
+        assert!(retrieved_config.contains_key(&tool.to_string_with_version()));
+        let params = retrieved_config.get(&tool.to_string_with_version()).unwrap();
+        assert_eq!(params.get("api_key").unwrap().as_str().unwrap(), "test_key");
+        assert_eq!(params.get("timeout").unwrap().as_i64().unwrap(), 30);
+        assert!(retrieved_agent.edited);
     }
 }

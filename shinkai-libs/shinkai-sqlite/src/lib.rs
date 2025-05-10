@@ -208,7 +208,10 @@ impl SqliteManager {
 
         // Add the column if it doesn't exist
         if column_exists == 0 {
-            conn.execute("ALTER TABLE shinkai_agents ADD COLUMN edited BOOLEAN DEFAULT FALSE", [])?;
+            conn.execute(
+                "ALTER TABLE shinkai_agents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
         }
 
         Ok(())
@@ -250,7 +253,7 @@ impl SqliteManager {
                 config TEXT, -- Store as a JSON string
                 scope TEXT NOT NULL, -- Change this line to use TEXT instead of BLOB
                 tools_config_override TEXT, -- Store as a JSON string
-                edited BOOLEAN DEFAULT FALSE
+                edited INTEGER NOT NULL DEFAULT 0
             );",
             [],
         )?;
