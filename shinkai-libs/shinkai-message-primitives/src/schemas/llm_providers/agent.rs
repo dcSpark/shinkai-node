@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use utoipa::ToSchema;
 
 use crate::{
-    schemas::{crontab::CronTask, job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey}, shinkai_utils::job_scope::MinimalJobScope
+    schemas::{crontab::CronTask, job_config::JobConfig, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey},
+    shinkai_utils::job_scope::MinimalJobScope,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
@@ -30,6 +31,8 @@ pub struct Agent {
     /// Tool configuration overrides keyed by tool ID with a map of configuration values
     #[serde(default)]
     pub tools_config_override: Option<HashMap<String, HashMap<String, Value>>>,
+    #[serde(default)]
+    pub edited: bool,
 }
 
 #[cfg(test)]

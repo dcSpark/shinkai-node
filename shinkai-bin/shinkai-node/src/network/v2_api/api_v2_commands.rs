@@ -7,7 +7,11 @@ use crate::network::zip_export_import::zip_export_import::{
 };
 use crate::utils::environment::NodeEnvironment;
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
+    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+    network::{node_error::NodeError, Node},
+    tools::tool_generation,
+    utils::update_global_identity::update_global_identity_name,
 };
 use async_channel::Sender;
 use ed25519_dalek::ed25519::signature::SignerMut;
@@ -18,20 +22,34 @@ use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
+    node_api_router::{APIError, GetPublicKeysResponse},
 };
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, schemas::{
-        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
-            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
-        }
-    }, shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::signature_public_key_to_string
-    }, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
+    schemas::ws_types::WSUpdateHandler,
+    schemas::{
+        identity::{Identity, IdentityType, RegistrationCode},
+        inbox_name::InboxName,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
+        shinkai_name::ShinkaiName,
+        tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_schemas::{
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
+        },
+    },
+    shinkai_utils::{
+        encryption::{encryption_public_key_to_string, EncryptionMethod},
+        shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::signature_public_key_to_string,
+    },
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
@@ -993,7 +1011,7 @@ impl Node {
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
-        agent: Agent,
+        mut agent: Agent,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1035,6 +1053,9 @@ impl Node {
         }
         // TODO: validate tools
         // TODO: validate knowledge
+
+        // My created agents are always marked as edited
+        agent.edited = true;
 
         // Check if the llm_provider_id exists
         let llm_provider_exists = {
@@ -1110,7 +1131,6 @@ impl Node {
     pub async fn v2_api_remove_agent(
         db: Arc<SqliteManager>,
         bearer: String,
-        node_name: ShinkaiName,
         agent_id: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1119,21 +1139,17 @@ impl Node {
             return Ok(());
         }
 
-        // Get the agent's node name
-        let node_name_string = node_name.get_node_name_string();
-
         // Remove the agent from the database
         match db.remove_agent(&agent_id) {
             Ok(_) => {
-                // Remove the agent tool
-                let tool_router_key = ToolRouterKey::new(
-                    "local".to_string(),
-                    node_name_string.to_string(),
-                    agent_id.clone(),
-                    None,
-                )
-                .to_string_with_version();
-                if let Err(err) = db.remove_tool(&tool_router_key, None) {
+                let tool = match db.get_tool_by_agent_id(&agent_id) {
+                    Ok(tool) => tool,
+                    Err(err) => {
+                        eprintln!("Internal inconsistency: Failed to get tool: {}", err);
+                        return Ok(());
+                    }
+                };
+                if let Err(err) = db.remove_tool(&tool.tool_router_key().to_string_with_version(), None) {
                     eprintln!("Warning: Failed to remove agent tool: {}", err);
                 }
 
@@ -1155,6 +1171,7 @@ impl Node {
     pub async fn v2_api_update_agent(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         partial_agent: serde_json::Value,
         res: Sender<Result<Agent, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1194,24 +1211,6 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Database error: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Construct the full identity name
-        let full_identity_name = match ShinkaiName::new(format!(
-            "{}/main/agent/{}",
-            existing_agent.full_identity_name.get_node_name_string(),
-            agent_id
-        )) {
-            Ok(name) => name,
-            Err(_) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Failed to construct full identity name.".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
@@ -1273,12 +1272,13 @@ impl Node {
                 serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
             }),
             cron_tasks: None,
-            full_identity_name, // Set the constructed full identity name
+            full_identity_name: full_identity.clone(),
             tools_config_override: partial_agent
                 .get("tools_config_override")
                 .map_or(existing_agent.tools_config_override.clone(), |v| {
                     serde_json::from_value(v.clone()).unwrap_or(existing_agent.tools_config_override.clone())
                 }),
+            edited: true,
         };
 
         // Update the agent in the database
@@ -1797,8 +1797,8 @@ impl Node {
     pub async fn v2_api_import_agent_url(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         url: String,
-        node_name: String,
         node_env: NodeEnvironment,
         signing_secret_key: SigningKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -1812,7 +1812,7 @@ impl Node {
         let _ = match Self::v2_api_import_agent_url_internal(
             db.clone(),
             url.clone(),
-            node_name.clone(),
+            full_identity.clone(),
             node_env.clone(),
             signing_secret_key,
             embedding_generator,
@@ -1828,23 +1828,29 @@ impl Node {
     pub async fn v2_api_import_agent_url_internal(
         db: Arc<SqliteManager>,
         url: String,
-        node_name: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         signing_secret_key: SigningKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<Value, APIError> {
-        let zip_contents =
-            match download_zip_from_url(url, "__agent.json".to_string(), node_name.clone(), signing_secret_key).await {
-                Ok(contents) => contents,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Invalid Agent Zip".to_string(),
-                        message: format!("Failed to extract agent.json: {:?}", err),
-                    };
-                    return Err(api_error);
-                }
-            };
+        let zip_contents = match download_zip_from_url(
+            url,
+            "__agent.json".to_string(),
+            full_identity.node_name.clone(),
+            signing_secret_key,
+        )
+        .await
+        {
+            Ok(contents) => contents,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Agent Zip".to_string(),
+                    message: format!("Failed to extract agent.json: {:?}", err),
+                };
+                return Err(api_error);
+            }
+        };
         // Save the agent to the database
         // Parse the JSON into an Agent
         let agent: Agent = match serde_json::from_slice(&zip_contents.buffer) {
@@ -1861,6 +1867,7 @@ impl Node {
 
         let status = import_dependencies_tools(
             db.clone(),
+            full_identity.clone(),
             node_env.clone(),
             zip_contents.archive.clone(),
             embedding_generator.clone(),
@@ -1872,6 +1879,7 @@ impl Node {
 
         import_agent(
             db.clone(),
+            full_identity,
             zip_contents.archive,
             agent.clone(),
             embedding_generator.clone(),
@@ -1882,6 +1890,7 @@ impl Node {
     pub async fn v2_api_import_agent_zip(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -1917,6 +1926,7 @@ impl Node {
 
         let status = import_dependencies_tools(
             db.clone(),
+            full_identity.clone(),
             node_env.clone(),
             archive.clone(),
             embedding_generator.clone(),
@@ -1928,7 +1938,7 @@ impl Node {
         }
 
         // Parse the JSON into an Agent
-        let _ = match import_agent(db.clone(), archive, agent.clone(), embedding_generator).await {
+        let _ = match import_agent(db.clone(), full_identity, archive, agent.clone(), embedding_generator).await {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };
