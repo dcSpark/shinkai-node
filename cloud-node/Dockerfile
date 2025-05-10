@@ -28,6 +28,7 @@ WORKDIR /app
 COPY --from=builder /app/cloud-node/run_node.sh /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai_node /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai-tools-runner-resources /app/shinkai-tools-runner-resources
+COPY --from=builder /app/pre-install /app/pre-install
 
 # Use environment variables if they exist, otherwise use default values
 ENV NODE_API_PORT=${NODE_API_PORT:-9550}
