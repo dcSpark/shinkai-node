@@ -1,4 +1,5 @@
 use crate::{SqliteManager, SqliteManagerError};
+use bincode::Error;
 use bytemuck::cast_slice;
 use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
@@ -371,6 +372,42 @@ impl SqliteManager {
         })?;
 
         Ok(tool_header)
+    }
+
+    pub fn get_tool_by_agent_id(&self, agent_id: &str) -> Result<ShinkaiTool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt =
+            conn.prepare("SELECT tool_key FROM shinkai_tools WHERE tool_type = 'Agent' AND tool_key LIKE ?1")?;
+
+        let row = stmt
+            .query_map(params![format!("%{}", agent_id)], |row| {
+                let tool_key: String = row.get(0)?;
+                let tool = self.get_tool_by_key(&tool_key).map_err(|e| {
+                    eprintln!("Database error: {}", e);
+                    rusqlite::Error::ToSqlConversionFailure(Box::new(e))
+                })?;
+                match tool.clone() {
+                    ShinkaiTool::Agent(agent, _) => {
+                        if agent.agent_id == agent_id {
+                            return Ok(Some(tool));
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            })
+            .map_err(|e| {
+                eprintln!("Database error: {}", e);
+                SqliteManagerError::DatabaseError(e)
+            })?;
+
+        let tools = row.collect::<Result<Vec<Option<ShinkaiTool>>, _>>()?;
+        let tool = tools.into_iter().find(|tool| tool.is_some()).flatten();
+        match tool {
+            Some(tool) => Ok(tool),
+            None => Err(SqliteManagerError::ToolNotFound(agent_id.to_string())),
+        }
     }
 
     /// Retrieves a ShinkaiTool based on its tool_key, sorted by descending version
@@ -2418,7 +2455,7 @@ mod tests {
 
         let tool_router_key = ToolRouterKey::new(
             "local".to_string(),
-            "Python Author".to_string(), 
+            "Python Author".to_string(),
             "Python Duplicate Tool".to_string(),
             None,
         );
@@ -2447,7 +2484,7 @@ mod tests {
             file_inbox: None,
             assets: None,
             runner: RunnerType::OnlyHost,
-            operating_system: vec![OperatingSystem::Linux], 
+            operating_system: vec![OperatingSystem::Linux],
             tool_set: None,
         };
 
@@ -2464,11 +2501,9 @@ mod tests {
 
         // Assert that the error is ToolAlreadyExists
         assert!(
-            matches!(
-                duplicate_result,
-                Err(SqliteManagerError::ToolAlreadyExists(_))
-            ),
-            "Expected ToolAlreadyExists error, but got: {:?}", duplicate_result
+            matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))),
+            "Expected ToolAlreadyExists error, but got: {:?}",
+            duplicate_result
         );
     }
 }

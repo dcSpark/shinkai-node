@@ -114,9 +114,12 @@ impl ToolRouter {
 
         let node_env = fetch_node_environment();
         let node_name: String = node_env.global_identity_name.clone();
+        let full_identity =
+            ShinkaiName::new(format!("{}/main", node_name)).map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
-            node_name,
+            full_identity,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator.clone(),
@@ -151,10 +154,11 @@ impl ToolRouter {
         }
 
         let node_env = fetch_node_environment();
-        let node_name: String = node_env.global_identity_name.clone();
+        let full_identity = ShinkaiName::new(format!("{}/main", node_env.global_identity_name))
+            .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
-            node_name,
+            full_identity,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator,
@@ -174,10 +178,11 @@ impl ToolRouter {
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
         let node_env = fetch_node_environment();
-        let node_name: String = node_env.global_identity_name.clone();
+        let full_identity = ShinkaiName::new(format!("{}/main", node_env.global_identity_name))
+            .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
-            node_name,
+            full_identity,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator.clone(),
@@ -191,6 +196,7 @@ impl ToolRouter {
 
     async fn import_from_local_directory(
         db: Arc<SqliteManager>,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
@@ -248,9 +254,15 @@ impl ToolRouter {
 
             if is_agent {
                 let agent = get_agent_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
-                import_agent(db.clone(), archive.clone(), agent, embedding_generator.clone())
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+                import_agent(
+                    db.clone(),
+                    full_identity.clone(),
+                    archive.clone(),
+                    agent,
+                    embedding_generator.clone(),
+                )
+                .await
+                .map_err(|e| ToolError::ExecutionError(e.message))?;
             }
             if is_tool {
                 let tool = get_tool_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
@@ -271,13 +283,20 @@ impl ToolRouter {
     /// Now also checks if a tool is installed with an older version, and if so, calls `upgrade_tool`.
     async fn import_tools_from_directory(
         db: Arc<SqliteManager>,
-        node_name: String,
+        full_identity: ShinkaiName,
         signing_secret_key: SigningKey,
         default_tool_router_keys: Arc<Mutex<Vec<String>>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
         let node_env = fetch_node_environment();
-        Self::import_from_local_directory(db.clone(), node_env.clone(), embedding_generator.clone()).await?;
+        // When the App starts, there is no identity yet.
+        Self::import_from_local_directory(
+            db.clone(),
+            full_identity.clone(),
+            node_env.clone(),
+            embedding_generator.clone(),
+        )
+        .await?;
 
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
@@ -368,8 +387,8 @@ impl ToolRouter {
                 .map(|(tool_name, tool_url, router_key, new_version, r#type)| {
                     let db = db.clone();
                     let node_env = node_env.clone();
-                    let node_name = node_name.clone();
-                    let signing_secret_key = signing_secret_key.clone();
+                    let full_identity = full_identity.clone();
+                    let signing_secret_key: SigningKey = signing_secret_key.clone();
                     let embedding_generator = embedding_generator.clone();
                     async move {
                         if r#type == "Tool" {
@@ -395,9 +414,9 @@ impl ToolRouter {
 
                             let val: Value = Node::v2_api_import_tool_url_internal(
                                 db.clone(),
+                                full_identity.clone(),
                                 node_env.clone(),
                                 tool_url.to_string(),
-                                node_name,
                                 signing_secret_key,
                                 embedding_generator,
                             )
@@ -431,7 +450,7 @@ impl ToolRouter {
                             let val: Value = Node::v2_api_import_agent_url_internal(
                                 db.clone(),
                                 tool_url.to_string(),
-                                node_name,
+                                full_identity.clone(),
                                 node_env.clone(),
                                 signing_secret_key,
                                 embedding_generator,
