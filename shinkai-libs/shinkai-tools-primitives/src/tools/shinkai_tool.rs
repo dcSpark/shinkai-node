@@ -697,7 +697,7 @@ mod tests {
             "string",
             "The URL to fetch",
             true,
-            Some("https://example.com".to_string()),
+            Some(serde_json::Value::String("https://example.com".to_string())),
         );
 
         let tool_router_key = ToolRouterKey::new(
