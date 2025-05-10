@@ -1818,7 +1818,16 @@ mod tests {
             "string",
             "The message to send",
             true,
-            Some("Hello, world!".to_string()),
+            Some(serde_json::Value::String("Hello, world!".to_string())),
+        );
+
+        // Add assertion to validate the input_args
+        let message_property = input_args.properties.get("message").unwrap();
+
+        assert_eq!(
+            message_property.default,
+            Some(serde_json::Value::String("Hello, world!".to_string())),
+            "Input args should contain 'Hello, world!' message"
         );
 
         let enabled_network_tool = NetworkTool {
