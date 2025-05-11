@@ -1218,6 +1218,13 @@ impl Node {
         };
 
         // Manually merge fields from partial_agent with existing_agent
+        let updated_agent_full_identity_name =
+            if full_identity.profile_name.is_some() && full_identity.subidentity_name.is_some() {
+                full_identity.clone()
+            } else {
+                existing_agent.full_identity_name.clone()
+            };
+
         let updated_agent = Agent {
             name: partial_agent
                 .get("name")
@@ -1230,12 +1237,6 @@ impl Node {
                 .and_then(|v| v.as_str())
                 .unwrap_or(&existing_agent.llm_provider_id)
                 .to_string(),
-            // TODO: decide if we keep this
-            // instructions: partial_agent
-            //     .get("instructions")
-            //     .and_then(|v| v.as_str())
-            //     .unwrap_or(&existing_agent.instructions)
-            //     .to_string(),
             ui_description: partial_agent
                 .get("ui_description")
                 .and_then(|v| v.as_str())
@@ -1272,7 +1273,7 @@ impl Node {
                 serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
             }),
             cron_tasks: None,
-            full_identity_name: full_identity.clone(),
+            full_identity_name: updated_agent_full_identity_name,
             tools_config_override: partial_agent
                 .get("tools_config_override")
                 .map_or(existing_agent.tools_config_override.clone(), |v| {

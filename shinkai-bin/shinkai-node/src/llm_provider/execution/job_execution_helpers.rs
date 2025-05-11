@@ -68,12 +68,16 @@ impl JobManager {
             if agent_or_llm_provider.get_id().to_lowercase() == agent_or_llm_provider_id.to_lowercase() {
                 agent_or_llm_provider_found = Some(agent_or_llm_provider.clone());
                 profile_name.clone_from(&agent_or_llm_provider.get_full_identity_name().full_name);
-                user_profile = Some(
-                    agent_or_llm_provider
-                        .get_full_identity_name()
-                        .extract_profile()
-                        .unwrap(),
-                );
+                let profile = agent_or_llm_provider.get_full_identity_name().extract_profile();
+
+                if let Ok(profile) = profile {
+                    user_profile = Some(profile);
+                } else {
+                    panic!(
+                        "Profile not found for agent or llm provider: {} and job_id: {}",
+                        agent_or_llm_provider_id, job_id
+                    );
+                }
                 break;
             }
         }
