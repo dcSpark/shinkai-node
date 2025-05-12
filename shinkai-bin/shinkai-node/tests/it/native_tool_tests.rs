@@ -42,7 +42,7 @@ fn setup() {
 fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
-
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "false");
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();
@@ -176,15 +176,15 @@ fn native_tool_test_knowledge() {
                 )
                 .await;
 
-                // // Wait for default tools to be ready
-                // let tools_ready = wait_for_default_tools(
-                //     node1_commands_sender.clone(),
-                //     api_key_bearer.clone(),
-                //     20, // Wait up to 20 seconds
-                // )
-                // .await
-                // .expect("Failed to check for default tools");
-                // assert!(tools_ready, "Default tools should be ready within 20 seconds");
+                // Wait for default tools to be ready
+                let tools_ready = wait_for_default_tools(
+                    node1_commands_sender.clone(),
+                    api_key_bearer.clone(),
+                    120, // Wait up to 120 seconds
+                )
+                .await
+                .expect("Failed to check for default tools");
+                assert!(tools_ready, "Default tools should be ready within 120 seconds");
             }
             {
                 //
