@@ -35,6 +35,10 @@ jobs:
       - name: Add SHORT_SHA env property with commit short sha
         run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
 
+      - name: Download tools from store to pre-install folder
+        run: |
+          ./scripts/update_tools.sh
+
       - name: Build testing image
         run: docker build -t testing_image:${SHORT_SHA} -f .github/Dockerfile .
 
