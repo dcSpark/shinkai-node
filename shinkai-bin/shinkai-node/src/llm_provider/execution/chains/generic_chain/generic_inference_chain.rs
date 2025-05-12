@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -23,7 +23,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -723,7 +723,7 @@ impl GenericInferenceChain {
                     // 6) Call workflow or tooling
                     // Find the ShinkaiTool that has a tool with the function name
                     let shinkai_tool = tools.iter().find(|tool| {
-                        tool.internal_sanitized_name() == function_call.name
+                        tool.tool_router_key().name == function_call.name
                             || tool.tool_router_key().to_string_without_version()
                                 == function_call.tool_router_key.clone().unwrap_or_default()
                     });
