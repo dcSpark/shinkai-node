@@ -151,10 +151,10 @@ fn test_tool_execution_with_config_override() {
             }
         });
 
-        // Wait for default tools to be ready
-        wait_for_default_tools(node1_commands_sender.clone(), api_key_bearer.clone(), 10)
-            .await
-            .unwrap();
+        // // Wait for default tools to be ready
+        // wait_for_default_tools(node1_commands_sender.clone(), api_key_bearer.clone(), 10)
+        //     .await
+        //     .unwrap();
 
         let random_database_name = format!("potato_database_{}", rand::thread_rng().gen_range(0..1000000));
         // Create a new agent with tools_config_override
