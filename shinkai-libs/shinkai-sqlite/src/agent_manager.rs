@@ -245,8 +245,8 @@ impl SqliteManager {
 
         tx.execute(
             "UPDATE shinkai_agents
-            SET name = ?1, full_identity_name = ?2, llm_provider_id = ?3, ui_description = ?4, knowledge = ?5, storage_path = ?6, tools = ?7, debug_mode = ?8, config = ?9, scope = ?10, tools_config_override = ?11, edited = ?12
-            WHERE agent_id = ?13",
+            SET name = ?1, full_identity_name = ?2, llm_provider_id = ?3, ui_description = ?4, knowledge = ?5, storage_path = ?6, tools = ?7, debug_mode = ?8, config = ?9, scope = ?10, tools_config_override = ?11, edited = ?12, avatar_url = ?13
+            WHERE agent_id = ?14",
             params![
                 updated_agent.name,
                 updated_agent.full_identity_name.full_name,
@@ -260,6 +260,7 @@ impl SqliteManager {
                 scope,
                 tools_config_override,
                 1,
+                updated_agent.avatar_url,
                 updated_agent.agent_id,
                 
             ],
@@ -455,7 +456,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
-            avatar_url: None,
+            avatar_url: Some("https://example.com/avatar1.png".to_string()),
             edited: false,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
@@ -476,7 +477,7 @@ mod tests {
             scope: Default::default(),
             cron_tasks: None,
             tools_config_override: None,
-            avatar_url: None,
+            avatar_url: Some("https://example.com/avatar2.png".to_string()),
             edited: true,
         };
 
@@ -489,6 +490,38 @@ mod tests {
         assert_eq!(agent.llm_provider_id, updated_agent.llm_provider_id);
         assert_eq!(agent.ui_description, updated_agent.ui_description);
         assert_eq!(agent.storage_path, updated_agent.storage_path);
+        assert_eq!(agent.avatar_url, updated_agent.avatar_url);
+
+        // Test updating with None avatar_url (should not change the existing value)
+        let updated_agent_none_avatar = Agent {
+            agent_id: "test_agent".to_string(),
+            name: "Updated Test Agent 2".to_string(),
+            full_identity_name: ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap(),
+            llm_provider_id: "updated_test_llm_provider2".to_string(),
+            ui_description: "Updated test description 2".to_string(),
+            knowledge: Default::default(),
+            storage_path: "updated_test_storage_path2".to_string(),
+            tools: Default::default(),
+            debug_mode: true,
+            config: None,
+            scope: Default::default(),
+            cron_tasks: None,
+            tools_config_override: None,
+            avatar_url: None,
+            edited: true,
+        };
+
+        let result = db.update_agent(updated_agent_none_avatar.clone());
+        assert!(result.is_ok());
+
+        let result = db.get_agent(&updated_agent_none_avatar.agent_id).unwrap();
+        let agent = result.unwrap();
+        assert_eq!(agent.name, updated_agent_none_avatar.name);
+        assert_eq!(agent.llm_provider_id, updated_agent_none_avatar.llm_provider_id);
+        assert_eq!(agent.ui_description, updated_agent_none_avatar.ui_description);
+        assert_eq!(agent.storage_path, updated_agent_none_avatar.storage_path);
+        // Avatar URL should remain unchanged since we passed None
+        assert_eq!(agent.avatar_url, None);
     }
 
     #[test]
@@ -585,6 +618,7 @@ mod tests {
             cron_tasks: None,
             tools_config_override: Some(tool_config),
             edited: true,
+            avatar_url: None,
         };
         let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
