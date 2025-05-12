@@ -12,6 +12,7 @@ use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
@@ -723,7 +724,7 @@ impl GenericInferenceChain {
                     // 6) Call workflow or tooling
                     // Find the ShinkaiTool that has a tool with the function name
                     let shinkai_tool = tools.iter().find(|tool| {
-                        tool.tool_router_key().name == function_call.name
+                        ToolRouterKey::sanitize(&tool.tool_router_key().name) == function_call.name
                             || tool.tool_router_key().to_string_without_version()
                                 == function_call.tool_router_key.clone().unwrap_or_default()
                     });
