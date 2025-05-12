@@ -803,7 +803,15 @@ pub async fn import_agent(
     };
 
     let original_author = agent.full_identity_name.node_name.clone();
-    agent.full_identity_name = full_identity;
+
+    // Construct the Agent's full identity name, in the local node.
+    let local_full_identity_name = ShinkaiName::new(format!(
+        "{}/main/agent/{}",
+        full_identity.get_node_name_string(),
+        agent.agent_id.to_lowercase()
+    ))
+    .unwrap();
+    agent.full_identity_name = local_full_identity_name;
 
     agent.llm_provider_id = preferences_llm_provider_result;
     agent.edited = false;
