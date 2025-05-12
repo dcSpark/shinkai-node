@@ -262,7 +262,7 @@ impl Node {
             }
             NodeCommand::V2ApiImportAgent { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let node_name = self.node_name.node_name.clone();
+                let full_identity = self.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 let node_env = fetch_node_environment();
                 let embedding_generator = Arc::new(self.embedding_generator.clone());
@@ -270,8 +270,8 @@ impl Node {
                     let _ = Node::v2_api_import_agent_url(
                         db_clone,
                         bearer,
+                        full_identity,
                         url,
-                        node_name,
                         node_env,
                         signing_secret_key,
                         embedding_generator,
@@ -283,11 +283,19 @@ impl Node {
             NodeCommand::V2ApiImportAgentZip { bearer, file_data, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
+                let full_identity = self.node_name.clone();
                 let embedding_generator = Arc::new(self.embedding_generator.clone());
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_import_agent_zip(db_clone, bearer, node_env, file_data, embedding_generator, res)
-                            .await;
+                    let _ = Node::v2_api_import_agent_zip(
+                        db_clone,
+                        bearer,
+                        full_identity,
+                        node_env,
+                        file_data,
+                        embedding_generator,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::AvailableLLMProviders { full_profile_name, res } => {
@@ -1795,6 +1803,16 @@ impl Node {
                     let _ = Node::v2_api_list_all_shinkai_tools_versions(db_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiGetShinkaiToolMetadata {
+                bearer,
+                tool_router_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_shinkai_tool_metadata(db_clone, bearer, tool_router_key, res).await;
+                });
+            }
             NodeCommand::V2ApiSetShinkaiTool {
                 bearer,
                 tool_key,
@@ -1904,48 +1922,6 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_tool_offering(db_clone, bearer, tool_offering, res).await;
-                });
-            }
-            NodeCommand::V2ApiRestoreLocalEthersWallet {
-                bearer,
-                network,
-                source,
-                role,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let wallet_manager_clone = self.wallet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_restore_local_ethers_wallet(
-                        db_clone,
-                        wallet_manager_clone,
-                        bearer,
-                        network,
-                        source,
-                        role,
-                        res,
-                    )
-                    .await;
-                });
-            }
-            NodeCommand::V2ApiCreateLocalEthersWallet {
-                bearer,
-                network,
-                role,
-                res,
-            } => {
-                let db_clone = Arc::clone(&self.db);
-                let wallet_manager_clone = self.wallet_manager.clone();
-                tokio::spawn(async move {
-                    let _ = Node::v2_api_create_local_ethers_wallet(
-                        db_clone,
-                        wallet_manager_clone,
-                        bearer,
-                        network,
-                        role,
-                        res,
-                    )
-                    .await;
                 });
             }
             NodeCommand::V2ApiRestoreCoinbaseMPCWallet {
@@ -2125,9 +2101,8 @@ impl Node {
             }
             NodeCommand::V2ApiRemoveAgent { bearer, agent_id, res } => {
                 let db_clone = Arc::clone(&self.db);
-                let node_name = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_remove_agent(db_clone, bearer, node_name, agent_id, res).await;
+                    let _ = Node::v2_api_remove_agent(db_clone, bearer, agent_id, res).await;
                 });
             }
             NodeCommand::V2ApiUpdateAgent {
@@ -2136,8 +2111,9 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let full_identity = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_update_agent(db_clone, bearer, partial_agent, res).await;
+                    let _ = Node::v2_api_update_agent(db_clone, bearer, full_identity, partial_agent, res).await;
                 });
             }
             NodeCommand::V2ApiGetAgent { bearer, agent_id, res } => {
@@ -2151,10 +2127,11 @@ impl Node {
                     let _ = Node::v2_api_get_agent_avatar(agent_id, res).await;
                 });
             }
-            NodeCommand::V2ApiGetAllAgents { bearer, res } => {
+
+            NodeCommand::V2ApiGetAllAgents { bearer, filter, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_all_agents(db_clone, bearer, res).await;
+                    let _ = Node::v2_api_get_all_agents(db_clone, bearer, filter, res).await;
                 });
             }
             NodeCommand::V2ApiRetryMessage {
@@ -2500,16 +2477,16 @@ impl Node {
             NodeCommand::V2ApiImportTool { bearer, url, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
-                let node_name = self.node_name.node_name.clone();
                 let signing_secret_key = self.identity_secret_key.clone();
                 let embedding_generator = self.embedding_generator.clone();
+                let full_identity = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_tool_url(
                         db_clone,
                         bearer,
+                        full_identity,
                         node_env,
                         url,
-                        node_name,
                         signing_secret_key,
                         Arc::new(embedding_generator),
                         res,
@@ -2521,10 +2498,12 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
                 let embedding_generator = self.embedding_generator.clone();
+                let full_identity = self.node_name.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_import_tool_zip(
                         db_clone,
                         bearer,
+                        full_identity,
                         node_env,
                         file_data,
                         Arc::new(embedding_generator),
@@ -3054,6 +3033,27 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiGetToolsFromToolset {
+                bearer,
+                tool_set_key,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tools_from_toolset(db_clone, bearer, tool_set_key, res).await;
+                });
+            }
+            NodeCommand::V2SetCommonToolSetConfig {
+                bearer,
+                tool_set_key,
+                value,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_common_toolset_config(db_clone, bearer, tool_set_key, value, res).await;
+                });
+            }
             NodeCommand::V2ApiCheckTool {
                 bearer,
                 code,
@@ -3077,6 +3077,12 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_preferences(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetLastUsedAgentsAndLLMs { bearer, last, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_last_used_agents_and_llms(db_clone, bearer, last, res).await;
                 });
             }
             _ => (),

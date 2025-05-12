@@ -32,6 +32,8 @@ pub struct Agent {
     #[serde(default)]
     pub tools_config_override: Option<HashMap<String, HashMap<String, Value>>>,
     pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub edited: bool,
 }
 
 #[cfg(test)]

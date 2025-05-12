@@ -1012,7 +1012,7 @@ impl Node {
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
-        agent: Agent,
+        mut agent: Agent,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1054,6 +1054,9 @@ impl Node {
         }
         // TODO: validate tools
         // TODO: validate knowledge
+
+        // My created agents are always marked as edited
+        agent.edited = true;
 
         // Check if the llm_provider_id exists
         let llm_provider_exists = {
@@ -1129,7 +1132,6 @@ impl Node {
     pub async fn v2_api_remove_agent(
         db: Arc<SqliteManager>,
         bearer: String,
-        node_name: ShinkaiName,
         agent_id: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1138,21 +1140,17 @@ impl Node {
             return Ok(());
         }
 
-        // Get the agent's node name
-        let node_name_string = node_name.get_node_name_string();
-
         // Remove the agent from the database
         match db.remove_agent(&agent_id) {
             Ok(_) => {
-                // Remove the agent tool
-                let tool_router_key = ToolRouterKey::new(
-                    "local".to_string(),
-                    node_name_string.to_string(),
-                    agent_id.clone(),
-                    None,
-                )
-                .to_string_with_version();
-                if let Err(err) = db.remove_tool(&tool_router_key, None) {
+                let tool = match db.get_tool_by_agent_id(&agent_id) {
+                    Ok(tool) => tool,
+                    Err(err) => {
+                        eprintln!("Internal inconsistency: Failed to get tool: {}", err);
+                        return Ok(());
+                    }
+                };
+                if let Err(err) = db.remove_tool(&tool.tool_router_key().to_string_with_version(), None) {
                     eprintln!("Warning: Failed to remove agent tool: {}", err);
                 }
 
@@ -1174,6 +1172,7 @@ impl Node {
     pub async fn v2_api_update_agent(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         partial_agent: serde_json::Value,
         res: Sender<Result<Agent, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1213,24 +1212,6 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Database error: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Construct the full identity name
-        let full_identity_name = match ShinkaiName::new(format!(
-            "{}/main/agent/{}",
-            existing_agent.full_identity_name.get_node_name_string(),
-            agent_id
-        )) {
-            Ok(name) => name,
-            Err(_) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Failed to construct full identity name.".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
@@ -1292,7 +1273,7 @@ impl Node {
                 serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
             }),
             cron_tasks: None,
-            full_identity_name, // Set the constructed full identity name
+            full_identity_name: full_identity.clone(),
             tools_config_override: partial_agent
                 .get("tools_config_override")
                 .map_or(existing_agent.tools_config_override.clone(), |v| {
@@ -1301,6 +1282,7 @@ impl Node {
             avatar_url: partial_agent
                 .get("avatar_url")
                 .map_or(existing_agent.avatar_url.clone(), |v| v.as_str().map(String::from)),
+            edited: true,
         };
 
         // Update the agent in the database
@@ -1390,6 +1372,7 @@ impl Node {
     pub async fn v2_api_get_all_agents(
         db: Arc<SqliteManager>,
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1397,16 +1380,24 @@ impl Node {
             return Ok(());
         }
 
-        // Retrieve all agents from the database
-        match db.get_all_agents() {
+        let agents_result = db.get_all_agents();
+        match agents_result {
             Ok(mut agents) => {
+                // If filter is Some("recently_used"), filter agents by recently used
+                if let Some(ref filter_val) = filter {
+                    if filter_val == "recently_used" {
+                        // Get the last N recently used agent IDs (let's use 10 as a default)
+                        let recent_ids = db.get_last_n_parent_agent_or_llm_provider_ids(10).unwrap_or_default();
+                        agents.retain(|agent| recent_ids.contains(&agent.agent_id));
+                    }
+                }
                 // Get cron tasks for each agent
                 for agent in &mut agents {
                     match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
                         Ok(cron_tasks) => {
                             agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             agent.cron_tasks = None;
                         }
                     }
@@ -1830,8 +1821,8 @@ impl Node {
     pub async fn v2_api_import_agent_url(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         url: String,
-        node_name: String,
         node_env: NodeEnvironment,
         signing_secret_key: SigningKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -1845,7 +1836,7 @@ impl Node {
         let _ = match Self::v2_api_import_agent_url_internal(
             db.clone(),
             url.clone(),
-            node_name.clone(),
+            full_identity.clone(),
             node_env.clone(),
             signing_secret_key,
             embedding_generator,
@@ -1861,23 +1852,29 @@ impl Node {
     pub async fn v2_api_import_agent_url_internal(
         db: Arc<SqliteManager>,
         url: String,
-        node_name: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         signing_secret_key: SigningKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<Value, APIError> {
-        let zip_contents =
-            match download_zip_from_url(url, "__agent.json".to_string(), node_name.clone(), signing_secret_key).await {
-                Ok(contents) => contents,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Invalid Agent Zip".to_string(),
-                        message: format!("Failed to extract agent.json: {:?}", err),
-                    };
-                    return Err(api_error);
-                }
-            };
+        let zip_contents = match download_zip_from_url(
+            url,
+            "__agent.json".to_string(),
+            full_identity.node_name.clone(),
+            signing_secret_key,
+        )
+        .await
+        {
+            Ok(contents) => contents,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Agent Zip".to_string(),
+                    message: format!("Failed to extract agent.json: {:?}", err),
+                };
+                return Err(api_error);
+            }
+        };
         // Save the agent to the database
         // Parse the JSON into an Agent
         let agent: Agent = match serde_json::from_slice(&zip_contents.buffer) {
@@ -1894,6 +1891,7 @@ impl Node {
 
         let status = import_dependencies_tools(
             db.clone(),
+            full_identity.clone(),
             node_env.clone(),
             zip_contents.archive.clone(),
             embedding_generator.clone(),
@@ -1905,6 +1903,7 @@ impl Node {
 
         import_agent(
             db.clone(),
+            full_identity,
             zip_contents.archive,
             agent.clone(),
             embedding_generator.clone(),
@@ -1915,6 +1914,7 @@ impl Node {
     pub async fn v2_api_import_agent_zip(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -1950,6 +1950,7 @@ impl Node {
 
         let status = import_dependencies_tools(
             db.clone(),
+            full_identity.clone(),
             node_env.clone(),
             archive.clone(),
             embedding_generator.clone(),
@@ -1961,7 +1962,7 @@ impl Node {
         }
 
         // Parse the JSON into an Agent
-        let _ = match import_agent(db.clone(), archive, agent.clone(), embedding_generator).await {
+        let _ = match import_agent(db.clone(), full_identity, archive, agent.clone(), embedding_generator).await {
             Ok(response) => res.send(Ok(response)).await,
             Err(err) => res.send(Err(err)).await,
         };
@@ -2282,6 +2283,23 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             }
         }
+        Ok(())
+    }
+
+    pub async fn v2_api_get_last_used_agents_and_llms(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        last: usize,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let last_used_agents_llms = db
+            .get_last_n_parent_agent_or_llm_provider_ids(last)
+            .unwrap_or_else(|_| vec![]);
+        let _ = res.send(Ok(last_used_agents_llms)).await;
         Ok(())
     }
 }

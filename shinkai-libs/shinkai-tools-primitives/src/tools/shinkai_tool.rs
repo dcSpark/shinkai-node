@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::{
 
 use super::agent_tool_wrapper::AgentToolWrapper;
 use super::tool_config::OAuth;
-use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_playground::{SqlQuery, SqlTable, ToolPlaygroundMetadata};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
@@ -562,6 +562,15 @@ impl ShinkaiTool {
             ShinkaiTool::Agent(_a, _) => vec![],
         }
     }
+
+    pub fn get_metadata(&self) -> Option<ToolPlaygroundMetadata> {
+        match self {
+            ShinkaiTool::Deno(d, _) => Some(d.get_metadata()),
+            ShinkaiTool::Python(p, _) => Some(p.get_metadata()),
+            ShinkaiTool::Rust(r, _) => Some(r.get_metadata()),
+            _ => None,
+        }
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
@@ -684,7 +693,13 @@ mod tests {
             embedding_metadata: None,
         };
 
-        let input_args = Parameters::with_single_property("url", "string", "The URL to fetch", true);
+        let input_args = Parameters::with_single_property(
+            "url",
+            "string",
+            "The URL to fetch",
+            true,
+            Some(serde_json::Value::String("https://example.com".to_string())),
+        );
 
         let tool_router_key = ToolRouterKey::new(
             "local".to_string(),
@@ -833,14 +848,14 @@ mod tests {
                     let mut props = std::collections::HashMap::new();
                     props.insert(
                         "prompt".to_string(),
-                        Property::new("string".to_string(), "Message to the agent".to_string()),
+                        Property::new("string".to_string(), "Message to the agent".to_string(), None),
                     );
                     props.insert(
                         "session_id".to_string(),
-                        Property::new("string".to_string(), "Session identifier".to_string()),
+                        Property::new("string".to_string(), "Session identifier".to_string(), None),
                     );
 
-                    let item_prop = Property::new("string".to_string(), "Image URL".to_string());
+                    let item_prop = Property::new("string".to_string(), "Image URL".to_string(), None);
                     props.insert(
                         "images".to_string(),
                         Property::with_array_items("Array of image URLs".to_string(), item_prop),

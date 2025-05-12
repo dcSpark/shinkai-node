@@ -50,25 +50,29 @@ impl TypescriptUnsafeProcessorTool {
                     let mut params = Parameters::new();
                     params.properties.insert(
                         "code".to_string(),
-                        Property::new("string".to_string(), "The TypeScript code to execute".to_string()),
+                        Property::new("string".to_string(), "The TypeScript code to execute".to_string(), None),
                     );
                     params.required.push("code".to_string());
 
                     params.properties.insert(
                         "package".to_string(),
-                        Property::new("string".to_string(), "The package.json contents".to_string()),
+                        Property::new("string".to_string(), "The package.json contents".to_string(), None),
                     );
                     params.required.push("package".to_string());
 
                     params.properties.insert(
                         "parameters".to_string(),
-                        Property::new("object".to_string(), "Parameters to pass to the code".to_string()),
+                        Property::new("object".to_string(), "Parameters to pass to the code".to_string(), None),
                     );
                     params.required.push("parameters".to_string());
 
                     params.properties.insert(
                         "config".to_string(),
-                        Property::new("object".to_string(), "Configuration for the code execution".to_string()),
+                        Property::new(
+                            "object".to_string(),
+                            "Configuration for the code execution".to_string(),
+                            None,
+                        ),
                     );
                     params.required.push("config".to_string());
                     params

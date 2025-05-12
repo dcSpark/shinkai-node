@@ -6,39 +6,16 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig,
-        crontab::{CronTask, CronTaskAction},
-        custom_prompt::CustomPrompt,
-        identity::{Identity, StandardIdentity},
-        job_config::JobConfig,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse},
-        shinkai_name::ShinkaiName,
-        shinkai_subscription::ShinkaiSubscription,
-        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-        tool_router_key::ToolRouterKey,
-        wallet_complementary::{WalletRole, WalletSource},
-        wallet_mixed::NetworkIdentifier,
-    },
-    shinkai_message::{
-        shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIVecFsCopyFolder,
-            APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder,
-            APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
-            ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::job_scope::MinimalJobScope,
+        coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse}, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::{SmartInbox, V2SmartInbox}, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
+    }, shinkai_message::{
+        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+        }
+    }, shinkai_utils::job_scope::MinimalJobScope
 };
 
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets},
-    tool_config::OAuth,
-    tool_playground::ToolPlayground,
-    tool_types::{OperatingSystem, RunnerType},
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}
 };
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
@@ -50,9 +27,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::node_api_router::SendResponseBody;
 
 use super::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
-    node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData},
+    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse, api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData}
 };
 
 pub enum NodeCommand {
@@ -820,6 +795,17 @@ pub enum NodeCommand {
         payload: APIAddOllamaModels,
         res: Sender<Result<(), APIError>>,
     },
+    V2ApiGetToolsFromToolset {
+        bearer: String,
+        tool_set_key: String,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    },
+    V2SetCommonToolSetConfig {
+        bearer: String,
+        tool_set_key: String,
+        value: HashMap<String, serde_json::Value>,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
     V2ApiGetToolOffering {
         bearer: String,
         tool_key_name: String,
@@ -947,6 +933,7 @@ pub enum NodeCommand {
     },
     V2ApiGetAllAgents {
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     },
     V2ApiRetryMessage {
@@ -1343,4 +1330,14 @@ pub enum NodeCommand {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiGetLastUsedAgentsAndLLMs {
+        bearer: String,
+        last: usize,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
+    V2ApiGetShinkaiToolMetadata {
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    }
 }

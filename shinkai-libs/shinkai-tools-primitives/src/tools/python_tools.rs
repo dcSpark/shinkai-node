@@ -15,6 +15,7 @@ use shinkai_tools_runner::tools::python_runner::PythonRunner;
 use shinkai_tools_runner::tools::python_runner_options::PythonRunnerOptions;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
+use super::tool_playground::ToolPlaygroundMetadata;
 use std::collections::HashMap;
 use std::env;
 use std::fs::create_dir_all;
@@ -379,20 +380,36 @@ impl PythonTool {
                     .collect::<Vec<String>>()
                     .join("\n");
 
-                let code = format!(
-                    "<shinkaicode>\n\n  ```python\n{}\n```\n\n  </shinkaicode>",
-                    self.py_code.replace("```", "` ` `")
-                );
-
-                let title: String = format!("**Tool {} execution failed.**", self.name);
-                let parameters = format!("*Inputs:* `{}`", serde_json::to_string(&parameters).unwrap());
-                let error: String = format!("```python\n{}\n```", error_message);
-                let files: String = format!("Files: {}", files);
-                Err(ToolError::AutocontainedError(format!(
-                    "{}\n\n  {}\n\n  {}\n\n  {}\n\n  {}",
-                    title, parameters, error, files, code
-                )))
+                Ok(RunResult {
+                    data: serde_json::json!({
+                        "status": "error",
+                        "message": format!("Tool {} execution failed.", self.name),
+                        "error": error_message,
+                        "__created_files__": files,
+                    }),
+                })
             }
+        }
+    }
+
+    pub fn get_metadata(&self) -> ToolPlaygroundMetadata {
+        ToolPlaygroundMetadata {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            keywords: self.keywords.clone(),
+            homepage: self.homepage.clone(),
+            author: self.author.clone(),
+            version: self.version.clone(),
+            configurations: self.config.clone(),
+            parameters: self.input_args.clone(),
+            result: self.result.clone(),
+            sql_tables: self.sql_tables.clone().unwrap_or_default(),
+            sql_queries: self.sql_queries.clone().unwrap_or_default(),
+            tools: Some(self.tools.clone()),
+            oauth: self.oauth.clone(),
+            runner: self.runner.clone(),
+            operating_system: self.operating_system.clone(),
+            tool_set: self.tool_set.clone(),
         }
     }
 }
