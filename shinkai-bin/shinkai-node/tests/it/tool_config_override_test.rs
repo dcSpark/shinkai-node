@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair
 };
 use shinkai_node::network::Node;
 use shinkai_node::tools::tool_implementation::native_tools::sql_processor::get_database_path_from_db_name_config;
@@ -24,10 +24,12 @@ use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::tool_playground::{SqlQuery, SqlTable};
 use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener};
 use std::net::{IpAddr, Ipv4Addr};
+use std::time::Duration;
 use tokio::runtime::Runtime;
 
+use crate::it::utils::db_handlers::setup;
 use crate::it::utils::node_test_api::{
     api_execute_tool, api_registration_device_node_profile_main, wait_for_default_tools,
 };
@@ -37,17 +39,28 @@ use mockito::Server;
 
 #[test]
 fn test_tool_execution_with_config_override() {
+    setup();
+
     std::env::set_var("WELCOME_MESSAGE", "false");
     let api_key_bearer = std::env::var("API_V2_KEY").unwrap_or_else(|_| "my_api_v2_key".to_string());
     std::env::set_var("API_V2_KEY", api_key_bearer.clone());
     std::env::set_var("NODE_API_PORT", "9550");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
+    let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&unsafe_deterministic_signature_keypair(0).1));
+    println!("node1_db_path: {:?}", node1_db_path);
+    std::env::set_var("NODE_STORAGE_PATH", node1_db_path.clone());
 
     let rt = Runtime::new().unwrap();
     let server = Server::new();
-
+    fn port_is_available(port: u16) -> bool {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
     let e = rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sep-shinkai";
+        let node1_identity_name  = "@@node1_test.sep-shinkai";
         let node1_subidentity_name = "main";
         let node1_device_name = "node1_device";
         let node1_agent_id = "node1_gpt_agent";
@@ -64,8 +77,6 @@ fn test_tool_execution_with_config_override() {
 
         let (node1_device_identity_sk, _node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
         let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
-
-        let node1_db_path = tempfile::tempdir().unwrap().path().to_str().unwrap().to_string();
 
         // Create the LLM provider
         let agent_name = ShinkaiName::new(
@@ -90,7 +101,7 @@ fn test_tool_execution_with_config_override() {
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
         };
-
+        assert!(port_is_available(8080), "Port 8080 is not available");
         // Create node
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
@@ -135,6 +146,9 @@ fn test_tool_execution_with_config_override() {
         )
         .await;
 
+        // Create node1 and node2
+        assert!(port_is_available(9550), "Port 9550 is not available");
+        assert!(port_is_available(9560), "Port 9560 is not available");
         // Setup API Server task
         let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9550);
         let api_https_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9560);
@@ -355,7 +369,7 @@ fn test_tool_execution_with_config_override() {
         }
     });
 
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
     if let Err(e) = e {
         assert!(false, "An unexpected error occurred: {:?}", e);
     }

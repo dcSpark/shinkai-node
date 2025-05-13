@@ -27,6 +27,7 @@ use mockito::Server;
 fn tool_duplicate_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     let mut server = Server::new();
 

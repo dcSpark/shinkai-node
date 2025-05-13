@@ -3,7 +3,7 @@ use crate::it::utils::vecfs_test_utils::{get_files_for_job, get_folder_name_for_
 use super::utils::test_boilerplate::run_test_one_node_network;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider
+    LLMProviderInterface, Ollama, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -15,7 +15,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
 };
 use mockito::Server;
 
@@ -23,6 +23,8 @@ use mockito::Server;
 #[ignore]
 fn job_image_analysis() {
     let mut server = Server::new();
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     run_test_one_node_network(|env| {
         Box::pin(async move {
