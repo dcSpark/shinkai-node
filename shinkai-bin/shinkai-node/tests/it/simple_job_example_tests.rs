@@ -57,6 +57,7 @@ fn simple_job_message_test() {
     // Set required environment variables
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
     // Create a mock server for OpenAI API
     let mut server = Server::new();
 
@@ -256,7 +257,6 @@ fn simple_job_message_test() {
 
                 eprintln!("Test completed successfully");
                 node1_abort_handler.abort();
-                return;
             }
         })
     });
