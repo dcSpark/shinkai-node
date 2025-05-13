@@ -2,18 +2,18 @@ use async_channel::{bounded, Receiver, Sender};
 use serde_json::{json, Map};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, unsafe_deterministic_encryption_keypair
+    clone_static_secret_key, unsafe_deterministic_encryption_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::search_mode::VectorSearchMode;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -24,7 +24,7 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
+use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool, wait_for_rust_tools};
 use crate::it::utils::vecfs_test_utils::{create_folder, upload_file};
 
 use super::utils::db_handlers::setup_node_storage_path;
@@ -42,14 +42,14 @@ fn setup() {
 fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
-
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();
 
     let mut server = Server::new();
 
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node1_subidentity_name = "main";
         let node1_device_name = "node1_device";
@@ -187,48 +187,6 @@ fn native_tool_test_knowledge() {
                 assert!(tools_ready, "Default tools should be ready within 20 seconds");
             }
             {
-                // Check that Rust tools are installed, retry up to 10 times
-                let mut retry_count = 0;
-                let max_retries = 40;
-                let retry_delay = Duration::from_millis(500);
-
-                loop {
-                    tokio::time::sleep(retry_delay).await;
-
-                    let (res_sender, res_receiver) = async_channel::bounded(1);
-                    node1_commands_sender
-                        .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
-                        .await
-                        .unwrap();
-
-                    match res_receiver.recv().await {
-                        Ok(result) => {
-                            match result {
-                                Ok(has_tools) => {
-                                    if has_tools {
-                                        // Rust tools are installed, we can break the loop
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Error checking Rust tools installation: {:?}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Error receiving check result: {:?}", e);
-                            panic!("Error receiving check result: {:?}", e);
-                        }
-                    }
-
-                    retry_count += 1;
-                    if retry_count >= max_retries {
-                        panic!("Rust tools were not installed after {} retries", max_retries);
-                    }
-                }
-                eprintln!("Rust tools were installed after {} retries", retry_count);
-            }
-            {
                 //
                 // Creating a folder and uploading some files to the vector db
                 //
@@ -331,17 +289,21 @@ fn native_tool_test_knowledge() {
         let result = tokio::try_join!(node1_handler, interactions_handler);
 
         match result {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
                     println!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
                 } else {
                     // If the error is not due to an abort, then it's unexpected
-                    panic!("An unexpected error occurred: {:?}", e);
+                    Err(e)
                 }
             }
         }
     });
     rt.shutdown_background();
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 }

@@ -26,6 +26,7 @@ use mockito::Server;
 #[test]
 fn tool_duplicate_tests() {
     std::env::set_var("WELCOME_MESSAGE", "false");
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
 
     let mut server = Server::new();
 
@@ -59,17 +60,17 @@ fn tool_duplicate_tests() {
                     node1_device_name.as_str(),
                 )
                 .await;
-
-                // Wait for default tools to be ready
-                let tools_ready = wait_for_default_tools(
-                    node1_commands_sender.clone(),
-                    node1_api_key.clone(),
-                    30, // Wait up to 30 seconds
-                )
-                .await
-                .expect("Failed to check for default tools");
-                assert!(tools_ready, "Default tools should be ready within 30 seconds");
             }
+
+            // Wait for default tools to be ready
+            let tools_ready = wait_for_default_tools(
+                node1_commands_sender.clone(),
+                node1_api_key.clone(),
+                30, // Wait up to 30 seconds
+            )
+            .await
+            .expect("Failed to check for default tools");
+            assert!(tools_ready, "Default tools should be ready within 30 seconds");
 
             {
                 // Register an Agent
