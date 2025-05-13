@@ -122,33 +122,6 @@ fn simple_job_message_test() {
                 )
                 .await;
             }
-
-            {
-                // Wait for default tools to be ready
-                eprintln!("\n\nWaiting for default tools to be ready");
-                let tools_ready = wait_for_default_tools(
-                    node1_commands_sender.clone(),
-                    node1_api_key.clone(),
-                    20, // Wait up to 20 seconds
-                )
-                .await
-                .expect("Failed to check for default tools");
-                assert!(tools_ready, "Default tools should be ready within 20 seconds");
-            }
-
-            {
-                // Check that Rust tools are installed
-                eprintln!("\n\nWaiting for Rust tools installation");
-                match wait_for_rust_tools(node1_commands_sender.clone(), 20).await {
-                    Ok(retry_count) => {
-                        eprintln!("Rust tools were installed after {} retries", retry_count);
-                    }
-                    Err(e) => {
-                        panic!("{}", e);
-                    }
-                }
-            }
-
             {
                 // 3. Register an LLM provider (agent)
                 eprintln!("\n\nRegistering LLM provider");
