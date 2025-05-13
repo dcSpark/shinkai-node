@@ -4,6 +4,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
 use shinkai_embedding::model_type::EmbeddingModelType;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
@@ -136,8 +137,27 @@ impl SqliteManager {
         }
 
         manager.update_default_embedding_model(model_type)?;
-
+        Self::migrate_agents_full_identity_name(&manager)?;
         Ok(manager)
+    }
+
+    // There might be old agents with partial full_identity_name.
+    // This function migrates them to the new format.
+    fn migrate_agents_full_identity_name(manager: &SqliteManager) -> Result<(), SqliteManagerError> {
+        let agents = manager.get_all_agents()?;
+        for mut agent in agents {
+            if !agent.full_identity_name.has_profile() {
+                println!("Migrating agent: {:?}", agent);
+                agent.full_identity_name = ShinkaiName::new(format!(
+                    "{}/main/agent/{}",
+                    agent.full_identity_name.node_name.clone(),
+                    agent.agent_id
+                ))
+                .map_err(|e| SqliteManagerError::InvalidData)?;
+                manager.update_agent(agent)?;
+            }
+        }
+        Ok(())
     }
 
     // Initializes the required tables in the SQLite database
