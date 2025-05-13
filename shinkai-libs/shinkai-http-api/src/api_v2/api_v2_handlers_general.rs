@@ -1497,7 +1497,7 @@ pub async fn get_preferences_handler(
     get,
     path = "/v2/check_default_tools_sync",
     responses(
-        (status = 200, description = "Default tools sync status retrieved successfully", body = bool),
+        (status = 200, description = "Default tools sync status retrieved successfully", body = HashMap<String, Value>),
         (status = 401, description = "Unauthorized", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     ),
@@ -1523,7 +1523,14 @@ pub async fn check_default_tools_sync_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(response) => Ok(warp::reply::json(&response)),
+        Ok(is_synced) => {
+            let response = json!({
+                "status": "success",
+                "is_synced": is_synced,
+                "message": if is_synced { "Default tools and agents are synchronized" } else { "Default tools and agents are not synchronized" }
+            });
+            Ok(warp::reply::json(&response))
+        },
         Err(error) => Err(warp::reject::custom(error)),
     }
 }
