@@ -219,11 +219,12 @@ pub async fn generate_agent_zip(
     }
 
     // Retrieve the agent from the database
-    let agent = match db.get_agent(&agent_id) {
+    let mut agent = match db.get_agent(&agent_id) {
         Ok(Some(agent)) => agent,
         Ok(None) => return Err(internal_error(format!("Agent not found: {}", agent_id))),
         Err(err) => return Err(internal_error(format!("Failed to retrieve agent: {}", err))),
     };
+    agent.sanitize_config();
 
     // Serialize the agent to JSON bytes
     let agent_bytes = match serde_json::to_vec(&agent) {
@@ -803,7 +804,15 @@ pub async fn import_agent(
     };
 
     let original_author = agent.full_identity_name.node_name.clone();
-    agent.full_identity_name = full_identity;
+
+    // Construct the Agent's full identity name, in the local node.
+    let local_full_identity_name = ShinkaiName::new(format!(
+        "{}/main/agent/{}",
+        full_identity.get_node_name_string(),
+        agent.agent_id.to_lowercase()
+    ))
+    .unwrap();
+    agent.full_identity_name = local_full_identity_name;
 
     agent.llm_provider_id = preferences_llm_provider_result;
     agent.edited = false;

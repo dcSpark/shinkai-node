@@ -27,6 +27,7 @@ use mockito::Server;
 fn test_job_code_fork() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     let mut server = Server::new();
 
