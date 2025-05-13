@@ -254,15 +254,17 @@ impl ToolRouter {
 
             if is_agent {
                 let agent = get_agent_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
-                import_agent(
+                let import_result = import_agent(
                     db.clone(),
                     full_identity.clone(),
                     archive.clone(),
                     agent,
                     embedding_generator.clone(),
                 )
-                .await
-                .map_err(|e| ToolError::ExecutionError(e.message))?;
+                .await;
+                if let Err(e) = import_result {
+                    eprintln!("Error importing agent: {:?}", e);
+                }
             }
             if is_tool {
                 let tool = get_tool_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
@@ -270,9 +272,10 @@ impl ToolRouter {
                     buffer: serde_json::to_vec(&tool).unwrap(),
                     archive: archive.clone(),
                 };
-                import_tool(db.clone(), node_env.clone(), tool_archive, tool)
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+                let import_result = import_tool(db.clone(), node_env.clone(), tool_archive, tool).await;
+                if let Err(e) = import_result {
+                    eprintln!("Error importing tool: {:?}", e);
+                }
             }
         }
 
