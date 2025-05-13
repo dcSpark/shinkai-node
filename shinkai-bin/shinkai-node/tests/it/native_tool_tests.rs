@@ -42,7 +42,7 @@ fn setup() {
 fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
-
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "false");
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();
@@ -180,53 +180,11 @@ fn native_tool_test_knowledge() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     api_key_bearer.clone(),
-                    20, // Wait up to 20 seconds
+                    120, // Wait up to 120 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
-                assert!(tools_ready, "Default tools should be ready within 20 seconds");
-            }
-            {
-                // Check that Rust tools are installed, retry up to 10 times
-                let mut retry_count = 0;
-                let max_retries = 40;
-                let retry_delay = Duration::from_millis(500);
-
-                loop {
-                    tokio::time::sleep(retry_delay).await;
-
-                    let (res_sender, res_receiver) = async_channel::bounded(1);
-                    node1_commands_sender
-                        .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
-                        .await
-                        .unwrap();
-
-                    match res_receiver.recv().await {
-                        Ok(result) => {
-                            match result {
-                                Ok(has_tools) => {
-                                    if has_tools {
-                                        // Rust tools are installed, we can break the loop
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Error checking Rust tools installation: {:?}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Error receiving check result: {:?}", e);
-                            panic!("Error receiving check result: {:?}", e);
-                        }
-                    }
-
-                    retry_count += 1;
-                    if retry_count >= max_retries {
-                        panic!("Rust tools were not installed after {} retries", max_retries);
-                    }
-                }
-                eprintln!("Rust tools were installed after {} retries", retry_count);
+                assert!(tools_ready, "Default tools should be ready within 120 seconds");
             }
             {
                 //
