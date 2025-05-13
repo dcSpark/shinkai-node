@@ -303,6 +303,17 @@ impl ToolRouter {
             .to_lowercase()
             .eq("true")
         {
+            // Set the sync status to true after successful completion
+            let internal_comms = ShinkaiInternalComms {
+                internal_has_sync_default_tools: true,
+            };
+            if let Err(e) = db.set_preference(
+                "internal_comms",
+                &internal_comms,
+                Some("Internal communication preferences"),
+            ) {
+                eprintln!("Error setting internal_comms preference: {}", e);
+            }
             return Ok(());
         }
 
