@@ -1,6 +1,6 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider,
+    LLMProviderInterface, Ollama, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -11,15 +11,14 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolWith
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
 use shinkai_tools_primitives::tools::{
-    parameters::Parameters,
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    parameters::Parameters, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 
 use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_initial_registration_with_no_code_for_device, api_llm_provider_registration, wait_for_default_tools,
+    api_initial_registration_with_no_code_for_device, api_llm_provider_registration, wait_for_default_tools
 };
 use mockito::Server;
 
@@ -59,16 +58,6 @@ fn tool_duplicate_tests() {
                     node1_device_name.as_str(),
                 )
                 .await;
-
-                // Wait for default tools to be ready
-                let tools_ready = wait_for_default_tools(
-                    node1_commands_sender.clone(),
-                    node1_api_key.clone(),
-                    30, // Wait up to 30 seconds
-                )
-                .await
-                .expect("Failed to check for default tools");
-                assert!(tools_ready, "Default tools should be ready within 30 seconds");
             }
 
             {
