@@ -219,11 +219,12 @@ pub async fn generate_agent_zip(
     }
 
     // Retrieve the agent from the database
-    let agent = match db.get_agent(&agent_id) {
+    let mut agent = match db.get_agent(&agent_id) {
         Ok(Some(agent)) => agent,
         Ok(None) => return Err(internal_error(format!("Agent not found: {}", agent_id))),
         Err(err) => return Err(internal_error(format!("Failed to retrieve agent: {}", err))),
     };
+    agent.sanitize_config();
 
     // Serialize the agent to JSON bytes
     let agent_bytes = match serde_json::to_vec(&agent) {
