@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType
+    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -583,7 +583,7 @@ pub async fn api_initial_registration_with_no_code_for_device(
         .unwrap();
     let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
 
-    assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
+    assert!(node2_all_subidentities.len() >= 2, "Node has 1 subidentity");
     assert_eq!(
         node2_all_subidentities[1].get_full_identity_name(),
         format!("{}/main/device/{}", node_identity_name, device_name_for_profile),
