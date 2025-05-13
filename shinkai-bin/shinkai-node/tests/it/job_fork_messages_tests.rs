@@ -1,6 +1,6 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider
+    LLMProviderInterface, Ollama, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -13,13 +13,15 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job, wait_for_default_tools
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
+    wait_for_default_tools,
 };
 use mockito::Server;
 
 #[test]
 fn test_fork_job_messages() {
     std::env::set_var("WELCOME_MESSAGE", "false");
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
 
     let mut server = Server::new();
 
@@ -54,6 +56,16 @@ fn test_fork_job_messages() {
                 )
                 .await;
             }
+
+            // Wait for default tools to be ready
+            let tools_ready = wait_for_default_tools(
+                node1_commands_sender.clone(),
+                node1_api_key.clone(),
+                20, // Wait up to 20 seconds
+            )
+            .await
+            .expect("Failed to check for default tools");
+            assert!(tools_ready, "Default tools should be ready within 20 seconds");
 
             {
                 // Register an Agent
