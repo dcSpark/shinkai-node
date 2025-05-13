@@ -255,6 +255,8 @@ Then, it implements the test using a structured approach with code blocks:
 fn simple_job_message_test() {
     // Set required environment variables
     std::env::set_var("WELCOME_MESSAGE", "false");
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     // Create a mock server for OpenAI API
     let mut server = Server::new();

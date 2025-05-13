@@ -18,8 +18,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use std::fs;
-use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
+use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -43,11 +43,18 @@ fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();
 
     let mut server = Server::new();
+    fn port_is_available(port: u16) -> bool {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
 
     let e = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
@@ -123,6 +130,7 @@ fn native_tool_test_knowledge() {
             model: LLMProviderInterface::OpenAI(open_ai),
         };
 
+        assert!(port_is_available(8080), "Port 8080 is not available");
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
@@ -302,8 +310,10 @@ fn native_tool_test_knowledge() {
             }
         }
     });
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
     if let Err(e) = e {
         assert!(false, "An unexpected error occurred: {:?}", e);
     }
+    assert!(port_is_available(8080), "Port 8080 is not available after test");
+    assert!(port_is_available(8081), "Port 8081 is not available after test");
 }

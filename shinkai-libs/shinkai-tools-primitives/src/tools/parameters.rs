@@ -14,6 +14,7 @@ pub struct Parameters {
 pub struct Property {
     #[serde(rename = "type")]
     pub property_type: String,
+    #[serde(default)]
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<std::collections::HashMap<String, Property>>,
