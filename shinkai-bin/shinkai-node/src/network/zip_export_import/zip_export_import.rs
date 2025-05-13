@@ -101,23 +101,17 @@ async fn calculate_zip_dependencies(
             // Done, this path has been handled
             return Ok(());
         }
-        agent_dependencies.insert(agent_id, agent.clone());
+        agent_dependencies.insert(agent_id.clone(), agent.clone());
+        let tool: ShinkaiTool = db.get_tool_by_agent_id(&agent_id).map_err(|e| {
+            println!("ERROR - Internal inconsistency: {}", e);
+            return APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to get tool dependency: {}", e),
+            };
+        })?;
 
-        let agent_tool_wrapper = AgentToolWrapper::new(
-            agent.agent_id.clone(),
-            agent.name.clone(),
-            agent.ui_description.clone(),
-            shinkai_name.get_node_name_string(),
-            None,
-        );
-
-        let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper.clone(), true);
-        tool_dependencies.insert(
-            ShinkaiTool::Agent(agent_tool_wrapper, true)
-                .tool_router_key()
-                .to_string_with_version(),
-            shinkai_tool,
-        );
+        tool_dependencies.insert(tool.tool_router_key().to_string_with_version(), tool);
 
         for tool in agent.tools {
             let tool_dependency =
@@ -261,19 +255,19 @@ pub async fn generate_agent_zip(
 
         // Remove self from dependencies
         agent_dependencies.remove(&agent_id);
-        let agent_tool_wrapper = ShinkaiTool::Agent(
-            AgentToolWrapper::new(
-                agent.agent_id.clone(),
-                agent.name.clone(),
-                agent.ui_description.clone(),
-                shinkai_name.get_node_name_string(),
-                None,
-            ),
-            true,
-        )
-        .tool_router_key()
-        .to_string_with_version();
-        tool_dependencies.remove(&agent_tool_wrapper);
+        let tool = match db.get_tool_by_agent_id(&agent_id) {
+            Ok(tool) => tool,
+            Err(err) => {
+                println!("ERROR - Internal inconsistency: {}", err);
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get tool dependency: {}", err),
+                });
+            }
+        };
+
+        tool_dependencies.remove(&tool.tool_router_key().to_string_with_version());
         println!("For agent: {}", agent_id);
         println!("Agent dependencies: {:?}", agent_dependencies);
         println!("Tool dependencies: {:?}", tool_dependencies);
@@ -553,7 +547,7 @@ async fn import_agent_knowledge(
     let archive_clone = zip_contents.clone();
     let files = archive_clone.file_names();
     for file in files {
-        if file.starts_with("__knowledge/") {
+        if file.starts_with("__knowledge/") && !file.ends_with("/") {
             let mut buffer = Vec::new();
             {
                 println!("[IMPORTING KNOWLEDGE]: {}", file);
@@ -602,16 +596,18 @@ async fn import_agent_knowledge(
 
 pub async fn import_dependencies_tools(
     db: Arc<SqliteManager>,
+    full_identity: ShinkaiName,
     node_env: NodeEnvironment,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
     embedding_generator: Arc<dyn EmbeddingGenerator>,
 ) -> Result<(), APIError> {
     // Import tools from the zip file
     let archive_clone = zip_contents.clone();
-    let files = archive_clone.file_names();
-    for file in files {
-        if file.starts_with("__tools/") {
-            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), true).await {
+    let file_list: Vec<&str> = archive_clone.file_names().collect();
+    println!("Files:\n{}", file_list.join("\n"));
+    for file_name_str in file_list {
+        if file_name_str.starts_with("__tools/") && file_name_str != "__tools/" {
+            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file_name_str.to_string(), true).await {
                 Ok(tool_zip) => tool_zip,
                 Err(err) => {
                     let api_error = APIError {
@@ -637,18 +633,28 @@ pub async fn import_dependencies_tools(
             let import_tool_result = import_tool(db.clone(), node_env.clone(), tool_zip, tool).await;
             if let Err(err) = import_tool_result {
                 println!("Error importing tool: {:?}", err);
+            } else {
+                println!("Successfully imported tool.");
             }
         }
-        if file.starts_with("__agents/") {
-            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), false).await {
+        if file_name_str.starts_with("__agents/") && file_name_str != "__agents/" {
+            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file_name_str.to_string(), false).await {
                 Ok(agent_zip) => agent_zip,
                 Err(err) => return Err(err),
             };
             let agent = get_agent_from_zip(agent_zip.archive).unwrap();
-            let import_agent_result =
-                import_agent(db.clone(), zip_contents.clone(), agent, embedding_generator.clone()).await;
+            let import_agent_result = import_agent(
+                db.clone(),
+                full_identity.clone(),
+                zip_contents.clone(),
+                agent,
+                embedding_generator.clone(),
+            )
+            .await;
             if let Err(err) = import_agent_result {
                 println!("Error importing agent: {:?}", err);
+            } else {
+                println!("Successfully imported agent.");
             }
         }
     }
@@ -744,6 +750,7 @@ pub async fn import_tool(
 
 pub async fn import_agent(
     db: Arc<SqliteManager>,
+    full_identity: ShinkaiName,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
     mut agent: Agent,
     embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -754,10 +761,31 @@ pub async fn import_agent(
     // So we just check if the agent exists in the database
     let install = match db.get_agent(&agent.agent_id) {
         Ok(agent) => match agent {
-            Some(_) => false,
+            Some(agent) => {
+                // If the agent has been edited. Do not overwrite it.
+                if agent.edited {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Agent has been edited".to_string(),
+                        message: "Agent has been edited. Please delete it first.".to_string(),
+                    });
+                } else {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Agent Exists.".to_string(),
+                        message: "Agent Exists. Please delete it first.".to_string(),
+                    });
+                }
+            }
             None => true,
         },
-        Err(_) => true,
+        Err(_) => {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: "Failed to get agent".to_string(),
+            })
+        }
     };
 
     let preferences_llm_provider_result = match db.get_preference::<String>("default_llm_provider") {
@@ -774,17 +802,22 @@ pub async fn import_agent(
         }
     };
 
+    let original_author = agent.full_identity_name.node_name.clone();
+    agent.full_identity_name = full_identity;
+
     agent.llm_provider_id = preferences_llm_provider_result;
+    agent.edited = false;
+
+    import_agent_knowledge(zip_contents, db.clone(), embedding_generator.clone()).await?;
 
     if install {
         match db.add_agent(agent.clone(), &agent.full_identity_name) {
             Ok(_) => {
-                let author = agent.full_identity_name.node_name.clone();
                 let agent_tool_wrapper = AgentToolWrapper::new(
                     agent.agent_id.clone(),
                     agent.name.clone(),
                     agent.ui_description.clone(),
-                    author,
+                    original_author,
                     None,
                 );
                 let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
@@ -819,8 +852,6 @@ pub async fn import_agent(
             }
         }
     }
-
-    import_agent_knowledge(zip_contents, db, embedding_generator).await?;
 
     return Ok(json!({
         "status": "success",
@@ -1144,12 +1175,12 @@ mod tests {
     async fn test_tool_dependency_cycles_agent() {
         let manager = setup_test_db().await;
         let db = Arc::new(manager);
-        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
+        let profile: ShinkaiName = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
         let agent = Agent {
             name: "test_agent".to_string(),
             agent_id: "test123".to_string(),
-            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            full_identity_name: profile.clone(),
             llm_provider_id: "test_provider".to_string(),
             ui_description: "Test Agent".to_string(),
             knowledge: vec![],
@@ -1160,6 +1191,7 @@ mod tests {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            edited: false,
         };
 
         let agent_tool_wrapper = ShinkaiTool::Agent(
@@ -1167,7 +1199,7 @@ mod tests {
                 agent.agent_id.clone(),
                 agent.name.clone(),
                 agent.ui_description.clone(),
-                profile.node_name.clone(),
+                agent.full_identity_name.node_name.clone(),
                 None,
             ),
             true,
@@ -1367,7 +1399,7 @@ mod tests {
         let agent = Agent {
             name: "test_agent".to_string(),
             agent_id: "test123".to_string(),
-            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            full_identity_name: profile.clone(),
             llm_provider_id: "test_provider".to_string(),
             ui_description: "Test Agent".to_string(),
             knowledge: vec![],
@@ -1378,13 +1410,14 @@ mod tests {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            edited: false,
         };
         let agent_tool_wrapper = ShinkaiTool::Agent(
             AgentToolWrapper::new(
                 agent.agent_id.clone(),
                 agent.name.clone(),
                 agent.ui_description.clone(),
-                profile.node_name.clone(),
+                agent.full_identity_name.node_name.clone(),
                 None,
             ),
             true,

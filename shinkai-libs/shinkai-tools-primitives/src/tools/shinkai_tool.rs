@@ -12,7 +12,7 @@ use shinkai_message_primitives::schemas::{
 
 use super::agent_tool_wrapper::AgentToolWrapper;
 use super::tool_config::OAuth;
-use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_playground::{SqlQuery, SqlTable, ToolPlaygroundMetadata};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
@@ -562,6 +562,15 @@ impl ShinkaiTool {
             ShinkaiTool::Agent(_a, _) => vec![],
         }
     }
+
+    pub fn get_metadata(&self) -> Option<ToolPlaygroundMetadata> {
+        match self {
+            ShinkaiTool::Deno(d, _) => Some(d.get_metadata()),
+            ShinkaiTool::Python(p, _) => Some(p.get_metadata()),
+            ShinkaiTool::Rust(r, _) => Some(r.get_metadata()),
+            _ => None,
+        }
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
@@ -689,7 +698,7 @@ mod tests {
             "string",
             "The URL to fetch",
             true,
-            Some("https://example.com".to_string()),
+            Some(serde_json::Value::String("https://example.com".to_string())),
         );
 
         let tool_router_key = ToolRouterKey::new(

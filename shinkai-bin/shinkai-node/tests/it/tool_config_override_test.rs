@@ -33,6 +33,7 @@ fn test_tool_execution_with_config_override() {
     let api_key_bearer = std::env::var("API_V2_KEY").unwrap_or_else(|_| "my_api_v2_key".to_string());
     std::env::set_var("API_V2_KEY", api_key_bearer.clone());
     std::env::set_var("NODE_API_PORT", "9550");
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "false");
 
     let rt = Runtime::new().unwrap();
     let server = Server::new();
@@ -151,8 +152,8 @@ fn test_tool_execution_with_config_override() {
             }
         });
 
-        // Wait for default tools to be ready
-        wait_for_default_tools(node1_commands_sender.clone(), api_key_bearer.clone(), 10)
+        // // Wait for default tools to be ready
+        wait_for_default_tools(node1_commands_sender.clone(), api_key_bearer.clone(), 200)
             .await
             .unwrap();
 

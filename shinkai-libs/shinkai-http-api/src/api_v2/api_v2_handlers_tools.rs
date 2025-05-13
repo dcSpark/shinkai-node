@@ -64,6 +64,20 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::query::<HashMap<String, String>>())
         .and_then(search_shinkai_tool_handler);
+    
+    let get_shinkai_tools_by_tool_set_route = warp::path("tools_from_toolset")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(get_tools_from_toolset_handler);
+
+    let set_common_toolset_config_route = warp::path("set_common_toolset_config")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(set_common_toolset_config_handler);
 
     let add_shinkai_tool_route = warp::path("add_shinkai_tool")
         .and(warp::post())
@@ -292,6 +306,13 @@ pub fn tool_routes(
         .and(warp::body::json())
         .and_then(tool_check_handler);
 
+    let get_shinkai_tool_metadata_route = warp::path("get_shinkai_tool_metadata")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(get_shinkai_tool_metadata_handler);
+
     tool_execution_route
         .or(code_execution_route)
         .or(tool_definitions_route)
@@ -301,6 +322,8 @@ pub fn tool_routes(
         .or(set_shinkai_tool_route)
         .or(get_shinkai_tool_route)
         .or(search_shinkai_tool_route)
+        .or(get_shinkai_tools_by_tool_set_route)
+        .or(set_common_toolset_config_route)
         .or(add_shinkai_tool_route)
         .or(duplicate_tool_route)
         .or(set_playground_tool_route)
@@ -329,6 +352,7 @@ pub fn tool_routes(
         .or(set_tool_mcp_enabled_route)
         .or(copy_tool_asset_route)
         .or(tool_check_route)
+        .or(get_shinkai_tool_metadata_route)
 }
 
 pub fn safe_folder_name(tool_router_key: &str) -> String {
@@ -2375,7 +2399,131 @@ pub struct CopyToolAssetsRequest {
     pub is_second_playground: bool,
     pub second_path: String, // app_id for playground or tool_key_path for tool
 }
+#[utoipa::path(
+    get,
+    path = "/v2/tools_from_toolset",
+    params(
+        ("tool_set_key" = String, Query, description = "The key of the toolset")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved tools from toolset", body = Vec<ShinkaiTool>), // Updated body type
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_tools_from_toolset_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query: HashMap<String, String>, // Use HashMap to extract query parameters
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
 
+    // Extract tool_set_key from query parameters
+    let tool_set_key = match query.get("tool_set_key") {
+        Some(key) => key.clone(),
+        None => {
+            let error = APIError {
+                code: 400,
+                error: "Bad Request".to_string(),
+                message: "Missing 'tool_set_key' query parameter".to_string(),
+            };
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::BAD_REQUEST,
+            ));
+        }
+    };
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetToolsFromToolset {
+            bearer,
+            tool_set_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to send V2ApiGetToolsFromToolset command: {}", e);
+            warp::reject::reject()
+        })?;
+
+    let result = res_receiver.recv().await.map_err(|e| {
+        eprintln!("Failed to receive result for V2ApiGetToolsFromToolset: {}", e);
+        warp::reject::reject()
+    })?;
+
+    match result {
+        Ok(tools) => {
+            Ok(warp::reply::with_status(warp::reply::json(&tools), StatusCode::OK))
+        }
+        Err(error) => {
+            Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), // Fallback to 500 if code is invalid
+            ))
+        }
+    }
+}
+#[derive(Deserialize, ToSchema)]
+pub struct SetCommonToolSetConfigRequest {
+    pub tool_set_key: String,
+    pub value: HashMap<String, Value>,
+}
+#[derive(serde::Serialize, ToSchema)]
+pub struct SetCommonToolSetConfigResponse {
+    pub updated_tool_keys: Vec<String>,
+}
+#[utoipa::path(
+    post,
+    path = "/v2/set_common_toolset_config",
+    request_body = SetCommonToolSetConfigRequest,
+    responses(
+        (status = 200, description = "Successfully configured tools from toolset", body = SetCommonToolSetConfigResponse), // Updated body type
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn set_common_toolset_config_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: SetCommonToolSetConfigRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    let command = NodeCommand::V2SetCommonToolSetConfig {
+        bearer,
+        tool_set_key: payload.tool_set_key,
+        value: payload.value,
+        res: res_sender,
+    };
+
+    sender.send(command).await.map_err(|e| {
+        eprintln!("Failed to send V2SetCommonToolSetConfig command: {}", e);
+        warp::reject::reject()
+    })?;
+
+    let result = res_receiver.recv().await.map_err(|e| {
+        eprintln!("Failed to receive result for V2SetCommonToolSetConfig: {}", e);
+        warp::reject::reject()
+    })?;
+
+    match result {
+        Ok(updated_tool_keys) => {
+            let response = SetCommonToolSetConfigResponse { updated_tool_keys };
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                StatusCode::OK,
+            ))
+        }
+        Err(e) => { // fallback
+            Ok(warp::reply::with_status(
+                warp::reply::json(&e),
+                StatusCode::from_u16(e.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), // Fallback to 500 if code is invalid
+            ))
+        }
+    }
+}
 #[utoipa::path(
     post,
     path = "/v2/copy_tool_assets",
@@ -2506,7 +2654,10 @@ pub async fn tool_check_handler(
         set_tool_mcp_enabled_handler,
         copy_tool_assets_handler,
         tool_check_handler,
+        get_tools_from_toolset_handler,
+        set_common_toolset_config_handler,
         playground_file_handler,
+        get_shinkai_tool_metadata_handler,
     ),
     components(
         schemas(
@@ -2514,6 +2665,9 @@ pub async fn tool_check_handler(
             ToolExecutionRequest,
             SetToolEnabledRequest,
             SetToolMcpEnabledRequest,
+            GetShinkaiToolMetadataResponse,
+            SetCommonToolSetConfigRequest,
+            SetCommonToolSetConfigResponse,
         )
     ),
     tags(
@@ -2522,3 +2676,61 @@ pub async fn tool_check_handler(
 )]
 
 pub struct ToolsApiDoc;
+
+#[derive(serde::Serialize, ToSchema)]
+pub struct GetShinkaiToolMetadataResponse {
+    pub tool_router_key: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_shinkai_tool_metadata",
+    params(
+        ("tool_router_key" = String, Query, description = "Tool router key of the Shinkai tool metadata to retrieve")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved Shinkai tool metadata", body = GetShinkaiToolMetadataResponse),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_shinkai_tool_metadata_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    query_params: HashMap<String, String>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let tool_router_key = query_params
+        .get("tool_router_key")
+        .ok_or_else(|| {
+            warp::reject::custom(APIError {
+                code: 400,
+                error: "Invalid Query".to_string(),
+                message: "The request query string is invalid, missing tool_router_key.".to_string(),
+            })
+        })?
+        .to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetShinkaiToolMetadata {
+            bearer,
+            tool_router_key,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
