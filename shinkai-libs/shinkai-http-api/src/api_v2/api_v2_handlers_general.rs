@@ -252,6 +252,12 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(get_preferences_handler);
 
+    let check_default_tools_sync_route = warp::path("check_default_tools_sync")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(check_default_tools_sync_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -284,6 +290,7 @@ pub fn general_routes(
         .or(compute_and_send_quests_status_route)
         .or(set_preferences_route)
         .or(get_preferences_route)
+        .or(check_default_tools_sync_route)
 }
 
 #[derive(Deserialize)]
@@ -1486,6 +1493,48 @@ pub async fn get_preferences_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/check_default_tools_sync",
+    responses(
+        (status = 200, description = "Default tools sync status retrieved successfully", body = HashMap<String, Value>),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn check_default_tools_sync_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    sender
+        .send(NodeCommand::V2ApiCheckDefaultToolsSync {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(is_synced) => {
+            let response = json!({
+                "status": "success",
+                "is_synced": is_synced,
+                "message": if is_synced { "Default tools and agents are synchronized" } else { "Default tools and agents are not synchronized" }
+            });
+            Ok(warp::reply::json(&response))
+        },
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1521,6 +1570,7 @@ pub async fn get_preferences_handler(
         compute_and_send_quests_status_handler,
         set_preferences_handler,
         get_preferences_handler,
+        check_default_tools_sync_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
