@@ -35,6 +35,12 @@ pub struct Agent {
     pub edited: bool,
 }
 
+impl Agent {
+    pub fn sanitize_config(&mut self) {
+        self.tools_config_override = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
