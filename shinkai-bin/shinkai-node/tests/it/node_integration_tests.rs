@@ -5,11 +5,13 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
+    EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
+    unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -23,7 +25,7 @@ use tokio::runtime::Runtime;
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use super::utils::node_test_api::{
-    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node
+    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
 };
 use super::utils::node_test_local::local_registration_profile_node;
 
@@ -35,10 +37,12 @@ fn setup() {
 
 #[test]
 fn subidentity_registration() {
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+
     setup();
     let rt = Runtime::new().unwrap();
 
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node2_identity_name = "@@node2_test.sep-shinkai";
         let node1_profile_name = "main";
@@ -622,18 +626,22 @@ fn subidentity_registration() {
         // Wait for all tasks to complete
         let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
         match result {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
                     eprintln!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
                 } else {
                     // If the error is not due to an abort, then it's unexpected
-                    panic!("An unexpected error occurred: {:?}", e);
+                    Err(e)
                 }
             }
         }
     });
 
     rt.shutdown_background();
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 }
