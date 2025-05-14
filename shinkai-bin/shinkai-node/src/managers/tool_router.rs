@@ -29,10 +29,6 @@ use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion,
-    invoices::{Invoice, InvoiceStatusEnum},
-    job::JobLike,
-    llm_providers::common_agent_llm_provider::ProviderOrAgent,
     shinkai_name::ShinkaiName,
     shinkai_preferences::ShinkaiInternalComms,
     shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry},
