@@ -39,9 +39,10 @@ jobs:
         run: |
           ./scripts/update_tools.sh
 
-      - name: Install dependencies
-        run: |
-          node -v
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
 
       - name: Compile shinkai-node
         run: |
