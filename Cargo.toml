@@ -16,7 +16,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
@@ -43,7 +43,7 @@ chrono = "0.4"
 serde_json = "1.0.117"
 anyhow = "1.0.94"
 blake3 = "1.2.0"
-shinkai_tools_runner = "0.9.13"
+shinkai_tools_runner = "0.9.14"
 serde = "1.0.188"
 base64 = "0.22.0"
 reqwest = "0.11.27"

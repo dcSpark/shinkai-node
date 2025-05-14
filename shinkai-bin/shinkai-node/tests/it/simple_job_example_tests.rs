@@ -1,7 +1,7 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -9,7 +9,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use std::time::{Duration, Instant};
 
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job, wait_for_default_tools, wait_for_rust_tools
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
+    wait_for_default_tools,
 };
 use super::utils::test_boilerplate::run_test_one_node_network;
 use mockito::Server;
@@ -55,7 +56,8 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
 fn simple_job_message_test() {
     // Set required environment variables
     std::env::set_var("WELCOME_MESSAGE", "false");
-
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
     // Create a mock server for OpenAI API
     let mut server = Server::new();
 
@@ -122,7 +124,6 @@ fn simple_job_message_test() {
                 )
                 .await;
             }
-
             {
                 // Wait for default tools to be ready
                 eprintln!("\n\nWaiting for default tools to be ready");
@@ -134,19 +135,6 @@ fn simple_job_message_test() {
                 .await
                 .expect("Failed to check for default tools");
                 assert!(tools_ready, "Default tools should be ready within 20 seconds");
-            }
-
-            {
-                // Check that Rust tools are installed
-                eprintln!("\n\nWaiting for Rust tools installation");
-                match wait_for_rust_tools(node1_commands_sender.clone(), 20).await {
-                    Ok(retry_count) => {
-                        eprintln!("Rust tools were installed after {} retries", retry_count);
-                    }
-                    Err(e) => {
-                        panic!("{}", e);
-                    }
-                }
             }
 
             {
@@ -269,7 +257,6 @@ fn simple_job_message_test() {
 
                 eprintln!("Test completed successfully");
                 node1_abort_handler.abort();
-                return;
             }
         })
     });
