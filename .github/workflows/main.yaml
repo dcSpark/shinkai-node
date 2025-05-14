@@ -39,6 +39,14 @@ jobs:
         run: |
           ./scripts/update_tools.sh
 
+      - name: Install dependencies
+        run: |
+          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+          nvm install 22.13.1
+          nvm alias default 22.13.1
+          nvm use default
+          node -v
+
       - name: Compile shinkai-node
         run: |
           cargo build
