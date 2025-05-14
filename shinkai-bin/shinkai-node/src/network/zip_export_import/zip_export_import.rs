@@ -21,6 +21,7 @@ use std::sync::Arc;
 use tokio::fs;
 use zip::ZipArchive;
 use zip::{write::FileOptions, ZipWriter};
+use zip::read::ZipFile;
 
 async fn calculate_zip_dependencies(
     db: Arc<SqliteManager>,
@@ -554,14 +555,14 @@ async fn import_agent_knowledge(
             let mut buffer = Vec::new();
             {
                 println!("[IMPORTING KNOWLEDGE]: {}", file);
-                let file: Result<zip::read::ZipFile<'_>, zip::result::ZipError> = zip_contents.by_name(file);
-                let mut tool_file = match file {
-                    Ok(file) => file,
-                    Err(_) => {
+                let knowledge_file_entry = zip_contents.by_name(file);
+                let mut tool_file = match knowledge_file_entry {
+                    Ok(opened_file) => opened_file,
+                    Err(zip_err) => {
                         return Err(APIError {
                             code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Invalid Tool Archive".to_string(),
-                            message: "Archive does not contain tool.json".to_string(),
+                            error: "Invalid Knowledge Archive".to_string(),
+                            message: format!("Failed to access knowledge file '{}' in archive: {}", file, zip_err),
                         });
                     }
                 };

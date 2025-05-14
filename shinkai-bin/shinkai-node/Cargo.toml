@@ -37,6 +37,8 @@ async-channel = "1.6.1"
 lazy_static = "1.5.0"
 clap = "3.0.0-beta.5"
 regex = { workspace = true }
+once_cell = "1.19.0"
+rmcp = { version = "0.1.5", features = ["transport-child-process", "client"] }
 csv = "1.1.6"
 uuid = { workspace = true, features = ["v4"] }
 reqwest = { workspace = true, features = [

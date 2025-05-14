@@ -65,6 +65,8 @@ use tokio::time::Duration;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
+use crate::network::mcp_manager::list_tools_via_command;
+
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
     if api_key == bearer || bearer == "debug" {
@@ -2331,50 +2333,86 @@ impl Node {
             return Ok(());
         }
 
-        println!("mcp_server: {:?}", mcp_server);
+        log::debug!("Received request to add MCP server: {:?}", mcp_server);
 
         match mcp_server.r#type {
             MCPServerType::Command => {
-                // Split command into command and arguments if present
                 if let Some(cmd) = &mcp_server.command {
+                    // Log the command components for debugging, as was previously done.
                     let mut parts = cmd.splitn(2, ' ');
-                    let command = parts.next().unwrap_or("").to_string();
+                    let command_executable = parts.next().unwrap_or("").to_string();
                     let arguments = parts.next().unwrap_or("").to_string();
-
-                    log::info!("Command: {:?}, Arguments: {:?}", command, arguments);
+                    log::info!(
+                        "MCP Server Type Command: executable='{}', arguments='{}'",
+                        command_executable,
+                        arguments
+                    );
                 } else {
-                    log::warn!("No command provided for MCP Server: {:?}", mcp_server.name);
+                    log::warn!("No command provided for MCP Server: '{}'", mcp_server.name);
                     let _ = res
                         .send(Err(APIError {
                             code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Invalid MCP Server Type".to_string(),
-                            message: format!("No command provided for MCP Server: {:?}", mcp_server.name),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!(
+                                "No command string provided for MCP Server '{}' of type Command.",
+                                mcp_server.name
+                            ),
                         }))
                         .await;
                     return Ok(());
                 }
             }
             _ => {
-                log::warn!("MCP Server type not yet implemented: {:?}", mcp_server.r#type);
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Invalid MCP Server Type".to_string(),
-                    message: format!("MCP Server type {:?} is not yet implemented", mcp_server.r#type),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+                log::warn!("MCP Server type not yet fully implemented or recognized: {:?}", mcp_server.r#type);
+                // For now, we allow adding other types to the DB but won't attempt to spawn them.
+                // If a type is strictly unsupported, this block could return an error.
+                // The current logic proceeds to add to DB, which is fine.
             }
         }
 
         // Add the MCP server to the database
         match db.add_mcp_server(
-            mcp_server.name,
+            mcp_server.name.clone(), // Clone name for db insertion
             mcp_server.r#type,
-            mcp_server.url,
-            mcp_server.command,
+            mcp_server.url.clone(),
+            mcp_server.command.clone(),
             mcp_server.is_enabled,
         ) {
             Ok(server) => {
+                log::info!("MCP Server '{}' (ID: {:?}) added to database successfully.", server.name, server.id);
+
+                if server.r#type == MCPServerType::Command && server.is_enabled {
+                    if let Some(command_str) = &server.command {
+                        log::info!("Attempting to spawn MCP server '{}' (ID: {:?}) with command: '{}'", server.name, server.id, command_str);
+
+                        // List tools for the command and print them
+                        log::info!("Attempting to list tools for command: '{}' (Note: this runs the command separately for listing tools)", command_str);
+                        match list_tools_via_command(command_str).await {
+                            Ok(tools) => {
+                                if tools.is_empty() {
+                                    log::info!("No tools found for command '{}' via list_tools_via_command.", command_str);
+                                } else {
+                                    log::info!("Tools found for command '{}' via list_tools_via_command:", command_str);
+                                    for tool in tools {
+                                        log::info!("  - {:?}", tool); // Assumes Tool implements Debug
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to list tools for command '{}' via list_tools_via_command: {:?}", command_str, e);
+                            }
+                        }
+                    } else {
+                        // This should ideally not be reached if the check at the beginning of the function is robust,
+                        // as mcp_server.command would have been validated.
+                        log::warn!(
+                            "MCP Server '{}' (ID: {:?}) is of type Command and enabled, but has no command string for spawning. This indicates an inconsistent state.",
+                            server.name,
+                            server.id
+                        );
+                    }
+                }
+
                 let _ = res.send(Ok(server)).await;
             }
             Err(err) => {
