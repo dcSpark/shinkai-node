@@ -1,4 +1,4 @@
-use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerConfig};
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 
@@ -81,7 +81,7 @@ impl SqliteManager {
             r#type.to_string(),
             url.clone().unwrap_or("".to_string()),
             command.clone().unwrap_or("".to_string()),
-            serde_json::to_string(config).unwrap_or("{}".to_string()),
+            serde_json::to_string(&config).unwrap_or("{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
         ])?;
 

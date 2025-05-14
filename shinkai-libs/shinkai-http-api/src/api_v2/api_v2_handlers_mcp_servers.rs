@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use serde::Deserialize;
-use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerConfig};
 use utoipa::{openapi, OpenApi, ToSchema};
 use warp::Filter;
 

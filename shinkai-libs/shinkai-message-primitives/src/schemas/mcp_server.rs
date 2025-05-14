@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-type MCPServerConfig = std::collections::HashMap<String, String>;
+pub type MCPServerConfig = std::collections::HashMap<String, String>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct MCPServer {
