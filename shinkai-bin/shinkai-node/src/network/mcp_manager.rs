@@ -1,61 +1,17 @@
-// stateless_mcp_client.rs — SPAWN → LIST TOOLS → SHUT DOWN
-// -----------------------------------------------------------------------------
-// A minimal helper for *stateless* interaction with an MCP server launched as a
-// subprocess.  It spawns the command, performs the JSON‑RPC handshake via the
-// Model Context Protocol Rust SDK, requests the available tools, returns them
-// as a `Vec<Tool>`, and then cleanly terminates the child process.
-// -----------------------------------------------------------------------------
-
 use anyhow::Result;
 use rmcp::{model::Tool, transport::TokioChildProcess, ServiceExt};
 use tokio::process::Command;
+use shinkai_message_primitives::schemas::mcp_server::MCPServerConfig;
 
-/// Spawn a command that runs an MCP server, list its tools, return them, then
-/// shut the server down.
-///
-/// * `cmd_str` – shell command that launches the MCP server (e.g.
-///   `"npx -y @modelcontextprotocol/server-everything"`).
-///
-/// ## Example
-/// ```rust,ignore
-/// let tools = list_tools_via_command("npx -y @modelcontextprotocol/server-everything")
-///     .await?;
-/// for t in tools {
-///     println!("{} — {}", t.name, t.description.unwrap_or_default());
-/// }
-/// ```
-pub async fn list_tools_via_command(cmd_str: &str) -> Result<Vec<Tool>> {
+pub async fn list_tools_via_command(cmd_str: &str, config: Option<MCPServerConfig>) -> Result<Vec<Tool>> {
     // 1. Build the child process (via shell so we support complex commands)
-    // Parse the command string to handle environment variables and the executable
-    let mut env_vars = std::collections::HashMap::new();
-    let mut cmd_parts = cmd_str.trim().split_whitespace();
-    
-    // Extract environment variables (KEY=VALUE format before npx/uvx)
-    let mut cmd_executable = "";
-    let mut cmd_args = Vec::new();
-    
-    // Process each part of the command
-    while let Some(part) = cmd_parts.next() {
-        if part == "npx" || part == "uvx" {
-            // Found the executable
-            cmd_executable = part;
-            // Collect the remaining parts as arguments
-            cmd_args.extend(cmd_parts);
-            break;
-        } else if part.contains('=') {
-            // This is an environment variable
-            let mut kv_iter = part.splitn(2, '=');
-            if let (Some(key), Some(value)) = (kv_iter.next(), kv_iter.next()) {
-                env_vars.insert(key.to_string(), value.to_string());
-            }
-        } else {
-            // If we get here, we've found the executable but it's not npx/uvx
-            cmd_executable = part;
-            // Collect the remaining parts as arguments
-            cmd_args.extend(cmd_parts);
-            break;
-        }
-    }
+    // Parse the command string for the executable and arguments
+    let mut cmd_parts_iter = cmd_str.trim().split_whitespace();
+    let cmd_executable = match cmd_parts_iter.next() {
+        Some(exe) => exe,
+        None => return Err(anyhow::anyhow!("Command string cannot be empty and must specify an executable.")),
+    };
+    let cmd_args: Vec<&str> = cmd_parts_iter.collect();
     
     // Create the command with the executable
     let mut cmd = Command::new(cmd_executable);
@@ -65,9 +21,11 @@ pub async fn list_tools_via_command(cmd_str: &str) -> Result<Vec<Tool>> {
         cmd.arg(arg);
     }
     
-    // Set environment variables
-    for (key, value) in env_vars {
-        cmd.env(key, value);
+    // Set environment variables from config if provided
+    if let Some(env_map) = &config { // config is Option<HashMap<String, String>>, so env_map is &HashMap<String, String>
+        for (key, value) in env_map { // Iterate directly over the HashMap
+            cmd.env(key, value);
+        }
     }
     let service = ()
         .serve(TokioChildProcess::new(&mut cmd)?)

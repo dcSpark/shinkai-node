@@ -55,8 +55,15 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use shinkai_tools_primitives::tools::{
+    agent_tool_wrapper::AgentToolWrapper,
+    shinkai_tool::ShinkaiTool,
+    mcp_server_tool::MCPServerTool,
+    tool_config::{ToolConfig, BasicConfig},
+    parameters::Parameters,
+    tool_output_arg::ToolOutputArg,
+    tool_types::ToolResult,
+};
 use std::collections::HashMap;
 use std::time::Instant;
 use std::{env, sync::Arc};
@@ -2322,13 +2329,11 @@ impl Node {
 
     pub async fn v2_api_add_mcp_server(
         db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
         bearer: String,
         mcp_server: AddMCPServerRequest,
         res: Sender<Result<MCPServer, APIError>>,
     ) -> Result<(), NodeError> {
-        // Validate the bearer token
-
-
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
@@ -2388,17 +2393,63 @@ impl Node {
                     if let Some(command_str) = &server.command {
                         log::info!("Attempting to spawn MCP server '{}' (ID: {:?}) with command: '{}'", server.name, server.id, command_str);
 
-                        // List tools for the command and print them
                         log::info!("Attempting to list tools for command: '{}' (Note: this runs the command separately for listing tools)", command_str);
-                        match list_tools_via_command(command_str).await {
+                        let mut tools_config: Vec<ToolConfig> = vec![];
+                        // Iterate over server config and add each key-value pair as a BasicConfig
+                        if let Some(config) = &server.config {
+                            for (key, value) in config {
+                                tools_config.push(ToolConfig::BasicConfig(BasicConfig {
+                                    key_name: key.clone(),
+                                    description: format!("Configuration for {}", key),
+                                    required: true,
+                                    type_name: Some("string".to_string()),
+                                    key_value: Some(serde_json::Value::String(value.to_string())),
+                                }));
+                            }
+                        }
+                        match list_tools_via_command(command_str, server.config.clone()).await {
                             Ok(tools) => {
-                                if tools.is_empty() {
-                                    log::info!("No tools found for command '{}' via list_tools_via_command.", command_str);
-                                } else {
-                                    log::info!("Tools found for command '{}' via list_tools_via_command:", command_str);
-                                    for tool in tools {
-                                        log::info!("  - {:?}", tool); // Assumes Tool implements Debug
-                                    }
+                                for tool in tools {  
+                                    let props_map: std::collections::HashMap<String, shinkai_tools_primitives::tools::parameters::Property> = tool.input_schema
+                                        .get("properties")
+                                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                                        .unwrap_or_default();
+
+                                    let req_vec: Vec<String> = tool.input_schema
+                                        .get("required")
+                                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                                        .unwrap_or_default();
+
+                                    let mcp_tool = MCPServerTool {
+                                        name: format!("{}_{}", server.name, tool.name),
+                                        author: node_name.to_string(),
+                                        description: tool.description.to_string(),
+                                        config: tools_config.clone(),
+                                        activated: true,
+                                        input_args: Parameters {
+                                            schema_type: tool.input_schema.get("type").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| "object".to_string()),
+                                            properties: props_map,
+                                            required: req_vec,
+                                        },
+                                        keywords: vec![],
+                                        version: "1.0.0".to_string(),
+                                        embedding: None,
+                                        mcp_enabled: Some(false),
+                                        mcp_server_ref: server.id.expect("Server ID should exist").to_string(),
+                                        mcp_server_tool: tool.name.to_string(),
+                                        mcp_server_url: "".to_string(),
+                                        output_arg: ToolOutputArg::empty(),
+                                        result: ToolResult {
+                                            r#type: "object".to_string(),
+                                            properties: serde_json::json!({}),
+                                            required: vec![],
+                                        },
+                                        tool_set: format!("__mcp_{}", server.name).into(),
+                                    };
+                                    let shinkai_tool = ShinkaiTool::MCPServer(mcp_tool, true);
+                                    if let Err(err) = db.add_tool(shinkai_tool).await {
+                                        eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                    };
                                 }
                             }
                             Err(e) => {

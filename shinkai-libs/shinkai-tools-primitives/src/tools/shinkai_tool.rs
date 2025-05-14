@@ -619,6 +619,12 @@ impl From<NetworkTool> for ShinkaiTool {
     }
 }
 
+impl From<MCPServerTool> for ShinkaiTool {
+    fn from(tool: MCPServerTool) -> Self {
+        ShinkaiTool::MCPServer(tool, true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
