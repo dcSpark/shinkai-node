@@ -52,25 +52,14 @@ jobs:
 
       - name: Run primitives cargo tests
         working-directory: ./shinkai-libs/shinkai-message-primitives
-        env:
-          INSTALL_FOLDER_PATH: ./pre-install
         run: |
-          export INSTALL_FOLDER_PATH=$PWD/pre-install
-          cargo test -- --test-threads=1
+          cargo test -- --test-threads=1 --nocapture
 
       - name: Run main cargo tests
         working-directory: ./
         env:
           SKIP_IMPORT_FROM_DIRECTORY: true
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_URL: ${{ secrets.AWS_URL }}
           IS_TESTING: true
           WELCOME_MESSAGE: false
         run: |
-          export INSTALL_FOLDER_PATH=$PWD/pre-install
-          cargo test -- --test-threads=1
-
-    env:
-      FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
-      FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+          cargo test -- --test-threads=1 --nocapture
