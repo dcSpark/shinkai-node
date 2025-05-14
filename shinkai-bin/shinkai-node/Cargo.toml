@@ -53,7 +53,6 @@ shinkai_tools_primitives = { workspace = true }
 shinkai_tcp_relayer = { workspace = true }
 shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
-shinkai_sheet = { workspace = true }
 shinkai_embedding = { workspace = true }
 shinkai_fs = { workspace = true }
 # shinkai_baml = { workspace = true }
@@ -65,19 +64,16 @@ hex = { workspace = true }
 aes-gcm = "0.10.3"
 blake3 = { workspace = true }
 cron-parser = "0.8.1"
-ethers = "2.0"
 dashmap = "5.5.3"
 tiny-bip39 = "0.8.0"
 async-lock = "2.4.0"
 governor = "0.6.3"
-lru = "0.7.0"
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 console-subscriber = { version = "0.1", optional = true }
-downcast-rs = "1.2.1"
 bip32 = "0.5.2"
+downcast-rs = "1.2.1"
 bigdecimal = "0.2.2"
 rust_decimal = "1.17.0"
-umya-spreadsheet = "2.1.1"
 rcgen = "0.13.1"
 serde = { workspace = true, features = ["derive"] }
 r2d2 = "0.8.10"
@@ -87,11 +83,11 @@ async-std = { version = "1.5.0", features = ["unstable"] }
 env_logger = { workspace = true }
 zip = "2.2.1"
 open = "5.3.2"
-sha2 = "0.10" 
+sha2 = "0.10"
 
 [dev-dependencies]
 mockito = "1.0.2"
 tokio-tungstenite = "0.15.0"
-tempfile = "3.10.1"
+tempfile = "3.19"
 fs_extra = "1.2.0"
 utoipa = { version = "4.2.3", features = ["yaml"] }

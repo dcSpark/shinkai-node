@@ -3,15 +3,10 @@ use std::{collections::HashMap, path::PathBuf};
 use super::execution_header_generator::{check_tool, generate_execution_environment};
 use crate::utils::environment::fetch_node_environment;
 use serde_json::{Map, Value};
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, tool_router_key::ToolRouterKey};
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    error::ToolError,
-    parameters::Parameters,
-    python_tools::PythonTool,
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    error::ToolError, parameters::Parameters, python_tools::PythonTool, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 use std::sync::Arc;
 
@@ -24,6 +19,7 @@ pub async fn execute_python_tool(
     oauth: Option<Vec<OAuth>>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     llm_provider: String,
     support_files: HashMap<String, String>,
     code: String,
@@ -31,13 +27,22 @@ pub async fn execute_python_tool(
     runner: Option<RunnerType>,
     operating_system: Option<Vec<OperatingSystem>>,
 ) -> Result<Value, ToolError> {
-    // Create a minimal DenoTool instance
+    let tool_router_key = ToolRouterKey::new(
+        "local".to_string(),
+        "@@official.shinkai".to_string(),
+        "python_runtime".to_string(),
+        None,
+    );
+
+    // Create a minimal PythonTool instance
     let tool = PythonTool {
         name: "python_runtime".to_string(),
+        tool_router_key: Some(tool_router_key.clone()),
         homepage: None,
         version: "1.0.0".to_string(),
         author: "@@official.shinkai".to_string(),
         py_code: code,
+        mcp_enabled: Some(false),
         tools: vec![],
         config: extra_config.clone(),
         description: "Python runtime execution".to_string(),
@@ -66,6 +71,7 @@ pub async fn execute_python_tool(
         llm_provider.clone(),
         app_id.clone(),
         tool_id.clone(),
+        agent_id,
         "code-execution".to_string(),
         "".to_string(),
         &oauth,

@@ -2,7 +2,7 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::llm_provider::providers::llm_cancellable_request::make_cancellable_request;
 use crate::llm_provider::providers::shared::ollama_api::{
-    ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse,
+    ollama_conversation_prepare_messages_with_tooling, OllamaAPIStreamingResponse
 };
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
@@ -19,7 +19,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -83,11 +83,6 @@ impl LLMService for Ollama {
             // Extract tools_json from the result
             let tools_json = messages_result.functions.unwrap_or_else(Vec::new);
 
-            match serde_json::to_string_pretty(&tools_json) {
-                Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-            };
-
             let mut payload = json!({
                 "model": self.model_type,
                 "messages": messages_json,
@@ -99,7 +94,8 @@ impl LLMService for Ollama {
             // Modify payload to add options if needed
             add_options_to_payload(&mut payload, config.as_ref(), &model, messages_result.tokens_used);
 
-            // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true, then we need to remove to remove it
+            // Ollama path: if stream is true, then we the response is in Chinese for minicpm-v so if stream is true,
+            // then we need to remove to remove it
             if is_stream {
                 if self.model_type.starts_with("minicpm-v") {
                     payload.as_object_mut().unwrap().remove("stream");
@@ -277,12 +273,7 @@ async fn process_stream(
                 }
 
                 // Return early
-                return Ok(LLMInferenceResponse::new(
-                    response_text,
-                    json!({}),
-                    Vec::new(),
-                    None,
-                ));
+                return Ok(LLMInferenceResponse::new(response_text, json!({}), Vec::new(), None));
             }
         }
 
@@ -301,7 +292,10 @@ async fn process_stream(
                             ShinkaiLogLevel::Error,
                             format!("Ollama API Error: {}", error_msg).as_str(),
                         );
-                        return Err(LLMProviderError::APIError(error_msg.to_string()));
+                        return Err(LLMProviderError::APIError(format!(
+                            "Ollama has failed to process the request: {}",
+                            error_msg
+                        )));
                     }
                 }
 
@@ -341,6 +335,9 @@ async fn process_stream(
                                     arguments: arguments.clone(),
                                     tool_router_key,
                                     response: None,
+                                    index: final_function_calls.len() as u64,
+                                    id: None,
+                                    call_type: Some("function".to_string()),
                                 };
 
                                 final_function_calls.push(function_call.clone());
@@ -367,6 +364,7 @@ async fn process_stream(
                                                 type_: ToolStatusType::Running,
                                                 reason: None,
                                             },
+                                            index: function_call.index,
                                         };
 
                                         let ws_message_type =
@@ -396,17 +394,20 @@ async fn process_stream(
                             if let Some(ref inbox_name) = inbox_name {
                                 let m = manager.lock().await;
                                 let inbox_name_string = inbox_name.to_string();
-
                                 let metadata = WSMetadata {
                                     id: Some(session_id.clone()),
-                                    is_done: data.done,
-                                    done_reason: if data.done { data.done_reason.clone() } else { None },
-                                    total_duration: if data.done {
+                                    is_done: final_function_calls.is_empty() && data.done,
+                                    done_reason: if final_function_calls.is_empty() && data.done {
+                                        data.done_reason.clone()
+                                    } else {
+                                        None
+                                    },
+                                    total_duration: if final_function_calls.is_empty() && data.done {
                                         data.total_duration.map(|d| d as u64)
                                     } else {
                                         None
                                     },
-                                    eval_count: if data.done {
+                                    eval_count: if final_function_calls.is_empty() && data.done {
                                         data.eval_count.map(|c| c as u64)
                                     } else {
                                         None
@@ -499,7 +500,7 @@ async fn handle_non_streaming_response(
             result = &mut response_future => {
                 let res = result?;
                 let response_body = res.text().await?;
-                
+
                 // First check if it's an error response
                 if let Ok(error_response) = serde_json::from_str::<serde_json::Value>(&response_body) {
                     if let Some(error_msg) = error_response.get("error").and_then(|e| e.as_str()) {
@@ -508,7 +509,7 @@ async fn handle_non_streaming_response(
                             ShinkaiLogLevel::Error,
                             format!("Ollama API Error: {}", error_msg).as_str(),
                         );
-                        return Err(LLMProviderError::APIError(error_msg.to_string()));
+                        return Err(LLMProviderError::APIError(format!("Ollama has failed to process the request: {}", error_msg)));
                     }
                 }
 
@@ -520,7 +521,7 @@ async fn handle_non_streaming_response(
                             let mut function_calls = Vec::new();
 
                             if let Some(tool_calls) = message.get("tool_calls").and_then(|tc| tc.as_array()) {
-                                for tool_call in tool_calls {
+                                for (index, tool_call) in tool_calls.iter().enumerate() {
                                     if let Some(function) = tool_call.get("function") {
                                         if let (Some(name), Some(arguments)) = (
                                             function.get("name").and_then(|n| n.as_str()),
@@ -542,6 +543,9 @@ async fn handle_non_streaming_response(
                                                 arguments: arguments.clone(),
                                                 tool_router_key,
                                                 response: None,
+                                                index: index as u64,
+                                                id: None,
+                                                call_type: Some("function".to_string()),
                                             };
 
                                             function_calls.push(function_call.clone());
@@ -562,6 +566,7 @@ async fn handle_non_streaming_response(
                                                             type_: ToolStatusType::Running,
                                                             reason: None,
                                                         },
+                                                        index: function_call.index,
                                                     };
 
                                                     let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));

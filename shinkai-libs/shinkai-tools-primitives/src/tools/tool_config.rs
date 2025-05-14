@@ -23,7 +23,7 @@ impl ToolConfig {
     }
 
     /// The header key to be used when making the request
-    pub fn header(&self) -> String {
+    pub fn header(&self) -> Value {
         match self {
             ToolConfig::BasicConfig(config) => config.key_value.clone().unwrap_or_default(),
         }
@@ -56,11 +56,9 @@ impl ToolConfig {
                 let (key_value, type_name) = if let Some(val_obj) = val.as_object() {
                     (None, val_obj.get("type").and_then(|v| v.as_str()).map(String::from))
                 } else {
-                    // Convert any value type to string representation
+                    // Use the value directly instead of converting to string
                     let key_value = match val {
-                        Value::String(s) => Some(s.clone()),
-                        Value::Number(n) => Some(n.to_string()),
-                        Value::Bool(b) => Some(b.to_string()),
+                        Value::String(_) | Value::Number(_) | Value::Bool(_) => Some(val.clone()),
                         _ => None,
                     };
                     // Infer type_name based on value type
@@ -94,7 +92,7 @@ impl ToolConfig {
             if let Some(key_name) = obj.get("key_name").and_then(|v| v.as_str()) {
                 let description = obj.get("description").and_then(|v| v.as_str()).unwrap_or_default();
                 let required = obj.get("required").and_then(|v| v.as_bool()).unwrap_or(false);
-                let key_value = obj.get("key_value").and_then(|v| v.as_str()).map(String::from);
+                let key_value = obj.get("key_value");
                 let type_name = obj.get("type").and_then(|v| v.as_str()).map(String::from);
 
                 let basic_config = BasicConfig {
@@ -102,7 +100,7 @@ impl ToolConfig {
                     description: description.to_string(),
                     required,
                     type_name,
-                    key_value,
+                    key_value: key_value.map(|v| v.clone()),
                 };
                 return Some(ToolConfig::BasicConfig(basic_config));
             }
@@ -248,7 +246,7 @@ pub struct BasicConfig {
     pub required: bool,
     #[serde(rename = "type")]
     pub type_name: Option<String>,
-    pub key_value: Option<String>,
+    pub key_value: Option<serde_json::Value>,
 }
 
 #[cfg(test)]
@@ -275,7 +273,7 @@ mod tests {
                     assert_eq!(config.description, "API Key for weather service");
                     assert!(config.required);
                     assert_eq!(config.type_name, Some("string".to_string()));
-                    assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
+                    assert_eq!(config.key_value, Some(serde_json::Value::String("63d35ff6068c3103ccd1227546935111".to_string())));
                 }
                 _ => panic!("Parsed ToolConfig is not a BasicConfig"),
             }
@@ -300,7 +298,7 @@ mod tests {
                     assert_eq!(config.description, "");
                     assert!(!config.required);
                     assert_eq!(config.type_name, None);
-                    assert_eq!(config.key_value, Some("63d35ff6068c3103ccd1227546935111".to_string()));
+                    assert_eq!(config.key_value, Some(serde_json::Value::String("63d35ff6068c3103ccd1227546935111".to_string())));
                 }
                 _ => panic!("Parsed ToolConfig is not a BasicConfig"),
             }
@@ -388,7 +386,7 @@ mod tests {
 
         // Test string value
         if let Some(ToolConfig::BasicConfig(string_config)) = find_config("string_key") {
-            assert_eq!(string_config.key_value, Some("test_value".to_string()));
+            assert_eq!(string_config.key_value, Some(serde_json::Value::String("test_value".to_string())));
             assert_eq!(string_config.type_name, Some("string".to_string()));
         } else {
             panic!("string_key config not found");
@@ -396,7 +394,7 @@ mod tests {
 
         // Test number value
         if let Some(ToolConfig::BasicConfig(number_config)) = find_config("number_key") {
-            assert_eq!(number_config.key_value, Some("42".to_string()));
+            assert_eq!(number_config.key_value, Some(serde_json::Value::Number(serde_json::Number::from(42))));
             assert_eq!(number_config.type_name, Some("number".to_string()));
         } else {
             panic!("number_key config not found");
@@ -404,7 +402,7 @@ mod tests {
 
         // Test boolean value
         if let Some(ToolConfig::BasicConfig(bool_config)) = find_config("bool_key") {
-            assert_eq!(bool_config.key_value, Some("true".to_string()));
+            assert_eq!(bool_config.key_value, Some(serde_json::Value::Bool(true)));
             assert_eq!(bool_config.type_name, Some("boolean".to_string()));
         } else {
             panic!("bool_key config not found");

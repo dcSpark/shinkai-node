@@ -49,10 +49,11 @@ Example usage:
                 author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
+                mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("tool_router_key".to_string(), "string".to_string(), "The tool_router_key of the tool to update".to_string(), true);
-                    params.add_property("config".to_string(), "object".to_string(), "Configuration key-value pairs to update".to_string(), true);
+                    params.add_property("tool_router_key".to_string(), "string".to_string(), "The tool_router_key of the tool to update".to_string(), true, None);
+                    params.add_property("config".to_string(), "object".to_string(), "Configuration key-value pairs to update".to_string(), true, None);
                     params
                 },
                 output_arg: ToolOutputArg {
@@ -92,10 +93,8 @@ async fn config_update(
                 update_count += 1;
                 if value.is_null() {
                     basic_config.key_value = None;
-                } else if let Some(string_value) = value.as_str() {
-                    basic_config.key_value = Some(string_value.to_owned());
                 } else {
-                    basic_config.key_value = Some(value.to_string());
+                    basic_config.key_value = Some(value.clone());
                 }
             });
     }
@@ -310,6 +309,7 @@ mod tests {
     use super::*;
 
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_tools_primitives::tools::tool_config::BasicConfig;
     use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use shinkai_tools_primitives::tools::{deno_tools::DenoTool, shinkai_tool::ShinkaiTool};
@@ -322,7 +322,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -337,12 +337,21 @@ mod tests {
     }
 
     fn create_deno_tool() -> ShinkaiTool {
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "Test Author".to_string(),
+            "Test Tool".to_string(),
+            None,
+        );
+
         let mut initial_tool = ShinkaiTool::Deno(
             DenoTool {
                 name: "Test Tool".to_string(),
+                tool_router_key: Some(tool_router_key),
                 homepage: Some("http://127.0.0.1/index.html".to_string()),
                 author: "Test Author".to_string(),
                 version: "1.0.0".to_string(),
+                mcp_enabled: Some(false),
                 js_code: "console.log('test');".to_string(),
                 tools: vec![],
                 config: vec![
@@ -351,14 +360,14 @@ mod tests {
                         description: "API Key".to_string(),
                         required: true,
                         type_name: Some("string".to_string()),
-                        key_value: Some("old_key".to_string()),
+                        key_value: Some(serde_json::Value::String("old_key".to_string())),
                     }),
                     ToolConfig::BasicConfig(BasicConfig {
                         key_name: "secret".to_string(),
                         description: "Secret".to_string(),
                         required: false,
                         type_name: Some("string".to_string()),
-                        key_value: Some("old_secret".to_string()),
+                        key_value: Some(serde_json::Value::String("old_secret".to_string())),
                     }),
                 ],
                 oauth: None,
@@ -418,12 +427,18 @@ mod tests {
                 assert_eq!(config1.description, "API Key");
                 assert!(config1.required);
                 assert_eq!(config1.type_name, Some("string".to_string()));
-                assert_eq!(config1.key_value, Some("new_key".to_string()));
+                assert_eq!(
+                    config1.key_value,
+                    Some(serde_json::Value::String("new_key".to_string()))
+                );
                 assert_eq!(config2.key_name, "secret");
                 assert_eq!(config2.description, "Secret");
                 assert!(!config2.required);
                 assert_eq!(config2.type_name, Some("string".to_string()));
-                assert_eq!(config2.key_value, Some("old_secret".to_string()));
+                assert_eq!(
+                    config2.key_value,
+                    Some(serde_json::Value::String("old_secret".to_string()))
+                );
             }
             _ => panic!("Expected Deno tool"),
         }

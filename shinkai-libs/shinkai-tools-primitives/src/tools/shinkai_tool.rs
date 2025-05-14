@@ -10,8 +10,9 @@ use shinkai_message_primitives::schemas::{
     shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
 };
 
+use super::agent_tool_wrapper::AgentToolWrapper;
 use super::tool_config::OAuth;
-use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_playground::{SqlQuery, SqlTable, ToolPlaygroundMetadata};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
     deno_tools::DenoTool, mcp_server_tool::MCPServerTool, network_tool::NetworkTool, parameters::Parameters,
@@ -27,6 +28,7 @@ pub enum ShinkaiTool {
     Network(NetworkTool, IsEnabled),
     Deno(DenoTool, IsEnabled),
     Python(PythonTool, IsEnabled),
+    Agent(AgentToolWrapper, IsEnabled),
     MCPServer(MCPServerTool, IsEnabled),
 }
 
@@ -52,6 +54,7 @@ pub struct ShinkaiToolHeader {
     pub author: String,
     pub version: String,
     pub enabled: bool,
+    pub mcp_enabled: Option<bool>,
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub config: Option<Vec<ToolConfig>>,
@@ -81,6 +84,7 @@ impl ShinkaiTool {
             author: self.author(),
             version: self.version(),
             enabled: self.is_enabled(),
+            mcp_enabled: Some(self.is_mcp_enabled()),
             input_args: self.input_args(),
             output_arg: self.output_arg(),
             config: self.get_js_tool_config().cloned(),
@@ -91,14 +95,32 @@ impl ShinkaiTool {
 
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> ToolRouterKey {
-        let (provider, author, name) = match self {
-            ShinkaiTool::Rust(r, _) => ("local".to_string(), r.author(), r.name.clone()),
-            ShinkaiTool::Network(n, _) => (n.provider.to_string(), n.author.to_string(), n.name.clone()),
-            ShinkaiTool::Deno(d, _) => ("local".to_string(), d.author.clone(), d.name.clone()),
-            ShinkaiTool::Python(p, _) => ("local".to_string(), p.author.clone(), p.name.clone()),
-            ShinkaiTool::MCPServer(m, _) => ("local".to_string(), m.author.clone(), m.name.clone()),
-        };
-        ToolRouterKey::new(provider, author, name, None)
+        match self {
+            ShinkaiTool::Rust(r, _) => ToolRouterKey::new("local".to_string(), r.author(), r.name.clone(), None),
+            ShinkaiTool::Network(n, _) => {
+                ToolRouterKey::new(n.provider.to_string(), n.author.to_string(), n.name.clone(), None)
+            }
+            ShinkaiTool::Deno(d, _) => {
+                if let Some(key) = &d.tool_router_key {
+                    key.clone()
+                } else {
+                    ToolRouterKey::new("local".to_string(), d.author.clone(), d.name.clone(), None)
+                }
+            }
+            ShinkaiTool::Python(p, _) => {
+                if let Some(key) = &p.tool_router_key {
+                    key.clone()
+                } else {
+                    ToolRouterKey::new("local".to_string(), p.author.clone(), p.name.clone(), None)
+                }
+            }
+            ShinkaiTool::Agent(a, _) => {
+                ToolRouterKey::new("local".to_string(), a.author.clone(), a.agent_id.clone(), None)
+            }
+            ShinkaiTool::MCPServer(m, _) => {
+                ToolRouterKey::new("local".to_string(), m.author.clone(), m.name.clone(), None)
+            }
+        }
     }
 
     /// Sanitize the config by removing key-values from BasicConfig
@@ -117,12 +139,6 @@ impl ShinkaiTool {
         }
     }
 
-    /// Generate the key that this tool will be stored under in the tool router
-    pub fn gen_router_key(source: String, author: String, name: String) -> String {
-        let tool_router_key = ToolRouterKey::new(source, author, name, None);
-        tool_router_key.to_string_without_version()
-    }
-
     /// Tool name
     pub fn name(&self) -> String {
         match self {
@@ -130,6 +146,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.name.clone(),
             ShinkaiTool::Deno(d, _) => d.name.clone(),
             ShinkaiTool::Python(p, _) => p.name.clone(),
+            ShinkaiTool::Agent(a, _) => a.name.clone(),
             ShinkaiTool::MCPServer(m, _) => m.name.clone(),
         }
     }
@@ -140,6 +157,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.description.clone(),
             ShinkaiTool::Deno(d, _) => d.description.clone(),
             ShinkaiTool::Python(p, _) => p.description.clone(),
+            ShinkaiTool::Agent(a, _) => a.description.clone(),
             ShinkaiTool::MCPServer(m, _) => m.description.clone(),
         }
     }
@@ -151,6 +169,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.input_args.clone(),
             ShinkaiTool::Deno(d, _) => d.input_args.clone(),
             ShinkaiTool::Python(p, _) => p.input_args.clone(),
+            ShinkaiTool::Agent(a, _) => a.input_args.clone(),
             ShinkaiTool::MCPServer(m, _) => m.input_args.clone(),
         }
     }
@@ -162,6 +181,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.output_arg.clone(),
             ShinkaiTool::Deno(d, _) => d.output_arg.clone(),
             ShinkaiTool::Python(p, _) => p.output_arg.clone(),
+            ShinkaiTool::Agent(a, _) => a.output_arg.clone(),
             ShinkaiTool::MCPServer(m, _) => m.output_arg.clone(),
         }
     }
@@ -173,6 +193,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => "Network",
             ShinkaiTool::Deno(_, _) => "Deno",
             ShinkaiTool::Python(_, _) => "Python",
+            ShinkaiTool::Agent(_, _) => "Agent",
             ShinkaiTool::MCPServer(_, _) => "MCPServer",
         }
     }
@@ -294,6 +315,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.embedding = Some(embedding),
             ShinkaiTool::Deno(d, _) => d.embedding = Some(embedding),
             ShinkaiTool::Python(p, _) => p.embedding = Some(embedding),
+            ShinkaiTool::Agent(a, _) => a.embedding = Some(embedding),
             ShinkaiTool::MCPServer(m, _) => m.embedding = Some(embedding),
         }
     }
@@ -304,7 +326,7 @@ impl ShinkaiTool {
         let tool_router_key = self.tool_router_key();
 
         // Extract the tool name directly from the ToolRouterKey
-        let tool_name = tool_router_key.name.clone();
+        let tool_name = ToolRouterKey::sanitize(&tool_router_key.name);
 
         let summary = serde_json::json!({
             "type": "function",
@@ -337,6 +359,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.embedding.clone(),
             ShinkaiTool::Deno(d, _) => d.embedding.clone(),
             ShinkaiTool::Python(p, _) => p.embedding.clone(),
+            ShinkaiTool::Agent(a, _) => a.embedding.clone(),
             ShinkaiTool::MCPServer(m, _) => m.embedding.clone(),
         }
     }
@@ -365,6 +388,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n, _) => n.author.clone(),
             ShinkaiTool::Deno(d, _) => d.author.clone(),
             ShinkaiTool::Python(p, _) => p.author.clone(),
+            ShinkaiTool::Agent(a, _) => a.author.clone(),
             ShinkaiTool::MCPServer(m, _) => m.author.clone(),
         }
     }
@@ -372,10 +396,11 @@ impl ShinkaiTool {
     /// Returns the version of the tool
     pub fn version(&self) -> String {
         match self {
-            ShinkaiTool::Rust(r, _) => "1.0.0".to_string(),
+            ShinkaiTool::Rust(_r, _) => "1.0.0".to_string(),
             ShinkaiTool::Network(n, _) => n.version.clone(),
             ShinkaiTool::Deno(d, _) => d.version.clone(),
             ShinkaiTool::Python(p, _) => p.version.clone(),
+            ShinkaiTool::Agent(_a, _) => "1.0.0".to_string(),
             ShinkaiTool::MCPServer(m, _) => m.version.clone(),
         }
     }
@@ -396,7 +421,20 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled,
             ShinkaiTool::Deno(_, enabled) => *enabled,
             ShinkaiTool::Python(_, enabled) => *enabled,
+            ShinkaiTool::Agent(_a, enabled) => *enabled,
             ShinkaiTool::MCPServer(_, enabled) => *enabled,
+        }
+    }
+
+    /// Check if the tool is enabled for MCP
+    pub fn is_mcp_enabled(&self) -> bool {
+        match self {
+            ShinkaiTool::Rust(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Network(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Deno(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Python(tool, is_enabled) => *is_enabled && tool.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::Agent(a, is_enabled) => *is_enabled && a.mcp_enabled.unwrap_or(false),
+            ShinkaiTool::MCPServer(a, is_enabled) => *is_enabled && a.mcp_enabled.unwrap_or(false),
         }
     }
 
@@ -407,7 +445,19 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled = true,
             ShinkaiTool::Deno(_, enabled) => *enabled = true,
             ShinkaiTool::Python(_, enabled) => *enabled = true,
+            ShinkaiTool::Agent(_, enabled) => *enabled = true,
             ShinkaiTool::MCPServer(_, enabled) => *enabled = true,
+        }
+    }
+
+    pub fn enable_mcp(&mut self) {
+        match self {
+            ShinkaiTool::Rust(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Network(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Deno(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Python(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::Agent(tool, _) => tool.mcp_enabled = Some(true),
+            ShinkaiTool::MCPServer(tool, _) => tool.mcp_enabled = Some(true),
         }
     }
 
@@ -418,7 +468,19 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, enabled) => *enabled = false,
             ShinkaiTool::Deno(_, enabled) => *enabled = false,
             ShinkaiTool::Python(_, enabled) => *enabled = false,
+            ShinkaiTool::Agent(_, enabled) => *enabled = false,
             ShinkaiTool::MCPServer(_, enabled) => *enabled = false,
+        }
+    }
+
+    pub fn disable_mcp(&mut self) {
+        match self {
+            ShinkaiTool::Rust(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Network(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Deno(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Python(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::Agent(tool, _) => tool.mcp_enabled = Some(false),
+            ShinkaiTool::MCPServer(tool, _) => tool.mcp_enabled = Some(false),
         }
     }
 
@@ -437,6 +499,7 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => vec![],
             ShinkaiTool::Deno(js_tool, _) => js_tool.config.clone(),
             ShinkaiTool::Python(python_tool, _) => python_tool.config.clone(),
+            ShinkaiTool::Agent(_a, _) => vec![],
             ShinkaiTool::MCPServer(mcp_tool, _) => mcp_tool.config.clone(),
         }
     }
@@ -448,8 +511,16 @@ impl ShinkaiTool {
             ShinkaiTool::Network(n_tool, _) => n_tool.check_required_config_fields(),
             ShinkaiTool::Deno(deno_tool, _) => deno_tool.check_required_config_fields(),
             ShinkaiTool::Python(_, _) => true,
+            ShinkaiTool::Agent(_, _) => true,
             ShinkaiTool::MCPServer(mcp_tool, _) => mcp_tool.check_required_config_fields(),
         }
+    }
+
+    pub fn can_be_mcp_enabled(&self) -> bool {
+        if !self.is_enabled() || self.is_mcp_enabled() {
+            return false;
+        }
+        true
     }
 
     /// Convert to json
@@ -491,7 +562,12 @@ impl ShinkaiTool {
     /// Returns a sanitized version of the tool name where all characters are lowercase
     /// and any non-alphanumeric characters (except '-' and '_') are replaced with underscores
     pub fn internal_sanitized_name(&self) -> String {
-        self.name()
+        let name_to_sanitize = match self {
+            ShinkaiTool::Agent(agent, _) => agent.agent_id.clone(),
+            _ => self.name(),
+        };
+
+        name_to_sanitize
             .chars()
             .map(|c| {
                 if c.is_alphanumeric() || c == '_' || c == '-' {
@@ -509,7 +585,18 @@ impl ShinkaiTool {
             ShinkaiTool::Network(_, _) => vec![],
             ShinkaiTool::Deno(d, _) => d.keywords.clone(),
             ShinkaiTool::Python(p, _) => p.keywords.clone(),
+            ShinkaiTool::Agent(_a, _) => vec![],
             ShinkaiTool::MCPServer(m, _) => m.keywords.clone(),
+        }
+    }
+
+    pub fn get_metadata(&self) -> Option<ToolPlaygroundMetadata> {
+        match self {
+            ShinkaiTool::Deno(d, _) => Some(d.get_metadata()),
+            ShinkaiTool::Python(p, _) => Some(p.get_metadata()),
+            ShinkaiTool::Rust(r, _) => Some(r.get_metadata()),
+            ShinkaiTool::MCPServer(r, _) => Some(r.get_metadata()),
+            _ => None,
         }
     }
 }
@@ -536,17 +623,28 @@ impl From<NetworkTool> for ShinkaiTool {
 mod tests {
     use super::*;
     use crate::tools::deno_tools::DenoTool;
+    use crate::tools::parameters::Property;
     use crate::tools::tool_types::{OperatingSystem, RunnerType, ToolResult};
     use serde_json::json;
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_tools_runner::tools::tool_definition::ToolDefinition;
 
     #[test]
     fn test_gen_router_key() {
         // Create a mock DenoTool with all required fields
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            "@@official.shinkai".to_string(),
+            "Shinkai: Download Pages".to_string(),
+            None,
+        );
+
         let deno_tool = DenoTool {
             name: "Shinkai: Download Pages".to_string(),
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             description: "Downloads one or more URLs and converts their HTML content to Markdown".to_string(),
+            mcp_enabled: Some(false),
             input_args: Parameters::new(),
             output_arg: ToolOutputArg { json: "".to_string() },
             config: vec![],
@@ -623,12 +721,27 @@ mod tests {
             embedding_metadata: None,
         };
 
-        let input_args = Parameters::with_single_property("url", "string", "The URL to fetch", true);
+        let input_args = Parameters::with_single_property(
+            "url",
+            "string",
+            "The URL to fetch",
+            true,
+            Some(serde_json::Value::String("https://example.com".to_string())),
+        );
+
+        let tool_router_key = ToolRouterKey::new(
+            "local".to_string(),
+            tool_definition.author.clone(),
+            "shinkai__download_website".to_string(),
+            None,
+        );
 
         let deno_tool = DenoTool {
             name: "shinkai__download_website".to_string(),
+            tool_router_key: Some(tool_router_key.clone()),
             homepage: Some("http://127.0.0.1/index.html".to_string()),
             version: "1.0.0".to_string(),
+            mcp_enabled: Some(false),
             description: tool_definition.description.clone(),
             input_args: input_args.clone(),
             output_arg: ToolOutputArg {
@@ -746,6 +859,83 @@ mod tests {
             assert_eq!(deno_tool.operating_system, vec![OperatingSystem::Linux]);
         } else {
             panic!("Expected Deno tool variant");
+        }
+    }
+
+    #[test]
+    fn test_serialize_deserialize_agent_tool() {
+        // Create an AgentToolWrapper instance
+        let agent_wrapper = AgentToolWrapper {
+            name: "new pirate".to_string(),
+            agent_id: "new_pirate".to_string(),
+            author: "@@my_local_ai.sep-shinkai".to_string(),
+            description: "".to_string(),
+            input_args: Parameters {
+                schema_type: "object".to_string(),
+                properties: {
+                    let mut props = std::collections::HashMap::new();
+                    props.insert(
+                        "prompt".to_string(),
+                        Property::new("string".to_string(), "Message to the agent".to_string(), None),
+                    );
+                    props.insert(
+                        "session_id".to_string(),
+                        Property::new("string".to_string(), "Session identifier".to_string(), None),
+                    );
+
+                    let item_prop = Property::new("string".to_string(), "Image URL".to_string(), None);
+                    props.insert(
+                        "images".to_string(),
+                        Property::with_array_items("Array of image URLs".to_string(), item_prop),
+                    );
+                    props
+                },
+                required: vec!["prompt".to_string()],
+            },
+            output_arg: ToolOutputArg {
+                json: "{\"type\":\"string\",\"description\":\"Agent response\"}".to_string(),
+            },
+            mcp_enabled: Some(false),
+            embedding: None,
+        };
+
+        // Create a ShinkaiTool::Agent instance
+        let original_tool = ShinkaiTool::Agent(agent_wrapper, true);
+
+        // Serialize to JSON
+        let serialized = serde_json::to_string(&original_tool).expect("Failed to serialize Agent tool");
+
+        // Deserialize from JSON
+        let deserialized: ShinkaiTool = serde_json::from_str(&serialized).expect("Failed to deserialize Agent tool");
+
+        // Verify the tool was properly deserialized
+        match deserialized {
+            ShinkaiTool::Agent(agent, enabled) => {
+                assert_eq!(agent.name, "new pirate");
+                assert_eq!(agent.agent_id, "new_pirate");
+                assert_eq!(agent.author, "@@my_local_ai.sep-shinkai");
+                assert_eq!(agent.description, "");
+                assert!(enabled);
+
+                // Verify the input_args structure
+                assert_eq!(agent.input_args.schema_type, "object");
+                assert!(agent.input_args.properties.contains_key("prompt"));
+                assert!(agent.input_args.properties.contains_key("session_id"));
+                assert!(agent.input_args.properties.contains_key("images"));
+
+                // Verify required fields
+                assert_eq!(agent.input_args.required, vec!["prompt".to_string()]);
+
+                // Verify output_arg
+                assert_eq!(
+                    agent.output_arg.json,
+                    "{\"type\":\"string\",\"description\":\"Agent response\"}"
+                );
+
+                // Verify mcp_enabled
+                assert_eq!(agent.mcp_enabled, Some(false));
+            }
+            _ => panic!("Deserialized tool is not an Agent variant"),
         }
     }
 }

@@ -34,6 +34,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_sqlite::SqliteManager;
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
@@ -160,7 +161,7 @@ fn setup_test_db() -> SqliteManager {
     let db_path = PathBuf::from(temp_file.path());
     let api_url = String::new();
     let model_type =
-        EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+        EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
     SqliteManager::new(db_path, api_url, model_type).unwrap()
 }
@@ -202,6 +203,13 @@ async fn test_websocket() {
     )
     .await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
+    fn port_is_available(port: u16) -> bool {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+    assert!(port_is_available(8080), "Port 8080 is not available");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&ws_manager)));
 
     // Give the server a little time to start

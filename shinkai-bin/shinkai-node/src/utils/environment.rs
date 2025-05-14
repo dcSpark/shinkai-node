@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider,
+    LLMProviderInterface, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
@@ -81,6 +81,8 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
 
         let agent = SerializedLLMProvider {
             id: initial_agent_names[i].clone(),
+            name: Some(initial_agent_names[i].clone()),
+            description: Some(initial_agent_names[i].clone()),
             full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_names[i]))
                 .unwrap(),
             external_url: Some(initial_agent_urls[i].clone()),
@@ -179,7 +181,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     let default_embedding_model: EmbeddingModelType = env::var("DEFAULT_EMBEDDING_MODEL")
         .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
         .unwrap_or_else(|_| {
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M)
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)
         });
 
     // Fetch the supported embedding models
@@ -191,7 +193,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         })
         .unwrap_or_else(|_| {
             vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-                OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
             )]
         });
 

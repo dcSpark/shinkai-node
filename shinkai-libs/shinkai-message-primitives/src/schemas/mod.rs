@@ -16,7 +16,6 @@ pub mod llm_providers;
 pub mod prompts;
 pub mod registration_code;
 pub mod retry;
-pub mod sheet;
 pub mod shinkai_fs;
 pub mod shinkai_name;
 pub mod shinkai_network;

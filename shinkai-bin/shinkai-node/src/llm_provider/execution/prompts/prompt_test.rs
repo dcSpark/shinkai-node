@@ -6,7 +6,7 @@ mod tests {
         subprompts::{SubPrompt, SubPromptType},
     };
     use shinkai_tools_primitives::tools::{
-        tool_output_arg::ToolOutputArg, parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool
+        parameters::Parameters, rust_tools::RustTool, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg,
     };
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
@@ -19,10 +19,34 @@ mod tests {
             concat_strings_desc.clone(),
             {
                 let mut params = Parameters::new();
-                params.add_property("first_string".to_string(), "string".to_string(), "The first string to concatenate".to_string(), true);
-                params.add_property("second_string".to_string(), "string".to_string(), "The second string to concatenate".to_string(), true);
-                params.add_property("third_string".to_string(), "string".to_string(), "The third string to concatenate (optional)".to_string(), false);
-                params.add_property("fourth_string".to_string(), "string".to_string(), "The fourth string to concatenate (optional)".to_string(), false);
+                params.add_property(
+                    "first_string".to_string(),
+                    "string".to_string(),
+                    "The first string to concatenate".to_string(),
+                    true,
+                    None,
+                );
+                params.add_property(
+                    "second_string".to_string(),
+                    "string".to_string(),
+                    "The second string to concatenate".to_string(),
+                    true,
+                    None,
+                );
+                params.add_property(
+                    "third_string".to_string(),
+                    "string".to_string(),
+                    "The third string to concatenate (optional)".to_string(),
+                    false,
+                    None,
+                );
+                params.add_property(
+                    "fourth_string".to_string(),
+                    "string".to_string(),
+                    "The fourth string to concatenate (optional)".to_string(),
+                    false,
+                    None,
+                );
                 params
             },
             ToolOutputArg::empty(),
@@ -57,6 +81,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -65,6 +90,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("assistant".to_string()),
@@ -73,6 +99,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -81,6 +108,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: None,
@@ -118,6 +146,7 @@ mod tests {
                     },
                 }]),
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -126,6 +155,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
         ];
 
@@ -141,10 +171,34 @@ mod tests {
             concat_strings_desc.clone(),
             {
                 let mut params = Parameters::new();
-                params.add_property("first_string".to_string(), "string".to_string(), "The first string to concatenate".to_string(), true);
-                params.add_property("second_string".to_string(), "string".to_string(), "The second string to concatenate".to_string(), true);
-                params.add_property("third_string".to_string(), "string".to_string(), "The third string to concatenate (optional)".to_string(), false);
-                params.add_property("fourth_string".to_string(), "string".to_string(), "The fourth string to concatenate (optional)".to_string(), false);
+                params.add_property(
+                    "first_string".to_string(),
+                    "string".to_string(),
+                    "The first string to concatenate".to_string(),
+                    true,
+                    None,
+                );
+                params.add_property(
+                    "second_string".to_string(),
+                    "string".to_string(),
+                    "The second string to concatenate".to_string(),
+                    true,
+                    None,
+                );
+                params.add_property(
+                    "third_string".to_string(),
+                    "string".to_string(),
+                    "The third string to concatenate (optional)".to_string(),
+                    false,
+                    None,
+                );
+                params.add_property(
+                    "fourth_string".to_string(),
+                    "string".to_string(),
+                    "The fourth string to concatenate (optional)".to_string(),
+                    false,
+                    None,
+                );
                 params
             },
             ToolOutputArg::empty(),
@@ -196,6 +250,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: None,
@@ -230,6 +285,7 @@ mod tests {
                     },
                 }]),
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("user".to_string()),
@@ -240,6 +296,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("assistant".to_string()),
@@ -248,9 +305,11 @@ mod tests {
                 function_call: Some(DetailedFunctionCall {
                     name: "concat_strings".to_string(),
                     arguments: "{\"first_string\":\"hola\",\"second_string\":\"chao\"}".to_string(),
+                    id: None,
                 }),
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
             LlmMessage {
                 role: Some("function".to_string()),
@@ -259,6 +318,7 @@ mod tests {
                 function_call: None,
                 functions: None,
                 images: None,
+                tool_calls: None,
             },
         ];
 

@@ -37,6 +37,29 @@ pub struct DetailedFunctionCall {
     pub name: String,
     /// The arguments of the function call.
     pub arguments: String,
+    /// The ID of the function call.
+    pub id: Option<String>,
+}
+
+/// The structure for a function within a tool call.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallFunction {
+    /// The name of the function.
+    pub name: String,
+    /// The arguments of the function call as a JSON string.
+    pub arguments: String,
+}
+
+/// The structure for a tool call.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// The ID of the tool call.
+    pub id: String,
+    /// The type of the tool call.
+    #[serde(rename = "type")]
+    pub type_: String,
+    /// The function details of the tool call.
+    pub function: ToolCallFunction,
 }
 
 /// The message structure for LLM communication.
@@ -63,6 +86,9 @@ pub struct LlmMessage {
     /// The images associated with the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<Vec<String>>,
+    /// The tool calls associated with the message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 impl fmt::Debug for LlmMessage {
@@ -73,15 +99,22 @@ impl fmt::Debug for LlmMessage {
             .field("name", &self.name)
             .field("function_call", &self.function_call)
             .field("functions", &self.functions)
-            .field("images", &self.images.as_ref().map(|images| {
-                images.iter().map(|img| {
-                    if img.len() > 20 {
-                        format!("{}...", &img[..20])
-                    } else {
-                        img.clone()
-                    }
-                }).collect::<Vec<String>>()
-            }))
+            .field(
+                "images",
+                &self.images.as_ref().map(|images| {
+                    images
+                        .iter()
+                        .map(|img| {
+                            if img.len() > 20 {
+                                format!("{}...", &img[..20])
+                            } else {
+                                img.clone()
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                }),
+            )
+            .field("tool_calls", &self.tool_calls)
             .finish()
     }
 }
@@ -99,9 +132,10 @@ impl LlmMessage {
         let content = None;
         let name = None;
 
-        let images = value.get("images").and_then(|v| v.as_array().map(|arr| {
-            arr.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-        }));
+        let images = value.get("images").and_then(|v| {
+            v.as_array()
+                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        });
 
         // Extract the functions from the "function" key
         let functions_value = value.get("function").ok_or_else(|| {
@@ -127,6 +161,7 @@ impl LlmMessage {
             function_call: None,
             functions: Some(functions),
             images,
+            tool_calls: None,
         })
     }
 }
@@ -271,5 +306,47 @@ mod tests {
         assert_eq!(images.len(), 2);
         assert_eq!(images[0], "image1");
         assert_eq!(images[1], "image2");
+    }
+
+    #[test]
+    fn test_llm_message_with_tool_calls() {
+        let json_value = json!({
+            "role": "assistant",
+            "content": "I'm updating your tool configuration",
+            "tool_calls": [
+                {
+                    "id": "call_12345xyz",
+                    "type": "function",
+                    "function": {
+                        "name": "shinkai_tool_config_updater",
+                        "arguments": "{\"tool_router_key\":\"local::none\",\"config\":{\"smtp_server\":\"smtp.zoho.com\",\"port\":465,\"sender_email\":\"batata@zohomail.com\",\"sender_password\":\"beremu\",\"ssl\":true}}"
+                    }
+                }
+            ]
+        });
+
+        let message: LlmMessage =
+            serde_json::from_value(json_value).expect("Failed to convert JSON value to LlmMessage");
+
+        assert_eq!(message.role, Some("assistant".to_string()));
+        assert_eq!(
+            message.content,
+            Some("I'm updating your tool configuration".to_string())
+        );
+        assert!(message.name.is_none());
+        assert!(message.functions.is_none());
+        assert!(message.function_call.is_none());
+
+        let tool_calls = message.tool_calls.unwrap();
+        assert_eq!(tool_calls.len(), 1);
+
+        let tool_call = &tool_calls[0];
+        assert_eq!(tool_call.id, "call_12345xyz");
+        assert_eq!(tool_call.type_, "function");
+        assert_eq!(tool_call.function.name, "shinkai_tool_config_updater");
+        assert_eq!(
+            tool_call.function.arguments,
+            "{\"tool_router_key\":\"local::none\",\"config\":{\"smtp_server\":\"smtp.zoho.com\",\"port\":465,\"sender_email\":\"batata@zohomail.com\",\"sender_password\":\"beremu\",\"ssl\":true}}"
+        );
     }
 }

@@ -53,6 +53,8 @@ pub enum ShinkaiFsError {
     FailedTXTParsing,
     #[error("Failed XLSX parsing")]
     FailedXLSXParsing,
+    #[error("Failed XLS parsing")]
+    FailedXLSParsing,
     #[error("No embedding provided")]
     NoEmbeddingProvided,
     #[error("The resource type does not match any of the VRBaseTypes")]

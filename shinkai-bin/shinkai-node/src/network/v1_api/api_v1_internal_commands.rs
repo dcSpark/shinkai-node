@@ -1,6 +1,5 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
-use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
 use crate::network::node::ProxyConnectionInfo;
@@ -12,7 +11,6 @@ use chashmap::CHashMap;
 use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
-use regex::Regex;
 use shinkai_fs;
 
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
@@ -215,7 +213,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true)) {
+        let result = match db.get_all_smart_inboxes_for_profile(standard_identity, Some(true), None) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 shinkai_log(
@@ -501,7 +499,7 @@ impl Node {
                                 let upload_file_content = "You can upload your files here in the 'My Files (Private)' folder.\n\nThey will be processed and made searchable automatically.".as_bytes().to_vec();
                                 let _ = ShinkaiFileManager::write_file_to_fs(upload_file_path, upload_file_content);
 
-                                let welcome_message = "Welcome to Shinkai! You can ask me anything!\n\nI'm your AI assistant, and I'm here to help you with any tasks you need. Feel free to:\n- Ask questions\n- Request code help\n- Get explanations\n- And much more!\n\nWhat would you like to work on? \n\nActivate actions (tools) to perform tasks.";
+                                let welcome_message = include_str!("../../../../../files/shinkai_welcome.md");
 
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
                                     job_id.to_string(),
@@ -707,6 +705,8 @@ impl Node {
 
                 SerializedLLMProvider {
                     id: format!("o_{}", sanitized_model), // Uses the extracted model name as id
+                    name: None,
+                    description: None,
                     full_identity_name: ShinkaiName::new(format!(
                         "{}/agent/o_{}",
                         requester_profile.full_name, sanitized_model

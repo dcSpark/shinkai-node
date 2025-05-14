@@ -44,15 +44,16 @@ This can be used to process complex requests, text analysis, text matching, text
                 author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
+                mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to apply over the data".to_string(), true);
-                    params.add_property("data".to_string(), "string".to_string(), "The data to process".to_string(), true);
+                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to apply over the data".to_string(), true, None);
+                    params.add_property("data".to_string(), "string".to_string(), "The data to process".to_string(), true, None);
                     
                     // Add the optional tools array parameter
                     let tools_property = Property::with_array_items(
                         "List of tools names or tool router keys to be used with the prompt".to_string(),
-                        Property::new("string".to_string(), "Tool".to_string())
+                        Property::new("string".to_string(), "Tool".to_string(), None)
                     );
                     params.properties.insert("tools".to_string(), tools_property);
                     
@@ -83,7 +84,9 @@ async fn apply_prompt_over_fragment(prompt: String, bearer: String, llm_provider
         },
         llm_provider,
         prompt,
-        None,
+        None, // tools
+        None, // fs_file_paths
+        None, // job_filenames
         db.clone(),
         node_name,
         identity_manager,

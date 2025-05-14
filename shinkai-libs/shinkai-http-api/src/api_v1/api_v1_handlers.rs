@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
 use async_channel::Sender;
-use futures::StreamExt;
-use futures::TryFutureExt;
-use reqwest::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
@@ -11,12 +8,11 @@ use shinkai_message_primitives::{
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::APIAvailableSharedItems},
     shinkai_utils::{
         encryption::encryption_public_key_to_string,
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         signatures::signature_public_key_to_string,
     },
 };
 use utoipa::ToSchema;
-use warp::Buf;
+use warp::http::StatusCode;
 
 use crate::node_api_router::handle_node_command;
 use crate::node_api_router::APIError;
@@ -24,6 +20,14 @@ use crate::node_api_router::GetPublicKeysResponse;
 use crate::node_api_router::SendResponseBody;
 use crate::node_api_router::SendResponseBodyData;
 use crate::node_commands::NodeCommand;
+
+// Create placeholders for missing types that might be needed
+pub struct ErrorMessagesAll {}
+pub struct ShinkaiDockAppErrorCode {}
+pub struct RegistrationCodeMessage {}
+pub struct RegisterDeviceMessage {}
+pub struct SheetsListMsg {}
+pub struct SheetsSheetMsg {}
 
 #[derive(serde::Deserialize)]
 pub struct NameToExternalProfileData {

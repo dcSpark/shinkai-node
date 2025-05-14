@@ -6,34 +6,12 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig,
-        crontab::{CronTask, CronTaskAction},
-        custom_prompt::CustomPrompt,
-        identity::{Identity, StandardIdentity},
-        job_config::JobConfig,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
-        mcp_server::MCPServer,
-        shinkai_name::ShinkaiName,
-        shinkai_subscription::ShinkaiSubscription,
-        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
-        tool_router_key::ToolRouterKey,
-        wallet_complementary::{WalletRole, WalletSource},
-        wallet_mixed::NetworkIdentifier,
-    },
-    shinkai_message::{
-        shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIExportSheetPayload,
-            APIImportSheetPayload, APISetSheetUploadedFilesPayload, APIVecFsCopyFolder, APIVecFsCopyItem,
-            APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem,
-            APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems,
-            ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::job_scope::MinimalJobScope,
+        coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse}, mcp_server::MCPServer, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::{SmartInbox, V2SmartInbox}, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
+    }, shinkai_message::{
+        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
+            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+        }
+    }, shinkai_utils::job_scope::MinimalJobScope
 };
 
 use shinkai_tools_primitives::tools::{
@@ -248,10 +226,20 @@ pub enum NodeCommand {
         url: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiImportAgentZip {
+        bearer: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiExportAgent {
         bearer: String,
         agent_id: String,
         res: Sender<Result<Vec<u8>, APIError>>,
+    },
+    V2ApiPublishAgent {
+        bearer: String,
+        agent_id: String,
+        res: Sender<Result<Value, APIError>>,
     },
     AvailableLLMProviders {
         full_profile_name: String,
@@ -536,6 +524,7 @@ pub enum NodeCommand {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     },
     V2ApiGetAllSmartInboxesPaginated {
@@ -543,6 +532,7 @@ pub enum NodeCommand {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiUpdateSmartInboxName {
@@ -698,6 +688,11 @@ pub enum NodeCommand {
     },
     V2ApiListAllShinkaiTools {
         bearer: String,
+        category: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiListAllMcpShinkaiTools {
+        category: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListAllShinkaiToolsVersions {
@@ -718,6 +713,7 @@ pub enum NodeCommand {
     V2ApiGetShinkaiTool {
         bearer: String,
         payload: String,
+        serialize_config: bool,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetDefaultEmbeddingModel {
@@ -759,6 +755,11 @@ pub enum NodeCommand {
         job_id: String,
         res: Sender<Result<JobConfig, APIError>>,
     },
+    V2ApiGetJobProvider {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiRemoveLlmProvider {
         bearer: String,
         llm_provider_id: String,
@@ -774,12 +775,21 @@ pub enum NodeCommand {
         new_name: String,
         res: Sender<Result<(), APIError>>,
     },
+    V2ApiShinkaiBackendGetQuota {
+        bearer: String,
+        model_type: String,
+        res: Sender<Result<QuotaResponse, APIError>>,
+    },
     V2ApiIsPristine {
         bearer: String,
         res: Sender<Result<bool, APIError>>,
     },
     V2ApiHealthCheck {
         res: Sender<Result<serde_json::Value, APIError>>,
+    },
+    V2ApiGetStorageLocation {
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
     },
     V2ApiScanOllamaModels {
         bearer: String,
@@ -789,6 +799,17 @@ pub enum NodeCommand {
         bearer: String,
         payload: APIAddOllamaModels,
         res: Sender<Result<(), APIError>>,
+    },
+    V2ApiGetToolsFromToolset {
+        bearer: String,
+        tool_set_key: String,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    },
+    V2SetCommonToolSetConfig {
+        bearer: String,
+        tool_set_key: String,
+        value: HashMap<String, serde_json::Value>,
+        res: Sender<Result<Vec<String>, APIError>>,
     },
     V2ApiGetToolOffering {
         bearer: String,
@@ -913,6 +934,7 @@ pub enum NodeCommand {
     },
     V2ApiGetAllAgents {
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     },
     V2ApiRetryMessage {
@@ -937,30 +959,33 @@ pub enum NodeCommand {
         message_id: String,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiImportSheet {
-        bearer: String,
-        payload: APIImportSheetPayload,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiExportSheet {
-        bearer: String,
-        payload: APIExportSheetPayload,
-        res: Sender<Result<Value, APIError>>,
-    },
-    V2ApiSetSheetUploadedFiles {
-        bearer: String,
-        payload: APISetSheetUploadedFilesPayload,
-        res: Sender<Result<Value, APIError>>,
-    },
     V2ApiExecuteTool {
         bearer: String,
         tool_router_key: String,
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         extra_config: Map<String, Value>,
         mounts: Option<Vec<String>>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiExecuteMcpTool {
+        tool_router_key: String,
+        parameters: Map<String, Value>,
+        tool_id: String,
+        app_id: String,
+        agent_id: Option<String>,
+        extra_config: Map<String, Value>,
+        mounts: Option<Vec<String>>,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCheckTool {
+        bearer: String,
+        code: String,
+        language: CodeLanguage,
+        additional_headers: Option<HashMap<String, String>>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiExecuteCode {
@@ -973,6 +998,7 @@ pub enum NodeCommand {
         oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         mounts: Option<Vec<String>>,
         runner: Option<RunnerType>,
@@ -1149,6 +1175,14 @@ pub enum NodeCommand {
         file_data: Vec<u8>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiUploadPlaygroundFile {
+        bearer: String,
+        tool_id: String,
+        app_id: String,
+        file_name: String,
+        file_data: Vec<u8>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiListToolAssets {
         bearer: String,
         tool_id: String,
@@ -1243,13 +1277,13 @@ pub enum NodeCommand {
     },
     V2ApiStandAlonePlayground {
         bearer: String,
-        code: String,
-        metadata: Value,
+        code: Option<String>,
+        metadata: Option<Value>,
         assets: Option<Vec<String>>,
         language: CodeLanguage,
-        tools: Vec<ToolRouterKey>,
-        parameters: Value,
-        config: Value,
+        tools: Option<Vec<ToolRouterKey>>,
+        parameters: Option<Value>,
+        config: Option<Value>,
         oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
@@ -1283,4 +1317,37 @@ pub enum NodeCommand {
         enabled: bool,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiSetToolMcpEnabled {
+        bearer: String,
+        tool_router_key: String,
+        mcp_enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiCopyToolAssets {
+        bearer: String,
+        is_first_playground: bool,
+        first_path: String,
+        is_second_playground: bool,
+        second_path: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetPreferences {
+        bearer: String,
+        payload: HashMap<String, serde_json::Value>,
+        res: Sender<Result<String, APIError>>,
+    },
+    V2ApiGetPreferences {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetLastUsedAgentsAndLLMs {
+        bearer: String,
+        last: usize,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
+    V2ApiGetShinkaiToolMetadata {
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    }
 }

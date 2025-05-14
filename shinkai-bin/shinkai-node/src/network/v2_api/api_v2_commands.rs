@@ -1,37 +1,45 @@
-use std::fs::File;
-use std::io::Write;
-use std::{env, sync::Arc};
-
-use rusqlite::params;
-use serde_json::{json, Value};
-use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
-use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
-use shinkai_sqlite::regex_pattern_manager::RegexPattern;
-use tokio::fs;
-use zip::{write::FileOptions, ZipWriter};
-
+use crate::llm_provider::providers::shinkai_backend::check_quota;
+use crate::managers::galxe_quests::{compute_quests, generate_proof};
+use crate::managers::tool_router::ToolRouter;
+use crate::network::node_shareable_logic::download_zip_from_url;
+use crate::network::zip_export_import::zip_export_import::{
+    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools,
+};
+use crate::utils::environment::NodeEnvironment;
+use crate::{
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
+    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+    network::{node_error::NodeError, Node},
+    tools::tool_generation,
+    utils::update_global_identity::update_global_identity_name,
+};
 use async_channel::Sender;
+use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use reqwest::StatusCode;
-
+use rusqlite::params;
+use serde_json::{json, Value};
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
+use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
 use shinkai_http_api::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
     node_api_router::{APIError, GetPublicKeysResponse},
 };
+use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
+use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::{
     schemas::ws_types::WSUpdateHandler,
-    shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
-};
-use shinkai_message_primitives::{
     schemas::{
         identity::{Identity, IdentityType, RegistrationCode},
         inbox_name::InboxName,
         llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
         shinkai_name::ShinkaiName,
+        tool_router_key::ToolRouterKey,
     },
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
@@ -43,24 +51,18 @@ use shinkai_message_primitives::{
         shinkai_message_builder::ShinkaiMessageBuilder,
         signatures::signature_public_key_to_string,
     },
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
+use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::Mutex;
-use x25519_dalek::PublicKey as EncryptionPublicKey;
-
-use crate::managers::galxe_quests::{compute_quests, generate_proof};
-use crate::managers::tool_router::ToolRouter;
-use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
-    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node},
-    tools::tool_generation,
-    utils::update_global_identity::update_global_identity_name,
-};
-
-use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
+use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
+use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use std::collections::HashMap;
 use std::time::Instant;
+use std::{env, sync::Arc};
+use tokio::sync::Mutex;
 use tokio::time::Duration;
+use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 #[cfg(debug_assertions)]
@@ -120,6 +122,33 @@ impl Node {
                 Err(())
             }
         }
+    }
+
+    pub async fn get_bearer_token<T>(
+        db: Arc<SqliteManager>,
+        res: &Sender<Result<T, APIError>>,
+    ) -> Result<String, NodeError> {
+        let api_key = match env::var("API_V2_KEY") {
+            Ok(api_key) => api_key,
+            Err(_) => {
+                // If the environment variable is not set, read from the database
+                match db.read_api_v2_key() {
+                    Ok(Some(api_key)) => api_key,
+                    Ok(None) | Err(_) => {
+                        let api_error = APIError {
+                            code: StatusCode::UNAUTHORIZED.as_u16(),
+                            error: "Unauthorized".to_string(),
+                            message: "Invalid bearer token".to_string(),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Err(NodeError {
+                            message: "Invalid bearer token".to_string(),
+                        });
+                    }
+                }
+            }
+        };
+        Ok(api_key)
     }
 
     pub fn convert_shinkai_message_to_v2_chat_message(
@@ -297,6 +326,27 @@ impl Node {
                 let _ = res.send(Err(error)).await;
             }
         }
+    }
+
+    pub async fn v2_api_get_storage_location(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let node_storage_path: Option<String> = match env::var("NODE_STORAGE_PATH").ok() {
+            Some(val) => Some(val),
+            None => Some("storage".to_string()),
+        };
+        let base_path = tokio::fs::canonicalize(node_storage_path.as_ref().unwrap())
+            .await
+            .unwrap();
+        let _ = res.send(Ok(base_path.to_string_lossy().to_string())).await;
+
+        Ok(())
     }
 
     pub async fn v2_api_get_default_embedding_model(
@@ -586,6 +636,34 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_api_check_shinkai_backend_quota(
+        db: Arc<SqliteManager>,
+        model_type: String,
+        bearer: String,
+        res: Sender<Result<QuotaResponse, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match check_quota(db, model_type).await {
+            Ok(quota_response) => {
+                let _ = res.send(Ok(quota_response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to fetch quota: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn v2_api_change_nodes_name(
@@ -935,7 +1013,7 @@ impl Node {
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         bearer: String,
-        agent: Agent,
+        mut agent: Agent,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -978,6 +1056,9 @@ impl Node {
         // TODO: validate tools
         // TODO: validate knowledge
 
+        // My created agents are always marked as edited
+        agent.edited = true;
+
         // Check if the llm_provider_id exists
         let llm_provider_exists = {
             let exists = match db.get_llm_provider(&agent.llm_provider_id, &requester_name) {
@@ -1006,8 +1087,25 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             } else {
                 // Add the agent to the database
-                match db.add_agent(agent, &requester_name) {
+                match db.add_agent(agent.clone(), &requester_name) {
                     Ok(_) => {
+                        // Create and add Agent tool wrapper
+                        let node_name = requester_name.get_node_name_string();
+                        let agent_tool_wrapper = AgentToolWrapper::new(
+                            agent.agent_id.clone(),
+                            agent.name.clone(),
+                            agent.ui_description.clone(),
+                            node_name,
+                            None,
+                        );
+
+                        let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
+
+                        // Add agent tool to database
+                        if let Err(err) = db.add_tool(shinkai_tool).await {
+                            eprintln!("Warning: Failed to add agent tool: {}", err);
+                        }
+
                         let _ = res.send(Ok("Agent added successfully".to_string())).await;
                     }
                     Err(err) => {
@@ -1046,6 +1144,17 @@ impl Node {
         // Remove the agent from the database
         match db.remove_agent(&agent_id) {
             Ok(_) => {
+                let tool = match db.get_tool_by_agent_id(&agent_id) {
+                    Ok(tool) => tool,
+                    Err(err) => {
+                        eprintln!("Internal inconsistency: Failed to get tool: {}", err);
+                        return Ok(());
+                    }
+                };
+                if let Err(err) = db.remove_tool(&tool.tool_router_key().to_string_with_version(), None) {
+                    eprintln!("Warning: Failed to remove agent tool: {}", err);
+                }
+
                 let _ = res.send(Ok("Agent removed successfully".to_string())).await;
             }
             Err(err) => {
@@ -1064,6 +1173,7 @@ impl Node {
     pub async fn v2_api_update_agent(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         partial_agent: serde_json::Value,
         res: Sender<Result<Agent, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1086,6 +1196,14 @@ impl Node {
             }
         };
 
+        // Construct the Agent's full identity name, in the local node.
+        let local_full_identity_name = ShinkaiName::new(format!(
+            "{}/main/agent/{}",
+            full_identity.get_node_name_string(),
+            agent_id.to_lowercase()
+        ))
+        .unwrap();
+
         // Retrieve the existing agent from the database
         let existing_agent = match db.get_agent(&agent_id) {
             Ok(Some(agent)) => agent,
@@ -1103,24 +1221,6 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Database error: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        // Construct the full identity name
-        let full_identity_name = match ShinkaiName::new(format!(
-            "{}/main/agent/{}",
-            existing_agent.full_identity_name.get_node_name_string(),
-            agent_id
-        )) {
-            Ok(name) => name,
-            Err(_) => {
-                let api_error = APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Failed to construct full identity name.".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
@@ -1181,7 +1281,14 @@ impl Node {
             config: partial_agent.get("config").map_or(existing_agent.config.clone(), |v| {
                 serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
             }),
-            full_identity_name, // Set the constructed full identity name
+            cron_tasks: None,
+            full_identity_name: local_full_identity_name.clone(),
+            tools_config_override: partial_agent
+                .get("tools_config_override")
+                .map_or(existing_agent.tools_config_override.clone(), |v| {
+                    serde_json::from_value(v.clone()).unwrap_or(existing_agent.tools_config_override.clone())
+                }),
+            edited: true,
         };
 
         // Update the agent in the database
@@ -1215,7 +1322,16 @@ impl Node {
 
         // Retrieve the agent from the database
         match db.get_agent(&agent_id) {
-            Ok(Some(agent)) => {
+            Ok(Some(mut agent)) => {
+                // Get cron tasks for this agent
+                match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
+                    Ok(cron_tasks) => {
+                        agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
+                    }
+                    Err(e) => {
+                        agent.cron_tasks = None;
+                    }
+                }
                 let _ = res.send(Ok(agent)).await;
             }
             Ok(None) => {
@@ -1242,6 +1358,7 @@ impl Node {
     pub async fn v2_api_get_all_agents(
         db: Arc<SqliteManager>,
         bearer: String,
+        filter: Option<String>,
         res: Sender<Result<Vec<Agent>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -1249,9 +1366,28 @@ impl Node {
             return Ok(());
         }
 
-        // Retrieve all agents from the database
-        match db.get_all_agents() {
-            Ok(agents) => {
+        let agents_result = db.get_all_agents();
+        match agents_result {
+            Ok(mut agents) => {
+                // If filter is Some("recently_used"), filter agents by recently used
+                if let Some(ref filter_val) = filter {
+                    if filter_val == "recently_used" {
+                        // Get the last N recently used agent IDs (let's use 10 as a default)
+                        let recent_ids = db.get_last_n_parent_agent_or_llm_provider_ids(10).unwrap_or_default();
+                        agents.retain(|agent| recent_ids.contains(&agent.agent_id));
+                    }
+                }
+                // Get cron tasks for each agent
+                for agent in &mut agents {
+                    match db.get_cron_tasks_by_llm_provider_id(&agent.agent_id) {
+                        Ok(cron_tasks) => {
+                            agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
+                        }
+                        Err(_e) => {
+                            agent.cron_tasks = None;
+                        }
+                    }
+                }
                 let _ = res.send(Ok(agents)).await;
             }
             Err(err) => {
@@ -1293,6 +1429,8 @@ impl Node {
 
         let provider = SerializedLLMProvider {
             id: "llm_test".to_string(),
+            name: None,
+            description: None,
             full_identity_name: ShinkaiName::new(llm_name).unwrap(),
             external_url: provider.external_url.clone(),
             api_key: provider.api_key.clone(),
@@ -1355,7 +1493,9 @@ impl Node {
                     },
                     provider.id.clone(),
                     "Repeat back the following message: dogcat. Just the word, no other words.".to_string(),
-                    None,
+                    None, // tools
+                    None, // fs_file_paths
+                    None, // job_filenames
                     db.clone(),
                     profile.extract_node().clone(),
                     identity_manager.clone(),
@@ -1518,6 +1658,8 @@ impl Node {
     pub async fn v2_api_export_agent(
         db: Arc<SqliteManager>,
         bearer: String,
+        shinkai_name: ShinkaiName,
+        node_env: NodeEnvironment,
         agent_id: String,
         res: Sender<Result<Vec<u8>, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1525,119 +1667,24 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-
-        // Retrieve the agent from the database
-        match db.get_agent(&agent_id) {
-            Ok(Some(agent)) => {
-                // Serialize the agent to JSON bytes
-                let agent_bytes = match serde_json::to_vec(&agent) {
-                    Ok(bytes) => bytes,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to serialize agent: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                };
-
-                // Create a temporary zip file
-                let name = format!("{}.zip", agent.agent_id.replace(':', "_"));
-                let path = std::env::temp_dir().join(&name);
-                let file = match File::create(&path) {
-                    Ok(file) => file,
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to create zip file: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                };
-
-                let mut zip = ZipWriter::new(file);
-
-                // Add the agent JSON to the zip file
-                if let Err(err) = zip.start_file::<_, ()>("__agent.json", FileOptions::default()) {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to create agent file in zip: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-
-                if let Err(err) = zip.write_all(&agent_bytes) {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to write agent data to zip: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-
-                // Finalize the zip file
-                if let Err(err) = zip.finish() {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to finalize zip file: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-
-                // Read the zip file into memory
-                match fs::read(&path).await {
-                    Ok(file_bytes) => {
-                        // Clean up the temporary file
-                        if let Err(err) = fs::remove_file(&path).await {
-                            eprintln!("Warning: Failed to remove temporary file: {}", err);
-                        }
-                        let _ = res.send(Ok(file_bytes)).await;
-                    }
-                    Err(err) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to read zip file: {}", err),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                    }
-                }
-            }
-            Ok(None) => {
-                let api_error = APIError {
-                    code: StatusCode::NOT_FOUND.as_u16(),
-                    error: "Not Found".to_string(),
-                    message: format!("Agent not found: {}", agent_id),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve agent: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
+        let agent_zip: Result<Vec<u8>, APIError> = generate_agent_zip(db, shinkai_name, node_env, agent_id, true).await;
+        if let Err(err) = agent_zip {
+            let _ = res.send(Err(err)).await;
+            return Ok(());
         }
+        let agent_zip = agent_zip.unwrap();
+        let _ = res.send(Ok(agent_zip)).await;
 
         Ok(())
     }
 
-    pub async fn v2_api_import_agent(
+    pub async fn v2_api_publish_agent(
         db: Arc<SqliteManager>,
         bearer: String,
-        url: String,
-        node_name: String,
+        shinkai_name: ShinkaiName,
+        node_env: NodeEnvironment,
+        agent_id: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
         signing_secret_key: SigningKey,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -1645,8 +1692,164 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
+        let response = Self::publish_agent(
+            db.clone(),
+            shinkai_name,
+            node_env,
+            agent_id,
+            identity_manager,
+            signing_secret_key,
+        )
+        .await;
 
-        let zip_contents = match download_zip_file(url, "__agent.json".to_string(), node_name, signing_secret_key).await
+        let _ = match response {
+            Ok(response) => res.send(Ok(response)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+
+        Ok(())
+    }
+
+    async fn publish_agent(
+        db: Arc<SqliteManager>,
+        shinkai_name: ShinkaiName,
+        node_env: NodeEnvironment,
+        agent_id: String,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        signing_secret_key: SigningKey,
+    ) -> Result<Value, APIError> {
+        // Generate zip file.
+        let file_bytes: Vec<u8> =
+            generate_agent_zip(db.clone(), shinkai_name.clone(), node_env, agent_id.clone(), true).await?;
+
+        let identity_manager = identity_manager.lock().await;
+        let local_node_name = identity_manager.local_node_name.clone();
+        let identity_name = local_node_name.to_string();
+        drop(identity_manager);
+
+        // Hash
+        let hash_raw = blake3::hash(&file_bytes.clone());
+        let hash_hex = hash_raw.to_hex();
+        let hash = hash_hex.to_string();
+
+        // Signature
+        let signature = signing_secret_key
+            .clone()
+            .try_sign(hash_hex.as_bytes())
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to sign tool: {}", e),
+            })?;
+
+        let signature_bytes = signature.to_bytes();
+        let signature_hex = hex::encode(signature_bytes);
+
+        // Publish the tool to the store.
+        let client = reqwest::Client::new();
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(file_bytes).file_name(format!("{}.zip", agent_id.clone())),
+            )
+            .text("type", "Agent")
+            .text("routerKey", agent_id.clone())
+            .text("hash", hash.clone())
+            .text("signature", signature_hex.clone())
+            .text("identity", identity_name.clone());
+
+        println!("[Publish Agent] Type: {}", "agent");
+        println!("[Publish Agent] Agent ID: {}", agent_id.clone());
+        println!("[Publish Agent] Hash: {}", hash.clone());
+        println!("[Publish Agent] Signature: {}", signature_hex.clone());
+        println!("[Publish Agent] Identity: {}", identity_name.clone());
+
+        let store_url = env::var("SHINKAI_STORE_URL").unwrap_or("https://store-api.shinkai.com".to_string());
+        let response = client
+            .post(format!("{}/store/revisions", store_url))
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to publish tool: {}", e),
+            })?;
+
+        let status = response.status();
+        let response_text = response.text().await.unwrap_or_default().clone();
+        println!("Response: {:?}", response_text);
+
+        if !status.is_success() {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Store Upload Error".to_string(),
+                message: format!("Failed to upload to store: {}: {}", status, response_text),
+            });
+        }
+
+        let r = json!({
+            "status": "success",
+            "message": "Agent published successfully",
+            "agent_id": agent_id.clone(),
+        });
+        let r: Value = match r {
+            Value::Object(mut map) => {
+                let response_json = serde_json::from_str(&response_text).unwrap_or_default();
+                map.insert("response".to_string(), response_json);
+                Value::Object(map)
+            }
+            _ => unreachable!(),
+        };
+        return Ok(r);
+    }
+
+    pub async fn v2_api_import_agent_url(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        full_identity: ShinkaiName,
+        url: String,
+        node_env: NodeEnvironment,
+        signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let _ = match Self::v2_api_import_agent_url_internal(
+            db.clone(),
+            url.clone(),
+            full_identity.clone(),
+            node_env.clone(),
+            signing_secret_key,
+            embedding_generator,
+        )
+        .await
+        {
+            Ok(response) => res.send(Ok(response)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
+        Ok(())
+    }
+
+    pub async fn v2_api_import_agent_url_internal(
+        db: Arc<SqliteManager>,
+        url: String,
+        full_identity: ShinkaiName,
+        node_env: NodeEnvironment,
+        signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+    ) -> Result<Value, APIError> {
+        let zip_contents = match download_zip_from_url(
+            url,
+            "__agent.json".to_string(),
+            full_identity.node_name.clone(),
+            signing_secret_key,
+        )
+        .await
         {
             Ok(contents) => contents,
             Err(err) => {
@@ -1655,34 +1858,100 @@ impl Node {
                     error: "Invalid Agent Zip".to_string(),
                     message: format!("Failed to extract agent.json: {:?}", err),
                 };
+                return Err(api_error);
+            }
+        };
+        // Save the agent to the database
+        // Parse the JSON into an Agent
+        let agent: Agent = match serde_json::from_slice(&zip_contents.buffer) {
+            Ok(agent) => agent,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Agent Zip".to_string(),
+                    message: format!("Failed to parse agent.json: {}", err),
+                };
+                return Err(api_error);
+            }
+        };
+
+        let status = import_dependencies_tools(
+            db.clone(),
+            full_identity.clone(),
+            node_env.clone(),
+            zip_contents.archive.clone(),
+            embedding_generator.clone(),
+        )
+        .await;
+        if let Err(err) = status {
+            return Err(err);
+        }
+
+        import_agent(
+            db.clone(),
+            full_identity,
+            zip_contents.archive,
+            agent.clone(),
+            embedding_generator.clone(),
+        )
+        .await
+    }
+
+    pub async fn v2_api_import_agent_zip(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        full_identity: ShinkaiName,
+        node_env: NodeEnvironment,
+        file_data: Vec<u8>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Process the zip file
+        let cursor = std::io::Cursor::new(file_data);
+        let archive = match zip::ZipArchive::new(cursor) {
+            Ok(archive) => archive,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to read zip archive: {}", err),
+                };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
 
-        // Parse the JSON into an Agent
-        let agent: Agent = serde_json::from_slice(&zip_contents.buffer).map_err(|e| NodeError::from(e.to_string()))?;
-
-        // Save the agent to the database
-        match db.add_agent(agent.clone(), &agent.full_identity_name) {
-            Ok(_) => {
-                let response = json!({
-                    "status": "success",
-                    "message": "Agent imported successfully",
-                    "agent_id": agent.agent_id,
-                    "agent": agent
-                });
-                let _ = res.send(Ok(response)).await;
-            }
+        let agent = match get_agent_from_zip(archive.clone()) {
+            Ok(agent) => agent,
             Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Database Error".to_string(),
-                    message: format!("Failed to save agent to database: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
+                let _ = res.send(Err(err)).await;
+                return Ok(());
             }
+        };
+
+        let status = import_dependencies_tools(
+            db.clone(),
+            full_identity.clone(),
+            node_env.clone(),
+            archive.clone(),
+            embedding_generator.clone(),
+        )
+        .await;
+        if let Err(err) = status {
+            let _ = res.send(Err(err)).await;
+            return Ok(());
         }
+
+        // Parse the JSON into an Agent
+        let _ = match import_agent(db.clone(), full_identity, archive, agent.clone(), embedding_generator).await {
+            Ok(response) => res.send(Ok(response)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
 
         Ok(())
     }
@@ -1735,14 +2004,15 @@ impl Node {
     }
 
     pub async fn handle_periodic_maintenance(
-        db: Arc<SqliteManager>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _: Arc<SqliteManager>,
+        _: ShinkaiName,
+        _: Arc<Mutex<IdentityManager>>,
         tool_router: Option<Arc<ToolRouter>>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), NodeError> {
         // Import tools from directory if tool_router is available
         if let Some(tool_router) = tool_router {
-            if let Err(e) = tool_router.sync_tools_from_directory().await {
+            if let Err(e) = tool_router.sync_tools_from_directory(embedding_generator.clone()).await {
                 eprintln!("Error during periodic tool import: {}", e);
             }
         }
@@ -1944,10 +2214,86 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_api_list_mcp_servers(
+    pub async fn v2_api_set_preferences(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        payload: HashMap<String, serde_json::Value>,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut errors = vec![];
+        for (key, value) in payload {
+            if let Err(e) = db.set_preference(&key, &value, None) {
+                errors.push(format!("Failed to set preference '{}': {}", key, e));
+            }
+        }
+
+        if errors.is_empty() {
+            let _ = res.send(Ok("Preferences set successfully".to_string())).await;
+        } else {
+            let error_message = errors.join("; ");
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: error_message,
+            };
+            let _ = res.send(Err(api_error)).await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_preferences(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_all_preferences() {
+            Ok(preferences) => {
+                let _ = res.send(Ok(json!(preferences))).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get preferences: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_get_last_used_agents_and_llms(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        last: usize,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let last_used_agents_llms = db
+            .get_last_n_parent_agent_or_llm_provider_ids(last)
+            .unwrap_or_else(|_| vec![]);
+        let _ = res.send(Ok(last_used_agents_llms)).await;
+        Ok(())
+    }
+    
+        pub async fn v2_api_list_mcp_servers(
         db: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Vec<MCPServer>, APIError>>,
+
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -1979,6 +2325,8 @@ impl Node {
         res: Sender<Result<MCPServer, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
+
+
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }

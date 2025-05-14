@@ -2,7 +2,8 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::tool_types::ToolResult;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -21,13 +22,14 @@ pub fn get_rust_tools() -> Vec<ShinkaiToolHeader> {
     custom_tools
         .push(tool_implementation::native_tools::llm_map_reduce_processor::LlmMapReduceProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::llm_prompt_processor::LlmPromptProcessorTool::new().tool);
+    custom_tools.push(tool_implementation::native_tools::agent_processor::AgentPromptProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::sql_processor::SQLProcessorTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::tool_knowledge::KnowledgeTool::new().tool);
     custom_tools.push(tool_implementation::native_tools::config_setup::ConfigSetupTool::new().tool);
     custom_tools
 }
 
-pub async fn get_all_deno_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeader> {
+pub async fn get_all_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<ShinkaiToolHeader> {
     let mut all_tools = match sqlite_manager.get_all_tool_headers() {
         Ok(data) => data,
         Err(_) => Vec::new(),
@@ -40,15 +42,14 @@ pub async fn get_all_deno_tools(sqlite_manager: Arc<SqliteManager>) -> Vec<Shink
 ///
 /// # Arguments
 ///
-/// * `language` - The target programming language for which the tool definitions are generated.
-///   It can be either `Language::Typescript` or `Language::Python`.
+/// * `language` - The target programming language for which the tool definitions are generated. It can be either
+///   `Language::Typescript` or `Language::Python`.
 ///
-/// * `sqlite_manager` - An `Arc` wrapped `SqliteManager` instance used to fetch tool headers
-///   from the SQLite database. This manager provides access to the database operations.
+/// * `sqlite_manager` - An `Arc` wrapped `SqliteManager` instance used to fetch tool headers from the SQLite database.
+///   This manager provides access to the database operations.
 ///
-/// * `only_headers` - A boolean flag indicating whether to generate only the headers of the tool
-///   definitions. If `true`, only the headers are generated; otherwise, full definitions are
-///   included.
+/// * `only_headers` - A boolean flag indicating whether to generate only the headers of the tool definitions. If
+///   `true`, only the headers are generated; otherwise, full definitions are included.
 ///
 /// # Returns
 ///
@@ -77,7 +78,7 @@ pub async fn generate_tool_definitions(
     };
     // Filter tools and prevent duplicates
     let mut seen_keys = HashSet::new();
-    let all_tools: Vec<ShinkaiToolHeader> = get_all_deno_tools(sqlite_manager.clone())
+    let all_tools: Vec<ShinkaiToolHeader> = get_all_tools(sqlite_manager.clone())
         .await
         .into_iter()
         .filter(|tool| {
@@ -111,6 +112,7 @@ pub async fn generate_tool_definitions(
         return Ok(support_files);
     }
     let mut output = String::new();
+    let mut function_map: Vec<String> = Vec::new();
     let mut generated_names = HashSet::new();
 
     if !only_headers {
@@ -124,10 +126,56 @@ pub async fn generate_tool_definitions(
         };
     }
 
+    let esc = match language {
+        CodeLanguage::Typescript => "//",
+        CodeLanguage::Python => "#",
+    };
+
     for tool_header in all_tools {
         let tool_data = match sqlite_manager.get_tool_by_key(&tool_header.tool_router_key) {
             Ok(tool_data) => tool_data,
             Err(e) => return Err(APIError::from(e.to_string())),
+        };
+        let tool_result = match tool_data.clone() {
+            ShinkaiTool::Deno(deno_tool, _) => deno_tool.result,
+            ShinkaiTool::Python(python_tool, _) => python_tool.result,
+            ShinkaiTool::Rust(rust_tool, _) => {
+                let value = serde_json::from_str::<serde_json::Value>(&rust_tool.output_arg.json).unwrap();
+                let result_type = value["result_type"].as_str().unwrap_or("object");
+                let properties = value["properties"].clone();
+                let required = value["required"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect();
+                ToolResult::new(result_type.to_string(), properties, required)
+            }
+            ShinkaiTool::Network(network_tool, _) => {
+                let value = serde_json::from_str::<serde_json::Value>(&network_tool.output_arg.json).unwrap();
+                let result_type = value["result_type"].as_str().unwrap_or("object");
+                let properties = value["properties"].clone();
+                let required = value["required"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect();
+                ToolResult::new(result_type.to_string(), properties, required)
+            }
+            ShinkaiTool::Agent(agent_tool, _) => {
+                let value = serde_json::from_str::<serde_json::Value>(&agent_tool.output_arg.json).unwrap();
+                let result_type = value["result_type"].as_str().unwrap_or("object");
+                let properties = value["properties"].clone();
+                let required = value["required"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect();
+                ToolResult::new(result_type.to_string(), properties, required)
+            }
+            _ => return Err(APIError::from("Unsupported tool type".to_string())),
         };
 
         match language {
@@ -142,9 +190,12 @@ pub async fn generate_tool_definitions(
                     );
                     continue;
                 }
-                generated_names.insert(function_name);
+                generated_names.insert(function_name.clone());
+                let trk = ToolRouterKey::from_string(&tool_header.tool_router_key)?;
+                function_map.push(format!("{} {}", trk.to_string_without_version(), function_name));
                 output.push_str(&generate_typescript_definition(
                     tool_header,
+                    tool_result,
                     tool_data.sql_tables(),
                     tool_data.sql_queries(),
                     only_headers,
@@ -161,9 +212,12 @@ pub async fn generate_tool_definitions(
                     );
                     continue;
                 }
-                generated_names.insert(function_name);
+                generated_names.insert(function_name.clone());
+                let trk = ToolRouterKey::from_string(&tool_header.tool_router_key)?;
+                function_map.push(format!("{} {}", trk.to_string_without_version(), function_name));
                 output.push_str(&generate_python_definition(
                     tool_header,
+                    tool_result,
                     tool_data.sql_tables(),
                     tool_data.sql_queries(),
                     only_headers,
@@ -171,6 +225,23 @@ pub async fn generate_tool_definitions(
             }
         }
     }
+
+    // Add function map commented in code.
+    output = format!(
+        "{output}
+
+{esc}
+{esc} <tool_key_path_to_function_name>
+{}
+{esc} </tool_key_path_to_function_name>
+{esc}
+",
+        function_map
+            .iter()
+            .map(|f| format!("{esc} {}", f))
+            .collect::<Vec<String>>()
+            .join("\n")
+    );
 
     match language {
         CodeLanguage::Typescript => {

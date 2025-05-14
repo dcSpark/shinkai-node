@@ -9,6 +9,8 @@ use utoipa::ToSchema;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct SerializedLLMProvider {
     pub id: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
     pub full_identity_name: ShinkaiName,
     pub external_url: Option<String>,
     pub api_key: Option<String>,
@@ -22,12 +24,12 @@ impl SerializedLLMProvider {
             LLMProviderInterface::TogetherAI(_) => "togetherai",
             LLMProviderInterface::Ollama(_) => "ollama",
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend",
-            LLMProviderInterface::LocalLLM(_) => "local-llm",
             LLMProviderInterface::Groq(_) => "groq",
             LLMProviderInterface::Gemini(_) => "gemini",
             LLMProviderInterface::Exo(_) => "exo",
             LLMProviderInterface::OpenRouter(_) => "openrouter",
             LLMProviderInterface::Claude(_) => "claude",
+            LLMProviderInterface::DeepSeek(_) => "deepseek",
             LLMProviderInterface::LocalRegex(_) => "local-regex",
         }
         .to_string()
@@ -39,12 +41,12 @@ impl SerializedLLMProvider {
             LLMProviderInterface::TogetherAI(_) => "openai-generic".to_string(),
             LLMProviderInterface::Ollama(_) => "ollama".to_string(),
             LLMProviderInterface::ShinkaiBackend(_) => "shinkai-backend".to_string(),
-            LLMProviderInterface::LocalLLM(_) => "local-llm".to_string(),
             LLMProviderInterface::Groq(_) => "openai-generic".to_string(),
             LLMProviderInterface::Gemini(_) => "google-ai".to_string(),
             LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
             LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
             LLMProviderInterface::Claude(_) => "claude".to_string(),
+            LLMProviderInterface::DeepSeek(_) => "openai-generic".to_string(),
             LLMProviderInterface::LocalRegex(_) => "local-regex".to_string(),
         }
     }
@@ -55,12 +57,12 @@ impl SerializedLLMProvider {
             LLMProviderInterface::TogetherAI(togetherai) => togetherai.model_type.clone(),
             LLMProviderInterface::Ollama(ollama) => ollama.model_type.clone(),
             LLMProviderInterface::ShinkaiBackend(shinkaibackend) => shinkaibackend.model_type.clone(),
-            LLMProviderInterface::LocalLLM(_) => "local-llm".to_string(),
             LLMProviderInterface::Groq(groq) => groq.model_type.clone(),
             LLMProviderInterface::Gemini(gemini) => gemini.model_type.clone(),
             LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
             LLMProviderInterface::Claude(claude) => claude.model_type.clone(),
+            LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.clone(),
             LLMProviderInterface::LocalRegex(local_regex) => local_regex.model_type.clone(),
         }
     }
@@ -68,6 +70,8 @@ impl SerializedLLMProvider {
     pub fn mock_provider() -> Self {
         SerializedLLMProvider {
             id: "mock_agent".to_string(),
+            name: Some("Mock Agent".to_string()),
+            description: Some("A mock agent for testing.".to_string()),
             full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/mock_agent".to_string()).unwrap(),
             external_url: Some("https://api.example.com".to_string()),
             api_key: Some("mockapikey".to_string()),
@@ -80,6 +84,8 @@ impl SerializedLLMProvider {
     pub fn mock_provider_with_reasoning() -> Self {
         SerializedLLMProvider {
             id: "mock_agent_reasoning".to_string(),
+            name: Some("Mock Agent Reasoning".to_string()),
+            description: Some("A mock agent with reasoning for testing.".to_string()),
             full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/mock_agent_reasoning".to_string()).unwrap(),
             external_url: Some("https://api.example.com".to_string()),
             api_key: Some("mockapikey".to_string()),
@@ -112,17 +118,14 @@ pub enum LLMProviderInterface {
     TogetherAI(TogetherAI),
     Ollama(Ollama),
     ShinkaiBackend(ShinkaiBackend),
-    LocalLLM(LocalLLM),
     Groq(Groq),
     Gemini(Gemini),
     Exo(Exo),
     OpenRouter(OpenRouter),
     Claude(Claude),
+    DeepSeek(DeepSeek),
     LocalRegex(LocalRegex),
 }
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
-pub struct LocalLLM {}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct Ollama {
@@ -216,6 +219,11 @@ pub struct Claude {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct DeepSeek {
+    pub model_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct LocalRegex {
     pub model_type: String,
 }
@@ -258,6 +266,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("claude:") {
             let model_type = s.strip_prefix("claude:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Claude(Claude { model_type }))
+        } else if s.starts_with("deepseek:") {
+            let model_type = s.strip_prefix("deepseek:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::DeepSeek(DeepSeek { model_type }))
         } else if s.starts_with("local-regex:") {
             let model_type = s.strip_prefix("local-regex:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::LocalRegex(LocalRegex { model_type }))
@@ -309,7 +320,10 @@ impl Serialize for LLMProviderInterface {
                 let model_type = format!("claude:{}", claude.model_type);
                 serializer.serialize_str(&model_type)
             }
-            LLMProviderInterface::LocalLLM(_) => serializer.serialize_str("local-llm"),
+            LLMProviderInterface::DeepSeek(deepseek) => {
+                let model_type = format!("deepseek:{}", deepseek.model_type);
+                serializer.serialize_str(&model_type)
+            }
             LLMProviderInterface::LocalRegex(local_regex) => {
                 let model_type = format!("local-regex:{}", local_regex.model_type);
                 serializer.serialize_str(&model_type)
@@ -360,7 +374,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "claude" => Ok(LLMProviderInterface::Claude(Claude {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
-            "local-llm" => Ok(LLMProviderInterface::LocalLLM(LocalLLM {})),
+            "deepseek" => Ok(LLMProviderInterface::DeepSeek(DeepSeek {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "local-regex" => Ok(LLMProviderInterface::LocalRegex(LocalRegex {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
@@ -377,6 +393,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "gemini",
                     "openrouter",
                     "claude",
+                    "deepseek",
                     "local-regex",
                 ],
             )),
