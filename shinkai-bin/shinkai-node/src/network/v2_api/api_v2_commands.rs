@@ -2376,11 +2376,14 @@ impl Node {
             mcp_server.r#type,
             mcp_server.url.clone(),
             mcp_server.command.clone(),
+            mcp_server.config.clone(),
             mcp_server.is_enabled,
         ) {
             Ok(server) => {
                 log::info!("MCP Server '{}' (ID: {:?}) added to database successfully.", server.name, server.id);
-
+                if let Some(config) = &server.config {
+                    log::info!("MCP Server '{}' (ID: {:?}) config: {:?}", server.name, server.id, config);
+                }
                 if server.r#type == MCPServerType::Command && server.is_enabled {
                     if let Some(command_str) = &server.command {
                         log::info!("Attempting to spawn MCP server '{}' (ID: {:?}) with command: '{}'", server.name, server.id, command_str);

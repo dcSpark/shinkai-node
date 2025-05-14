@@ -14,6 +14,7 @@ pub struct AddMCPServerRequest {
     pub r#type: MCPServerType,
     pub url: Option<String>,
     pub command: Option<String>,
+    pub config: Option<MCPServerConfig>,
     pub is_enabled: bool,
 }
 
