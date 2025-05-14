@@ -1,107 +1,85 @@
-// mcp_process_manager.rs  — COMPILING VERSION
-use std::{
-    collections::HashMap,
-    process::Stdio,
-    sync::{Arc, Mutex},
-};
+// stateless_mcp_client.rs — SPAWN → LIST TOOLS → SHUT DOWN
+// -----------------------------------------------------------------------------
+// A minimal helper for *stateless* interaction with an MCP server launched as a
+// subprocess.  It spawns the command, performs the JSON‑RPC handshake via the
+// Model Context Protocol Rust SDK, requests the available tools, returns them
+// as a `Vec<Tool>`, and then cleanly terminates the child process.
+// -----------------------------------------------------------------------------
 
-use once_cell::sync::Lazy;
-use tokio::{process::Command, spawn};
+use anyhow::Result;
+use rmcp::{model::Tool, transport::TokioChildProcess, ServiceExt};
+use tokio::process::Command;
 
-use rmcp::{ServiceExt, transport::TokioChildProcess};
-use rmcp::service::{RunningService, Peer, RoleClient};
-use rmcp::model::Tool;
-
-type MCPHandle = RunningService<RoleClient, ()>;        // long‑lived task + peer
-type SharedHandle = Arc<MCPHandle>;                     // what we store / clone
-type MCPPeer   = Peer<RoleClient>;                      // lightweight RPC peer
-
-pub struct MCPProcessManager {
-    clients: Arc<Mutex<HashMap<i64, SharedHandle>>>,
-}
-
-impl MCPProcessManager {
-    fn new() -> Self {
-        Self { clients: Arc::new(Mutex::new(HashMap::new())) }
-    }
-
-    // ------------------------------------------------------------ SPAWN
-
-    pub async fn spawn_command_server(
-        &self,
-        id: i64,
-        name: &str,
-        cmd_str: &str,
-    ) -> anyhow::Result<()> {
-        // 1. Launch child (via shell)
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(cmd_str)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped());
-
-        // 2. Create transport + handshake
-        let transport = TokioChildProcess::new(&mut cmd)?;
-        let handle: MCPHandle = ().serve(transport).await?;
-        let shared: SharedHandle = Arc::new(handle);
-        let peer: MCPPeer = shared.peer().clone();
-
-        // 3. OPTIONAL watcher skipped — calling `waiting()` would
-        //    require ownership of the `RunningService`, which we keep in an
-        //    `Arc`.  You can re‑add a watcher later by storing the `JoinHandle`
-        //    elsewhere (e.g. as a separate field).
-
-        // 4. Store the shared handle so the child stays alive Store the shared handle so the child stays alive
-        self.clients.lock().unwrap().insert(id, shared);
-
-        // 5. Log tools
-        if let Ok(resp) = peer.list_tools(None).await {
-            println!("🔗  '{}' connected – tools:", name);
-            for t in resp.tools {
-                println!("   • {} — {}", t.name, t.description);
+/// Spawn a command that runs an MCP server, list its tools, return them, then
+/// shut the server down.
+///
+/// * `cmd_str` – shell command that launches the MCP server (e.g.
+///   `"npx -y @modelcontextprotocol/server-everything"`).
+///
+/// ## Example
+/// ```rust,ignore
+/// let tools = list_tools_via_command("npx -y @modelcontextprotocol/server-everything")
+///     .await?;
+/// for t in tools {
+///     println!("{} — {}", t.name, t.description.unwrap_or_default());
+/// }
+/// ```
+pub async fn list_tools_via_command(cmd_str: &str) -> Result<Vec<Tool>> {
+    // 1. Build the child process (via shell so we support complex commands)
+    // Parse the command string to handle environment variables and the executable
+    let mut env_vars = std::collections::HashMap::new();
+    let mut cmd_parts = cmd_str.trim().split_whitespace();
+    
+    // Extract environment variables (KEY=VALUE format before npx/uvx)
+    let mut cmd_executable = "";
+    let mut cmd_args = Vec::new();
+    
+    // Process each part of the command
+    while let Some(part) = cmd_parts.next() {
+        if part == "npx" || part == "uvx" {
+            // Found the executable
+            cmd_executable = part;
+            // Collect the remaining parts as arguments
+            cmd_args.extend(cmd_parts);
+            break;
+        } else if part.contains('=') {
+            // This is an environment variable
+            let mut kv_iter = part.splitn(2, '=');
+            if let (Some(key), Some(value)) = (kv_iter.next(), kv_iter.next()) {
+                env_vars.insert(key.to_string(), value.to_string());
             }
+        } else {
+            // If we get here, we've found the executable but it's not npx/uvx
+            cmd_executable = part;
+            // Collect the remaining parts as arguments
+            cmd_args.extend(cmd_parts);
+            break;
         }
-        Ok(())
     }
-
-    // ------------------------------------------------------------ PUBLIC API
-
-    /// Get an RPC peer by server id
-    pub fn peer(&self, id: i64) -> Option<MCPPeer> {
-        self.clients
-            .lock()
-            .unwrap()
-            .get(&id)
-            .map(|h| h.peer().clone())
+    
+    // Create the command with the executable
+    let mut cmd = Command::new(cmd_executable);
+    
+    // Add all arguments
+    for arg in cmd_args {
+        cmd.arg(arg);
     }
-
-    /// Convenience: list tools via stored peer
-    pub async fn list_tools(&self, id: i64) -> anyhow::Result<Vec<Tool>> {
-        let peer = self
-            .peer(id)
-            .ok_or_else(|| anyhow::anyhow!("No running MCP server with id {id}"))?;
-        Ok(peer.list_tools(None).await?.tools)
+    
+    // Set environment variables
+    for (key, value) in env_vars {
+        cmd.env(key, value);
     }
+    let service = ()
+        .serve(TokioChildProcess::new(&mut cmd)?)
+        .await?;
+    // 2. Initialize the MCP server
+    service.peer_info();
 
-    /// Graceful shutdown — takes the Arc out of the map, then tries to
-    /// unwrap it to obtain the `RunningService`.  If other strong refs
-    /// still exist, we simply drop our Arc (child keeps running).
-    pub async fn shutdown(&self, id: i64) -> anyhow::Result<()> {
-        if let Some(arc) = self.clients.lock().unwrap().remove(&id) {
-            match Arc::try_unwrap(arc) {
-                Ok(handle) => {
-                    // We now own the handle → can cancel & await
-                    handle.cancel().await?;
-                }
-                Err(still_shared) => {
-                    // Someone else still holds a ref; we can decide to ignore or log
-                    eprintln!("MCP server {id} still referenced elsewhere; not cancelled");
-                    drop(still_shared);
-                }
-            }
-        }
-        Ok(())
-    }
+    // 3. Call the standard MCP `list_tools` method 
+    let tools = service.list_all_tools().await?;
+
+    // 4. Gracefully shut down the service (drops stdio, child should exit)
+    service.cancel().await?;
+
+    Ok(tools)
 }
-
-/// Global singleton
-pub static MCP_MANAGER: Lazy<MCPProcessManager> = Lazy::new(MCPProcessManager::new);
