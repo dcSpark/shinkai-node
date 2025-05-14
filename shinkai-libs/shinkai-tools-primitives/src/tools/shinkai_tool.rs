@@ -311,7 +311,7 @@ impl ShinkaiTool {
         let tool_router_key = self.tool_router_key();
 
         // Extract the tool name directly from the ToolRouterKey
-        let tool_name = tool_router_key.name.clone();
+        let tool_name = ToolRouterKey::sanitize(&tool_router_key.name);
 
         let summary = serde_json::json!({
             "type": "function",

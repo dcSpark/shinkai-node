@@ -14,6 +14,7 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
 use std::env;
 use std::sync::Arc;
+use std::time::Duration;
 
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
@@ -21,8 +22,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_node::network::Node;
-use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
+use std::net::{SocketAddr, TcpListener};
 use std::pin::Pin;
 use tokio::runtime::Runtime;
 use tokio::task::AbortHandle;
@@ -84,6 +85,13 @@ where
     setup_node_storage_path();
     let rt = Runtime::new().unwrap();
 
+    fn port_is_available(port: u16) -> bool {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
+
     let status = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node1_profile_name = "main";
@@ -110,6 +118,7 @@ where
         let node1_api_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
 
         // Create node1 and node2
+        assert!(port_is_available(8080), "Port 8080 is not available");
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -191,11 +200,12 @@ where
             }
         }
     });
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
     if let Err(e) = status {
         // NOTE: This error did not happen here.
         //       The Tokio Runtime captures errors, and this bubbles them up to the test.
         //       This was captured in the interactions_handler_logic (the test)
         assert!(false, "ERROR: {:?}", e);
     }
+    assert!(port_is_available(8080), "Port 8080 is not available");
 }

@@ -20,7 +20,7 @@ use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
@@ -43,11 +43,13 @@ fn micropayment_flow_test() {
 
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     setup();
     let rt = Runtime::new().unwrap();
 
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node2_identity_name = "@@node2_test.sep-shinkai";
         let node1_profile_name = "main";
@@ -94,6 +96,16 @@ fn micropayment_flow_test() {
         let node2_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node2_identity_name));
 
         // Create node1 and node2
+        fn port_is_available(port: u16) -> bool {
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(_) => true,
+                Err(_) => false,
+            }
+        }
+
+        // Create node1 and node2
+        assert!(port_is_available(8080), "Port 8080 is not available");
+        assert!(port_is_available(8081), "Port 8081 is not available");
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -745,6 +757,23 @@ fn micropayment_flow_test() {
             node2_abort_handler.abort();
         });
 
-        let _ = tokio::join!(node1_handler, node2_handler, interactions_handler);
+        let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    println!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    Err(e)
+                }
+            }
+        }
     });
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 }

@@ -5,15 +5,12 @@ use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::node_shareable_logic::ZipFileContents;
 use crate::network::zip_export_import::zip_export_import::{
-    get_agent_from_zip, get_tool_from_zip, import_agent, import_tool,
+    get_agent_from_zip, get_tool_from_zip, import_agent, import_tool
 };
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::{
-    execute_agent_dynamic::execute_agent_tool,
-    execution_coordinator::override_tool_config,
-    execution_custom::try_to_execute_rust_tool,
-    execution_header_generator::{check_tool, generate_execution_environment},
+    execute_agent_dynamic::execute_agent_tool, execution_coordinator::override_tool_config, execution_custom::try_to_execute_rust_tool, execution_header_generator::{check_tool, generate_execution_environment}
 };
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_std::path::PathBuf;
@@ -25,16 +22,7 @@ use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion,
-    invoices::{Invoice, InvoiceStatusEnum},
-    job::JobLike,
-    llm_providers::common_agent_llm_provider::ProviderOrAgent,
-    shinkai_name::ShinkaiName,
-    shinkai_preferences::ShinkaiInternalComms,
-    shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry},
-    tool_router_key::ToolRouterKey,
-    wallet_mixed::{Asset, NetworkIdentifier},
-    ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata},
+    indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, wallet_mixed::{Asset, NetworkIdentifier}, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -42,13 +30,7 @@ use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
-    error::ToolError,
-    network_tool::NetworkTool,
-    parameters::Parameters,
-    rust_tools::RustTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
-    tool_config::ToolConfig,
-    tool_output_arg::ToolOutputArg,
+    error::ToolError, network_tool::NetworkTool, parameters::Parameters, rust_tools::RustTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
 use std::env;
 use std::sync::Arc;
@@ -254,15 +236,17 @@ impl ToolRouter {
 
             if is_agent {
                 let agent = get_agent_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
-                import_agent(
+                let import_result = import_agent(
                     db.clone(),
                     full_identity.clone(),
                     archive.clone(),
                     agent,
                     embedding_generator.clone(),
                 )
-                .await
-                .map_err(|e| ToolError::ExecutionError(e.message))?;
+                .await;
+                if let Err(e) = import_result {
+                    eprintln!("Error importing agent: {:?}", e);
+                }
             }
             if is_tool {
                 let tool = get_tool_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
@@ -270,9 +254,10 @@ impl ToolRouter {
                     buffer: serde_json::to_vec(&tool).unwrap(),
                     archive: archive.clone(),
                 };
-                import_tool(db.clone(), node_env.clone(), tool_archive, tool)
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+                let import_result = import_tool(db.clone(), node_env.clone(), tool_archive, tool).await;
+                if let Err(e) = import_result {
+                    eprintln!("Error importing tool: {:?}", e);
+                }
             }
         }
 

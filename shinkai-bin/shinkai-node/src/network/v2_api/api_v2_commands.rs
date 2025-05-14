@@ -1194,6 +1194,14 @@ impl Node {
             }
         };
 
+        // Construct the Agent's full identity name, in the local node.
+        let local_full_identity_name = ShinkaiName::new(format!(
+            "{}/main/agent/{}",
+            full_identity.get_node_name_string(),
+            agent_id.to_lowercase()
+        ))
+        .unwrap();
+
         // Retrieve the existing agent from the database
         let existing_agent = match db.get_agent(&agent_id) {
             Ok(Some(agent)) => agent,
@@ -1272,7 +1280,7 @@ impl Node {
                 serde_json::from_value(v.clone()).unwrap_or(existing_agent.config.clone())
             }),
             cron_tasks: None,
-            full_identity_name: full_identity.clone(),
+            full_identity_name: local_full_identity_name.clone(),
             tools_config_override: partial_agent
                 .get("tools_config_override")
                 .map_or(existing_agent.tools_config_override.clone(), |v| {

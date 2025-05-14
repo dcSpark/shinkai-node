@@ -70,7 +70,7 @@ impl ToolRouterKey {
         strings.serialize(serializer)
     }
 
-    fn sanitize(input: &str) -> String {
+    pub fn sanitize(input: &str) -> String {
         input
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })

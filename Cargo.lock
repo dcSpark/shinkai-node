@@ -4966,7 +4966,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "chrono",
  "dashmap",
@@ -4983,7 +4983,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_embedding"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5004,7 +5004,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "async-trait",
  "bincode",
@@ -5037,7 +5037,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
@@ -5074,7 +5074,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "chrono",
  "serde",
@@ -5088,7 +5088,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -5116,7 +5116,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5186,7 +5186,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_non_rust_code"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -5197,7 +5197,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "bincode",
  "blake3",
@@ -5228,7 +5228,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -5248,7 +5248,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5263,9 +5263,9 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_runner"
-version = "0.9.13"
+version = "0.9.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74983f416643e54753518aa56958abf85649caa56a799ac282c38a821d3bc604"
+checksum = "13486fbeaef8439bc96866b6b3a7ec19c18d5e68358b9cc3c4bf45106f73eba7"
 dependencies = [
  "anyhow",
  "base64-simd",
