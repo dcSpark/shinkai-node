@@ -2,15 +2,13 @@ use chrono::DateTime;
 use chrono::Utc;
 use dashmap::DashMap;
 use ed25519_dalek::VerifyingKey;
-use ethers::abi::Abi;
-use ethers::prelude::*;
 use lazy_static::lazy_static;
 use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::signatures::string_to_signature_public_key;
-use std::convert::TryFrom;
+use shinkai_non_rust_code::functions::get_identity_data::get_identity_data;
 use std::fmt;
 use std::fs;
 use std::net::{AddrParseError, IpAddr, Ipv4Addr, SocketAddr};
@@ -30,27 +28,25 @@ lazy_static! {
 
 #[derive(Debug)]
 pub enum ShinkaiRegistryError {
-    ContractAbiError(ethers::contract::AbiError),
-    AbiError(ethers::abi::Error),
     IoError(std::io::Error),
     JsonError(serde_json::Error),
     CustomError(String),
     SystemTimeError(std::time::SystemTimeError),
     AddressParseError(AddrParseError),
     IdentityNotFound(String),
+    IdentityFetchError(String),
 }
 
 impl fmt::Display for ShinkaiRegistryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ShinkaiRegistryError::ContractAbiError(err) => write!(f, "Contract ABI Error: {}", err),
-            ShinkaiRegistryError::AbiError(err) => write!(f, "ABI Error: {}", err),
             ShinkaiRegistryError::IoError(err) => write!(f, "IO Error: {}", err),
             ShinkaiRegistryError::JsonError(err) => write!(f, "JSON Error: {}", err),
             ShinkaiRegistryError::CustomError(err) => write!(f, "Custom Error: {}", err),
             ShinkaiRegistryError::SystemTimeError(err) => write!(f, "System Time Error: {}", err),
             ShinkaiRegistryError::AddressParseError(err) => write!(f, "Address Parse Error: {}", err),
             ShinkaiRegistryError::IdentityNotFound(err) => write!(f, "Identity Not Found: {}", err),
+            ShinkaiRegistryError::IdentityFetchError(err) => write!(f, "Identity Fetch Error: {}", err),
         }
     }
 }
@@ -67,21 +63,9 @@ impl From<std::time::SystemTimeError> for ShinkaiRegistryError {
     }
 }
 
-impl From<ethers::contract::AbiError> for ShinkaiRegistryError {
-    fn from(err: ethers::contract::AbiError) -> ShinkaiRegistryError {
-        ShinkaiRegistryError::ContractAbiError(err)
-    }
-}
-
 impl From<serde_json::Error> for ShinkaiRegistryError {
     fn from(err: serde_json::Error) -> ShinkaiRegistryError {
         ShinkaiRegistryError::JsonError(err)
-    }
-}
-
-impl From<ethers::abi::Error> for ShinkaiRegistryError {
-    fn from(err: ethers::abi::Error) -> ShinkaiRegistryError {
-        ShinkaiRegistryError::AbiError(err)
     }
 }
 
@@ -96,13 +80,13 @@ impl std::error::Error for ShinkaiRegistryError {}
 #[derive(Debug, PartialEq, Clone)]
 pub struct OnchainIdentity {
     pub shinkai_identity: String,
-    pub bound_nft: U256, // id of the nft
-    pub staked_tokens: U256,
+    pub bound_nft: String, // id of the nft
+    pub staked_tokens: String,
     pub encryption_key: String,
     pub signature_key: String,
     pub routing: bool,
     pub address_or_proxy_nodes: Vec<String>,
-    pub delegated_tokens: U256,
+    pub delegated_tokens: String,
     pub last_updated: DateTime<Utc>,
 }
 
@@ -225,9 +209,10 @@ pub trait ShinkaiRegistryTrait {
 
 #[derive(Debug, Clone)]
 pub struct ShinkaiRegistry {
-    pub contract: ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
     pub cache: Arc<DashMap<String, (SystemTime, OnchainIdentity)>>,
     pub rpc_endpoints: Vec<String>, // TODO: needs to be updated for mainnet -- also depends on the network
+    pub abi_file_content: String,
+    pub contract_address: String,
 }
 
 impl ShinkaiRegistry {
@@ -236,18 +221,7 @@ impl ShinkaiRegistry {
         contract_address: &str,
         abi_path: Option<String>,
     ) -> Result<Self, ShinkaiRegistryError> {
-        let provider =
-            Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
-        let contract_address: Address = contract_address.parse().map_err(|e| {
-            shinkai_log(
-                ShinkaiLogOption::CryptoIdentity,
-                ShinkaiLogLevel::Error,
-                format!("Error parsing contract address: {}", e).as_str(),
-            );
-            ShinkaiRegistryError::AbiError(ethers::abi::Error::InvalidData)
-        })?;
-
-        let abi_json = match abi_path {
+        let abi_file_content = match abi_path {
             Some(path) => fs::read_to_string(path).map_err(ShinkaiRegistryError::IoError)?,
             None => {
                 shinkai_log(
@@ -258,9 +232,6 @@ impl ShinkaiRegistry {
                 include_str!("./abi/ShinkaiRegistry.sol/ShinkaiRegistry.json").to_string()
             }
         };
-        let abi: Abi = serde_json::from_str(&abi_json).map_err(ShinkaiRegistryError::JsonError)?;
-
-        let contract = Contract::new(contract_address, abi, Arc::new(provider));
 
         let rpc_endpoints = vec![
             url.to_string(),
@@ -270,7 +241,8 @@ impl ShinkaiRegistry {
         ];
 
         Ok(Self {
-            contract,
+            abi_file_content,
+            contract_address: contract_address.to_string(),
             cache: Arc::new(DashMap::new()),
             rpc_endpoints,
         })
@@ -300,12 +272,19 @@ impl ShinkaiRegistry {
                 } else if now.duration_since(last_updated)? < *CACHE_TIME {
                     // Spawn a new task to update the cache in the background
                     let identity_clone = identity.clone();
-                    let contract_clone = self.contract.clone();
                     let cache_clone = self.cache.clone();
                     let rpc_endpoints_clone = self.rpc_endpoints.clone();
+                    let contract_address_clone = self.contract_address.clone();
+                    let abi_file_content_clone = self.abi_file_content.clone();
                     task::spawn(async move {
-                        if let Err(e) =
-                            Self::update_cache(&contract_clone, &cache_clone, identity_clone, rpc_endpoints_clone).await
+                        if let Err(e) = Self::update_cache(
+                            rpc_endpoints_clone,
+                            contract_address_clone,
+                            abi_file_content_clone,
+                            &cache_clone,
+                            identity_clone,
+                        )
+                        .await
                         {
                             // Log the error
                             shinkai_log(
@@ -323,23 +302,26 @@ impl ShinkaiRegistry {
 
         // Otherwise, update the cache
         let record = Self::update_cache(
-            &self.contract,
+            self.rpc_endpoints.clone(),
+            self.contract_address.clone(),
+            self.abi_file_content.clone(),
             &self.cache,
             identity.clone(),
-            self.rpc_endpoints.clone(),
         )
         .await?;
         Ok(record.clone())
     }
 
     async fn update_cache(
-        contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
+        rpc_endpoints: Vec<String>,
+        contract_address: String,
+        contract_abi: String,
         cache: &DashMap<String, (SystemTime, OnchainIdentity)>,
         identity: String,
-        rpc_endpoints: Vec<String>,
     ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         // Fetch the identity record from the contract
-        let record = Self::fetch_identity_record(contract, identity.clone(), rpc_endpoints).await?;
+        let record =
+            Self::fetch_identity_record(rpc_endpoints, contract_address, contract_abi, identity.clone()).await?;
 
         // Update the cache and the timestamp
         cache.insert(identity.clone(), (SystemTime::now(), record.clone()));
@@ -352,86 +334,43 @@ impl ShinkaiRegistry {
     }
 
     pub async fn fetch_identity_record(
-        contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
-        identity: String,
         rpc_endpoints: Vec<String>,
+        contract_address: String,
+        contract_abi: String,
+        identity: String,
     ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let mut last_error = None;
+        let identity_data = get_identity_data(rpc_endpoints, contract_address, contract_abi, identity.clone())
+            .await
+            .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
+            .identity_data;
 
-        for rpc in rpc_endpoints {
-            let provider = match Provider::<Http>::try_from(rpc.clone()) {
-                Ok(provider) => provider,
-                Err(err) => {
-                    last_error = Some(ShinkaiRegistryError::CustomError(err.to_string()));
-                    continue;
-                }
-            };
-
-            let contract = Contract::new(contract.address(), contract.abi().clone(), Arc::new(provider));
-
-            let function_call = match contract.method::<_, (U256, U256, String, String, bool, Vec<String>, U256, U256)>(
-                "getIdentityData",
-                (identity.clone(),),
-            ) {
-                Ok(call) => call,
-                Err(err) => {
-                    shinkai_log(
-                        ShinkaiLogOption::CryptoIdentity,
-                        ShinkaiLogLevel::Error,
-                        format!("Error creating function call: {}", err).as_str(),
-                    );
-                    last_error = Some(ShinkaiRegistryError::ContractAbiError(err));
-                    continue;
-                }
-            };
-
-            match function_call.call().await {
-                Ok(result) => {
-                    // Check if the result contains default/empty values indicating identity not found
-                    if result.0 == U256::zero()
-                        && result.1 == U256::zero()
-                        && result.2.is_empty()
-                        && result.3.is_empty()
-                        && !result.4
-                        && result.5.is_empty()
-                        && result.6 == U256::zero()
-                        && result.7 == U256::zero()
-                    {
-                        return Err(ShinkaiRegistryError::IdentityNotFound(format!(
-                            "Identity '{}' not found",
-                            identity
-                        )));
-                    }
-
-                    let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
-                    let last_updated = DateTime::<Utc>::from(last_updated);
-                    eprintln!("result: {:?}", result);
-
-                    return Ok(OnchainIdentity {
-                        shinkai_identity: identity,
-                        bound_nft: result.0,
-                        staked_tokens: result.1,
-                        encryption_key: result.2,
-                        signature_key: result.3,
-                        routing: result.4,
-                        address_or_proxy_nodes: result.5,
-                        delegated_tokens: result.6,
-                        last_updated,
-                    });
-                }
-                Err(e) => {
-                    eprintln!("Error calling contract: {} using rpc_endpoint: {}", e, rpc);
-                    shinkai_log(
-                        ShinkaiLogOption::CryptoIdentity,
-                        ShinkaiLogLevel::Error,
-                        format!("Error calling contract: {}", e).as_str(),
-                    );
-                    last_error = Some(ShinkaiRegistryError::CustomError("Contract Error".to_string()));
-                }
-            }
+        if identity_data.is_none() {
+            return Err(ShinkaiRegistryError::IdentityNotFound(format!(
+                "identity '{}' not found",
+                identity.clone()
+            )));
         }
 
-        Err(last_error.unwrap_or_else(|| ShinkaiRegistryError::CustomError("All RPC endpoints failed".to_string())))
+        let identity_data = identity_data.unwrap();
+
+        let last_updated = UNIX_EPOCH + Duration::from_secs(identity_data.last_updated);
+        let last_updated = DateTime::<Utc>::from(last_updated);
+
+        let onchain_identity = OnchainIdentity {
+            shinkai_identity: identity.clone(),
+            bound_nft: identity_data.bound_nft,
+            staked_tokens: identity_data.staked_tokens,
+            encryption_key: identity_data.encryption_key,
+            signature_key: identity_data.signature_key,
+            routing: identity_data.routing,
+            address_or_proxy_nodes: identity_data.address_or_proxy_nodes,
+            delegated_tokens: identity_data.delegated_tokens,
+            last_updated,
+        };
+
+        eprintln!("fetch identity result: {:?}", onchain_identity);
+
+        Ok(onchain_identity)
     }
 }
 
@@ -461,6 +400,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_identity_record() {
+        use std::env;
+        use std::path::PathBuf;
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
+
+        env::set_var(
+            "SHINKAI_TOOLS_RUNNER_DENO_BINARY_PATH",
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/debug/shinkai-tools-runner-resources/deno")
+                .to_string_lossy()
+                .to_string(),
+        );
+
+        env::set_var(
+            "SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH",
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/debug/shinkai-tools-runner-resources/uv")
+                .to_string_lossy()
+                .to_string(),
+        );
+
         let registry = ShinkaiRegistry::new(
             "https://sepolia.base.org",
             "0x425fb20ba3874e887336aaa7f3fab32d08135ba9",
@@ -475,17 +437,18 @@ mod tests {
 
         let expected_record = OnchainIdentity {
             shinkai_identity: "node1_test.sep-shinkai".to_string(),
-            bound_nft: U256::from_dec_str("9").unwrap(),
-            staked_tokens: U256::from_dec_str("55000000000000000000").unwrap(),
+            bound_nft: "9n".to_string(),
+            staked_tokens: "55000000000000000000n".to_string(),
             encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
             signature_key: "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e".to_string(),
             routing: false,
             address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
-            delegated_tokens: U256::from_dec_str("0").unwrap(),
+            delegated_tokens: "0n".to_string(),
             last_updated: chrono::DateTime::<chrono::Utc>::from(
                 std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1738389678),
             ),
         };
+        assert!(expected_record.first_address().await.is_ok());
         assert_eq!(record, expected_record);
     }
 }

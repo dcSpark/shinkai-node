@@ -1,7 +1,7 @@
 use super::agent_tool_wrapper::AgentToolWrapper;
 use super::simulated_tool::SimulatedTool;
 use super::tool_config::OAuth;
-use super::tool_playground::{SqlQuery, SqlTable};
+use super::tool_playground::{SqlQuery, SqlTable, ToolPlaygroundMetadata};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
     deno_tools::DenoTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool,
@@ -322,7 +322,7 @@ impl ShinkaiTool {
         let tool_router_key = self.tool_router_key();
 
         // Extract the tool name directly from the ToolRouterKey
-        let tool_name = tool_router_key.name.clone();
+        let tool_name = ToolRouterKey::sanitize(&tool_router_key.name);
 
         let summary = serde_json::json!({
             "type": "function",
@@ -585,6 +585,15 @@ impl ShinkaiTool {
             ShinkaiTool::Simulated(s, _) => s.keywords.clone(),
         }
     }
+
+    pub fn get_metadata(&self) -> Option<ToolPlaygroundMetadata> {
+        match self {
+            ShinkaiTool::Deno(d, _) => Some(d.get_metadata()),
+            ShinkaiTool::Python(p, _) => Some(p.get_metadata()),
+            ShinkaiTool::Rust(r, _) => Some(r.get_metadata()),
+            _ => None,
+        }
+    }
 }
 
 impl From<RustTool> for ShinkaiTool {
@@ -712,7 +721,7 @@ mod tests {
             "string",
             "The URL to fetch",
             true,
-            Some("https://example.com".to_string()),
+            Some(serde_json::Value::String("https://example.com".to_string())),
         );
 
         let tool_router_key = ToolRouterKey::new(

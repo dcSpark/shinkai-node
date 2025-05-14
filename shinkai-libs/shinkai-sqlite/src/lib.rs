@@ -4,6 +4,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
 use shinkai_embedding::model_type::EmbeddingModelType;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
@@ -136,8 +137,27 @@ impl SqliteManager {
         }
 
         manager.update_default_embedding_model(model_type)?;
-
+        Self::migrate_agents_full_identity_name(&manager)?;
         Ok(manager)
+    }
+
+    // There might be old agents with partial full_identity_name.
+    // This function migrates them to the new format.
+    fn migrate_agents_full_identity_name(manager: &SqliteManager) -> Result<(), SqliteManagerError> {
+        let agents = manager.get_all_agents()?;
+        for mut agent in agents {
+            if !agent.full_identity_name.has_profile() {
+                println!("Migrating agent: {:?}", agent);
+                agent.full_identity_name = ShinkaiName::new(format!(
+                    "{}/main/agent/{}",
+                    agent.full_identity_name.node_name.clone(),
+                    agent.agent_id
+                ))
+                .map_err(|e| SqliteManagerError::InvalidData)?;
+                manager.update_agent(agent)?;
+            }
+        }
+        Ok(())
     }
 
     // Initializes the required tables in the SQLite database
@@ -201,6 +221,19 @@ impl SqliteManager {
         if column_exists == 0 {
             conn.execute("ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT", [])?;
         }
+        // Check if edited column exists
+        let mut stmt =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'edited'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // Add the column if it doesn't exist
+        if column_exists == 0 {
+            conn.execute(
+                "ALTER TABLE shinkai_agents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
+
         Ok(())
     }
 
@@ -239,7 +272,8 @@ impl SqliteManager {
                 debug_mode INTEGER NOT NULL,
                 config TEXT, -- Store as a JSON string
                 scope TEXT NOT NULL, -- Change this line to use TEXT instead of BLOB
-                tools_config_override TEXT -- Store as a JSON string
+                tools_config_override TEXT, -- Store as a JSON string
+                edited INTEGER NOT NULL DEFAULT 0
             );",
             [],
         )?;

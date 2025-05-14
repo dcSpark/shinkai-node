@@ -1597,15 +1597,23 @@ impl Node {
         }
     }
 
+    pub fn shinkai_free_provider_id() -> String {
+        "shinkai_free_trial".to_string()
+    }
+
     // Helper function to create default LLM providers
     fn create_default_llm_providers(node_name: &ShinkaiName) -> Vec<SerializedLLMProvider> {
         vec![
             SerializedLLMProvider {
-                id: "shinkai_free_trial".to_string(),
+                id: Self::shinkai_free_provider_id(),
                 name: Some("Shinkai Free Trial".to_string()),
                 description: Some("Shinkai Free Trial LLM Provider".to_string()),
-                full_identity_name: ShinkaiName::new(format!("{}/main/agent/shinkai_free_trial", node_name.full_name))
-                    .unwrap(),
+                full_identity_name: ShinkaiName::new(format!(
+                    "{}/main/agent/{}",
+                    node_name.full_name,
+                    Self::shinkai_free_provider_id()
+                ))
+                .unwrap(),
                 external_url: Some("https://api.shinkai.com/inference".to_string()),
                 api_key: None,
                 model: LLMProviderInterface::ShinkaiBackend(ShinkaiBackend {
