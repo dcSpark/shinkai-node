@@ -10,4 +10,5 @@ pub mod handle_commands_list;
 pub mod v1_api;
 pub mod v2_api;
 pub mod agent_payments_manager;
+pub mod mcp_manager;
 pub mod network_manager_utils;
