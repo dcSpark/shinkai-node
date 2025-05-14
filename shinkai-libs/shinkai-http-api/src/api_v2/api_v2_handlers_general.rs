@@ -292,6 +292,11 @@ pub struct InitialRegistrationRequest {
     pub profile_identity_pk: String,
 }
 
+#[derive(Deserialize)]
+pub struct ChangeNodeNameRequest {
+    pub new_name: String,
+}
+
 #[utoipa::path(
     get,
     path = "/v2/public_keys",
@@ -646,7 +651,7 @@ pub async fn modify_llm_provider_handler(
 #[utoipa::path(
     post,
     path = "/v2/change_node_name",
-    request_body = String,
+    request_body = ChangeNodeNameRequest,
     responses(
         (status = 200, description = "Successfully changed node name", body = String),
         (status = 500, description = "Internal server error", body = APIError)
@@ -655,14 +660,14 @@ pub async fn modify_llm_provider_handler(
 pub async fn change_node_name_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    new_name: String,
+    payload: ChangeNodeNameRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiChangeNodesName {
             bearer,
-            new_name,
+            new_name: payload.new_name,
             res: res_sender,
         })
         .await
@@ -1038,7 +1043,7 @@ pub async fn export_agent_handler(
         .to_string();
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
+
     sender
         .send(NodeCommand::V2ApiExportAgent {
             bearer,
@@ -1100,7 +1105,7 @@ pub async fn publish_agent_handler(
         .to_string();
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
+
     sender
         .send(NodeCommand::V2ApiPublishAgent {
             bearer,
@@ -1141,7 +1146,7 @@ pub async fn import_agent_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let url = payload.get("url").cloned().unwrap_or_default();
-    
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiImportAgent {
@@ -1184,7 +1189,7 @@ pub async fn import_agent_zip_handler(
             // Read file data with error handling
             let mut bytes = Vec::new();
             let mut stream = part.stream();
-            
+
             while let Ok(Some(chunk)) = stream.try_next().await {
                 if bytes.len() + chunk.chunk().len() > 50 * 1024 * 1024 {
                     return Ok(warp::reply::with_status(
@@ -1198,7 +1203,7 @@ pub async fn import_agent_zip_handler(
                 }
                 bytes.extend_from_slice(chunk.chunk());
             }
-            
+
             if bytes.is_empty() {
                 return Ok(warp::reply::with_status(
                     warp::reply::json(&APIError {
@@ -1209,7 +1214,7 @@ pub async fn import_agent_zip_handler(
                     StatusCode::BAD_REQUEST,
                 ));
             }
-            
+
             file_data = Some(bytes);
         }
     }
@@ -1230,7 +1235,7 @@ pub async fn import_agent_zip_handler(
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
+
     match sender
         .send(NodeCommand::V2ApiImportAgentZip {
             bearer,
@@ -1512,7 +1517,7 @@ pub async fn get_preferences_handler(
         update_agent_handler,
         import_agent_handler,
         import_agent_zip_handler,
-        export_agent_handler,        
+        export_agent_handler,
         get_agent_handler,
         get_all_agents_handler,
         test_llm_provider_handler,
@@ -1525,7 +1530,7 @@ pub async fn get_preferences_handler(
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
             ShinkaiMessage, MessageBody, EncryptionMethod, ExternalMetadata, ShinkaiVersion,
-            OpenAI, Ollama, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
+            OpenAI, Ollama, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody,
             ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
             NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
             APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError, Agent,
