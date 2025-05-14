@@ -112,10 +112,10 @@ impl CoinbaseMPCWallet {
                     for cfg in js_tool.config {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
-                                "name" => name = basic_config.key_value.clone().unwrap_or_default(),
-                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default(),
+                                "name" => name = basic_config.key_value.clone().unwrap_or_default().to_string(),
+                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default().to_string(),
                                 "useServerSigner" => {
-                                    use_server_signer = basic_config.key_value.clone().unwrap_or_default()
+                                    use_server_signer = basic_config.key_value.clone().unwrap_or_default().to_string()
                                 }
                                 _ => {}
                             },
@@ -212,10 +212,10 @@ impl CoinbaseMPCWallet {
                     for cfg in js_tool.config {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
-                                "name" => name = basic_config.key_value.clone().unwrap_or_default(),
-                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default(),
+                                "name" => name = basic_config.key_value.clone().unwrap_or_default().to_string(),
+                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default().to_string(),
                                 "useServerSigner" => {
-                                    use_server_signer = basic_config.key_value.clone().unwrap_or_default()
+                                    use_server_signer = basic_config.key_value.clone().unwrap_or_default().to_string()
                                 }
                                 "walletId" => {
                                     if basic_config.key_value.is_none() {

@@ -8,7 +8,6 @@ use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::identity_manager::IdentityManagerTrait;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::network_limiter::ConnectionLimiter;
@@ -28,14 +27,16 @@ use shinkai_embedding::embedding_generator::{EmbeddingGenerator, RemoteEmbedding
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
+    LLMProviderInterface, SerializedLLMProvider, ShinkaiBackend,
+};
 use shinkai_message_primitives::schemas::retry::RetryMessage;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
@@ -124,8 +125,6 @@ pub struct Node {
     pub tool_router: Option<Arc<ToolRouter>>,
     // Callback Manager. Option so it is compatible with the Option (timing wise) inputs.
     pub callback_manager: Arc<Mutex<JobCallbackManager>>,
-    // Sheet Manager.
-    pub sheet_manager: Arc<Mutex<SheetManager>>,
     // Default embedding model for new profiles
     pub default_embedding_model: Arc<Mutex<EmbeddingModelType>>,
     // Supported embedding models for profiles
@@ -352,14 +351,6 @@ impl Node {
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
 
-        let sheet_manager_result = SheetManager::new(
-            Arc::downgrade(&db_arc.clone()),
-            node_name.clone(),
-            ws_manager_trait.clone(),
-        )
-        .await;
-        let sheet_manager = sheet_manager_result.unwrap();
-
         // It reads the api_v2_key from env, if not from db and if not, then it generates a new one that gets saved in
         // the db
         let api_v2_key = if let Some(key) = api_v2_key {
@@ -410,7 +401,6 @@ impl Node {
             ws_manager_trait,
             ws_server: None,
             callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
-            sheet_manager: Arc::new(Mutex::new(sheet_manager)),
             tool_router: Some(tool_router),
             default_embedding_model,
             supported_embedding_models,
@@ -450,7 +440,6 @@ impl Node {
                 self.embedding_generator.clone(),
                 self.ws_manager_trait.clone(),
                 self.tool_router.clone(),
-                self.sheet_manager.clone(),
                 self.callback_manager.clone(),
                 self.my_agent_payments_manager.clone(),
                 self.ext_agent_payments_manager.clone(),
@@ -459,11 +448,6 @@ impl Node {
             .await,
         ));
         self.job_manager = Some(job_manager.clone());
-
-        {
-            let mut sheet_manager = self.sheet_manager.lock().await;
-            sheet_manager.set_job_manager(job_manager.clone());
-        }
 
         shinkai_log(
             ShinkaiLogOption::Node,
@@ -490,8 +474,32 @@ impl Node {
         {
             let mut callback_manager = self.callback_manager.lock().await;
             callback_manager.update_job_manager(job_manager.clone());
-            callback_manager.update_sheet_manager(self.sheet_manager.clone());
             callback_manager.update_cron_manager(cron_manager.clone());
+        }
+
+        // Check if we need to add default LLM providers
+        if std::env::var("IS_TEST").unwrap_or_default() != "true" && self.identity_manager.lock().await.is_ready {
+            // Create default providers
+            let default_providers = Self::create_default_llm_providers(&self.node_name);
+
+            // For each default provider, check if it exists and add if it doesn't
+            for provider in default_providers {
+                if !self.db.get_llm_provider(&provider.id, &self.node_name).is_ok() {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Adding default LLM provider: {}", provider.id),
+                    );
+                    let profile = ShinkaiName::new(format!("{}/main", self.node_name.full_name)).unwrap();
+                    if let Err(e) = self.db.add_llm_provider(provider.clone(), &profile) {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to add default LLM provider {}: {}", provider.id, e),
+                        );
+                    }
+                }
+            }
         }
 
         self.initialize_embedding_models().await?;
@@ -518,16 +526,16 @@ impl Node {
         // Call ToolRouter initialization in a new task
         if let Some(tool_router) = &self.tool_router {
             let tool_router = tool_router.clone();
-            let generator = Box::new(self.embedding_generator.clone()) as Box<dyn EmbeddingGenerator>;
+            let generator = self.embedding_generator.clone();
             let reinstall_tools = std::env::var("REINSTALL_TOOLS").unwrap_or_else(|_| "false".to_string()) == "true";
 
             tokio::spawn(async move {
                 if reinstall_tools {
-                    if let Err(e) = tool_router.force_reinstall_all(&generator).await {
+                    if let Err(e) = tool_router.force_reinstall_all(Arc::new(generator.clone())).await {
                         eprintln!("ToolRouter force reinstall failed: {:?}", e);
                     }
                 } else {
-                    if let Err(e) = tool_router.initialization(generator).await {
+                    if let Err(e) = tool_router.initialization(Arc::new(generator.clone())).await {
                         eprintln!("ToolRouter initialization failed: {:?}", e);
                     }
                 }
@@ -600,7 +608,7 @@ impl Node {
                         let node_name_clone = self.node_name.clone();
                         let identity_manager_clone = self.identity_manager.clone();
                         let tool_router_clone = self.tool_router.clone();
-
+                        let embedding_generator_clone = self.embedding_generator.clone();
                         // Spawn a new task to handle periodic maintenance
                         tokio::spawn(async move {
                             let _ = Self::handle_periodic_maintenance(
@@ -608,6 +616,7 @@ impl Node {
                                 node_name_clone,
                                 identity_manager_clone,
                                 tool_router_clone,
+                                Arc::new(embedding_generator_clone),
                             ).await;
                         });
                     },
@@ -1399,10 +1408,20 @@ impl Node {
     ) {
         // Handle validation
         let mut len_buffer = [0u8; 4];
-        {
+        let read_result = {
             let mut reader = reader.lock().await;
-            reader.read_exact(&mut len_buffer).await.unwrap();
+            reader.read_exact(&mut len_buffer).await
+        };
+
+        if let Err(e) = read_result {
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                &format!("Failed to read validation data length: {}", e),
+            );
+            return;
         }
+
         let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
 
         let mut buffer = vec![0u8; validation_data_len];
@@ -1412,7 +1431,17 @@ impl Node {
         };
         match res {
             Ok(_) => {
-                let validation_data = String::from_utf8(buffer).unwrap().trim().to_string();
+                let validation_data = match String::from_utf8(buffer) {
+                    Ok(s) => s.trim().to_string(),
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to convert validation data to string: {}", e),
+                        );
+                        return;
+                    }
+                };
 
                 // Sign the validation data
                 let signature = signing_key.sign(validation_data.as_bytes());
@@ -1431,40 +1460,109 @@ impl Node {
                 let total_len_bytes = (total_len as u32).to_be_bytes();
                 {
                     let mut writer = writer.lock().await;
-                    writer.write_all(&total_len_bytes).await.unwrap();
+                    if let Err(e) = writer.write_all(&total_len_bytes).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write total length: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the length of the public key
                     let public_key_len_bytes = public_key_len.to_be_bytes();
-                    writer.write_all(&public_key_len_bytes).await.unwrap();
+                    if let Err(e) = writer.write_all(&public_key_len_bytes).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write public key length: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the public key
-                    writer.write_all(public_key_hex.as_bytes()).await.unwrap();
+                    if let Err(e) = writer.write_all(public_key_hex.as_bytes()).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write public key: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the length of the signed validation data
                     let signature_len_bytes = signature_len.to_be_bytes();
-                    writer.write_all(&signature_len_bytes).await.unwrap();
+                    if let Err(e) = writer.write_all(&signature_len_bytes).await {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to write signature length: {}", e),
+                        );
+                        return;
+                    }
 
                     // Send the signed validation data
                     match writer.write_all(signature_hex.as_bytes()).await {
-                        Ok(_) => eprintln!("Sent signed validation data and public key back to server"),
-                        Err(e) => eprintln!("Failed to send signed validation data: {}", e),
+                        Ok(_) => shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Info,
+                            "Sent signed validation data and public key back to server",
+                        ),
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Node,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to send signed validation data: {}", e),
+                            );
+                            return;
+                        }
                     }
                 }
 
                 // Wait for the server to validate the signature
                 let mut len_buffer = [0u8; 4];
-                {
+                let read_result = {
                     let mut reader = reader.lock().await;
-                    reader.read_exact(&mut len_buffer).await.unwrap();
+                    reader.read_exact(&mut len_buffer).await
+                };
+
+                if let Err(e) = read_result {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to read response length: {}", e),
+                    );
+                    return;
                 }
+
                 let response_len = u32::from_be_bytes(len_buffer) as usize;
 
                 let mut response_buffer = vec![0u8; response_len];
-                {
+                let read_result = {
                     let mut reader = reader.lock().await;
-                    reader.read_exact(&mut response_buffer).await.unwrap();
+                    reader.read_exact(&mut response_buffer).await
+                };
+
+                if let Err(e) = read_result {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to read response: {}", e),
+                    );
+                    return;
                 }
-                let response = String::from_utf8(response_buffer).unwrap();
+
+                let response = match String::from_utf8(response_buffer) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to convert response to string: {}", e),
+                        );
+                        return;
+                    }
+                };
 
                 // Assert the validation response
                 if response != "Validation successful" {
@@ -1475,7 +1573,13 @@ impl Node {
                     );
                 }
             }
-            Err(e) => eprintln!("Failed to read validation data: {}", e),
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to read validation data: {}", e),
+                );
+            }
         }
     }
 
@@ -1491,6 +1595,47 @@ impl Node {
             error: "Internal Server Error".to_string(),
             message: format!("Error receiving result: {}", e),
         }
+    }
+
+    pub fn shinkai_free_provider_id() -> String {
+        "shinkai_free_trial".to_string()
+    }
+
+    // Helper function to create default LLM providers
+    fn create_default_llm_providers(node_name: &ShinkaiName) -> Vec<SerializedLLMProvider> {
+        vec![
+            SerializedLLMProvider {
+                id: Self::shinkai_free_provider_id(),
+                name: Some("Shinkai Free Trial".to_string()),
+                description: Some("Shinkai Free Trial LLM Provider".to_string()),
+                full_identity_name: ShinkaiName::new(format!(
+                    "{}/main/agent/{}",
+                    node_name.full_name,
+                    Self::shinkai_free_provider_id()
+                ))
+                .unwrap(),
+                external_url: Some("https://api.shinkai.com/inference".to_string()),
+                api_key: None,
+                model: LLMProviderInterface::ShinkaiBackend(ShinkaiBackend {
+                    model_type: "FREE_TEXT_INFERENCE".to_string(),
+                }),
+            },
+            SerializedLLMProvider {
+                id: "shinkai_code_generator".to_string(),
+                name: Some("Shinkai Code Generator".to_string()),
+                description: Some("Shinkai Code Generator LLM Provider".to_string()),
+                full_identity_name: ShinkaiName::new(format!(
+                    "{}/main/agent/shinkai_code_generator",
+                    node_name.full_name
+                ))
+                .unwrap(),
+                external_url: Some("https://api.shinkai.com/inference".to_string()),
+                api_key: None,
+                model: LLMProviderInterface::ShinkaiBackend(ShinkaiBackend {
+                    model_type: "CODE_GENERATOR".to_string(),
+                }),
+            },
+        ]
     }
 }
 

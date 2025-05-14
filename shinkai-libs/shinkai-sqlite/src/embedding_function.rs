@@ -23,7 +23,7 @@ impl EmbeddingFunction {
         }
     }
 
-    pub async fn request_embeddings(&self, prompt: &str) -> Result<Vec<f32>> {
+    pub async fn request_embeddings(&self, prompt: &str) -> Result<Vec<f32>, rusqlite::Error> {
         let model_str = match &self.model_type {
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
             _ => {
@@ -50,23 +50,25 @@ impl EmbeddingFunction {
             format!("{}/api/embeddings", self.api_url)
         };
 
-        let response = self
-            .client
-            .post(&full_url)
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| {
-                println!("Failed to send request to embedding API: {}", e);
-                rusqlite::Error::InvalidQuery
-            })?
-            .json::<OllamaResponse>()
-            .await
-            .map_err(|e| {
-                println!("Failed to parse embedding API response: {}", e);
-                rusqlite::Error::InvalidQuery
-            })?;
+        let response = self.client.post(&full_url).json(&request_body).send().await;
 
-        Ok(response.embedding)
+        match response {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    println!("Failed to send request to embedding API: {}", response.status());
+                    return Err(rusqlite::Error::InvalidQuery);
+                }
+                let ollama_response = response.json::<OllamaResponse>().await.map_err(|e| {
+                    println!("Failed to convert response to OllamaResponse: {}", e);
+                    rusqlite::Error::InvalidQuery
+                })?;
+
+                Ok(ollama_response.embedding)
+            }
+            Err(e) => {
+                println!("Failed to send request to embedding API: {}", e);
+                return Err(rusqlite::Error::InvalidParameterName(e.to_string()));
+            }
+        }
     }
 }

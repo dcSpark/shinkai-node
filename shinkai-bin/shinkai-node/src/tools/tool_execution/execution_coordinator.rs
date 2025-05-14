@@ -1,6 +1,7 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
+use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
@@ -14,6 +15,7 @@ use reqwest::Client;
 use serde_json::json;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
 use shinkai_message_primitives::schemas::shinkai_tools::DynamicToolType;
@@ -22,7 +24,7 @@ use shinkai_sqlite::oauth_manager::OAuthToken;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::error::ToolError;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_tools_primitives::tools::tool_config::{OAuth, ToolConfig};
+use shinkai_tools_primitives::tools::tool_config::{BasicConfig, OAuth, ToolConfig};
 use shinkai_tools_primitives::tools::tool_types::{OperatingSystem, RunnerType};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -261,6 +263,36 @@ pub async fn handle_oauth(
     Ok(serde_json::to_value(access_tokens).unwrap())
 }
 
+pub fn override_tool_config(tool_router_key: String, agent: Agent, extra_config: Vec<ToolConfig>) -> Vec<ToolConfig> {
+    let mut final_config = extra_config;
+    if let Some(tool_config) = agent
+        .tools_config_override
+        .and_then(|overrides| overrides.get(&tool_router_key).cloned())
+    {
+        // Convert the HashMap values into ToolConfig and append to final_config
+        for (key, value) in tool_config {
+            // Override any existing config with the same key
+            if let Some(idx) = final_config.iter().position(|c| c.name() == *key) {
+                match &mut final_config[idx] {
+                    ToolConfig::BasicConfig(config) => {
+                        config.key_value = Some(value.clone());
+                    }
+                    _ => {} // Handle other variants if needed
+                }
+            } else {
+                final_config.push(ToolConfig::BasicConfig(BasicConfig {
+                    key_name: key.clone(),
+                    key_value: Some(value.clone()),
+                    description: "".to_string(),
+                    required: true,
+                    type_name: None,
+                }));
+            }
+        }
+    }
+    final_config
+}
+
 pub async fn execute_tool_cmd(
     bearer: String,
     node_name: ShinkaiName,
@@ -269,6 +301,7 @@ pub async fn execute_tool_cmd(
     parameters: Map<String, Value>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     llm_provider: String,
     extra_config: Vec<ToolConfig>,
     identity_manager: Arc<Mutex<IdentityManager>>,
@@ -282,6 +315,14 @@ pub async fn execute_tool_cmd(
     let tool = db
         .get_tool_by_key(&tool_router_key)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
+
+    // If agent_id is provided, get the agent's tool config overrides and merge with extra_config
+    let mut extra_config = extra_config.clone();
+    if let Some(agent_id) = &agent_id {
+        if let Ok(Some(agent)) = db.get_agent(&agent_id) {
+            extra_config = override_tool_config(tool_router_key.clone(), agent, extra_config.clone());
+        }
+    }
 
     match tool {
         ShinkaiTool::MCPServer(mcp_server_tool, _) => mcp_server_tool
@@ -308,12 +349,35 @@ pub async fn execute_tool_cmd(
             )
             .await
         }
+        ShinkaiTool::Agent(agent_tool, _) => {
+            // Clone parameters and inject the agent_id
+            let mut modified_parameters = parameters.clone();
+            modified_parameters.insert(
+                "agent_id".to_string(),
+                serde_json::Value::String(agent_tool.agent_id.clone()),
+            );
+
+            // Use the dedicated execute_agent_tool function
+            execute_agent_tool(
+                bearer,
+                db,
+                modified_parameters,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+            )
+            .await
+        }
         ShinkaiTool::Python(python_tool, _) => {
             let env = generate_execution_environment(
                 db.clone(),
                 llm_provider.clone(),
                 app_id.clone(),
                 tool_id.clone(),
+                agent_id.clone(),
                 tool_router_key.clone(),
                 "".to_string(), // TODO Pass data from the API
                 &python_tool.oauth,
@@ -333,7 +397,18 @@ pub async fn execute_tool_cmd(
                 .node_storage_path
                 .clone()
                 .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-            let support_files = generate_tool_definitions(python_tool.tools.clone(), CodeLanguage::Python, db, false)
+            let tools: Vec<ToolRouterKey> = db
+                .clone()
+                .get_all_tool_headers()
+                .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+                .into_iter()
+                .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                    Ok(tool_router_key) => Some(tool_router_key),
+                    Err(_) => None,
+                })
+                .collect();
+
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Python, db, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             python_tool
@@ -361,6 +436,7 @@ pub async fn execute_tool_cmd(
                 llm_provider.clone(),
                 app_id.clone(),
                 tool_id.clone(),
+                agent_id.clone(),
                 tool_router_key.clone(),
                 "".to_string(), // TODO Pass data from the API
                 &deno_tool.oauth,
@@ -379,7 +455,18 @@ pub async fn execute_tool_cmd(
                 .node_storage_path
                 .clone()
                 .ok_or_else(|| ToolError::ExecutionError("Node storage path is not set".to_string()))?;
-            let support_files = generate_tool_definitions(deno_tool.tools.clone(), CodeLanguage::Typescript, db, false)
+            let tools: Vec<ToolRouterKey> = db
+                .clone()
+                .get_all_tool_headers()
+                .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+                .into_iter()
+                .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+                    Ok(tool_router_key) => Some(tool_router_key),
+                    Err(_) => None,
+                })
+                .collect();
+
+            let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db, false)
                 .await
                 .map_err(|_| ToolError::ExecutionError("Failed to generate tool definitions".to_string()))?;
             deno_tool
@@ -406,25 +493,131 @@ pub async fn execute_tool_cmd(
     }
 }
 
+pub async fn execute_mcp_tool_cmd(
+    bearer: String,
+    node_name: ShinkaiName,
+    db: Arc<SqliteManager>,
+    tool_router_key: String,
+    parameters: Map<String, Value>,
+    tool_id: String,
+    app_id: String,
+    agent_id: Option<String>,
+    extra_config: Vec<ToolConfig>,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager: Arc<Mutex<JobManager>>,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
+    signing_secret_key: SigningKey,
+    mounts: Option<Vec<String>>,
+) -> Result<Value, ToolError> {
+    let tool = db
+        .get_tool_by_key(&tool_router_key)
+        .map_err(|e| ToolError::ExecutionError(format!("Failed to get tool: {}", e)))?;
+
+    if !tool.is_mcp_enabled() {
+        return Err(ToolError::ExecutionError("Tool is not MCP enabled".to_string()));
+    }
+
+    // Try to get the default LLM provider from preferences
+    let preferences_llm_provider_result = match db.get_preference::<String>("default_llm_provider") {
+        Ok(Some(provider_id)) => {
+            // HARDCODED MAIN PROFILE NAME
+            let profile_name =
+                ShinkaiName::new(format!("{}/main/agent/mcp_default", node_name.get_node_name_string())).unwrap();
+            match db.get_llm_provider(&provider_id, &profile_name) {
+                Ok(Some(provider)) => {
+                    // Successfully found the preferred provider
+                    Ok(provider)
+                }
+                Ok(None) => {
+                    // Preference ID exists but provider doesn't, trigger fallback
+                    Err("Preference provider not found in DB")
+                }
+                Err(e) => {
+                    // Error fetching preferred provider, trigger fallback
+                    eprintln!("Error fetching preferred provider: {}", e);
+                    Err("Error fetching preferred provider")
+                }
+            }
+        }
+        Ok(None) => {
+            // Preference not set, trigger fallback
+            Err("Preference not set")
+        }
+        Err(e) => {
+            // Error getting preference, trigger fallback
+            Err("Error getting preference")
+        }
+    };
+
+    // Use the preferred provider if found, otherwise execute the fallback logic
+    let first_llm_provider = preferences_llm_provider_result.or_else(|_reason| {
+        // Fallback: Get the first provider from the list
+        db.get_all_llm_providers()
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to get llm providers: {}", e)))?
+            .into_iter()
+            .next()
+            .ok_or_else(|| ToolError::ExecutionError("No LLM providers found".to_string()))
+    })?;
+
+    let llm_provider = first_llm_provider.id.to_string();
+    execute_tool_cmd(
+        bearer,
+        node_name,
+        db,
+        tool_router_key,
+        parameters,
+        tool_id,
+        app_id,
+        agent_id,
+        llm_provider,
+        extra_config,
+        identity_manager,
+        job_manager,
+        encryption_secret_key,
+        encryption_public_key,
+        signing_secret_key,
+        mounts,
+    )
+    .await
+}
+
 pub async fn execute_code(
     tool_type: DynamicToolType,
     code: String,
-    tools: Vec<ToolRouterKey>,
+    _tools: Vec<ToolRouterKey>,
     parameters: Map<String, Value>,
     extra_config: Vec<ToolConfig>,
     oauth: Option<Vec<OAuth>>,
     db: Arc<SqliteManager>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     llm_provider: String,
     bearer: String,
     node_name: ShinkaiName,
     mounts: Option<Vec<String>>,
     runner: Option<RunnerType>,
     operating_system: Option<Vec<OperatingSystem>>,
+    identity_manager_clone: Arc<Mutex<IdentityManager>>,
+    job_manager_clone: Arc<Mutex<JobManager>>,
+    encryption_secret_key_clone: EncryptionStaticKey,
+    encryption_public_key_clone: EncryptionPublicKey,
+    signing_secret_key_clone: SigningKey,
 ) -> Result<Value, ToolError> {
     eprintln!("[execute_code] tool_type: {}", tool_type);
     // Route based on the prefix
+    let tools: Vec<ToolRouterKey> = db
+        .clone()
+        .get_all_tool_headers()
+        .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+        .into_iter()
+        .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+            Ok(tool_router_key) => Some(tool_router_key),
+            Err(_) => None,
+        })
+        .collect();
+
     match tool_type {
         DynamicToolType::DenoDynamic => {
             let support_files = generate_tool_definitions(tools, CodeLanguage::Typescript, db.clone(), false)
@@ -439,6 +632,7 @@ pub async fn execute_code(
                 oauth.clone(),
                 tool_id,
                 app_id,
+                agent_id,
                 llm_provider,
                 support_files,
                 code,
@@ -461,12 +655,27 @@ pub async fn execute_code(
                 oauth.clone(),
                 tool_id,
                 app_id,
+                agent_id,
                 llm_provider,
                 support_files,
                 code,
                 mounts,
                 runner,
                 operating_system,
+            )
+            .await
+        }
+        DynamicToolType::AgentDynamic => {
+            execute_agent_tool(
+                bearer,
+                db,
+                parameters,
+                node_name,
+                identity_manager_clone,
+                job_manager_clone,
+                encryption_secret_key_clone,
+                encryption_public_key_clone,
+                signing_secret_key_clone,
             )
             .await
         }
@@ -478,7 +687,7 @@ pub async fn check_code(
     unfiltered_code: String,
     tool_id: String,
     app_id: String,
-    tools: Vec<ToolRouterKey>,
+    _tools: Vec<ToolRouterKey>,
     sqlite_manager: Arc<SqliteManager>,
 ) -> Result<Vec<String>, ToolError> {
     eprintln!("[check_code] tool_type: {}", tool_type);
@@ -492,6 +701,16 @@ pub async fn check_code(
     };
 
     eprintln!("[check_code] code_extracted: {}", code_extracted);
+    let tools: Vec<ToolRouterKey> = sqlite_manager
+        .clone()
+        .get_all_tool_headers()
+        .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
+        .into_iter()
+        .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
+            Ok(tool_router_key) => Some(tool_router_key),
+            Err(_) => None,
+        })
+        .collect();
 
     match tool_type {
         DynamicToolType::DenoDynamic => {
@@ -502,6 +721,7 @@ pub async fn check_code(
             check_deno_tool(tool_id, app_id, support_files, code_extracted).await
         }
         DynamicToolType::PythonDynamic => Err(ToolError::ExecutionError("NYI Python".to_string())),
+        DynamicToolType::AgentDynamic => Err(ToolError::ExecutionError("NYI Agent".to_string())),
     }
 }
 
@@ -518,6 +738,8 @@ fn extract_fenced_code_blocks(unfiltered_code: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
+
     use super::*;
 
     #[test]
@@ -599,5 +821,215 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
 
         let result = extract_fenced_code_blocks(input);
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_override_tool_config_no_overrides() {
+        // Create a tool router key
+        let tool_router_key = "test_tool".to_string();
+
+        // Create an agent with no tool config overrides
+        let mut agent = Agent {
+            name: "test_agent".to_string(),
+            agent_id: "test123".to_string(),
+            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            llm_provider_id: "test_provider".to_string(),
+            ui_description: "Test Agent".to_string(),
+            knowledge: vec![],
+            storage_path: "/test/path".to_string(),
+            tools: vec![],
+            debug_mode: false,
+            config: None,
+            cron_tasks: None,
+            scope: MinimalJobScope::default(),
+            tools_config_override: None,
+            edited: false,
+        };
+        agent.tools_config_override = None;
+
+        // Create some extra config
+        let extra_config = vec![ToolConfig::BasicConfig(BasicConfig {
+            key_name: "api_key".to_string(),
+            key_value: Some(Value::String("default_key".to_string())),
+            description: "API key for the tool".to_string(),
+            required: true,
+            type_name: None,
+        })];
+
+        // Call the function
+        let result = override_tool_config(tool_router_key, agent, extra_config.clone());
+
+        // The result should be the same as the input extra_config
+        assert_eq!(result, extra_config);
+    }
+
+    #[test]
+    fn test_override_tool_config_with_overrides() {
+        // Create a tool router key
+        let tool_router_key = "test_tool".to_string();
+
+        // Create an agent with tool config overrides
+        let mut agent = Agent {
+            name: "test_agent".to_string(),
+            agent_id: "test123".to_string(),
+            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            llm_provider_id: "test_provider".to_string(),
+            ui_description: "Test Agent".to_string(),
+            knowledge: vec![],
+            storage_path: "/test/path".to_string(),
+            tools: vec![],
+            debug_mode: false,
+            config: None,
+            cron_tasks: None,
+            scope: MinimalJobScope::default(),
+            tools_config_override: None,
+            edited: false,
+        };
+        let mut overrides = HashMap::new();
+        overrides.insert("test_tool".to_string(), HashMap::new());
+        let mut tool_overrides = HashMap::new();
+        tool_overrides.insert("api_key".to_string(), Value::String("override_key".to_string()));
+        overrides.get_mut("test_tool").unwrap().extend(tool_overrides);
+        agent.tools_config_override = Some(overrides);
+
+        // Create some extra config
+        let extra_config = vec![ToolConfig::BasicConfig(BasicConfig {
+            key_name: "api_key".to_string(),
+            key_value: Some(Value::String("default_key".to_string())),
+            description: "API key for the tool".to_string(),
+            required: true,
+            type_name: None,
+        })];
+
+        // Call the function
+        let result = override_tool_config(tool_router_key, agent, extra_config.clone());
+
+        // The result should have the overridden value
+        assert_eq!(result.len(), 1);
+        if let ToolConfig::BasicConfig(config) = &result[0] {
+            assert_eq!(config.key_name, "api_key");
+            assert_eq!(config.key_value, Some(Value::String("override_key".to_string())));
+        } else {
+            panic!("Expected BasicConfig");
+        }
+    }
+
+    #[test]
+    fn test_override_tool_config_with_new_config() {
+        // Create a tool router key
+        let tool_router_key = "test_tool".to_string();
+
+        // Create an agent with tool config overrides
+        let mut agent = Agent {
+            name: "test_agent".to_string(),
+            agent_id: "test123".to_string(),
+            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            llm_provider_id: "test_provider".to_string(),
+            ui_description: "Test Agent".to_string(),
+            knowledge: vec![],
+            storage_path: "/test/path".to_string(),
+            tools: vec![],
+            debug_mode: false,
+            config: None,
+            cron_tasks: None,
+            scope: MinimalJobScope::default(),
+            tools_config_override: None,
+            edited: false,
+        };
+        let mut overrides = HashMap::new();
+        overrides.insert("test_tool".to_string(), HashMap::new());
+        let mut tool_overrides = HashMap::new();
+        tool_overrides.insert("new_param".to_string(), Value::String("new_value".to_string()));
+        overrides.get_mut("test_tool").unwrap().extend(tool_overrides);
+        agent.tools_config_override = Some(overrides);
+
+        // Create some extra config
+        let extra_config = vec![ToolConfig::BasicConfig(BasicConfig {
+            key_name: "api_key".to_string(),
+            key_value: Some(Value::String("default_key".to_string())),
+            description: "API key for the tool".to_string(),
+            required: true,
+            type_name: None,
+        })];
+
+        // Call the function
+        let result = override_tool_config(tool_router_key, agent, extra_config.clone());
+
+        // The result should have both the original and new config
+        assert_eq!(result.len(), 2);
+
+        // Check that the original config is still there
+        let api_key_config = result
+            .iter()
+            .find(|c| {
+                if let ToolConfig::BasicConfig(config) = c {
+                    config.key_name == "api_key"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        if let ToolConfig::BasicConfig(config) = api_key_config {
+            assert_eq!(config.key_value, Some(Value::String("default_key".to_string())));
+        }
+
+        // Check that the new config was added
+        let new_param_config = result
+            .iter()
+            .find(|c| {
+                if let ToolConfig::BasicConfig(config) = c {
+                    config.key_name == "new_param"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        if let ToolConfig::BasicConfig(config) = new_param_config {
+            assert_eq!(config.key_value, Some(Value::String("new_value".to_string())));
+        }
+    }
+
+    #[test]
+    fn test_override_tool_config_with_different_tool() {
+        // Create a tool router key
+        let tool_router_key = "test_tool".to_string();
+        // Create an agent with tool config overrides for a different tool
+        let mut agent = Agent {
+            name: "test_agent".to_string(),
+            agent_id: "test123".to_string(),
+            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            llm_provider_id: "test_provider".to_string(),
+            ui_description: "Test Agent".to_string(),
+            knowledge: vec![],
+            storage_path: "/test/path".to_string(),
+            tools: vec![],
+            debug_mode: false,
+            config: None,
+            cron_tasks: None,
+            scope: MinimalJobScope::default(),
+            tools_config_override: None,
+            edited: false,
+        };
+        let mut overrides = HashMap::new();
+        overrides.insert("different_tool".to_string(), HashMap::new());
+        let mut tool_overrides = HashMap::new();
+        tool_overrides.insert("api_key".to_string(), Value::String("override_key".to_string()));
+        overrides.get_mut("different_tool").unwrap().extend(tool_overrides);
+        agent.tools_config_override = Some(overrides);
+
+        // Create some extra config
+        let extra_config = vec![ToolConfig::BasicConfig(BasicConfig {
+            key_name: "api_key".to_string(),
+            key_value: Some(Value::String("default_key".to_string())),
+            description: "API key for the tool".to_string(),
+            required: true,
+            type_name: None,
+        })];
+
+        // Call the function
+        let result = override_tool_config(tool_router_key, agent, extra_config.clone());
+
+        // The result should be the same as the input extra_config
+        assert_eq!(result, extra_config);
     }
 }

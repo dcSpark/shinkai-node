@@ -1,8 +1,7 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::params;
 use shinkai_message_primitives::{
-    schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk},
-    shinkai_utils::shinkai_path::ShinkaiPath,
+    schemas::shinkai_fs::{ParsedFile, ShinkaiFileChunk}, shinkai_utils::shinkai_path::ShinkaiPath
 };
 
 impl SqliteManager {
@@ -450,7 +449,8 @@ impl SqliteManager {
         let mut results = Vec::new();
         for (chunk_id, distance) in chunk_ids_and_distances {
             if let Some(chunk) = self.get_chunk_with_embedding(chunk_id)? {
-                results.push((chunk.0, distance)); // Assuming get_chunk_with_embedding returns (ShinkaiFileChunk, Option<Vec<f32>>)
+                results.push((chunk.0, distance)); // Assuming get_chunk_with_embedding returns (ShinkaiFileChunk,
+                                                   // Option<Vec<f32>>)
             }
         }
 
@@ -613,7 +613,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -921,8 +921,14 @@ mod tests {
 
         // Check that only pf1 and pf2 are returned
         assert_eq!(files_with_prefix.len(), 2);
-        assert!(files_with_prefix.iter().any(|pf| pf.relative_path == "docs/reports/2024/january.txt"));
-        assert!(files_with_prefix.iter().any(|pf| pf.relative_path == "docs/reports/2024/february.txt"));
-        assert!(!files_with_prefix.iter().any(|pf| pf.relative_path == "docs/other/2024/march.txt"));
+        assert!(files_with_prefix
+            .iter()
+            .any(|pf| pf.relative_path == "docs/reports/2024/january.txt"));
+        assert!(files_with_prefix
+            .iter()
+            .any(|pf| pf.relative_path == "docs/reports/2024/february.txt"));
+        assert!(!files_with_prefix
+            .iter()
+            .any(|pf| pf.relative_path == "docs/other/2024/march.txt"));
     }
 }

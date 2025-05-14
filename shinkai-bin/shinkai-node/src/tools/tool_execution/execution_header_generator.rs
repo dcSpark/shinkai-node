@@ -15,6 +15,7 @@ pub async fn generate_execution_environment(
     llm_provider: String,
     app_id: String,
     tool_id: String,
+    agent_id: Option<String>,
     tool_router_key: String,
     instance_id: String,
     oauth: &Option<Vec<OAuth>>,
@@ -25,10 +26,13 @@ pub async fn generate_execution_environment(
     envs.insert("BEARER".to_string(), bearer);
     envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
     envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
+    if let Some(agent_id) = agent_id {
+        envs.insert("X_SHINKAI_AGENT_ID".to_string(), agent_id.clone());
+    }
     envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), instance_id.clone());
     envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
 
-    check_oauth(oauth)?;
+    check_oauth(oauth, &tool_router_key)?;
     let oauth = handle_oauth(oauth, &db, app_id.clone(), tool_id.clone(), tool_router_key.clone()).await?;
 
     envs.insert("SHINKAI_OAUTH".to_string(), oauth.to_string());
@@ -43,13 +47,13 @@ pub fn check_tool(
     parameters: Parameters,
     oauth: &Option<Vec<OAuth>>,
 ) -> Result<(), ToolError> {
-    check_oauth(oauth)?;
+    check_oauth(oauth, &tool_router_key)?;
     check_tool_config(tool_router_key, tool_config)?;
     check_tool_parameters(parameters, value)?;
     Ok(())
 }
 
-fn check_oauth(oauth: &Option<Vec<OAuth>>) -> Result<(), ToolError> {
+fn check_oauth(oauth: &Option<Vec<OAuth>>, tool_router_key: &str) -> Result<(), ToolError> {
     if let Some(oauth_configs) = oauth {
         for oauth in oauth_configs {
             // Check if required fields are empty or missing
@@ -81,7 +85,7 @@ fn check_oauth(oauth: &Option<Vec<OAuth>>) -> Result<(), ToolError> {
             }
 
             if !missing_fields.is_empty() {
-                let fix_redirect_url = format!("shinkai://config?tool={}", urlencoding::encode(&oauth.name));
+                let fix_redirect_url = format!("shinkai://config?tool={}", urlencoding::encode(tool_router_key));
                 return Err(ToolError::MissingConfigError(format!(
                     "\n\nCannot run tool, OAuth config is missing required fields: {}.\n\nClick the link to update the tool config and try again.\n\n{}",
                     missing_fields.join(", "),
@@ -217,18 +221,21 @@ mod tests {
             "string".to_string(),
             "A string parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "number_param".to_string(),
             "number".to_string(),
             "A number parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "optional_bool".to_string(),
             "boolean".to_string(),
             "An optional boolean parameter".to_string(),
             false,
+            None,
         );
         params
     }
@@ -265,7 +272,7 @@ mod tests {
             description: "A required config".to_string(),
             required: true,
             type_name: Some("string".to_string()),
-            key_value: Some("value".to_string()), // Has required value
+            key_value: Some(serde_json::Value::String("value".to_string())), // Has required value
         })];
         let value = Map::new();
         let parameters = Parameters::new();
@@ -395,7 +402,7 @@ mod tests {
             assert!(msg.contains("authorization_url"));
             assert!(msg.contains("token_url"));
             assert!(msg.contains("client_id"));
-            assert!(msg.contains("shinkai://config?tool=test_oauth"));
+            assert!(msg.contains("shinkai://config?tool=test%2Ftool"));
         } else {
             panic!("Expected MissingConfigError");
         }
@@ -474,7 +481,7 @@ mod tests {
                 description: "Required key".to_string(),
                 required: true,
                 type_name: Some("string".to_string()),
-                key_value: Some("value".to_string()),
+                key_value: Some(serde_json::Value::String("value".to_string())),
             }),
             ToolConfig::BasicConfig(BasicConfig {
                 key_name: "optional_key".to_string(),
@@ -497,6 +504,7 @@ mod tests {
             "array".to_string(),
             "An array parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -514,6 +522,7 @@ mod tests {
             "array".to_string(),
             "An array parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -537,6 +546,7 @@ mod tests {
             "object".to_string(),
             "An object parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -554,6 +564,7 @@ mod tests {
             "object".to_string(),
             "An object parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -577,6 +588,7 @@ mod tests {
             "integer".to_string(),
             "An integer parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -597,12 +609,14 @@ mod tests {
             "string".to_string(),
             "A string parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "number_param".to_string(),
             "number".to_string(),
             "A number parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -629,6 +643,7 @@ mod tests {
             "string".to_string(),
             "An optional parameter".to_string(),
             false,
+            None,
         );
 
         let mut value = Map::new();
@@ -656,7 +671,7 @@ mod tests {
             request_token_content_type: None,
         }]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
@@ -678,11 +693,11 @@ mod tests {
             request_token_content_type: None,
         }]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test/tool");
         assert!(result.is_err());
         if let Err(ToolError::MissingConfigError(msg)) = result {
             assert!(msg.contains("name"));
-            assert!(msg.contains("shinkai://config?tool="));
+            assert!(msg.contains("shinkai://config?tool=test%2Ftool"));
         } else {
             panic!("Expected MissingConfigError");
         }
@@ -723,7 +738,7 @@ mod tests {
             },
         ]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
@@ -745,7 +760,7 @@ mod tests {
             request_token_content_type: None,
         }]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_err());
         if let Err(ToolError::MissingConfigError(msg)) = result {
             assert!(msg.contains("authorization_url"));
@@ -763,14 +778,14 @@ mod tests {
     #[test]
     fn test_check_oauth_none() {
         let oauth: Option<Vec<OAuth>> = None;
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_check_oauth_empty_vec() {
         let oauth = Some(vec![]);
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test_oauth");
         assert!(result.is_ok());
     }
 
@@ -809,12 +824,12 @@ mod tests {
             },
         ]);
 
-        let result = check_oauth(&oauth);
+        let result = check_oauth(&oauth, "test/tool");
         assert!(result.is_err());
         if let Err(ToolError::MissingConfigError(msg)) = result {
             assert!(msg.contains("authorization_url"));
             assert!(msg.contains("token_url"));
-            assert!(msg.contains("shinkai://config?tool=invalid_oauth"));
+            assert!(msg.contains("shinkai://config?tool=test%2Ftool"));
         } else {
             panic!("Expected MissingConfigError");
         }
@@ -825,7 +840,7 @@ mod tests {
         let mut params = Parameters::new();
 
         // Create an array of strings property
-        let string_prop = Property::new("string".to_string(), "A string item".to_string());
+        let string_prop = Property::new("string".to_string(), "A string item".to_string(), None);
         let array_prop = Property::with_array_items("An array of strings".to_string(), string_prop);
         params.properties.insert("tags".to_string(), array_prop);
         params.required.push("tags".to_string());
@@ -862,11 +877,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         params.add_nested_property(
@@ -921,11 +936,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         let object_prop =

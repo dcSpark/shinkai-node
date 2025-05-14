@@ -15,22 +15,22 @@ use shinkai_tools_runner::tools::python_runner::PythonRunner;
 use shinkai_tools_runner::tools::python_runner_options::PythonRunnerOptions;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use shinkai_tools_runner::tools::shinkai_node_location::ShinkaiNodeLocation;
+use super::tool_playground::ToolPlaygroundMetadata;
 use std::collections::HashMap;
 use std::env;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PythonTool {
     pub version: String,
     pub name: String,
+    pub tool_router_key: Option<ToolRouterKey>,
     pub homepage: Option<String>,
     pub author: String,
+    pub mcp_enabled: Option<bool>,
     pub py_code: String,
-    #[serde(default)]
-    #[serde(deserialize_with = "ToolRouterKey::deserialize_tool_router_keys")]
-    #[serde(serialize_with = "ToolRouterKey::serialize_tool_router_keys")]
     pub tools: Vec<ToolRouterKey>,
     pub config: Vec<ToolConfig>,
     pub description: String,
@@ -60,6 +60,42 @@ impl PythonTool {
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
         let deserialized: Self = serde_json::from_str(json)?;
         Ok(deserialized)
+    }
+
+    pub async fn check_code(
+        &self,
+        code: String,
+        support_files: HashMap<String, String>,
+    ) -> Result<Vec<String>, ToolError> {
+        // Create map with file name and source code
+        let mut code_files = HashMap::new();
+        code_files.insert("index.py".to_string(), code);
+        support_files.iter().for_each(|(file_name, file_code)| {
+            code_files.insert(format!("{}.py", file_name), file_code.clone());
+        });
+
+        let empty_hash_map: HashMap<String, String> = HashMap::new();
+        let config_json =
+            serde_json::to_value(empty_hash_map).map_err(|e| ToolError::SerializationError(e.to_string()))?;
+
+        let tool = PythonRunner::new(
+            CodeFiles {
+                files: code_files.clone(),
+                entrypoint: "index.py".to_string(),
+            },
+            config_json,
+            Some(PythonRunnerOptions {
+                uv_binary_path: PathBuf::from(
+                    env::var("SHINKAI_TOOLS_RUNNER_UV_BINARY_PATH")
+                        .unwrap_or_else(|_| "./shinkai-tools-runner-resources/uv".to_string()),
+                ),
+                ..Default::default()
+            }),
+        );
+
+        let result = tool.check().await;
+        println!("[Checking PythonTool] Result: {:?}", result);
+        result.map_err(|e| ToolError::ExecutionError(e.to_string()))
     }
 
     pub async fn run(
@@ -166,7 +202,7 @@ impl PythonTool {
         let code = self.py_code.clone();
 
         // Create a hashmap with key_name and key_value
-        let mut config: HashMap<String, String> = self
+        let mut config: HashMap<String, serde_json::Value> = self
             .config
             .iter()
             .filter_map(|c| {
@@ -182,7 +218,7 @@ impl PythonTool {
         for c in extra_config {
             let ToolConfig::BasicConfig(basic_config) = c;
             if let Some(value) = basic_config.key_value {
-                config.insert(basic_config.key_name.clone(), value);
+                config.insert(basic_config.key_name.clone(), value.clone());
             }
         }
 
@@ -322,13 +358,175 @@ impl PythonTool {
                     .collect::<Vec<String>>()
                     .join(" ");
 
-                Err(ToolError::ExecutionError(format!(
-                    "Error: {}. Files: {}",
-                    e.message().to_string(),
-                    files
-                )))
+                // Python execution logs might include the version. virtual environment and warning.
+                // These are not part of the runtime execution, so we clean them up.
+                let invalid_lines = [
+                    regex::Regex::new(r"^INFO add_decision: Id::<PubGrubPackage>\(\d+\) @ [\da-z]+\.[\da-z]+\.?[\da-z]+? without checking dependencies\s+$").unwrap(),
+                    regex::Regex::new(r"^Installed \d+ packages in \d+ms$").unwrap(),
+                    regex::Regex::new(r"^Using CPython \d+\.\d+\.\d+$").unwrap(),
+                    regex::Regex::new(r"^Creating virtual environment at: [\S]*\.venv$").unwrap(),
+                    regex::Regex::new(r"^warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance\.").unwrap(),
+                    regex::Regex::new(r"^If the cache and target directories are on different filesystems, hardlinking may not be supported\.$").unwrap(),
+                    regex::Regex::new(r"^If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning\.$").unwrap(),
+                ];
+
+                let error_message = e
+                    .message()
+                    .to_string()
+                    .split("\n")
+                    .map(|line| line.to_string())
+                    .filter(|line| !line.is_empty())
+                    .filter(|line| !invalid_lines.iter().any(|re| re.is_match(line)))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+
+                Ok(RunResult {
+                    data: serde_json::json!({
+                        "status": "error",
+                        "message": format!("Tool {} execution failed.", self.name),
+                        "error": error_message,
+                        "__created_files__": files,
+                    }),
+                })
             }
         }
+    }
+
+    pub fn get_metadata(&self) -> ToolPlaygroundMetadata {
+        ToolPlaygroundMetadata {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            keywords: self.keywords.clone(),
+            homepage: self.homepage.clone(),
+            author: self.author.clone(),
+            version: self.version.clone(),
+            configurations: self.config.clone(),
+            parameters: self.input_args.clone(),
+            result: self.result.clone(),
+            sql_tables: self.sql_tables.clone().unwrap_or_default(),
+            sql_queries: self.sql_queries.clone().unwrap_or_default(),
+            tools: Some(self.tools.clone()),
+            oauth: self.oauth.clone(),
+            runner: self.runner.clone(),
+            operating_system: self.operating_system.clone(),
+            tool_set: self.tool_set.clone(),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for PythonTool {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct Helper {
+            name: String,
+            #[serde(default)]
+            tool_router_key: Option<String>,
+            homepage: Option<String>,
+            author: String,
+            version: String,
+            mcp_enabled: Option<bool>,
+            py_code: String,
+            #[serde(default)]
+            tools: Vec<ToolRouterKey>,
+            config: Vec<ToolConfig>,
+            description: String,
+            keywords: Vec<String>,
+            input_args: Parameters,
+            output_arg: ToolOutputArg,
+            activated: bool,
+            embedding: Option<Vec<f32>>,
+            result: ToolResult,
+            sql_tables: Option<Vec<SqlTable>>,
+            sql_queries: Option<Vec<SqlQuery>>,
+            file_inbox: Option<String>,
+            oauth: Option<Vec<OAuth>>,
+            assets: Option<Vec<String>>,
+            runner: RunnerType,
+            operating_system: Vec<OperatingSystem>,
+            tool_set: Option<String>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+
+        let tool_router_key = match helper.tool_router_key {
+            Some(key_str) => Some(ToolRouterKey::from_string(&key_str).map_err(serde::de::Error::custom)?),
+            None => Some(ToolRouterKey::new(
+                "local".to_string(),
+                helper.author.clone(),
+                helper.name.clone(),
+                None,
+            )),
+        };
+
+        Ok(PythonTool {
+            name: helper.name,
+            tool_router_key,
+            homepage: helper.homepage,
+            author: helper.author,
+            version: helper.version,
+            mcp_enabled: helper.mcp_enabled,
+            py_code: helper.py_code,
+            tools: helper.tools,
+            config: helper.config,
+            description: helper.description,
+            keywords: helper.keywords,
+            input_args: helper.input_args,
+            output_arg: helper.output_arg,
+            activated: helper.activated,
+            embedding: helper.embedding,
+            result: helper.result,
+            sql_tables: helper.sql_tables,
+            sql_queries: helper.sql_queries,
+            file_inbox: helper.file_inbox,
+            oauth: helper.oauth,
+            assets: helper.assets,
+            runner: helper.runner,
+            operating_system: helper.operating_system,
+            tool_set: helper.tool_set,
+        })
+    }
+}
+
+impl serde::Serialize for PythonTool {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("PythonTool", 24)?;
+        state.serialize_field("name", &self.name)?;
+        if let Some(key) = &self.tool_router_key {
+            state.serialize_field("tool_router_key", &key.to_string_with_version())?;
+        } else {
+            state.serialize_field("tool_router_key", &None::<String>)?;
+        }
+        state.serialize_field("homepage", &self.homepage)?;
+        state.serialize_field("author", &self.author)?;
+        state.serialize_field("version", &self.version)?;
+        state.serialize_field("mcp_enabled", &self.mcp_enabled)?;
+        state.serialize_field("py_code", &self.py_code)?;
+        let tools_strings: Vec<String> = self.tools.iter().map(|k| k.to_string_with_version()).collect();
+        state.serialize_field("tools", &tools_strings)?;
+        state.serialize_field("config", &self.config)?;
+        state.serialize_field("description", &self.description)?;
+        state.serialize_field("keywords", &self.keywords)?;
+        state.serialize_field("input_args", &self.input_args)?;
+        state.serialize_field("output_arg", &self.output_arg)?;
+        state.serialize_field("activated", &self.activated)?;
+        state.serialize_field("embedding", &self.embedding)?;
+        state.serialize_field("result", &self.result)?;
+        state.serialize_field("sql_tables", &self.sql_tables)?;
+        state.serialize_field("sql_queries", &self.sql_queries)?;
+        state.serialize_field("file_inbox", &self.file_inbox)?;
+        state.serialize_field("oauth", &self.oauth)?;
+        state.serialize_field("assets", &self.assets)?;
+        state.serialize_field("runner", &self.runner)?;
+        state.serialize_field("operating_system", &self.operating_system)?;
+        state.serialize_field("tool_set", &self.tool_set)?;
+        state.end()
     }
 }
 
@@ -341,8 +539,15 @@ mod tests {
         let tool = PythonTool {
             version: "1.0".to_string(),
             name: "test_tool".to_string(),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "test_author".to_string(),
+                "test_tool".to_string(),
+                None,
+            )),
             homepage: None,
             author: "test_author".to_string(),
+            mcp_enabled: Some(false),
             py_code: "print('hello')".to_string(),
             tools: vec![],
             config: vec![],
@@ -371,8 +576,15 @@ mod tests {
         let tool = PythonTool {
             version: "1.0".to_string(),
             name: "test_tool".to_string(),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "test_author".to_string(),
+                "test_tool".to_string(),
+                None,
+            )),
             homepage: None,
             author: "test_author".to_string(),
+            mcp_enabled: Some(false),
             py_code: "print('hello')".to_string(),
             tools: vec![],
             config: vec![],
@@ -403,8 +615,15 @@ mod tests {
         let tool = PythonTool {
             version: "1.0".to_string(),
             name: "test_tool".to_string(),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "test_author".to_string(),
+                "test_tool".to_string(),
+                None,
+            )),
             homepage: None,
             author: "test_author".to_string(),
+            mcp_enabled: Some(false),
             py_code: "print('hello')".to_string(),
             tools: vec![],
             config: vec![],
@@ -433,8 +652,15 @@ mod tests {
         let tool = PythonTool {
             version: "1.0".to_string(),
             name: "test_tool".to_string(),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "test_author".to_string(),
+                "test_tool".to_string(),
+                None,
+            )),
             homepage: None,
             author: "test_author".to_string(),
+            mcp_enabled: Some(false),
             py_code: "print('hello')".to_string(),
             tools: vec![],
             config: vec![],
@@ -461,5 +687,6 @@ mod tests {
         assert_eq!(tool.runner, deserialized.runner);
         assert_eq!(tool.operating_system, deserialized.operating_system);
         assert_eq!(tool.tool_set, deserialized.tool_set);
+        assert_eq!(tool.tool_router_key, deserialized.tool_router_key);
     }
 }

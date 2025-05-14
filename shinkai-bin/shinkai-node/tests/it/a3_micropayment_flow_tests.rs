@@ -3,15 +3,16 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
+    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::wallet_complementary::{WalletRole, WalletSource};
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
+    unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -19,7 +20,7 @@ use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
@@ -42,11 +43,13 @@ fn micropayment_flow_test() {
 
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     setup();
     let rt = Runtime::new().unwrap();
 
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node2_identity_name = "@@node2_test.sep-shinkai";
         let node1_profile_name = "main";
@@ -93,6 +96,16 @@ fn micropayment_flow_test() {
         let node2_fs_db_path = format!("db_tests/vector_fs{}", hash_string(node2_identity_name));
 
         // Create node1 and node2
+        fn port_is_available(port: u16) -> bool {
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(_) => true,
+                Err(_) => false,
+            }
+        }
+
+        // Create node1 and node2
+        assert!(port_is_available(8080), "Port 8080 is not available");
+        assert!(port_is_available(8081), "Port 8081 is not available");
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -318,6 +331,7 @@ fn micropayment_flow_test() {
                 "string".to_string(),
                 "The message to echo".to_string(),
                 true,
+                None,
             );
 
             let shinkai_tool_header = ShinkaiToolHeader {
@@ -326,6 +340,7 @@ fn micropayment_flow_test() {
                 description: "Echoes the input message".to_string(),
                 tool_router_key: test_local_tool_key_name.to_string(),
                 tool_type: "JS".to_string(),
+                mcp_enabled: Some(false),
                 formatted_tool_summary_for_ui:
                     "Tool Name: network__echo\nToolkit Name: shinkai-tool-echo\nDescription: Echoes the input message"
                         .to_string(),
@@ -346,6 +361,7 @@ fn micropayment_flow_test() {
                 node1_commands_sender
                     .send(NodeCommand::V2ApiListAllShinkaiTools {
                         bearer: api_v2_key.to_string(),
+                        category: None,
                         res: sender,
                     })
                     .await
@@ -359,6 +375,7 @@ fn micropayment_flow_test() {
                     .send(NodeCommand::V2ApiGetShinkaiTool {
                         bearer: api_v2_key.to_string(),
                         payload: "local:::shinkai-tool-echo:::shinkai__echo".to_string(),
+                        serialize_config: false,
                         res: sender,
                     })
                     .await
@@ -493,6 +510,7 @@ fn micropayment_flow_test() {
                     author: shinkai_tool_header.author.clone(),
                     description: shinkai_tool_header.description.clone(),
                     version: shinkai_tool_header.version.clone(),
+                    mcp_enabled: shinkai_tool_header.mcp_enabled.clone(),
                     provider: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
                     usage_type: shinkai_tool_offering.usage_type.clone(),
                     activated: shinkai_tool_header.enabled,
@@ -529,6 +547,7 @@ fn micropayment_flow_test() {
                 node2_commands_sender
                     .send(NodeCommand::V2ApiListAllShinkaiTools {
                         bearer: api_v2_key.to_string(),
+                        category: None,
                         res: sender,
                     })
                     .await
@@ -738,6 +757,23 @@ fn micropayment_flow_test() {
             node2_abort_handler.abort();
         });
 
-        let _ = tokio::join!(node1_handler, node2_handler, interactions_handler);
+        let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    println!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    Err(e)
+                }
+            }
+        }
     });
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 }

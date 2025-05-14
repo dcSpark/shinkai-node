@@ -4,22 +4,18 @@ use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueMan
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    unsafe_deterministic_encryption_keypair, EncryptionMethod
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_message_primitives::{
-    schemas::shinkai_name::ShinkaiName,
-    shinkai_message::{
-        shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{JobMessage, MessageSchemaType},
-    },
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+    schemas::shinkai_name::ShinkaiName, shinkai_message::{
+        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{JobMessage, MessageSchemaType}
+    }, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_node::llm_provider::job_callback_manager::JobCallbackManager;
 use shinkai_node::llm_provider::job_manager::JobManager;
 use shinkai_node::llm_provider::llm_stopper::LLMStopper;
-use shinkai_node::managers::sheet_manager::SheetManager;
 use shinkai_node::managers::tool_router::ToolRouter;
 use shinkai_node::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use shinkai_node::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
@@ -98,7 +94,6 @@ async fn test_process_job_queue_concurrency() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: Arc<Mutex<SheetManager>>,
                               _: Arc<Mutex<JobCallbackManager>>,
                               _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
@@ -138,8 +133,6 @@ async fn test_process_job_queue_concurrency() {
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
     let job_queue_manager_immediate = Arc::new(Mutex::new(job_queue.clone()));
 
-    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
-    let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
     let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
     let llm_stopper = Arc::new(LLMStopper::new());
 
@@ -154,7 +147,6 @@ async fn test_process_job_queue_concurrency() {
         RemoteEmbeddingGenerator::new_default(),
         None,
         None,
-        sheet_manager.clone(),
         callback_manager.clone(),
         None,
         None,
@@ -166,7 +158,6 @@ async fn test_process_job_queue_concurrency() {
               generator: RemoteEmbeddingGenerator,
               _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
               _tool_router: Option<Arc<ToolRouter>>,
-              _sheet_manager: Arc<Mutex<SheetManager>>,
               _callback_manager: Arc<Mutex<JobCallbackManager>>,
               _job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
               _my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
@@ -178,7 +169,6 @@ async fn test_process_job_queue_concurrency() {
                 node_name.clone(),
                 identity_sk,
                 generator,
-                sheet_manager.clone(),
                 callback_manager.clone(),
                 job_queue_manager.clone(),
             )
@@ -247,7 +237,6 @@ async fn test_sequential_process_for_same_job_id() {
                               _node_name: ShinkaiName,
                               _: SigningKey,
                               _: RemoteEmbeddingGenerator,
-                              _: Arc<Mutex<SheetManager>>,
                               _: Arc<Mutex<JobCallbackManager>>,
                               _: Arc<Mutex<JobQueueManager<JobForProcessing>>>| {
         Box::pin(async move {
@@ -287,8 +276,6 @@ async fn test_sequential_process_for_same_job_id() {
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
     let job_queue_manager_immediate = Arc::new(Mutex::new(job_queue.clone()));
 
-    let sheet_manager_result = SheetManager::new(db_weak.clone(), node_name.clone(), None).await;
-    let sheet_manager = Arc::new(Mutex::new(sheet_manager_result.unwrap()));
     let callback_manager = Arc::new(Mutex::new(JobCallbackManager::new()));
     let llm_stopper = Arc::new(LLMStopper::new());
 
@@ -303,7 +290,6 @@ async fn test_sequential_process_for_same_job_id() {
         RemoteEmbeddingGenerator::new_default(),
         None,
         None,
-        sheet_manager.clone(),
         callback_manager.clone(),
         None,
         None,
@@ -315,7 +301,6 @@ async fn test_sequential_process_for_same_job_id() {
               generator: RemoteEmbeddingGenerator,
               _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
               _tool_router: Option<Arc<ToolRouter>>,
-              _sheet_manager: Arc<Mutex<SheetManager>>,
               _callback_manager: Arc<Mutex<JobCallbackManager>>,
               _job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
               _my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
@@ -327,7 +312,6 @@ async fn test_sequential_process_for_same_job_id() {
                 node_name.clone(),
                 identity_sk,
                 generator,
-                sheet_manager.clone(),
                 callback_manager.clone(),
                 job_queue_manager.clone(),
             )

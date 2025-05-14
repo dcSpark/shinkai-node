@@ -1,9 +1,9 @@
 use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::time::Duration;
@@ -40,8 +40,9 @@ async fn wait_for_response(node1_commands_sender: async_channel::Sender<NodeComm
             .unwrap();
         let node1_last_messages = res1_receiver.recv().await.unwrap();
         // eprintln!("node1_last_messages: {:?}", node1_last_messages);
-        // eprintln!("node1_last_messages[0] hash: {:?}", node1_last_messages[0].calculate_message_hash_for_pagination());
-        // eprintln!("node1_last_messages[1] hash: {:?}", node1_last_messages[1].calculate_message_hash_for_pagination());
+        // eprintln!("node1_last_messages[0] hash: {:?}",
+        // node1_last_messages[0].calculate_message_hash_for_pagination()); eprintln!("node1_last_messages[1]
+        // hash: {:?}", node1_last_messages[1].calculate_message_hash_for_pagination());
 
         if node1_last_messages.len() == 2 && node1_last_messages[1].calculate_message_hash_for_pagination() == msg_hash
         {
@@ -62,6 +63,8 @@ fn job_branchs_retries_tests() {
 
     let api_v2_key = std::env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
     let mut server = Server::new();
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -141,6 +144,8 @@ fn job_branchs_retries_tests() {
 
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     full_identity_name: agent_name,
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
@@ -431,7 +436,8 @@ fn job_branchs_retries_tests() {
                                 .iter()
                                 .map(|msg| {
                                     // Assuming get_message_content() is a method of ShinkaiMessage
-                                    msg.get_message_content().unwrap() // Apply get_message_content to each ShinkaiMessage
+                                    msg.get_message_content().unwrap() // Apply get_message_content to each
+                                                                       // ShinkaiMessage
                                 })
                                 .collect::<Vec<_>>() // Collects all message contents in the inner Vec<ShinkaiMessage>
                         })

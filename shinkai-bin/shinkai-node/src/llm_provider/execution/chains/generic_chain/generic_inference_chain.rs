@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -8,11 +8,11 @@ use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use shinkai_fs::shinkai_file_manager::{FileInfo, ShinkaiFileManager};
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -87,7 +87,6 @@ impl InferenceChain for GenericInferenceChain {
             self.context.max_tokens_in_prompt,
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
-            self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
             self.context.job_callback_manager.clone(),
@@ -213,7 +212,6 @@ impl GenericInferenceChain {
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
@@ -273,7 +271,27 @@ impl GenericInferenceChain {
         // Process image files from merged paths, folders and scope
         let additional_image_files =
             Self::process_image_files(&merged_fs_files_paths, &merged_fs_folder_paths, full_job.scope());
-        image_files.extend(additional_image_files);
+
+        // Deduplicate image files based on filename (case insensitive)
+        let mut deduplicated_files = HashMap::new();
+        for (path, content) in image_files.iter().chain(additional_image_files.iter()) {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            if !deduplicated_files.contains_key(&filename) {
+                deduplicated_files.insert(filename, (path.clone(), content.clone()));
+            }
+        }
+
+        // Convert back to original format with full paths
+        image_files = deduplicated_files
+            .into_iter()
+            .map(|(_, (path, content))| (path, content))
+            .collect();
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("start_generic_inference_chain> image files: {:?}", image_files.keys()),
+        );
 
         if !scope_is_empty
             || !merged_fs_files_paths.is_empty()
@@ -308,31 +326,39 @@ impl GenericInferenceChain {
         // Decision Process for Tool Selection:
         // 1. Check if a specific tool was requested by the user
         // 2. If not, fall back to automatic tool selection based on capabilities and context
-        if let Some(selected_tool_name) = user_tool_selected {
-            // Skip if tool name is empty
-            if !selected_tool_name.is_empty() {
-                // CASE 1: User explicitly selected a tool
-                // This takes precedence over all other tool selection methods
-                if let Some(tool_router) = &tool_router {
-                    match tool_router.get_tool_by_name(&selected_tool_name).await {
-                        Ok(Some(tool)) => tools.push(tool),
-                        Ok(None) => {
-                            return Err(LLMProviderError::ToolNotFound(format!(
-                                "Selected tool not found: {}",
-                                selected_tool_name
-                            )));
-                        }
-                        Err(e) => {
-                            return Err(LLMProviderError::ToolRetrievalError(format!(
-                                "Error retrieving selected tool: {:?}",
-                                e
-                            )));
-                        }
+        // Combine the check for Some and non-empty string using filter
+        if let Some(selected_tool_name) = user_tool_selected.filter(|name| !name.is_empty()) {
+            // CASE 1: User explicitly selected a tool
+            // This takes precedence over all other tool selection methods
+            if let Some(tool_router) = &tool_router {
+                match tool_router.get_tool_by_name(&selected_tool_name).await {
+                    Ok(Some(tool)) => tools.push(tool),
+                    Ok(None) => {
+                        return Err(LLMProviderError::ToolNotFound(format!(
+                            "Selected tool not found: {}",
+                            selected_tool_name
+                        )));
+                    }
+                    Err(e) => {
+                        return Err(LLMProviderError::ToolRetrievalError(format!(
+                            "Error retrieving selected tool: {:?}",
+                            e
+                        )));
                     }
                 }
             }
         } else if let Some(forced_tools) = force_tools_scope.clone() {
-            // CASE 2: No specific tool selected but force_tools_scope is provided
+            // CASE 2: force_tools_scope is provided - This takes precedence over automatic tool selection
+            // force_tools_scope allows explicit specification of which tools should be available,
+            // provided as a Vec<String> of tool names. For each tool name:
+            // 1. First tries exact name match
+            // 2. If exact match fails, performs both:
+            //    - Full-text search (FTS) for exact keyword matches
+            //    - Vector search for semantic similarity (confidence threshold 0.2)
+            // 3. Combines results prioritizing:
+            //    - FTS exact matches first
+            //    - Then high-confidence vector search matches
+            // 4. Returns error if no matches found for a forced tool
             if let Some(tool_router) = &tool_router {
                 for tool_name in forced_tools {
                     match tool_router.get_tool_by_name(&tool_name).await {
@@ -418,9 +444,9 @@ impl GenericInferenceChain {
             // specified)
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
 
-            // 2c. Check if the LLM provider is an agent
-            let is_agent = match &llm_provider {
-                ProviderOrAgent::Agent(_) => true,
+            // 2c. Check if the LLM provider is an agent with tools
+            let is_agent_with_tools = match &llm_provider {
+                ProviderOrAgent::Agent(agent) => !agent.tools.is_empty(),
                 ProviderOrAgent::LLMProvider(_) => false,
             };
 
@@ -432,10 +458,10 @@ impl GenericInferenceChain {
             )
             .await;
 
-            // Only proceed with tool selection if both conditions are met:
-            // - Tools are allowed by configuration
-            // - The LLM provider has tool capabilities
-            if can_use_tools && tools_allowed || is_agent {
+            // Only proceed with tool selection if either:
+            // - Tools are allowed by configuration AND the LLM provider has tool capabilities
+            // - OR it's an agent with available tools
+            if (can_use_tools || is_agent_with_tools) && tools_allowed {
                 // CASE 2.1: If using an Agent, get its specifically configured tools
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
                     for tool in &agent.tools {
@@ -465,7 +491,7 @@ impl GenericInferenceChain {
                     // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
                         let results = tool_router
-                            .combined_tool_search(&user_message.clone(), 4, false, true)
+                            .combined_tool_search(&user_message.clone(), 7, false, true)
                             .await;
 
                         match results {
@@ -510,22 +536,58 @@ impl GenericInferenceChain {
         // First, attempt to use the custom_prompt from the job's config.
         // If it doesn't exist, fall back to the agent's custom_prompt if the
         // llm_provider is an Agent.
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone()).or_else(|| {
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                agent.config.as_ref().and_then(|config| config.custom_prompt.clone())
-            } else {
-                None
-            }
-        });
-
-        let custom_system_prompt = job_config
-            .and_then(|config| config.custom_system_prompt.clone())
+        let custom_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_prompt exists and is not empty
+                config
+                    .custom_prompt
+                    .clone()
+                    .and_then(|prompt| if prompt.is_empty() { None } else { Some(prompt) })
+            })
             .or_else(|| {
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                    agent
-                        .config
-                        .as_ref()
-                        .and_then(|config| config.custom_system_prompt.clone())
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_prompt.clone().and_then(
+                            |prompt| {
+                                if prompt.is_empty() {
+                                    None
+                                } else {
+                                    Some(prompt)
+                                }
+                            },
+                        )
+                    })
+                } else {
+                    None
+                }
+            });
+
+        let custom_system_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_system_prompt exists and is not empty
+                config.custom_system_prompt.clone().and_then(
+                    |prompt| {
+                        if prompt.is_empty() {
+                            None
+                        } else {
+                            Some(prompt)
+                        }
+                    },
+                )
+            })
+            .or_else(|| {
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_system_prompt.clone().and_then(|prompt| {
+                            if prompt.is_empty() {
+                                None
+                            } else {
+                                Some(prompt)
+                            }
+                        })
+                    })
                 } else {
                     None
                 }
@@ -538,6 +600,19 @@ impl GenericInferenceChain {
             merged_fs_files_paths.clone(),
             merged_fs_folder_paths.clone(),
         )?;
+
+        println!(
+            "Generating prompt with user message: {:?} containing {:?} image files and {:?} additional files",
+            user_message,
+            image_files.keys(),
+            additional_files
+        );
+
+        // We'll keep a record of *every* function call + response across all iterations:
+        let mut all_function_responses = Vec::new();
+
+        // NEW: Accumulate all LLM response messages
+        let mut all_llm_messages = Vec::new();
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
@@ -560,9 +635,29 @@ impl GenericInferenceChain {
         loop {
             // Check if max_iterations is reached
             if iteration_count >= max_iterations {
-                return Err(LLMProviderError::MaxIterationsReached(
-                    "Maximum iterations reached".to_string(),
-                ));
+                let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
+                let max_iterations_message = format!(
+                    "Maximum iterations ({}) reached. Process stopped after {} tool calls.",
+                    max_iterations,
+                    tool_calls_history.len()
+                );
+
+                // Use the accumulator to show the full conversation if max_iterations is reached
+                let full_conversation = all_llm_messages
+                    .iter()
+                    .map(|msg: &String| msg.trim())
+                    .filter(|msg| !msg.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n\n");
+
+                let inference_result = InferenceChainResult::with_full_details(
+                    format!("{}\n\n{}", full_conversation, max_iterations_message),
+                    None,
+                    answer_duration_ms,
+                    Some(tool_calls_history.clone()),
+                );
+
+                return Ok(inference_result);
             }
 
             // 4) Call LLM
@@ -591,9 +686,12 @@ impl GenericInferenceChain {
 
             let response = response_res?;
 
+            // NEW: Accumulate this LLM message
+            all_llm_messages.push(response.response_string.clone());
+
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
-                let mut last_function_response = None;
+                let mut iteration_function_responses = Vec::new();
                 let mut should_retry = false;
 
                 for function_call in response.function_calls {
@@ -616,7 +714,6 @@ impl GenericInferenceChain {
                         max_tokens_in_prompt,
                         ws_manager_trait.clone(),
                         tool_router.clone(),
-                        sheet_manager.clone(),
                         my_agent_payments_manager.clone(),
                         ext_agent_payments_manager.clone(),
                         job_callback_manager.clone(),
@@ -627,7 +724,7 @@ impl GenericInferenceChain {
                     // 6) Call workflow or tooling
                     // Find the ShinkaiTool that has a tool with the function name
                     let shinkai_tool = tools.iter().find(|tool| {
-                        tool.internal_sanitized_name() == function_call.name
+                        ToolRouterKey::sanitize(&tool.tool_router_key().name) == function_call.name
                             || tool.tool_router_key().to_string_without_version()
                                 == function_call.tool_router_key.clone().unwrap_or_default()
                     });
@@ -659,6 +756,12 @@ impl GenericInferenceChain {
                                     function_call_with_error.response = Some(error_msg.clone());
                                     tool_calls_history.push(function_call_with_error);
 
+                                    // Store the error response to be included in the next prompt
+                                    iteration_function_responses.push(ToolCallFunctionResponse {
+                                        function_call: function_call.clone(),
+                                        response: error_msg.clone(),
+                                    });
+
                                     // Update prompt with error information for retry
                                     filled_prompt = JobPromptGenerator::generic_inference_prompt(
                                         db.clone(),
@@ -670,10 +773,14 @@ impl GenericInferenceChain {
                                         None,
                                         Some(full_job.step_history.clone()),
                                         tools.clone(),
-                                        Some(ToolCallFunctionResponse {
-                                            function_call: function_call.clone(),
-                                            response: error_msg.clone(),
-                                        }),
+                                        // Pass all function responses (including the error) to keep context
+                                        Some(
+                                            all_function_responses
+                                                .iter()
+                                                .chain(iteration_function_responses.iter())
+                                                .cloned()
+                                                .collect(),
+                                        ),
                                         full_job.job_id.clone(),
                                         additional_files.clone(),
                                     )
@@ -715,8 +822,8 @@ impl GenericInferenceChain {
                     )
                     .await;
 
-                    // Store the last function response to use in the next prompt
-                    last_function_response = Some(function_response);
+                    // Store all function responses to use in the next prompt
+                    iteration_function_responses.push(function_response);
                 }
 
                 let additional_files = Self::get_additional_files(
@@ -732,7 +839,10 @@ impl GenericInferenceChain {
                     continue;
                 }
 
-                // 7) Call LLM again with the response (for formatting)
+                // Add this iteration's responses to our cumulative collection
+                all_function_responses.extend(iteration_function_responses);
+
+                // Call LLM again with ALL responses from all iterations
                 filled_prompt = JobPromptGenerator::generic_inference_prompt(
                     db.clone(),
                     custom_system_prompt.clone(),
@@ -743,7 +853,7 @@ impl GenericInferenceChain {
                     None,
                     Some(full_job.step_history.clone()),
                     tools.clone(),
-                    last_function_response,
+                    Some(all_function_responses.clone()),
                     full_job.job_id.clone(),
                     additional_files,
                 )
@@ -752,8 +862,11 @@ impl GenericInferenceChain {
                 // No more function calls required, return the final response
                 let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
 
+                // We'll use the last message as the final response to not sound spammy
+                let last_message = all_llm_messages.last().cloned().unwrap_or_default();
+
                 let inference_result = InferenceChainResult::with_full_details(
-                    response.response_string,
+                    last_message,
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
@@ -809,6 +922,7 @@ impl GenericInferenceChain {
                         type_: ToolStatusType::Complete,
                         reason: None,
                     },
+                    index: function_response.function_call.index,
                 };
 
                 let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
@@ -851,6 +965,14 @@ impl GenericInferenceChain {
                 folder_path.path.clone(),
             ));
         }
+
+        // Deduplicate files based on filename (case insensitive)
+        let mut seen_filenames = std::collections::HashSet::new();
+        additional_files.retain(|path| {
+            let filename = path.split('/').last().unwrap_or(path).to_lowercase();
+            seen_filenames.insert(filename)
+        });
+
         Ok(additional_files)
     }
 }

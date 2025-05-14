@@ -16,12 +16,8 @@ use shinkai_message_primitives::schemas::ws_types::WidgetMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        job_config::JobConfig,
-        llm_providers::serialized_llm_provider::{Claude, LLMProviderInterface},
-        prompts::Prompt,
-    },
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::{Claude, LLMProviderInterface}, prompts::Prompt
+    }, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -29,7 +25,7 @@ use uuid::Uuid;
 
 use crate::llm_provider::execution::chains::inference_chain_trait::FunctionCall;
 use crate::llm_provider::{
-    error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper,
+    error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper
 };
 use crate::managers::model_capabilities_manager::PromptResultEnum;
 
@@ -89,17 +85,6 @@ impl LLMService for Claude {
                         tool
                     })
                     .collect::<Vec<JsonValue>>();
-
-                // Print messages_json as a pretty JSON string
-                match serde_json::to_string_pretty(&messages_json) {
-                    Ok(pretty_json) => eprintln!("Messages JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize messages_json: {:?}", e),
-                };
-
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -191,6 +176,36 @@ async fn handle_streaming_response(
         .send()
         .await?;
 
+    // Check if it's an error response
+    if !res.status().is_success() {
+        let error_json: serde_json::Value = res.json().await?;
+        if let Some(error) = error_json.get("error") {
+            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+        }
+        return Err(LLMProviderError::APIError("AI Provider API Error: Unknown error occurred".to_string()));
+    }
+
+    // Check content type to determine if it's a stream
+    let content_type = res.headers().get("content-type").and_then(|v| v.to_str().ok());
+    let is_stream = match content_type {
+        Some(ct) => {
+            ct.contains("text/event-stream")
+                || (ct.contains("application/json") && res.headers().contains_key("transfer-encoding"))
+        }
+        None => false,
+    };
+
+    if !is_stream {
+        // Handle as regular JSON response
+        let response_json: serde_json::Value = res.json().await?;
+        if let Some(error) = response_json.get("error") {
+            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+        }
+        return Err(LLMProviderError::APIError("AI Provider API Error: Expected streaming response but received regular JSON".to_string()));
+    }
+
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
     let mut processed_tool: Option<ProcessedTool> = None;
@@ -247,7 +262,7 @@ async fn handle_streaming_response(
                         Ok(processed_chunk) => {
                             // Remove the processed part from the buffer
                             buffer.clear();
-                            
+
                             // Update response text
                             response_text.push_str(&processed_chunk.partial_text);
 
@@ -269,10 +284,12 @@ async fn handle_streaming_response(
                             // Handle function calls when tool is complete
                             if processed_chunk.is_done && processed_tool.is_some() {
                                 let name = processed_tool.as_ref().unwrap().tool_name.clone();
-                                let arguments = serde_json::from_str::<JsonValue>(&processed_tool.as_ref().unwrap().partial_tool_arguments)
-                                    .ok()
-                                    .and_then(|args_value| args_value.as_object().cloned())
-                                    .unwrap_or_else(|| serde_json::Map::new());
+                                let arguments = serde_json::from_str::<JsonValue>(
+                                    &processed_tool.as_ref().unwrap().partial_tool_arguments,
+                                )
+                                .ok()
+                                .and_then(|args_value| args_value.as_object().cloned())
+                                .unwrap_or_else(|| serde_json::Map::new());
                                 let tool_router_key = tools.as_ref().and_then(|tools_array| {
                                     tools_array.iter().find_map(|tool| {
                                         if tool.get("name")?.as_str()? == name {
@@ -289,6 +306,9 @@ async fn handle_streaming_response(
                                     arguments,
                                     tool_router_key,
                                     response: None,
+                                    index: function_calls.len() as u64,
+                                    id: None,
+                                    call_type: Some("function".to_string()),
                                 };
 
                                 function_calls.push(function_call.clone());
@@ -314,9 +334,11 @@ async fn handle_streaming_response(
                                                 type_: ToolStatusType::Running,
                                                 reason: None,
                                             },
+                                            index: function_call.index,
                                         };
 
-                                        let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
+                                        let ws_message_type =
+                                            WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
 
                                         let _ = m
                                             .queue_message(
@@ -339,8 +361,8 @@ async fn handle_streaming_response(
                                     let inbox_name_string = inbox_name.to_string();
                                     let metadata = WSMetadata {
                                         id: Some(session_id.clone()),
-                                        is_done: processed_chunk.is_done,
-                                        done_reason: if processed_chunk.is_done {
+                                        is_done: function_calls.is_empty() && processed_chunk.is_done,
+                                        done_reason: if function_calls.is_empty() && processed_chunk.is_done {
                                             processed_chunk.done_reason.clone()
                                         } else {
                                             None
@@ -368,7 +390,7 @@ async fn handle_streaming_response(
                                 shinkai_log(
                                     ShinkaiLogOption::Node,
                                     ShinkaiLogLevel::Info,
-                                    "Buffer is empty, breaking loop to get next chunk"
+                                    "Buffer is empty, breaking loop to get next chunk",
                                 );
                                 break;
                             }
@@ -380,7 +402,7 @@ async fn handle_streaming_response(
                                     shinkai_log(
                                         ShinkaiLogOption::Node,
                                         ShinkaiLogLevel::Info,
-                                        &format!("Incomplete JSON detected, keeping buffer: {}", buffer)
+                                        &format!("Incomplete JSON detected, keeping buffer: {}", buffer),
                                     );
                                     break;
                                 }
@@ -389,7 +411,7 @@ async fn handle_streaming_response(
                             shinkai_log(
                                 ShinkaiLogOption::Node,
                                 ShinkaiLogLevel::Error,
-                                &format!("Error processing chunk: {}", e)
+                                &format!("Error processing chunk: {}", e),
                             );
                             return Err(e);
                         }
@@ -429,6 +451,7 @@ async fn handle_non_streaming_response(
         .header("content-type", "application/json")
         .json(&payload)
         .send();
+
     let mut response_fut = Box::pin(response_fut);
 
     loop {
@@ -445,6 +468,19 @@ async fn handle_non_streaming_response(
             },
             response = &mut response_fut => {
                 let res = response?;
+
+                // Check if it's an error response
+                if !res.status().is_success() {
+                    let error_json: serde_json::Value = res.json().await?;
+                    if let Some(error) = error_json.get("error") {
+                        let error_message = error.get("message")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Unknown error");
+                        return Err(LLMProviderError::APIError(error_message.to_string()));
+                    }
+                    return Err(LLMProviderError::APIError("Unknown error occurred".to_string()));
+                }
+
                 let response_body = res.text().await?;
                 let response_json: serde_json::Value = serde_json::from_str(&response_body)?;
 
@@ -482,6 +518,9 @@ async fn handle_non_streaming_response(
                                         arguments,
                                         tool_router_key,
                                         response: None,
+                                        index: function_calls.len() as u64,
+                                        id: None,
+                                        call_type: Some("function".to_string()),
                                     };
 
                                     function_calls.push(function_call.clone());
@@ -511,6 +550,7 @@ async fn handle_non_streaming_response(
                                                     type_: ToolStatusType::Running,
                                                     reason: None,
                                                 },
+                                                index: function_call.index,
                                             };
 
                                             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
@@ -613,7 +653,7 @@ struct ProcessedChunk {
 struct ProcessedTool {
     tool_name: String,
     partial_tool_arguments: String,
-    is_accumulating: bool,  // Track if we're currently accumulating arguments
+    is_accumulating: bool, // Track if we're currently accumulating arguments
 }
 
 /// Try to parse exactly one SSE event from the start of `buf`.
@@ -622,7 +662,7 @@ struct ProcessedTool {
 fn parse_one_event(buf: &str) -> Result<(ProcessedChunk, usize), LLMProviderError> {
     if let Some(double_newline_pos) = buf.find("\n\n") {
         let (this_block, _remainder) = buf.split_at(double_newline_pos + 2);
-        
+
         // Check if this is a valid event block
         if !this_block.starts_with("event: ") {
             return Err(LLMProviderError::ContentParseFailed);
@@ -647,7 +687,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
     let mut accumulated_text = String::new();
 
     let event_rows: Vec<&str> = block.lines().collect();
-    
+
     if event_rows.len() < 2 {
         return Ok(ProcessedChunk {
             partial_text: String::new(),
@@ -664,7 +704,8 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
         "content_block_start" => {
             if let Ok(data_json) = serde_json::from_str::<serde_json::Value>(event_data) {
                 if let Some(content_block) = data_json.get("content_block") {
-                    content_block_type = content_block.get("type")
+                    content_block_type = content_block
+                        .get("type")
                         .and_then(|t| t.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -706,7 +747,7 @@ fn parse_entire_sse_block(block: &str) -> Result<ProcessedChunk, LLMProviderErro
                                         is_accumulating: true,
                                     });
                                 }
-                                
+
                                 if let Some(ref mut tool) = current_tool {
                                     tool.partial_tool_arguments.push_str(input_json);
                                 }
@@ -781,7 +822,9 @@ fn process_chunk(chunk: &[u8]) -> Result<ProcessedChunk, LLMProviderError> {
                                 existing_tool.tool_name = tu.tool_name;
                             }
                             if !tu.partial_tool_arguments.is_empty() {
-                                existing_tool.partial_tool_arguments.push_str(&tu.partial_tool_arguments);
+                                existing_tool
+                                    .partial_tool_arguments
+                                    .push_str(&tu.partial_tool_arguments);
                             }
                         }
                         None => {
@@ -838,7 +881,8 @@ event: content_block_stop
 data: {"index":0}
 
 event: message_stop
-data: {}"#.as_bytes();
+data: {}"#
+            .as_bytes();
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Hello world!");
@@ -861,7 +905,8 @@ event: content_block_stop
 data: {"index":0}
 
 event: message_stop
-data: {}"#.as_bytes();
+data: {}"#
+            .as_bytes();
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
@@ -893,7 +938,8 @@ event: content_block_stop
 data: {"index":1}
 
 event: message_stop
-data: {}"#.as_bytes();
+data: {}"#
+            .as_bytes();
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Let me help you with that.");
@@ -907,14 +953,14 @@ data: {}"#.as_bytes();
     #[tokio::test]
     async fn test_process_chunk_error_handling() {
         let chunk = r#"event: error
-data: {"error":{"type":"invalid_request_error","message":"Invalid request"}}"#.as_bytes();
+data: {"error":{"type":"invalid_request_error","message":"Invalid request"}}"#
+            .as_bytes();
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
         assert!(result.tool_use.is_none());
         assert!(!result.is_done);
     }
-
 
     #[tokio::test]
     async fn test_process_chunk_with_done_reason() {
@@ -931,7 +977,8 @@ event: message_delta
 data: {"delta":{"stop_reason":"stop_sequence"}}
 
 event: message_stop
-data: {}"#.as_bytes();
+data: {}"#
+            .as_bytes();
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "Complete response");
@@ -958,7 +1005,8 @@ event: content_block_stop
 data: {"index":0}
 
 event: message_stop
-data: {}"#.as_bytes();
+data: {}"#
+            .as_bytes();
 
         let result = process_chunk(chunk).unwrap();
         assert_eq!(result.partial_text, "");
@@ -1075,15 +1123,24 @@ data: {"type":"message_stop"}
                             }
                             3 => {
                                 // After second JSON part
-                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "{\"message\":");
+                                assert_eq!(
+                                    accumulated_tool.as_ref().unwrap().partial_tool_arguments,
+                                    "{\"message\":"
+                                );
                             }
                             4 => {
                                 // After third JSON part
-                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "{\"message\": \"mov");
+                                assert_eq!(
+                                    accumulated_tool.as_ref().unwrap().partial_tool_arguments,
+                                    "{\"message\": \"mov"
+                                );
                             }
                             5 => {
                                 // After fourth JSON part - complete JSON
-                                assert_eq!(accumulated_tool.as_ref().unwrap().partial_tool_arguments, "{\"message\": \"movies\"}");
+                                assert_eq!(
+                                    accumulated_tool.as_ref().unwrap().partial_tool_arguments,
+                                    "{\"message\": \"movies\"}"
+                                );
                             }
                             7 => {
                                 // After message_delta

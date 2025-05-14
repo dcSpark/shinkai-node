@@ -1,7 +1,8 @@
 use super::parameters::Parameters;
 use super::tool_config::ToolConfig;
 use super::tool_output_arg::ToolOutputArg;
-use super::tool_types::ToolResult;
+use super::tool_playground::ToolPlaygroundMetadata;
+use super::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use crate::tools::error::ToolError;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use std::process::Stdio;
@@ -26,9 +27,32 @@ pub struct MCPServerTool {
     pub embedding: Option<Vec<f32>>,
     pub result: ToolResult,
     pub tool_set: Option<String>,
+    pub mcp_enabled: Option<bool>,
 }
 
 impl MCPServerTool {
+
+    pub fn get_metadata(&self) -> ToolPlaygroundMetadata {
+        ToolPlaygroundMetadata {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            keywords: self.keywords.clone(),
+            homepage: None,
+            author: self.author.clone(),
+            version: self.version.clone(),
+            configurations: self.config.clone(),
+            parameters: self.input_args.clone(),
+            result: self.result.clone(),
+            sql_tables: vec![],
+            sql_queries: vec![],
+            tools: None,
+            oauth: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Linux, OperatingSystem::MacOS, OperatingSystem::Windows],
+            tool_set: None,
+        }
+    }
+    
     /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)

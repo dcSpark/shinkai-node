@@ -1,6 +1,6 @@
 use rusqlite::params;
 use shinkai_message_primitives::schemas::{
-    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName,
+    llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::ShinkaiName
 };
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -20,6 +20,8 @@ impl SqliteManager {
             let model: String = row.get(5)?;
             Ok(SerializedLLMProvider {
                 id: row.get(1)?,
+                name: row.get(6)?,
+                description: row.get(7)?,
                 full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
@@ -49,7 +51,7 @@ impl SqliteManager {
         profile: &ShinkaiName,
     ) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("INSERT INTO llm_providers (db_llm_provider_id, id, full_identity_name, external_url, api_key, model) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")?;
+        let mut stmt = conn.prepare("INSERT INTO llm_providers (db_llm_provider_id, id, full_identity_name, external_url, api_key, model, name, description) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")?;
 
         let llm_provider_id = Self::db_llm_provider_id(&llm_provider.id, profile)?;
         let model = serde_json::to_string(&llm_provider.model)
@@ -61,6 +63,8 @@ impl SqliteManager {
             &llm_provider.external_url,
             &llm_provider.api_key,
             &model,
+            &llm_provider.name,
+            &llm_provider.description,
         ])?;
 
         Ok(())
@@ -72,7 +76,7 @@ impl SqliteManager {
         profile: &ShinkaiName,
     ) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("UPDATE llm_providers SET full_identity_name = ?2, external_url = ?3, api_key = ?4, model = ?5 WHERE db_llm_provider_id = ?1")?;
+        let mut stmt = conn.prepare("UPDATE llm_providers SET full_identity_name = ?2, external_url = ?3, api_key = ?4, model = ?5, name = ?6, description = ?7 WHERE db_llm_provider_id = ?1")?;
 
         let llm_provider_id = Self::db_llm_provider_id(&updated_llm_provider.id, profile)?;
         let model = serde_json::to_string(&updated_llm_provider.model)
@@ -83,6 +87,8 @@ impl SqliteManager {
             &updated_llm_provider.external_url,
             &updated_llm_provider.api_key,
             &model,
+            &updated_llm_provider.name,
+            &updated_llm_provider.description,
         ])?;
 
         Ok(())
@@ -123,6 +129,8 @@ impl SqliteManager {
             let model: String = row.get(5)?;
             Ok(SerializedLLMProvider {
                 id: row.get(1)?,
+                name: row.get(6)?,
+                description: row.get(7)?,
                 full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
@@ -166,6 +174,8 @@ impl SqliteManager {
             let model: String = row.get(5)?;
             Ok(SerializedLLMProvider {
                 id: row.get(1)?,
+                name: row.get(6)?,
+                description: row.get(7)?,
                 full_identity_name: ShinkaiName::new(full_identity_name).map_err(|e| {
                     rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                         e.to_string(),
@@ -231,11 +241,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::schemas::{
-        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI},
-        shinkai_name::ShinkaiName,
-    };
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::{
+        llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI}, shinkai_name::ShinkaiName
+    };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -244,7 +253,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -260,6 +269,8 @@ mod tests {
 
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
+            name: Some("Test Agent".to_string()),
+            description: Some("A test agent for unit tests.".to_string()),
             full_identity_name: identity,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -285,6 +296,8 @@ mod tests {
 
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
+            name: Some("Test Agent".to_string()),
+            description: Some("A test agent for unit tests.".to_string()),
             full_identity_name: identity.clone(),
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -296,6 +309,8 @@ mod tests {
 
         let updated_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
+            name: Some("Test Agent Updated".to_string()),
+            description: Some("An updated test agent for unit tests.".to_string()),
             full_identity_name: identity,
             external_url: Some("http://localhost:8090".to_string()),
             api_key: Some("test_api_key2".to_string()),
@@ -321,6 +336,8 @@ mod tests {
 
         let test_agent = SerializedLLMProvider {
             id: "test_agent".to_string(),
+            name: Some("Test Agent".to_string()),
+            description: Some("A test agent for unit tests.".to_string()),
             full_identity_name: identity.clone(),
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -354,6 +371,8 @@ mod tests {
 
         let test_agent1 = SerializedLLMProvider {
             id: "test_agent".to_string(),
+            name: Some("Test Agent 1".to_string()),
+            description: Some("First test agent.".to_string()),
             full_identity_name: identity.clone(),
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -362,6 +381,8 @@ mod tests {
 
         let test_agent2 = SerializedLLMProvider {
             id: "test_agent2".to_string(),
+            name: Some("Test Agent 2".to_string()),
+            description: Some("Second test agent.".to_string()),
             full_identity_name: identity.clone(),
             external_url: Some("http://localhost:8081".to_string()),
             api_key: Some("test_api_key2".to_string()),
@@ -391,6 +412,8 @@ mod tests {
 
         let test_agent1 = SerializedLLMProvider {
             id: "test_agent".to_string(),
+            name: Some("Test Agent 1".to_string()),
+            description: Some("First test agent.".to_string()),
             full_identity_name: identity1.clone(),
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -399,6 +422,8 @@ mod tests {
 
         let test_agent2 = SerializedLLMProvider {
             id: "test_agent2".to_string(),
+            name: Some("Test Agent 2".to_string()),
+            description: Some("Second test agent.".to_string()),
             full_identity_name: identity2.clone(),
             external_url: Some("http://localhost:8081".to_string()),
             api_key: Some("test_api_key2".to_string()),

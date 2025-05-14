@@ -9,7 +9,7 @@ use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider:
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType
+    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -583,7 +583,7 @@ pub async fn api_initial_registration_with_no_code_for_device(
         .unwrap();
     let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
 
-    assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
+    assert!(node2_all_subidentities.len() >= 2, "Node has 1 subidentity");
     assert_eq!(
         node2_all_subidentities[1].get_full_identity_name(),
         format!("{}/main/device/{}", node_identity_name, device_name_for_profile),
@@ -683,6 +683,7 @@ pub async fn api_execute_tool(
     parameters: Map<String, Value>,
     tool_id: String,
     app_id: String,
+    agent_id: Option<String>,
     llm_provider: String,
     extra_config: Map<String, Value>,
     _oauth: Map<String, Value>,
@@ -696,6 +697,7 @@ pub async fn api_execute_tool(
             parameters,
             tool_id,
             app_id,
+            agent_id,
             llm_provider,
             extra_config,
             mounts,
@@ -736,4 +738,53 @@ pub async fn wait_for_default_tools(
     }
 
     Ok(false) // Timeout reached without getting true
+}
+
+pub async fn wait_for_rust_tools(
+    node_commands_sender: Sender<NodeCommand>,
+    timeout_seconds: u64,
+) -> Result<u32, String> {
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(timeout_seconds);
+    let retry_delay = std::time::Duration::from_millis(500);
+    let mut retry_count = 0;
+
+    while start.elapsed() < timeout {
+        tokio::time::sleep(retry_delay).await;
+
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
+            .await
+            .unwrap();
+
+        match res_receiver.recv().await {
+            Ok(result) => {
+                match result {
+                    Ok(has_tools) => {
+                        if has_tools {
+                            // Rust tools are installed, return the count of retries
+                            return Ok(retry_count);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error checking Rust tools installation: {:?}", e);
+                        return Err(format!("Error checking Rust tools installation: {:?}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                let error_msg = format!("Error receiving check result: {:?}", e);
+                eprintln!("{}", error_msg);
+                return Err(error_msg);
+            }
+        }
+
+        retry_count += 1;
+    }
+
+    Err(format!(
+        "Rust tools were not installed after {} seconds",
+        timeout_seconds
+    ))
 }

@@ -17,7 +17,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{Gemini, LLMProviderInterface};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -288,7 +288,7 @@ async fn process_chunk(
     // Remove trailing square bracket if it exists
     if buffer.ends_with(']') {
         buffer.pop();
-        *is_done = true; // Set is_done to true if buffer ends with ']'
+        *is_done = function_calls.is_empty(); // Set is_done to true if buffer ends with ']'
     }
 
     // Add a trailing ']' to make it a valid JSON array
@@ -300,10 +300,8 @@ async fn process_chunk(
                 // First check if this is an error response
                 if let Ok(error_response) = serde_json::from_value::<GeminiErrorResponse>(value.clone()) {
                     return Err(LLMProviderError::NetworkError(format!(
-                        "Gemini API error ({}): {} - Status: {}", 
-                        error_response.error.code,
-                        error_response.error.message,
-                        error_response.error.status
+                        "Gemini API error ({}): {} - Status: {}",
+                        error_response.error.code, error_response.error.message, error_response.error.status
                     )));
                 }
 
@@ -432,9 +430,14 @@ async fn process_function_call(
     let fc = FunctionCall {
         name: function_call.name.clone(),
         arguments: function_call.args.as_object().cloned().unwrap_or_default(),
-        tool_router_key: function_call.args.get("tool_router_key")
+        tool_router_key: function_call
+            .args
+            .get("tool_router_key")
             .and_then(|key| key.as_str().map(|s| s.to_string())),
         response: None,
+        index: function_calls.len() as u64,
+        id: None,
+        call_type: Some("function".to_string()),
     };
     function_calls.push(fc.clone());
 
@@ -457,6 +460,7 @@ async fn process_function_call(
                     type_: ToolStatusType::Running,
                     reason: None,
                 },
+                index: fc.index,
             };
 
             let ws_message_type = WSMessageType::Widget(WidgetMetadata::ToolRequest(tool_metadata));
@@ -772,7 +776,7 @@ mod tests {
             .clone()
         );
         assert_eq!(finish_reason, Some("STOP".to_string()));
-        assert!(is_done);
+        assert!(!is_done);
     }
 
     #[tokio::test]

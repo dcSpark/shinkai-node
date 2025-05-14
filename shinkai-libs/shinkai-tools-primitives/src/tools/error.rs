@@ -29,6 +29,7 @@ pub enum ToolError {
     InvalidFunctionArguments(String),
     InvalidToolRouterKey(String),
     OAuthError(String),
+    AutocontainedError(String),
     NetworkError(String),
 }
 
@@ -61,6 +62,7 @@ impl fmt::Display for ToolError {
             ToolError::InvalidFunctionArguments(ref e) => write!(f, "Invalid function arguments: {}", e),
             ToolError::InvalidToolRouterKey(ref e) => write!(f, "Invalid tool router key: {}", e),
             ToolError::OAuthError(ref e) => write!(f, "OAuth not setup: {}", e),
+            ToolError::AutocontainedError(ref e) => write!(f, "{}", e),
             ToolError::NetworkError(ref e) => write!(f, "Network error: {}", e),
         }
     }

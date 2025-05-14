@@ -11,7 +11,7 @@ use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobCreationInfo;
 use tokio::sync::Mutex;
 
@@ -26,6 +26,7 @@ use async_trait::async_trait;
 use tokio::time::{sleep, Duration};
 
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
+
 
 pub struct LlmPromptProcessorTool {
     pub tool: ShinkaiToolHeader,
@@ -46,18 +47,27 @@ This can be used to process complex requests, text analysis, text matching, text
                 author: "@@official.shinkai".to_string(),
                 version: "1.0".to_string(),
                 enabled: true,
+                mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("format".to_string(), "string".to_string(), "The format of the prompt".to_string(), true);
-                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to process".to_string(), true);
+                    params.add_property("format".to_string(), "string".to_string(), "Response type. The only valid option is 'text'".to_string(), true, None);
+                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to process".to_string(), true, None);
+                    // Add the optional llm_provider parameter
+                    params.add_property("llm_provider".to_string(), "string".to_string(), "The LLM provider to use, if not provided, the default provider will be used".to_string(), false, None);
                     
                     // Add the optional tools array parameter
                     let tools_property = Property::with_array_items(
                         "List of tools names or tool router keys to be used with the prompt".to_string(),
-                        Property::new("string".to_string(), "Tool".to_string())
+                        Property::new("string".to_string(), "Tool".to_string(), None)
                     );
                     params.properties.insert("tools".to_string(), tools_property);
                     
+                    let image_paths_property = Property::with_array_items(
+                        "List of image file paths to be used with the prompt".to_string(),
+                        Property::new("string".to_string(), "Image path".to_string(), None)
+                    );
+                    params.properties.insert("image_paths".to_string(), image_paths_property);
+ 
                     params
                 },
                 output_arg: ToolOutputArg {
@@ -85,7 +95,7 @@ impl ToolExecutor for LlmPromptProcessorTool {
         encryption_public_key_clone: EncryptionPublicKey,
         signing_secret_key_clone: SigningKey,
         parameters: &Map<String, Value>,
-        llm_provider: String,
+        default_llm_provider: String,
     ) -> Result<Value, ToolError> {
         let content = parameters
             .get("prompt")
@@ -99,6 +109,37 @@ impl ToolExecutor for LlmPromptProcessorTool {
             None
         };
 
+        let image_paths = if let Some(paths_array) = parameters.get("image_paths").and_then(|v| v.as_array()) {
+            Some(paths_array.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect::<Vec<String>>())
+        } else {
+            None
+        };
+
+        let llm_provider_param_opt = parameters.get("llm_provider").and_then(|v| v.as_str());
+        
+        let mut llm_provider_to_use = default_llm_provider;
+
+        if let Some(llm_provider_param) = llm_provider_param_opt {
+            if !llm_provider_param.is_empty() {
+                let available_providers = db_clone.get_all_llm_providers()
+                    .map_err(|e| ToolError::ExecutionError(format!("Failed to get LLM providers: {}", e)))?;
+                
+                let provider_exists = available_providers.iter().any(|p: &SerializedLLMProvider| p.id == llm_provider_param);
+
+                if provider_exists {
+                    llm_provider_to_use = llm_provider_param.to_string();
+                } else {
+                    let available_ids: Vec<String> = available_providers.iter().map(|p| p.id.clone()).collect();
+                    let error_message = format!(
+                        "LLM provider '{}' not found. Available providers: {}",
+                        llm_provider_param,
+                        available_ids.join(", ")
+                    );
+                    return Err(ToolError::ExecutionError(error_message));
+                }
+            }
+        }
+
         let response = v2_create_and_send_job_message(
             bearer.clone(),
             JobCreationInfo {
@@ -106,9 +147,11 @@ impl ToolExecutor for LlmPromptProcessorTool {
                 is_hidden: Some(true),
                 associated_ui: None,
             },
-            llm_provider,
+            llm_provider_to_use,
             content,
             tools,
+            image_paths,
+            None,
             db_clone.clone(),
             node_name_clone,
             identity_manager_clone,

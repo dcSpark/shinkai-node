@@ -2,7 +2,7 @@ use std::error::Error;
 use std::sync::Arc;
 
 use super::super::error::LLMProviderError;
-use super::shared::openai_api::{openai_prepare_messages, MessageContent, OpenAIResponse};
+use super::shared::openai_api_deprecated::{openai_prepare_messages_deprecated, MessageContent, OpenAIResponse};
 use super::LLMService;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, LLMInferenceResponse};
 use crate::llm_provider::llm_stopper::LLMStopper;
@@ -70,7 +70,7 @@ impl LLMService for OpenRouter {
                 let is_stream = config.as_ref().and_then(|c| c.stream).unwrap_or(true);
 
                 // Note: we can use prepare_messages directly or we could have called ModelCapabilitiesManager
-                let result = openai_prepare_messages(&model, prompt)?;
+                let result = openai_prepare_messages_deprecated(&model, prompt)?;
                 let messages_json = match result.messages {
                     PromptResultEnum::Value(v) => v,
                     _ => {
@@ -82,11 +82,6 @@ impl LLMService for OpenRouter {
 
                 // Extract tools_json from the result
                 let tools_json = result.functions.unwrap_or_else(Vec::new);
-
-                match serde_json::to_string_pretty(&tools_json) {
-                    Ok(pretty_json) => eprintln!("Tools JSON: {}", pretty_json),
-                    Err(e) => eprintln!("Failed to serialize tools_json: {:?}", e),
-                };
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -170,6 +165,36 @@ async fn handle_streaming_response(
         .send()
         .await?;
 
+    // Check if it's an error response
+    if !res.status().is_success() {
+        let error_json: serde_json::Value = res.json().await?;
+        if let Some(error) = error_json.get("error") {
+            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+        }
+        return Err(LLMProviderError::APIError("AI Provider API Error: Unknown error occurred".to_string()));
+    }
+
+    // Check content type to determine if it's a stream
+    let content_type = res.headers().get("content-type").and_then(|v| v.to_str().ok());
+    let is_stream = match content_type {
+        Some(ct) => {
+            ct.contains("text/event-stream")
+                || (ct.contains("application/json") && res.headers().contains_key("transfer-encoding"))
+        }
+        None => false,
+    };
+
+    if !is_stream {
+        // Handle as regular JSON response
+        let response_json: serde_json::Value = res.json().await?;
+        if let Some(error) = response_json.get("error") {
+            let error_message = error.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+            return Err(LLMProviderError::APIError("AI Provider API Error: ".to_string() + error_message));
+        }
+        return Err(LLMProviderError::APIError("AI Provider API Error: Expected streaming response but received regular JSON".to_string()));
+    }        
+
     let mut stream = res.bytes_stream();
     let mut response_text = String::new();
     let mut previous_json_chunk: String = String::new();
@@ -235,6 +260,9 @@ async fn handle_streaming_response(
                                                 arguments: fc_arguments.clone(),
                                                 tool_router_key,
                                                 response: None,
+                                                index: function_calls.len() as u64,
+                                                id: None,
+                                                call_type: Some("function".to_string()),
                                             });
                                         }
                                     }
@@ -329,7 +357,12 @@ async fn handle_streaming_response(
         }
     }
 
-    Ok(LLMInferenceResponse::new(response_text, json!({}), function_calls, None))
+    Ok(LLMInferenceResponse::new(
+        response_text,
+        json!({}),
+        function_calls,
+        None,
+    ))
 }
 
 async fn handle_non_streaming_response(
@@ -430,8 +463,11 @@ async fn handle_non_streaming_response(
                                 FunctionCall {
                                     name: fc.name,
                                     arguments,
-                                    tool_router_key, // Include tool_router_key
+                                    tool_router_key,
                                     response: None,
+                                    index: 0,
+                                    id: None,
+                                    call_type: Some("function".to_string()),
                                 }
                             })
                         });
