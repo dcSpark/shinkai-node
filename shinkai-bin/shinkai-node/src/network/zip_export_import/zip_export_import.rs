@@ -622,6 +622,12 @@ async fn import_agent_knowledge(
             let relative_path: String = file.replace("__knowledge/", "");
             let dest_path = ShinkaiPath::from_str(&relative_path);
 
+            let file_content = ShinkaiFileManager::get_file_content(dest_path.clone());
+            if file_content.is_ok() {
+                println!("[SKIPPING KNOWLEDGE]: {}", file);
+                continue;
+            }
+
             // Let's check if the file has a embedding precalculated
             let embedding_file: String = file.replace("__knowledge/", "__knowledge_embeddings/");
             let embedding_buffer = get_embeedings_from_zip(embedding_file.clone(), zip_contents.clone())?;
