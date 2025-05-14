@@ -13,11 +13,7 @@ pub struct TextGroup {
 
 impl TextGroup {
     /// Creates a new instance of TextGroup
-    pub fn new(
-        text: String,
-        metadata: HashMap<String, String>,
-        embedding: Option<Vec<f32>>,
-    ) -> Self {
+    pub fn new(text: String, metadata: HashMap<String, String>, embedding: Option<Vec<f32>>) -> Self {
         TextGroup {
             text,
             metadata,
