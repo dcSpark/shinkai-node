@@ -37,7 +37,6 @@ use shinkai_message_primitives::{
         inbox_name::InboxName,
         llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
         shinkai_name::ShinkaiName,
-        tool_router_key::ToolRouterKey,
     },
     shinkai_message::shinkai_message_schemas::JobCreationInfo,
     shinkai_message::{
@@ -58,7 +57,6 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     agent_tool_wrapper::AgentToolWrapper,
     shinkai_tool::ShinkaiTool,
-    mcp_server_tool::MCPServerTool,
     tool_config::{ToolConfig, BasicConfig},
     parameters::Parameters,
     tool_output_arg::ToolOutputArg,
@@ -72,7 +70,7 @@ use tokio::time::Duration;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use crate::network::mcp_manager::{list_tools_via_command, convert_to_shinkai_tool};
+use crate::network::mcp_manager;
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -2366,7 +2364,25 @@ impl Node {
                         .await;
                     return Ok(());
                 }
-            }
+            },
+            MCPServerType::Sse => {
+                if let Some(url) = &mcp_server.url {
+                    log::info!("MCP Server Type Sse: URL='{}'", url);
+                } else {
+                    log::warn!("No URL provided for MCP Server: '{}'", mcp_server.name);
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!(
+                                "No URL provided for MCP Server '{}' of type Sse.",
+                                mcp_server.name
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            },
             _ => {
                 log::warn!("MCP Server type not yet fully implemented or recognized: {:?}", mcp_server.r#type);
                 // For now, we allow adding other types to the DB but won't attempt to spawn them.
@@ -2407,12 +2423,12 @@ impl Node {
                                 }));
                             }
                         }
-                        match list_tools_via_command(command_str, server.config.clone()).await {
+                        match mcp_manager::list_tools_via_command(command_str, server.config.clone()).await {
                             Ok(tools) => {
                                 for tool in tools {  
                                     // Use the new function from mcp_manager instead of inline conversion
                                     let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
-                                    let shinkai_tool = crate::network::mcp_manager::convert_to_shinkai_tool(
+                                    let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
                                         &tool,
                                         &server.name,
                                         &server_id,
@@ -2437,6 +2453,33 @@ impl Node {
                             server.name,
                             server.id
                         );
+                    }
+                } else if server.r#type == MCPServerType::Sse && server.is_enabled {
+                    if let Some(url) = &server.url {
+                        match mcp_manager::list_tools_via_sse(url, None).await {
+                            Ok(tools) => {
+                                for tool in tools {  
+                                    // Use the new function from mcp_manager instead of inline conversion
+                                    let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
+                                    let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                                        &tool,
+                                        &server.name,
+                                        &server_id,
+                                        &node_name.to_string(),
+                                        vec![],
+                                    );
+                                    
+                                    if let Err(err) = db.add_tool(shinkai_tool).await {
+                                        eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                    };
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to list tools for sse '{}' via list_tools_via_sse: {:?}", url, e);
+                            }
+                        }
+                    } else {
+                        log::warn!("MCP Server '{}' (ID: {:?}) is of type Sse and enabled, but has no URL for spawning. This indicates an inconsistent state.", server.name, server.id);
                     }
                 }
 
