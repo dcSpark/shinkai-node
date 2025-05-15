@@ -1305,6 +1305,7 @@ mod tests {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
             edited: false,
         };
 
@@ -1524,6 +1525,7 @@ mod tests {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
             edited: false,
         };
         let agent_tool_wrapper = ShinkaiTool::Agent(

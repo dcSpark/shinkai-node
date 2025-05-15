@@ -31,6 +31,7 @@ pub struct Agent {
     /// Tool configuration overrides keyed by tool ID with a map of configuration values
     #[serde(default)]
     pub tools_config_override: Option<HashMap<String, HashMap<String, Value>>>,
+    pub avatar_url: Option<String>,
     #[serde(default)]
     pub edited: bool,
 }

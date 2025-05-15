@@ -2122,6 +2122,7 @@ impl Node {
                     let _ = Node::v2_api_get_agent(db_clone, bearer, agent_id, res).await;
                 });
             }
+
             NodeCommand::V2ApiGetAllAgents { bearer, filter, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
@@ -3046,7 +3047,7 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_common_toolset_config(db_clone, bearer, tool_set_key, value, res).await;
-                });    
+                });
             }
             NodeCommand::V2ApiCheckTool {
                 bearer,

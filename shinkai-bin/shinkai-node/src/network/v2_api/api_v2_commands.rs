@@ -1286,6 +1286,9 @@ impl Node {
                 .map_or(existing_agent.tools_config_override.clone(), |v| {
                     serde_json::from_value(v.clone()).unwrap_or(existing_agent.tools_config_override.clone())
                 }),
+            avatar_url: partial_agent
+                .get("avatar_url")
+                .map_or(existing_agent.avatar_url.clone(), |v| v.as_str().map(String::from)),
             edited: true,
         };
 

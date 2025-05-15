@@ -838,6 +838,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
             edited: false,
         };
         agent.tools_config_override = None;
@@ -878,6 +879,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
             edited: false,
         };
         let mut overrides = HashMap::new();
@@ -929,6 +931,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
             edited: false,
         };
         let mut overrides = HashMap::new();
@@ -1003,6 +1006,7 @@ export async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            avatar_url: None,
             edited: false,
         };
         let mut overrides = HashMap::new();

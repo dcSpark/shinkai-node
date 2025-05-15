@@ -221,17 +221,26 @@ impl SqliteManager {
         if column_exists == 0 {
             conn.execute("ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT", [])?;
         }
+
         // Check if edited column exists
         let mut stmt =
             conn.prepare("SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'edited'")?;
-        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
-
         // Add the column if it doesn't exist
         if column_exists == 0 {
             conn.execute(
                 "ALTER TABLE shinkai_agents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
                 [],
             )?;
+        }
+
+        // Check for avatar_url column
+        let mut stmt: rusqlite::Statement<'_> =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'avatar_url'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // Add the column if it doesn't exist
+        if column_exists == 0 {
+            conn.execute("ALTER TABLE shinkai_agents ADD COLUMN avatar_url TEXT", [])?;
         }
 
         Ok(())
