@@ -32,7 +32,6 @@ use warp::ws::Message;
 use warp::ws::WebSocket;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;
 
@@ -135,23 +134,6 @@ impl WebSocketManager {
         }
     }
 
-    pub async fn user_validation(
-        &self,
-        shinkai_name: ShinkaiName,
-        message: &ShinkaiMessage,
-    ) -> Result<(ShinkaiMessage, Identity), APIError> {
-        let cloned_enc_sk = clone_static_secret_key(&self.encryption_secret_key);
-        let identity_manager_clone = self.identity_manager_trait.clone();
-        validate_message_main_logic(
-            &cloned_enc_sk,
-            identity_manager_clone,
-            &shinkai_name.clone(),
-            message.clone(),
-            None,
-        )
-        .await
-    }
-
     pub async fn has_access(&self, shinkai_name: ShinkaiName, topic: WSTopic, subtopic: Option<String>) -> bool {
         match topic {
             WSTopic::Inbox => {
@@ -237,7 +219,7 @@ impl WebSocketManager {
         // Decrypt Message
         let node_name = self.node_name.clone().get_node_name_string();
         let sender_shinkai_name = ShinkaiName::new(format!("{}/main", node_name)).unwrap();
-        let shinkai_profile_name = "main".to_string();
+        let shinkai_profile_name = sender_shinkai_name.full_name.clone();
         let shared_key = ws_message.shared_key.clone();
 
         // Initialize the topic map for the new connection
