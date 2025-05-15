@@ -17,6 +17,7 @@ use shinkai_tools_primitives::tools::{
     tool_config::{ToolConfig, BasicConfig},
 };
 
+
 pub async fn list_tools_via_command(cmd_str: &str, env: Option<MCPServerEnv>) -> Result<Vec<Tool>> {
     // 1. Build the child process (via shell so we support complex commands)
     // Parse the command string for the executable and arguments
@@ -73,7 +74,7 @@ pub async fn list_tools_via_sse(sse_url: &str, _env: Option<MCPServerEnv>) -> Re
     let server_info = client.peer_info();
 
     // List tools
-    let tools_result = client.list_tools(None).await?;
+    let tools_result = client.list_tools(Default::default()).await?;
     
     // Gracefully shut down the client
     client.cancel().await?;
