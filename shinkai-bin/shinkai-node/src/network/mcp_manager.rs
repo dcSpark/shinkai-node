@@ -7,7 +7,7 @@ use rmcp::{
     ServiceExt
 };
 use tokio::process::Command;
-use shinkai_message_primitives::schemas::mcp_server::MCPServerConfig;
+use shinkai_message_primitives::schemas::mcp_server::MCPServerEnv;
 use shinkai_tools_primitives::tools::{
     tool_types::{ToolResult},
     shinkai_tool::ShinkaiTool,
@@ -17,7 +17,8 @@ use shinkai_tools_primitives::tools::{
     tool_config::{ToolConfig, BasicConfig},
 };
 
-pub async fn list_tools_via_command(cmd_str: &str, config: Option<MCPServerConfig>) -> Result<Vec<Tool>> {
+
+pub async fn list_tools_via_command(cmd_str: &str, env: Option<MCPServerEnv>) -> Result<Vec<Tool>> {
     // 1. Build the child process (via shell so we support complex commands)
     // Parse the command string for the executable and arguments
     let mut cmd_parts_iter = cmd_str.trim().split_whitespace();
@@ -33,7 +34,7 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<MCPServerConfi
     cmd.args(cmd_parts_iter);
     
     // Set environment variables from config if provided
-    if let Some(env_map) = &config { // config is Option<HashMap<String, String>>, so env_map is &HashMap<String, String>
+    if let Some(env_map) = &env { // env is Option<HashMap<String, String>>, so env_map is &HashMap<String, String>
         for (key, value) in env_map { // Iterate directly over the HashMap
             cmd.env(key, value);
         }
@@ -53,8 +54,8 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<MCPServerConfi
     Ok(tools)
 }
 
-pub async fn list_tools_via_sse(sse_url: &str, _config: Option<MCPServerConfig>) -> Result<Vec<Tool>> {
-    // TODO: The config parameter is not currently used by SseTransport or ClientInfo setup in the example.
+pub async fn list_tools_via_sse(sse_url: &str, _env: Option<MCPServerEnv>) -> Result<Vec<Tool>> {
+    // TODO: The env parameter is not currently used by SseTransport.
     // It might be used in the future for authentication headers or other SSE-specific configurations.
     let transport = SseTransport::start(sse_url).await?;
     let client_info = ClientInfo {

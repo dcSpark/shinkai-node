@@ -1,4 +1,4 @@
-use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerConfig};
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerEnv};
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 
@@ -6,7 +6,7 @@ impl SqliteManager {
     pub fn get_all_mcp_servers(&self) -> Result<Vec<MCPServer>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
-            conn.prepare("SELECT id, created_at, updated_at, name, type, url, command, config, is_enabled FROM mcp_servers")?;
+            conn.prepare("SELECT id, created_at, updated_at, name, type, url, command, env, is_enabled FROM mcp_servers")?;
 
         let servers = stmt.query_map([], |row| {
             Ok(MCPServer {
@@ -17,9 +17,9 @@ impl SqliteManager {
                 r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
                 url: row.get(5)?,
                 command: row.get(6)?,
-                config: {
-                    let config_str: Option<String> = row.get(7)?;
-                    config_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
                 },
                 is_enabled: row.get::<_, bool>(8)?,
             })
@@ -36,7 +36,7 @@ impl SqliteManager {
     pub fn get_mcp_server(&self, id: i64) -> Result<Option<MCPServer>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT id, created_at, updated_at, name, type, url, command, config, is_enabled FROM mcp_servers WHERE id = ?",
+            "SELECT id, created_at, updated_at, name, type, url, command, env, is_enabled FROM mcp_servers WHERE id = ?",
         )?;
         let mut rows = stmt.query([id])?;
         let row = rows.next()?;
@@ -49,9 +49,9 @@ impl SqliteManager {
                 r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
                 url: row.get(5)?,
                 command: row.get(6)?,
-                config: {
-                    let config_str: Option<String> = row.get(7)?;
-                    config_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
                 },
                 is_enabled: row.get::<_, bool>(8)?,
             }))
@@ -66,14 +66,14 @@ impl SqliteManager {
         r#type: MCPServerType,
         url: Option<String>,
         command: Option<String>,
-        config: Option<MCPServerConfig>,
+        env: Option<MCPServerEnv>,
         is_enabled: bool,
     ) -> Result<MCPServer, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "INSERT INTO mcp_servers (name, type, url, command, config, is_enabled) 
+            "INSERT INTO mcp_servers (name, type, url, command, env, is_enabled) 
              VALUES (?, ?, ?, ?, ?, ?) 
-             RETURNING id, created_at, updated_at, name, type, url, command, config, is_enabled",
+             RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
         )?;
 
         let mut rows = stmt.query([
@@ -81,7 +81,7 @@ impl SqliteManager {
             r#type.to_string(),
             url.clone().unwrap_or("".to_string()),
             command.clone().unwrap_or("".to_string()),
-            serde_json::to_string(&config).unwrap_or("{}".to_string()),
+            serde_json::to_string(&env).unwrap_or("{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
         ])?;
 
@@ -94,9 +94,9 @@ impl SqliteManager {
                 r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
                 url: row.get(5)?,
                 command: row.get(6)?,
-                config: {
-                    let config_str: Option<String> = row.get(7)?;
-                    config_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
                 },
                 is_enabled: row.get::<_, bool>(8)?,
             }),

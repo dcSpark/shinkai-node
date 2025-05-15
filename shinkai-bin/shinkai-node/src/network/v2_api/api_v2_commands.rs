@@ -2397,13 +2397,13 @@ impl Node {
             mcp_server.r#type,
             mcp_server.url.clone(),
             mcp_server.command.clone(),
-            mcp_server.config.clone(),
+            mcp_server.env.clone(),
             mcp_server.is_enabled,
         ) {
             Ok(server) => {
                 log::info!("MCP Server '{}' (ID: {:?}) added to database successfully.", server.name, server.id);
-                if let Some(config) = &server.config {
-                    log::info!("MCP Server '{}' (ID: {:?}) config: {:?}", server.name, server.id, config);
+                if let Some(env) = &server.env {
+                    log::info!("MCP Server '{}' (ID: {:?}) env: {:?}", server.name, server.id, env);
                 }
                 if server.r#type == MCPServerType::Command && server.is_enabled {
                     if let Some(command_str) = &server.command {
@@ -2412,8 +2412,8 @@ impl Node {
                         log::info!("Attempting to list tools for command: '{}' (Note: this runs the command separately for listing tools)", command_str);
                         let mut tools_config: Vec<ToolConfig> = vec![];
                         // Iterate over server config and add each key-value pair as a BasicConfig
-                        if let Some(config) = &server.config {
-                            for (key, value) in config {
+                        if let Some(env) = &server.env {
+                            for (key, value) in env {
                                 tools_config.push(ToolConfig::BasicConfig(BasicConfig {
                                     key_name: key.clone(),
                                     description: format!("Configuration for {}", key),
@@ -2423,7 +2423,7 @@ impl Node {
                                 }));
                             }
                         }
-                        match mcp_manager::list_tools_via_command(command_str, server.config.clone()).await {
+                        match mcp_manager::list_tools_via_command(command_str, server.env.clone()).await {
                             Ok(tools) => {
                                 for tool in tools {  
                                     // Use the new function from mcp_manager instead of inline conversion
