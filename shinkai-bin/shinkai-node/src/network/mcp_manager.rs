@@ -1,7 +1,11 @@
 use anyhow::Result;
 use serde_json::json;
 use std::sync::Arc;
-use rmcp::{model::Tool, transport::TokioChildProcess, ServiceExt};
+use rmcp::{
+    model::{ClientCapabilities, ClientInfo, Tool, Implementation},
+    transport::{TokioChildProcess, SseTransport},
+    ServiceExt
+};
 use tokio::process::Command;
 use shinkai_message_primitives::schemas::mcp_server::MCPServerConfig;
 use shinkai_tools_primitives::tools::{
@@ -47,6 +51,34 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<MCPServerConfi
     service.cancel().await?;
 
     Ok(tools)
+}
+
+pub async fn list_tools_via_sse(sse_url: &str, _config: Option<MCPServerConfig>) -> Result<Vec<Tool>> {
+    // TODO: The config parameter is not currently used by SseTransport or ClientInfo setup in the example.
+    // It might be used in the future for authentication headers or other SSE-specific configurations.
+    let transport = SseTransport::start(sse_url).await?;
+    let client_info = ClientInfo {
+        protocol_version: Default::default(),
+        capabilities: ClientCapabilities::default(),
+        client_info: Implementation {
+            name: "shinkai_node_sse_client".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    };
+    let client = client_info.serve(transport).await.map_err(|e| {
+        anyhow::anyhow!("SSE client connection error: {:?}", e)
+    })?;
+
+    // Initialize and log server info (optional, but good for debugging)
+    let server_info = client.peer_info();
+
+    // List tools
+    let tools_result = client.list_tools(Default::default()).await?;
+    
+    // Gracefully shut down the client
+    client.cancel().await?;
+
+    Ok(tools_result.tools)
 }
 
 /// Converts an rmcp Tool to a ShinkaiTool::MCPServer
