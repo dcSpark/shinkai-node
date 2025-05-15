@@ -605,6 +605,14 @@ pub enum ExportInboxMessagesFormat {
     TXT,
 }
 
+/// An authenticated WebSocket message that includes a bearer token
+/// and the actual WSMessage payload
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuthenticatedWSMessage {
+    pub bearer_auth: String,
+    pub message: WSMessage,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct WSMessage {
     pub subscriptions: Vec<TopicSubscription>,

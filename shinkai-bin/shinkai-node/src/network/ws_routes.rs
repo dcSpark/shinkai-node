@@ -2,12 +2,12 @@ use super::ws_manager::WebSocketManager;
 use futures::stream::SplitSink;
 use futures::SinkExt;
 use futures::StreamExt;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WebSocketManagerError;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AuthenticatedWSMessage;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
+use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -43,20 +43,23 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
         match result {
             Ok(msg) => {
                 if let Ok(text) = msg.to_str() {
-                    // Attempt to deserialize the text message into a ShinkaiMessage
-                    if let Ok(shinkai_message) = serde_json::from_str::<ShinkaiMessage>(text) {
+                    // Attempt to deserialize the text message into an AuthenticatedWSMessage
+                    if let Ok(authenticated_message) = serde_json::from_str::<AuthenticatedWSMessage>(text) {
                         shinkai_log(
                             ShinkaiLogOption::WsAPI,
                             ShinkaiLogLevel::Info,
-                            &format!("Received ShinkaiMessage: {:?}", shinkai_message),
+                            &format!(
+                                "Received AuthenticatedWSMessage: bearer_auth={}, message={:?}",
+                                authenticated_message.bearer_auth, authenticated_message.message
+                            ),
                         );
 
-                        // Process the ShinkaiMessage
-                        if let Err(e) = process_shinkai_message(&shinkai_message, &manager, &ws_tx).await {
+                        // Process the AuthenticatedWSMessage
+                        if let Err(e) = process_authenticated_message(&authenticated_message, &manager, &ws_tx).await {
                             shinkai_log(
                                 ShinkaiLogOption::WsAPI,
                                 ShinkaiLogLevel::Error,
-                                &format!("Error processing ShinkaiMessage: {}", e),
+                                &format!("Error processing AuthenticatedWSMessage: {}", e),
                             );
                             // Send an error message back to the client
                             let mut lock = ws_tx.lock().await;
@@ -68,11 +71,11 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
                         shinkai_log(
                             ShinkaiLogOption::WsAPI,
                             ShinkaiLogLevel::Error,
-                            &format!("Failed to parse ShinkaiMessage. Payload: {:?}", text),
+                            &format!("Failed to parse AuthenticatedWSMessage. Payload: {:?}", text),
                         );
                         // Handle the parsing error
                         let mut lock = ws_tx.lock().await;
-                        let _ = lock.send(Message::text("Failed to parse ShinkaiMessage")).await;
+                        let _ = lock.send(Message::text("Failed to parse AuthenticatedWSMessage")).await;
                     }
                 } else {
                     shinkai_log(
@@ -104,26 +107,88 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
     );
 }
 
-async fn process_shinkai_message(
-    shinkai_message: &ShinkaiMessage,
+// Helper function to check bearer token
+fn check_bearer_token(api_key: &str, bearer_token: &str) -> Result<(), WebSocketManagerError> {
+    // Remove "Bearer " prefix if present
+    let token = if bearer_token.starts_with("Bearer ") {
+        &bearer_token[7..]
+    } else {
+        bearer_token
+    };
+
+    if token == api_key {
+        Ok(())
+    } else {
+        Err(WebSocketManagerError::AccessDenied("Invalid bearer token".to_string()))
+    }
+}
+
+// Function to validate bearer token against API key from env or database
+async fn validate_bearer_token(bearer_token: &str, manager: &WebSocketManager) -> Result<(), WebSocketManagerError> {
+    // Get API key from environment variable or database
+    let api_key = match env::var("API_V2_KEY") {
+        Ok(api_key) => api_key,
+        Err(_) => {
+            // If environment variable is not set, try to get from the database
+            // First, upgrade the weak reference to the database
+            if let Some(db) = manager.get_db() {
+                match db.read_api_v2_key() {
+                    Ok(Some(key)) => key,
+                    Ok(None) => {
+                        return Err(WebSocketManagerError::AccessDenied(
+                            "No API key found in database".to_string(),
+                        ))
+                    }
+                    Err(e) => {
+                        return Err(WebSocketManagerError::AccessDenied(format!(
+                            "Error reading API key from database: {}",
+                            e
+                        )))
+                    }
+                }
+            } else {
+                return Err(WebSocketManagerError::AccessDenied(
+                    "Database connection not available".to_string(),
+                ));
+            }
+        }
+    };
+
+    // Validate the bearer token
+    check_bearer_token(&api_key, bearer_token)?;
+
+    // Log successful authentication
+    shinkai_log(
+        ShinkaiLogOption::WsAPI,
+        ShinkaiLogLevel::Info,
+        "Bearer token authentication successful",
+    );
+
+    Ok(())
+}
+
+async fn process_authenticated_message(
+    authenticated_message: &AuthenticatedWSMessage,
     manager: &Arc<Mutex<WebSocketManager>>,
     ws_tx: &Arc<Mutex<SplitSink<WebSocket, warp::ws::Message>>>,
 ) -> Result<(), WebSocketManagerError> {
-    let shinkai_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(shinkai_message)
-        .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e)))?;
+    // Extract the bearer token
+    let bearer_auth = &authenticated_message.bearer_auth;
 
+    // Get manager lock to access database
+    {
+        let manager_guard = manager.lock().await;
+        // Validate the bearer token
+        validate_bearer_token(bearer_auth, &manager_guard).await?;
+    }
+
+    // Get a new manager guard for the manage_connections call
     let mut manager_guard = manager.lock().await;
+
+    // Call the updated manage_connections method with WSMessage directly
     manager_guard
-        .manage_connections(shinkai_name, shinkai_message.clone(), Arc::clone(ws_tx))
+        .manage_connections(authenticated_message.message.clone(), Arc::clone(ws_tx))
         .await
-        .map_err(|e| {
-            match e {
-                WebSocketManagerError::UserValidationFailed(_) => e,
-                WebSocketManagerError::AccessDenied(_) => e,
-                _ => WebSocketManagerError::UserValidationFailed(format!("Failed to manage connections: {}", e)),
-                // Add additional error handling as needed
-            }
-        })
 }
 
 pub async fn run_ws_api(ws_address: SocketAddr, manager: SharedWebSocketManager) {
