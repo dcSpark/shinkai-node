@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use serde::Deserialize;
-use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerConfig};
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerEnv};
 use utoipa::{openapi, OpenApi, ToSchema};
 use warp::Filter;
 
@@ -14,7 +14,7 @@ pub struct AddMCPServerRequest {
     pub r#type: MCPServerType,
     pub url: Option<String>,
     pub command: Option<String>,
-    pub config: Option<MCPServerConfig>,
+    pub env: Option<MCPServerEnv>,
     pub is_enabled: bool,
 }
 
