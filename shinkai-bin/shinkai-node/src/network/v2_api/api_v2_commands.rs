@@ -72,7 +72,7 @@ use tokio::time::Duration;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use crate::network::mcp_manager::list_tools_via_command;
+use crate::network::mcp_manager::{list_tools_via_command, convert_to_shinkai_tool};
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -2410,43 +2410,16 @@ impl Node {
                         match list_tools_via_command(command_str, server.config.clone()).await {
                             Ok(tools) => {
                                 for tool in tools {  
-                                    let props_map: std::collections::HashMap<String, shinkai_tools_primitives::tools::parameters::Property> = tool.input_schema
-                                        .get("properties")
-                                        .and_then(|v| serde_json::from_value(v.clone()).ok())
-                                        .unwrap_or_default();
-
-                                    let req_vec: Vec<String> = tool.input_schema
-                                        .get("required")
-                                        .and_then(|v| serde_json::from_value(v.clone()).ok())
-                                        .unwrap_or_default();
-
-                                    let mcp_tool = MCPServerTool {
-                                        name: format!("{}_{}", server.name, tool.name),
-                                        author: node_name.to_string(),
-                                        description: tool.description.to_string(),
-                                        config: tools_config.clone(),
-                                        activated: true,
-                                        input_args: Parameters {
-                                            schema_type: tool.input_schema.get("type").and_then(|v| v.as_str()).map(String::from).unwrap_or_else(|| "object".to_string()),
-                                            properties: props_map,
-                                            required: req_vec,
-                                        },
-                                        keywords: vec![],
-                                        version: "1.0.0".to_string(),
-                                        embedding: None,
-                                        mcp_enabled: Some(false),
-                                        mcp_server_ref: server.id.expect("Server ID should exist").to_string(),
-                                        mcp_server_tool: tool.name.to_string(),
-                                        mcp_server_url: "".to_string(),
-                                        output_arg: ToolOutputArg::empty(),
-                                        result: ToolResult {
-                                            r#type: "object".to_string(),
-                                            properties: serde_json::json!({}),
-                                            required: vec![],
-                                        },
-                                        tool_set: format!("__mcp_{}", server.name).into(),
-                                    };
-                                    let shinkai_tool = ShinkaiTool::MCPServer(mcp_tool, true);
+                                    // Use the new function from mcp_manager instead of inline conversion
+                                    let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
+                                    let shinkai_tool = crate::network::mcp_manager::convert_to_shinkai_tool(
+                                        &tool,
+                                        &server.name,
+                                        &server_id,
+                                        &node_name.to_string(),
+                                        tools_config.clone(),
+                                    );
+                                    
                                     if let Err(err) = db.add_tool(shinkai_tool).await {
                                         eprintln!("Warning: Failed to add mcp server tool: {}", err);
                                     };
