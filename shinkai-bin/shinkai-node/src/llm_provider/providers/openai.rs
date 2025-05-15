@@ -71,7 +71,8 @@ impl LLMService for OpenAI {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
@@ -138,6 +139,8 @@ impl LLMService for OpenAI {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
+
+                // TODO: add tracing of the payload
 
                 if is_stream {
                     handle_streaming_response(
