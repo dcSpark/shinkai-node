@@ -391,7 +391,7 @@ pub async fn compute_download_store_quest(db: Arc<SqliteManager>) -> Result<bool
 
     // Get all installed tools
     let installed_tools = db
-        .get_all_tool_headers()
+        .get_all_tool_headers(false)
         .map_err(|e| format!("Failed to get installed tools: {}", e))?;
 
     // Count tools that were downloaded (exist in default tools but don't have playground)

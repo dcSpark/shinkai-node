@@ -90,6 +90,8 @@ pub enum SqliteManagerError {
     ValidationError(String),
     #[error("Tool type mismatch")]
     ToolTypeMismatch,
+    #[error("Tool is simulated: {0}")]
+    ToolSimulated(String),
     // Add other error variants as needed
 }
 

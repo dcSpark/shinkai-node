@@ -200,6 +200,7 @@ where
             }
         }
     });
+
     rt.shutdown_timeout(Duration::from_secs(10));
     if let Err(e) = status {
         // NOTE: This error did not happen here.

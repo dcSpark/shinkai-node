@@ -43,6 +43,8 @@ async fn calculate_zip_dependencies(
             ShinkaiTool::Deno(_, _) => (),
             ShinkaiTool::Python(_, _) => (),
             ShinkaiTool::Rust(_, _) => (),
+            ShinkaiTool::Network(_, _) => (),
+            ShinkaiTool::Simulated(_, _) => (),
             ShinkaiTool::Agent(agent_tool, _) => {
                 let agent = match db.get_agent(&agent_tool.agent_id) {
                     Ok(agent) => agent,
@@ -66,7 +68,6 @@ async fn calculate_zip_dependencies(
                 .await?;
                 return Ok(());
             }
-            ShinkaiTool::Network(_, _) => (),
         }
 
         // This tool might have dependendies, so let's check them.
@@ -182,6 +183,7 @@ async fn get_dependencies_for_zip(
                 continue;
             }
             ShinkaiTool::Network(_, _) => (),
+            ShinkaiTool::Simulated(_, _) => (),
         }
 
         let tool_bytes = match Box::pin(generate_tool_zip(
@@ -789,6 +791,7 @@ pub async fn import_tool(
         ShinkaiTool::Deno(_, _) => {}
         ShinkaiTool::Python(_, _) => {}
         ShinkaiTool::Network(_, _) => {}
+        ShinkaiTool::Simulated(_, _) => {}
         ShinkaiTool::Rust(_, _) => {
             println!("Rust tool detected {}. Skipping installation.", tool_router_key);
             return Ok(json!({

@@ -145,7 +145,7 @@ async fn select_tool_router_key_from_intent(
     llm_provider: String,
 ) -> Result<String, ToolError> {
     let all_tool_headers = db
-        .get_all_tool_headers()
+        .get_all_tool_headers(false)
         .map_err(|e| ToolError::ExecutionError(format!("Failed to get all tool headers: {}", e)))?;
 
     let mut list_of_tools: String = "".to_string();

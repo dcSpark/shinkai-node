@@ -420,7 +420,10 @@ fn tool_duplicate_tests() {
                 let result = metadata.get("result").unwrap().as_object().unwrap();
                 eprintln!("Result: {:?}", result);
 
-                let properties = result.get("properties").unwrap().as_object().unwrap();
+                let properties = result.get("properties");
+                let properties = properties.unwrap();
+                let properties = properties.as_object();
+                let properties = properties.unwrap();
                 eprintln!("Properties: {:?}", properties);
 
                 let properties_result_type = properties.get("result").unwrap().get("type").unwrap().as_str().unwrap();

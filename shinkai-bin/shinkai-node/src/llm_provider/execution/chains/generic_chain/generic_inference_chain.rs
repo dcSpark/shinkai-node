@@ -224,7 +224,10 @@ impl GenericInferenceChain {
             &format!("start_generic_inference_chain>  message: {:?}", user_message),
         );
         let start_time = Instant::now();
-
+        let is_agent_with_tools = match &llm_provider {
+            ProviderOrAgent::Agent(agent) => !agent.tools.is_empty(),
+            ProviderOrAgent::LLMProvider(_) => false,
+        };
         /*
         How it (should) work:
 
@@ -367,13 +370,17 @@ impl GenericInferenceChain {
                             // If tool not found directly, try FTS and vector search
                             let sanitized_query = tool_name.replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
 
+                            // include_simulated should be false by default and only turned on if used by agent.
                             // Perform FTS search
-                            let fts_results = tool_router.sqlite_manager.search_tools_fts(&sanitized_query);
+                            let fts_results = tool_router
+                                .sqlite_manager
+                                .search_tools_fts(&sanitized_query, is_agent_with_tools);
 
                             // Perform vector search
                             let vector_results = tool_router
                                 .sqlite_manager
-                                .tool_vector_search(&sanitized_query, 5, false, true)
+                                // include_simulated should be false by default and only turned on if used by agent.
+                                .tool_vector_search(&sanitized_query, 5, false, true, is_agent_with_tools)
                                 .await;
 
                             match (fts_results, vector_results) {
@@ -445,10 +452,7 @@ impl GenericInferenceChain {
             let tools_allowed = job_config.as_ref().and_then(|config| config.use_tools).unwrap_or(false);
 
             // 2c. Check if the LLM provider is an agent with tools
-            let is_agent_with_tools = match &llm_provider {
-                ProviderOrAgent::Agent(agent) => !agent.tools.is_empty(),
-                ProviderOrAgent::LLMProvider(_) => false,
-            };
+            // is_agent_with_tools
 
             // 2d. Check if the LLM provider/agent has tool capabilities
             let can_use_tools = ModelCapabilitiesManager::has_tool_capabilities_for_provider_or_agent(
@@ -491,7 +495,8 @@ impl GenericInferenceChain {
                     // to find the most relevant tools for the user's message
                     if let Some(tool_router) = &tool_router {
                         let results = tool_router
-                            .combined_tool_search(&user_message.clone(), 7, false, true)
+                            // include_simulated should be false by default and only turned on if used by agent.
+                            .combined_tool_search(&user_message.clone(), 7, false, true, is_agent_with_tools)
                             .await;
 
                         match results {

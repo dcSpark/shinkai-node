@@ -7,6 +7,9 @@ use crate::{
         zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool},
         Node,
     },
+    tools::tool_implementation::{
+        native_tools::llm_prompt_processor::LlmPromptProcessorTool, tool_traits::ToolExecutor,
+    },
     tools::{
         tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
         tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
@@ -17,7 +20,8 @@ use crate::{
 };
 use async_channel::Sender;
 use chrono::Utc;
-use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
+use ed25519_dalek::ed25519::signature::SignerMut;
+use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Map, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
@@ -47,22 +51,24 @@ use shinkai_tools_primitives::tools::{
     python_tools::PythonTool,
     shinkai_tool::ShinkaiToolHeader,
     shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    simulated_tool::SimulatedTool,
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
     tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     env,
-    fs::File,
-    io::{Read, Write},
+    io::Read,
     path::{absolute, PathBuf},
-    sync::Arc,
     time::Instant,
 };
 use tokio::fs;
-use tokio::{process::Command, sync::Mutex};
+use tokio::process::Command;
+use tokio::sync::Mutex;
+use uuid::Uuid;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -176,9 +182,9 @@ impl Node {
                 .iter()
                 .map(|tool| tool.to_string_without_version())
                 .collect::<Vec<String>>();
-            db.tool_vector_search_with_vector_limited(embedding, 5, tool_names)
+            db.tool_vector_search_with_vector_limited(embedding, 5, tool_names, false)
         } else {
-            db.tool_vector_search(&sanitized_query, 5, false, true).await
+            db.tool_vector_search(&sanitized_query, 5, false, true, false).await
         };
 
         let vector_elapsed_time = vector_start_time.elapsed();
@@ -186,7 +192,7 @@ impl Node {
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = db.search_tools_fts(&sanitized_query);
+        let fts_search_result = db.search_tools_fts(&sanitized_query, false);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
 
@@ -257,6 +263,7 @@ impl Node {
         bearer: String,
         node_name: ShinkaiName,
         category: Option<String>,
+        include_simulated: bool,
         tool_router: Option<Arc<ToolRouter>>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -266,7 +273,7 @@ impl Node {
         }
 
         // List all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(include_simulated) {
             Ok(tools) => {
                 // Group tools by their base key (without version)
                 use std::collections::HashMap;
@@ -399,7 +406,7 @@ impl Node {
         let _bearer = Self::get_bearer_token(db.clone(), &res).await?;
 
         // List all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 // Group tools by their base key (without version)
                 use std::collections::HashMap;
@@ -1526,7 +1533,7 @@ impl Node {
 
         let all_tools: Vec<ToolRouterKey> = db
             .clone()
-            .get_all_tool_headers()?
+            .get_all_tool_headers(false)?
             .into_iter()
             .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
                 Ok(tool_router_key) => Some(tool_router_key),
@@ -1657,7 +1664,7 @@ impl Node {
             .map(|t| t.to_string())
             .collect();
             let user_tools: Vec<String> = tools.iter().map(|tools| tools.to_string_with_version()).collect();
-            let all_tool_headers = db.clone().get_all_tool_headers()?;
+            let all_tool_headers = db.clone().get_all_tool_headers(false)?;
             all_tool_headers
                 .into_iter()
                 .map(|tool| ToolRouterKey::from_string(&tool.tool_router_key))
@@ -2472,6 +2479,7 @@ impl Node {
         if let Err(err) = import_status {
             return Err(err);
         }
+
         import_tool(db, node_env, zip_contents, tool).await
     }
 
@@ -2809,7 +2817,7 @@ impl Node {
         }
 
         // Get all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 let mut tool_statuses: Vec<(String, bool)> = Vec::new();
 
@@ -2869,7 +2877,7 @@ impl Node {
         }
 
         // Get all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 let mut tool_statuses: Vec<(String, bool)> = Vec::new();
 
@@ -3051,23 +3059,58 @@ impl Node {
         new_tool.update_author(node_name.node_name.clone());
 
         // Update the tool_router_key for Deno and Python tools since they store it explicitly
-        if let ShinkaiTool::Deno(deno_tool, _enabled) = &mut new_tool {
-            if deno_tool.tool_router_key.is_some() {
-                deno_tool.tool_router_key = Some(ToolRouterKey::new(
-                    "local".to_string(),
-                    node_name.node_name.clone(),
-                    new_name,
-                    None,
-                ));
+        match &mut new_tool {
+            ShinkaiTool::Deno(deno_tool, _enabled) => {
+                if deno_tool.tool_router_key.is_some() {
+                    deno_tool.tool_router_key = Some(ToolRouterKey::new(
+                        "local".to_string(),
+                        node_name.node_name.clone(),
+                        new_name,
+                        None,
+                    ));
+                }
             }
-        } else if let ShinkaiTool::Python(python_tool, _enabled) = &mut new_tool {
-            if python_tool.tool_router_key.is_some() {
-                python_tool.tool_router_key = Some(ToolRouterKey::new(
-                    "local".to_string(),
-                    node_name.node_name.clone(),
-                    new_name,
-                    None,
-                ));
+            ShinkaiTool::Python(python_tool, _enabled) => {
+                if python_tool.tool_router_key.is_some() {
+                    python_tool.tool_router_key = Some(ToolRouterKey::new(
+                        "local".to_string(),
+                        node_name.node_name.clone(),
+                        new_name,
+                        None,
+                    ));
+                }
+            }
+            ShinkaiTool::Simulated(_, _) => {
+                // TODO Simulated tools do not have a implicit tool_router_key.
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Agent tools cannot be duplicated".to_string(),
+                });
+            }
+            ShinkaiTool::Agent(_, _) => {
+                // AgentsTools are created/destroyed when the agent is created/destroyed.
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Agent tools cannot be duplicated".to_string(),
+                });
+            }
+            ShinkaiTool::Network(_, _) => {
+                // TOOD: How to handle this
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Network tools cannot be duplicated".to_string(),
+                });
+            }
+            ShinkaiTool::Rust(_, _) => {
+                // These tools cannot be duplicated, as they are implemented in the node.
+                return Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Rust tools cannot be duplicated".to_string(),
+                });
             }
         }
 
@@ -3093,37 +3136,6 @@ impl Node {
                 (new_playground, false)
             }
             Err(_) => {
-                // Create a new playground from the tool data
-                let output = new_tool.output_arg();
-                let output_json = output.json;
-                // Attempt to parse the output_json into a meaningful result
-                let result: ToolResult = if !output_json.is_empty() {
-                    match serde_json::from_str::<serde_json::Value>(&output_json) {
-                        Ok(value) => {
-                            // Extract type from the value if possible
-                            let result_type = if value.is_object() {
-                                "object"
-                            } else if value.is_array() {
-                                "array"
-                            } else if value.is_string() {
-                                "string"
-                            } else if value.is_number() {
-                                "number"
-                            } else if value.is_boolean() {
-                                "boolean"
-                            } else {
-                                "object"
-                            };
-
-                            ToolResult::new(result_type.to_string(), value, vec![])
-                        }
-                        Err(_) => ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-                    }
-                } else {
-                    // Default to a basic object result when we can't extract anything meaningful
-                    ToolResult::new("object".to_string(), serde_json::Value::Null, vec![])
-                };
-
                 // Properly extract metadata from the original tool
                 let language = match original_tool {
                     ShinkaiTool::Deno(_, _) => CodeLanguage::Typescript,
@@ -3143,7 +3155,11 @@ impl Node {
                         keywords: new_tool.get_keywords(),
                         configurations: new_tool.get_config(),
                         parameters: new_tool.input_args(),
-                        result,
+                        result: match new_tool.clone() {
+                            ShinkaiTool::Deno(deno_tool, _) => deno_tool.result,
+                            ShinkaiTool::Python(python_tool, _) => python_tool.result,
+                            _ => unreachable!(),
+                        },
                         sql_tables: new_tool.sql_tables(),
                         sql_queries: new_tool.sql_queries(),
                         tools: Some(new_tool.get_tools()),
@@ -3542,7 +3558,7 @@ impl Node {
 
         // Get all tool-key-paths
         let tool_list: Vec<ToolRouterKey> = db
-            .get_all_tool_headers()
+            .get_all_tool_headers(false)
             .map_err(|e| APIError {
                 code: 500,
                 error: "Failed to get tool headers".to_string(),
@@ -3759,7 +3775,7 @@ LANGUAGE={env_language}
         }
 
         // List all tools
-        match db.get_all_tool_headers() {
+        match db.get_all_tool_headers(false) {
             Ok(tools) => {
                 // Group tools by their base key (without version)
                 use std::collections::HashMap;
@@ -3959,11 +3975,7 @@ LANGUAGE={env_language}
         let result = match db.set_common_toolset_config(&tool_set_key, values).await {
             Ok(updated_keys) => Ok(updated_keys),
             Err(e) => {
-                eprintln!(
-                    "Error setting common config for toolset '{}': {}",
-                    tool_set_key,
-                    e
-                );
+                eprintln!("Error setting common config for toolset '{}': {}", tool_set_key, e);
                 Err(APIError {
                     code: 500,
                     error: "Failed to set common config".to_string(),
@@ -4115,7 +4127,7 @@ LANGUAGE={env_language}
         }
 
         let tools: Vec<ToolRouterKey> = db
-            .get_all_tool_headers()
+            .get_all_tool_headers(false)
             .map_err(|_| ToolError::ExecutionError("Failed to get tool headers".to_string()))?
             .iter()
             .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
@@ -4232,6 +4244,195 @@ LANGUAGE={env_language}
         Ok(())
     }
 
+    pub async fn v2_api_create_simulated_tool(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        name: String,
+        prompt: String,
+        agent_id: String,
+        llm_provider: String,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut retries = 3;
+        let mut tool_metadata_implementation;
+        loop {
+            tool_metadata_implementation = Self::create_tool_metadata_from_prompt(
+                format!("{}: {}", name, prompt),
+                llm_provider.clone(),
+                db.clone(),
+                bearer.clone(),
+                node_name.clone(),
+                identity_manager.clone(),
+                job_manager.clone(),
+                encryption_secret_key.clone(),
+                encryption_public_key.clone(),
+                signing_secret_key.clone(),
+            )
+            .await;
+
+            if let Err(e) = tool_metadata_implementation {
+                if retries > 0 {
+                    retries -= 1;
+                    continue;
+                }
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create simulated tool: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+            break;
+        }
+        let tool_metadata_implementation = tool_metadata_implementation.unwrap();
+        let random = Uuid::new_v4().to_string();
+        let metadata: ToolPlaygroundMetadata = serde_json::from_value(tool_metadata_implementation).unwrap();
+
+        // Create a simulated tool
+        let simulated_tool = SimulatedTool {
+            name: format!("{}-{}-{}", agent_id, metadata.name, random),
+            description: metadata.description.to_string(),
+            keywords: metadata.keywords,
+            config: metadata.configurations,
+            input_args: metadata.parameters,
+            result: metadata.result,
+            embedding: None,
+        };
+
+        // Save the tool
+        let save_result = db.add_tool(ShinkaiTool::Simulated(simulated_tool.clone(), true)).await;
+        if let Err(e) = save_result {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create simulated tool: {}", e),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        let agent = db.clone().get_agent(&agent_id);
+        if let Err(e) = agent {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get agent: {}", e),
+                }))
+                .await;
+            return Ok(());
+        }
+        let agent = agent.unwrap();
+        if agent.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Failed to get agent".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        let mut agent = agent.unwrap();
+        agent.tools.push(simulated_tool.get_tool_router_key());
+        let status = db.update_agent(agent);
+        if let Err(e) = status {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update agent: {}", e),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        let _ = res
+            .send(Ok(json!({
+                "status": "success",
+                "message": "Simulated tool created successfully",
+                "tool_router_key": simulated_tool.get_tool_router_key_string(),
+            })))
+            .await;
+        Ok(())
+    }
+
+    async fn create_tool_metadata_from_prompt(
+        tool_prompt: String,
+        llm_provider: String,
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_name: ShinkaiName,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager: Arc<Mutex<JobManager>>,
+        encryption_secret_key: EncryptionStaticKey,
+        encryption_public_key: EncryptionPublicKey,
+        signing_secret_key: SigningKey,
+    ) -> Result<Value, ToolError> {
+        let tool_metadata_implementation = tool_metadata_implementation_prompt(
+            CodeLanguage::Typescript,
+            tool_prompt,
+            vec![],
+            identity_manager.clone(),
+        )
+        .await
+        .map_err(|e| {
+            ToolError::ExecutionError(format!(
+                "Failed to generate tool metadata implementation: {}",
+                e.message
+            ))
+        })?;
+
+        let mut parameters = Map::new();
+        parameters.insert("prompt".to_string(), tool_metadata_implementation.clone().into());
+        parameters.insert("llm_provider".to_string(), llm_provider.clone().into());
+
+        let body = LlmPromptProcessorTool::execute(
+            bearer,
+            "tool_id".to_string(),
+            "app_id".to_string(),
+            db,
+            node_name,
+            identity_manager,
+            job_manager,
+            encryption_secret_key,
+            encryption_public_key,
+            signing_secret_key,
+            &parameters,
+            llm_provider,
+        )
+        .await?;
+
+        let message_value = body.get("message").unwrap();
+        let message = message_value.as_str().unwrap_or_default();
+        let mut message_split = message.split("\n").collect::<Vec<&str>>();
+        let len = message_split.clone().len();
+
+        if message_split[0] == "```json" {
+            message_split[0] = "";
+        }
+        if message_split[len - 1] == "```" {
+            message_split[len - 1] = "";
+        }
+        let cleaned_json = message_split.join(" ");
+
+        serde_json::from_str::<serde_json::Value>(&cleaned_json)
+            .map_err(|e| ToolError::ExecutionError(format!("Failed to parse JSON: {}", e)))
+    }
+
     pub async fn v2_api_get_shinkai_tool_metadata(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -4241,9 +4442,8 @@ LANGUAGE={env_language}
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-
         let tool = db.get_tool_by_key(&tool_router_key);
-        
+
         match tool {
             Ok(tool) => {
                 let metadata_struct = tool.get_metadata();
@@ -4255,11 +4455,15 @@ LANGUAGE={env_language}
                     }
                     Err(e) => {
                         eprintln!("Failed to serialize metadata: {}", e);
-                        if res.send(Err(APIError {
-                            code: 500,
-                            error: "Serialization Error".to_string(),
-                            message: format!("Failed to serialize tool metadata: {}", e),
-                        })).await.is_err() {
+                        if res
+                            .send(Err(APIError {
+                                code: 500,
+                                error: "Serialization Error".to_string(),
+                                message: format!("Failed to serialize tool metadata: {}", e),
+                            }))
+                            .await
+                            .is_err()
+                        {
                             eprintln!("Failed to send serialization error response");
                         }
                     }

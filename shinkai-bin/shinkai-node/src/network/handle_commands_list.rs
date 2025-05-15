@@ -1766,7 +1766,12 @@ impl Node {
                     let _ = Node::v2_api_scan_ollama_models(db_clone, bearer, res).await;
                 });
             }
-            NodeCommand::V2ApiListAllShinkaiTools { bearer, category, res } => {
+            NodeCommand::V2ApiListAllShinkaiTools {
+                bearer,
+                category,
+                include_simulated,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let tool_router_clone = self.tool_router.clone();
                 let node_name_clone = self.node_name.clone();
@@ -1776,6 +1781,7 @@ impl Node {
                         bearer,
                         node_name_clone,
                         category,
+                        include_simulated,
                         tool_router_clone,
                         res,
                     )
@@ -1888,6 +1894,36 @@ impl Node {
             //         let _ = Node::v2_api_list_files_in_inbox(db_clone, bearer, inbox_name, res).await;
             //     });
             // }
+            NodeCommand::V2ApiGenerateAgentFromPrompt {
+                bearer,
+                prompt,
+                llm_provider,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key.clone();
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_generate_agent_from_prompt(
+                        db_clone,
+                        bearer,
+                        prompt,
+                        llm_provider,
+                        node_name,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiGetToolOffering {
                 bearer,
                 tool_key_name,
@@ -3071,6 +3107,42 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_preferences(db_clone, bearer, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiCreateSimulatedTool {
+                bearer,
+                name,
+                prompt,
+                agent_id,
+                llm_provider,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let identity_manager_clone = self.identity_manager.clone();
+                let job_manager_clone = self.job_manager.clone().unwrap();
+                let encryption_secret_key_clone = self.encryption_secret_key.clone();
+                let encryption_public_key_clone = self.encryption_public_key;
+                let signing_secret_key_clone = self.identity_secret_key.clone();
+
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_create_simulated_tool(
+                        db_clone,
+                        bearer,
+                        name,
+                        prompt,
+                        agent_id,
+                        llm_provider,
+                        node_name_clone,
+                        identity_manager_clone,
+                        job_manager_clone,
+                        encryption_secret_key_clone,
+                        encryption_public_key_clone,
+                        signing_secret_key_clone,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiGetLastUsedAgentsAndLLMs { bearer, last, res } => {
