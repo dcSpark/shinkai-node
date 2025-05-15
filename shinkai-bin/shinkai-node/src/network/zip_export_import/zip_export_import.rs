@@ -278,8 +278,8 @@ pub async fn generate_agent_zip(
 
         let mut zip_files = get_dependencies_for_zip(
             db.clone(),
-            shinkai_name,
-            node_env,
+            shinkai_name.clone(),
+            node_env.clone(),
             &agent_dependencies,
             &tool_dependencies,
         )
@@ -298,53 +298,7 @@ pub async fn generate_agent_zip(
     }
     let mut zip_files = zip_files.unwrap();
 
-    for item in agent.scope.vector_fs_items {
-        let p = item.full_path();
-        if item.exists() {
-            let file_bytes = fs::read(p).await.map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to read file: {}", e),
-            })?;
-
-            zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
-        }
-    }
-
-    for item in agent.scope.vector_fs_folders {
-        if item.clone().exists() {
-            let files = std::fs::read_dir(item.clone().path).map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to read file: {}", e),
-            })?;
-
-            for entry in files {
-                let file = entry.map_err(|e| APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to read file: {}", e),
-                })?;
-                if file
-                    .file_type()
-                    .map_err(|e| APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to read file: {}", e),
-                    })?
-                    .is_file()
-                {
-                    let file_bytes = fs::read(file.path()).await.map_err(|e| APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to read file: {}", e),
-                    })?;
-
-                    zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
-                }
-            }
-        }
-    }
+    add_knowledge_to_zip(db.clone(), agent, &mut zip_files).await?;
 
     let mut zip = ZipWriter::new(file);
     for (file_name, file_bytes) in zip_files {
@@ -374,6 +328,94 @@ pub async fn generate_agent_zip(
     })?;
 
     Ok(file_bytes)
+}
+
+fn add_knowledge_embeddings_to_zip(
+    db: Arc<SqliteManager>,
+    item: ShinkaiPath,
+    zip_files: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), APIError> {
+    let name = item.relative_path().to_string();
+    let text_groups: Vec<(String, Vec<f32>)> =
+        ShinkaiFileManager::get_text_groups_with_embeddings(item, &db).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to get text groups with embeddings: {}", e),
+        })?;
+
+    // Serialize text_groups to JSON bytes
+    let data = serde_json::to_vec(&text_groups).map_err(|e| APIError {
+        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        error: "Internal Server Error".to_string(),
+        message: format!("Failed to serialize text groups: {}", e),
+    })?;
+
+    zip_files.insert(format!("__knowledge_embeddings/{}", name), data);
+
+    Ok(())
+}
+
+async fn add_knowledge_to_zip(
+    db: Arc<SqliteManager>,
+    agent: Agent,
+    zip_files: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), APIError> {
+    for item in agent.scope.vector_fs_items {
+        let p: &str = item.full_path();
+        if item.exists() {
+            let file_bytes = fs::read(p).await.map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read file: {}", e),
+            })?;
+
+            zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
+        }
+        add_knowledge_embeddings_to_zip(db.clone(), item, zip_files)?;
+    }
+
+    for item in agent.scope.vector_fs_folders {
+        if item.clone().exists() {
+            let files = std::fs::read_dir(item.clone().path).map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read file: {}", e),
+            })?;
+
+            for entry in files {
+                let file = entry.map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to read file: {}", e),
+                })?;
+                if file
+                    .file_type()
+                    .map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to read file: {}", e),
+                    })?
+                    .is_file()
+                {
+                    let path = file.path().to_str().unwrap_or_default().to_string();
+                    let shinkai_path = ShinkaiPath::new(&path);
+                    let file_bytes = fs::read(file.path()).await.map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to read file: {}", e),
+                    })?;
+
+                    zip_files.insert(
+                        format!("__knowledge/{}", shinkai_path.relative_path().to_string()),
+                        file_bytes,
+                    );
+                    add_knowledge_embeddings_to_zip(db.clone(), shinkai_path, zip_files)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn generate_tool_zip(
@@ -488,7 +530,11 @@ async fn import_tool_assets(
         if file == "__tool.json" {
             continue;
         }
-        if file.starts_with("__agents/") || file.starts_with("__tools/") || file.starts_with("__knowledge/") {
+        if file.starts_with("__agents/")
+            || file.starts_with("__tools/")
+            || file.starts_with("__knowledge/")
+            || file.starts_with("__knowledge_embeddings/")
+        {
             continue;
         }
         println!("[IMPORTING ASSETS]: {}", file);
@@ -577,25 +623,85 @@ async fn import_agent_knowledge(
                 }
             } // `tool_file` goes out of scope here
 
-            let relative_path = file.replace("__knowledge/", "");
+            let relative_path: String = file.replace("__knowledge/", "");
             let dest_path = ShinkaiPath::from_str(&relative_path);
-            ShinkaiFileManager::save_and_process_file(
-                dest_path,
-                buffer,
-                &db,
-                FileProcessingMode::Auto,
-                &*embedding_generator,
-            )
-            .await
-            .map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Failed to save and process file".to_string(),
-                message: format!("Failed to save and process file: {}", e),
-            })?;
+
+            let file_content = ShinkaiFileManager::get_file_content(dest_path.clone());
+            if file_content.is_ok() {
+                println!("[SKIPPING KNOWLEDGE]: {}", file);
+                continue;
+            }
+
+            // Let's check if the file has a embedding precalculated
+            let embedding_file: String = file.replace("__knowledge/", "__knowledge_embeddings/");
+            let embedding_buffer = get_embeedings_from_zip(embedding_file.clone(), zip_contents.clone())?;
+            if embedding_buffer.is_some() {
+                println!("[IMPORTING KNOWLEDGE (with embeddings)]: {}", file);
+                ShinkaiFileManager::save_and_process_file_with_embeddings(
+                    dest_path,
+                    buffer,
+                    &db,
+                    embedding_buffer.unwrap(),
+                )
+                .await
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to save and process file".to_string(),
+                    message: format!("Failed to save and process file: {}", e),
+                })?;
+            } else {
+                // Insert file and process it generating new embeddings
+                println!("[IMPORTING KNOWLEDGE (without embeddings)]: {}", file);
+                ShinkaiFileManager::save_and_process_file(
+                    dest_path,
+                    buffer,
+                    &db,
+                    FileProcessingMode::Auto,
+                    &*embedding_generator,
+                )
+                .await
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to save and process file".to_string(),
+                    message: format!("Failed to save and process file: {}", e),
+                })?;
+            }
         }
     }
 
     Ok(())
+}
+
+fn get_embeedings_from_zip(
+    file: String,
+    mut zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
+) -> Result<Option<Vec<(String, Vec<f32>)>>, APIError> {
+    let embedding_file = zip_contents.by_name(&file);
+    if embedding_file.is_err() {
+        return Ok(None);
+    }
+    let mut embedding_file = embedding_file.unwrap();
+    let mut embedding_buffer = Vec::new();
+    embedding_file
+        .read_to_end(&mut embedding_buffer)
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Failed to read embedding file".to_string(),
+            message: format!("Failed to read embedding file: {}", e),
+        })?;
+
+    let embedding_buffer: Vec<(String, Vec<f32>)> =
+        serde_json::from_slice(&embedding_buffer).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Failed to parse embedding file".to_string(),
+            message: format!("Failed to parse embedding file: {}", e),
+        })?;
+
+    let embedding_buffer = embedding_buffer
+        .into_iter()
+        .map(|(text, embedding)| (text, embedding.into_iter().map(|f| f as f32).collect()))
+        .collect();
+    Ok(Some(embedding_buffer))
 }
 
 pub async fn import_dependencies_tools(

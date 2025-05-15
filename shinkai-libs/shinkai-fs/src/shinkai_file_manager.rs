@@ -61,6 +61,67 @@ impl ShinkaiFileManager {
         Ok(())
     }
 
+    /// Save a file to disk and process it with pre-computed embeddings and chunks.
+    pub async fn save_and_process_file_with_embeddings(
+        dest_path: ShinkaiPath,
+        data: Vec<u8>,
+        sqlite_manager: &SqliteManager,
+        text_groups: Vec<(String, Vec<f32>)>,
+    ) -> Result<(), ShinkaiFsError> {
+        // Save the file to disk
+        Self::write_file_to_fs(dest_path.clone(), data)?;
+
+        // Compute the relative path
+        let rel_path = dest_path.relative_path();
+
+        // Calculate total characters from all text groups
+        let total_characters = text_groups.iter().map(|(text, _)| text.chars().count() as i64).sum();
+
+        // Calculate total tokens using llama3 token counting
+        let total_tokens = text_groups
+            .iter()
+            .map(|(text, _)| count_tokens_from_message_llama3(text) as i64)
+            .sum();
+
+        // Add the parsed file to the database
+        let parsed_file = ParsedFile {
+            id: None, // Expected. The DB will auto-generate the id.
+            relative_path: rel_path.to_string(),
+            original_extension: dest_path.extension().map(|s| s.to_string()),
+            description: None,
+            source: None,
+            embedding_model_used: None,
+            keywords: None,
+            distribution_info: None,
+            created_time: Some(Self::current_timestamp()),
+            tags: None,
+            total_tokens: Some(total_tokens),
+            total_characters: Some(total_characters),
+        };
+
+        sqlite_manager.add_parsed_file(&parsed_file)?;
+
+        // Retrieve the parsed file ID
+        let parsed_file_id = sqlite_manager
+            .get_parsed_file_by_rel_path(&rel_path)?
+            .ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?
+            .id
+            .unwrap();
+
+        // Create and add chunks to the database
+        for (position, (content, embedding)) in text_groups.into_iter().enumerate() {
+            let chunk = ShinkaiFileChunk {
+                chunk_id: None,
+                parsed_file_id,
+                position: position as i64,
+                content,
+            };
+            sqlite_manager.create_chunk_with_embedding(&chunk, Some(&embedding))?;
+        }
+
+        Ok(())
+    }
+
     /// Process file: If not in DB, add it. If supported, generate chunks.
     /// If already processed, consider checking if file changed (not implemented here).
     pub async fn process_embeddings_for_file(
@@ -278,7 +339,12 @@ impl ShinkaiFileManager {
         path: ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        Self::gather_directory_contents(&path, sqlite_manager, /* current_depth= */ 0, /* max_depth= */ 0)
+        Self::gather_directory_contents(
+            &path,
+            sqlite_manager,
+            /* current_depth= */ 0,
+            /* max_depth= */ 0,
+        )
     }
 
     /// Recursively list files/folders up to `max_depth`.
@@ -543,6 +609,42 @@ impl ShinkaiFileManager {
         let combined_results = unique_results.into_values().collect();
 
         Ok(combined_results)
+    }
+
+    /// Get text groups with embeddings for a given file path from the database.
+    /// This function retrieves the existing chunks and their embeddings from the database.
+    pub fn get_text_groups_with_embeddings(
+        path: ShinkaiPath,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<(String, Vec<f32>)>, ShinkaiFsError> {
+        // Get the relative path
+        let rel_path = path.relative_path();
+
+        // Get the parsed file from the database
+        let parsed_file = sqlite_manager
+            .get_parsed_file_by_rel_path(&rel_path)?
+            .ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+
+        // Get the parsed file ID
+        let parsed_file_id = parsed_file.id.ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+
+        // Get all chunks for this file
+        let chunks = sqlite_manager.get_chunks_for_parsed_file(parsed_file_id)?;
+
+        // Collect chunks with their embeddings
+        let mut text_groups_with_embeddings = Vec::new();
+        for chunk in chunks {
+            let chunk_id = chunk.chunk_id.ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+            let (_, embedding) = sqlite_manager
+                .get_chunk_with_embedding(chunk_id)?
+                .ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+
+            if let Some(embedding) = embedding {
+                text_groups_with_embeddings.push((chunk.content, embedding));
+            }
+        }
+
+        Ok(text_groups_with_embeddings)
     }
 }
 
@@ -1303,5 +1405,95 @@ mod tests {
                 "All entries should have modified_time"
             );
         }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_save_process_and_retrieve_embeddings() {
+        let (db, dir, shinkai_path, generator) = setup_test_environment();
+
+        // Create test content
+        let mut test_content = String::new();
+        let text = "This is a test file for embedding generation. It contains some sample text that will be processed and embedded.";
+        for i in 0..100 {
+            test_content = format!("{}\n{}", test_content, text);
+        }
+
+        let data = test_content.as_bytes().to_vec();
+
+        // First write the file to disk
+        ShinkaiFileManager::write_file_to_fs(shinkai_path.clone(), data.clone()).unwrap();
+
+        // Generate embeddings and chunks first
+        let text_groups = SimpleParser::parse_file(
+            shinkai_path.clone(),
+            generator.model_type().max_input_token_count().try_into().unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // Generate embeddings for each text group and collect them
+        let mut text_groups_with_embeddings = Vec::new();
+        for group in text_groups {
+            let embedding = generator.generate_embedding_default(&group.text).await.unwrap();
+            text_groups_with_embeddings.push((group.text, embedding));
+        }
+
+        // Save and process the file with pre-computed embeddings
+        let result = ShinkaiFileManager::save_and_process_file_with_embeddings(
+            shinkai_path.clone(),
+            data,
+            &db,
+            text_groups_with_embeddings,
+        )
+        .await;
+
+        // Assert the save and process was successful
+        assert!(result.is_ok());
+
+        // Verify the file exists in the database
+        let parsed_file = db.get_parsed_file_by_rel_path(&shinkai_path.relative_path()).unwrap();
+        assert!(parsed_file.is_some(), "File should be found in database");
+
+        // Get the parsed file ID
+        let parsed_file_id = parsed_file.unwrap().id.unwrap();
+
+        // Retrieve the chunks with embeddings
+        let chunks: Vec<ShinkaiFileChunk> = db.get_chunks_for_parsed_file(parsed_file_id).unwrap();
+        assert!(!chunks.is_empty(), "Should have at least one chunk");
+
+        // Verify each chunk has an embedding
+        assert_eq!(chunks.len(), 23);
+        for chunk in chunks {
+            let chunk_with_embedding = db.get_chunk_with_embedding(chunk.chunk_id.unwrap()).unwrap();
+            assert!(
+                chunk_with_embedding.is_some(),
+                "Should be able to retrieve chunk with embedding"
+            );
+            let (_, embedding) = chunk_with_embedding.unwrap();
+            assert!(embedding.is_some(), "Each chunk should have an embedding");
+            let embedding = embedding.unwrap();
+            assert_eq!(embedding.len(), 384, "Embedding should match the mock generator size");
+        }
+
+        let text_groups_with_embeddings =
+            ShinkaiFileManager::get_text_groups_with_embeddings(shinkai_path.clone(), &db).unwrap();
+        assert!(
+            !text_groups_with_embeddings.is_empty(),
+            "Should have at least one text group with embedding"
+        );
+        let chunks: Vec<ShinkaiFileChunk> = db.get_chunks_for_parsed_file(parsed_file_id).unwrap();
+
+        let mut index = 0;
+        for (_, embedding) in text_groups_with_embeddings {
+            let chunk = &chunks[index];
+            let chunk_with_embedding = db.get_chunk_with_embedding(chunk.chunk_id.unwrap()).unwrap();
+            let (_, chunk_embedding) = chunk_with_embedding.unwrap();
+            assert_eq!(embedding, chunk_embedding.unwrap());
+            index += 1;
+        }
+
+        // Clean up
+        dir.close().unwrap();
     }
 }
