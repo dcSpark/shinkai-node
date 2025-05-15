@@ -951,6 +951,7 @@ impl SqliteManager {
                 name TEXT NOT NULL,
                 type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND')) DEFAULT 'SSE',
                 url TEXT,
+                config TEXT,
                 command TEXT,
                 is_enabled BOOLEAN DEFAULT TRUE
             );",

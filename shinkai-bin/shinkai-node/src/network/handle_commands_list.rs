@@ -2994,8 +2994,9 @@ impl Node {
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_add_mcp_server(db_clone, bearer, mcp_server, res).await;
+                    let _ = Node::v2_api_add_mcp_server(db_clone, node_name_clone, bearer, mcp_server, res).await;
                 });
             }
 
