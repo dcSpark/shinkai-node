@@ -32,7 +32,6 @@ use warp::ws::Message;
 use warp::ws::WebSocket;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
-use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;
 
@@ -102,6 +101,11 @@ impl WebSocketManager {
         manager
     }
 
+    // Get access to the database
+    pub fn get_db(&self) -> Option<Arc<SqliteManager>> {
+        self.shinkai_db.upgrade()
+    }
+
     pub async fn start_message_sender(manager: Arc<Mutex<Self>>, message_queue: MessageQueue) {
         loop {
             let message = {
@@ -128,23 +132,6 @@ impl WebSocketManager {
                 }
             }
         }
-    }
-
-    pub async fn user_validation(
-        &self,
-        shinkai_name: ShinkaiName,
-        message: &ShinkaiMessage,
-    ) -> Result<(ShinkaiMessage, Identity), APIError> {
-        let cloned_enc_sk = clone_static_secret_key(&self.encryption_secret_key);
-        let identity_manager_clone = self.identity_manager_trait.clone();
-        validate_message_main_logic(
-            &cloned_enc_sk,
-            identity_manager_clone,
-            &shinkai_name.clone(),
-            message.clone(),
-            None,
-        )
-        .await
     }
 
     pub async fn has_access(&self, shinkai_name: ShinkaiName, topic: WSTopic, subtopic: Option<String>) -> bool {
@@ -209,50 +196,14 @@ impl WebSocketManager {
 
     pub async fn manage_connections(
         &mut self,
-        sender_shinkai_name: ShinkaiName,
-        potentially_encrypted_msg: ShinkaiMessage,
+        ws_message: WSMessage,
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     ) -> Result<(), WebSocketManagerError> {
         shinkai_log(
             ShinkaiLogOption::WsAPI,
             ShinkaiLogLevel::Info,
-            format!("Adding connection for shinkai_name: {}", sender_shinkai_name).as_str(),
+            format!("Adding connection for main").as_str(),
         );
-
-        let validation_result = self
-            .user_validation(self.node_name.clone(), &potentially_encrypted_msg)
-            .await;
-        let (validated_message, _sender_identity) = match validation_result {
-            Ok((msg, identity)) => (msg, identity),
-            Err(api_error) => {
-                shinkai_log(
-                    ShinkaiLogOption::WsAPI,
-                    ShinkaiLogLevel::Error,
-                    format!(
-                        "User validation failed for shinkai_name: {}: {:?}",
-                        sender_shinkai_name, api_error
-                    )
-                    .as_str(),
-                );
-                return Err(WebSocketManagerError::UserValidationFailed(format!(
-                    "User validation failed for shinkai_name: {}: {:?}",
-                    sender_shinkai_name, api_error
-                )));
-            }
-        };
-
-        let sender_shinkai_name =
-            ShinkaiName::from_shinkai_message_using_sender_subidentity(&validated_message.clone()).map_err(|e| {
-                WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e))
-            })?;
-
-        let content_str = validated_message.get_message_content().map_err(|e| {
-            WebSocketManagerError::UserValidationFailed(format!("Failed to get message content: {}", e))
-        })?;
-
-        let ws_message = serde_json::from_str::<WSMessage>(&content_str).map_err(|e| {
-            WebSocketManagerError::UserValidationFailed(format!("Failed to deserialize WSMessage: {}", e))
-        })?;
 
         // eprintln!("ws_message: {:?}", ws_message);
 
@@ -266,8 +217,9 @@ impl WebSocketManager {
         }
 
         // Decrypt Message
-
-        let shinkai_profile_name = sender_shinkai_name.to_string();
+        let node_name = self.node_name.clone().get_node_name_string();
+        let sender_shinkai_name = ShinkaiName::new(format!("{}/main", node_name)).unwrap();
+        let shinkai_profile_name = sender_shinkai_name.full_name.clone();
         let shared_key = ws_message.shared_key.clone();
 
         // Initialize the topic map for the new connection
@@ -333,11 +285,7 @@ impl WebSocketManager {
         shinkai_log(
             ShinkaiLogOption::WsAPI,
             ShinkaiLogLevel::Info,
-            format!(
-                "Successfully added connection for shinkai_name: {}",
-                sender_shinkai_name
-            )
-            .as_str(),
+            format!("Successfully added connection for shinkai_name: main").as_str(),
         );
 
         Ok(())
