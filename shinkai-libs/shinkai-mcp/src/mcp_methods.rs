@@ -268,4 +268,24 @@ pub mod tests_mcp_manager {
             assert!(unwrapped.iter().any(|t| t.name == tool));
         }
     }
+
+    #[tokio::test]
+    async fn test_list_tools_composio_github() {
+        let result = list_tools_via_sse("https://mcp.composio.dev/partner/composio/github?customerId=51fcb8d4-16c2-4e33-8a4d-898e54e68fb6&agent=cursor", None).await;
+        assert!(result.is_ok());
+        let unwrapped = result.unwrap();
+        println!("tools: {:?}", unwrapped);
+        assert!(unwrapped.len() > 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_tools_composio_gmail() {
+        let result = list_tools_via_sse("https://mcp.composio.dev/partner/composio/gmail?customerId=future-gorgeous-girl-OMlvSA&agent=cursor", None).await.inspect_err(|e| {
+            println!("error {:?}", e);
+        });
+        assert!(result.is_ok());
+        let unwrapped = result.unwrap();
+        println!("tools: {:?}", unwrapped);
+        assert!(unwrapped.len() > 1);
+    }
 }
