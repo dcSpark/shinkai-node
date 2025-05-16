@@ -21,6 +21,7 @@ use std::sync::Arc;
 use tokio::fs;
 use zip::ZipArchive;
 use zip::{write::FileOptions, ZipWriter};
+use zip::read::ZipFile;
 
 async fn calculate_zip_dependencies(
     db: Arc<SqliteManager>,
@@ -67,6 +68,7 @@ async fn calculate_zip_dependencies(
                 return Ok(());
             }
             ShinkaiTool::Network(_, _) => (),
+            ShinkaiTool::MCPServer(_, _) => (),
         }
 
         // This tool might have dependendies, so let's check them.
@@ -182,6 +184,7 @@ async fn get_dependencies_for_zip(
                 continue;
             }
             ShinkaiTool::Network(_, _) => (),
+            ShinkaiTool::MCPServer(_, _) => (),
         }
 
         let tool_bytes = match Box::pin(generate_tool_zip(
@@ -597,14 +600,15 @@ async fn import_agent_knowledge(
         if file.starts_with("__knowledge/") && !file.ends_with("/") {
             let mut buffer = Vec::new();
             {
-                let file: Result<zip::read::ZipFile<'_>, zip::result::ZipError> = zip_contents.by_name(file);
-                let mut tool_file = match file {
-                    Ok(file) => file,
-                    Err(_) => {
+                println!("[IMPORTING KNOWLEDGE]: {}", file);
+                let knowledge_file_entry = zip_contents.by_name(file);
+                let mut tool_file = match knowledge_file_entry {
+                    Ok(opened_file) => opened_file,
+                    Err(zip_err) => {
                         return Err(APIError {
                             code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Invalid Tool Archive".to_string(),
-                            message: "Archive does not contain tool.json".to_string(),
+                            error: "Invalid Knowledge Archive".to_string(),
+                            message: format!("Failed to access knowledge file '{}' in archive: {}", file, zip_err),
                         });
                     }
                 };
@@ -808,6 +812,7 @@ pub async fn import_tool(
                 "tool": tool.clone()
             }));
         }
+        ShinkaiTool::MCPServer(_, _) => {}
     }
 
     // check if any version of the tool exists in the database

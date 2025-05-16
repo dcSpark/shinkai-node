@@ -29,6 +29,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
+use shinkai_tools_primitives::tools::tool_types::ToolResult;
 use shinkai_tools_primitives::tools::{
     error::ToolError, network_tool::NetworkTool, parameters::Parameters, rust_tools::RustTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
@@ -531,7 +533,45 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
+    async fn add_mcp_server_tool(&self) -> Result<(), ToolError> {
+        // ADD MCP SERVER TOOL``
+        let _ = match self
+            .sqlite_manager
+            .get_tool_by_key("local:::__official_shinkai:::mcp_server")
+        {
+            Err(SqliteManagerError::ToolNotFound(_)) => {
+                let mcp_server_tool = MCPServerTool {
+                    version: "1.0.0".to_string(),
+                    name: "mcp_server".to_string(),
+                    author: "@@official.shinkai".to_string(),
+                    mcp_server_ref: "_unknown_".to_string(),
+                    description: "A tool for interacting with the MCP server".to_string(),
+                    mcp_server_url: "https://mcp.shinkai.io".to_string(),
+                    mcp_server_tool: "mcp_server".to_string(),
+                    config: vec![],
+                    keywords: vec![],
+                    input_args: Parameters::new(),
+                    output_arg: ToolOutputArg { json: "".to_string() },
+                    activated: true,
+                    embedding: None,
+                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    tool_set: None,
+                    mcp_enabled: Some(true),
+                };
+                self.sqlite_manager
+                    .add_tool(ShinkaiTool::MCPServer(mcp_server_tool, true))
+                    .await
+                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
+            }
+            Ok(_) => {}
+            Err(e) => return Err(ToolError::DatabaseError(e.to_string())),
+        };
+        Ok(())
+    }
+
     pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
+        self.add_mcp_server_tool().await?;
+
         let rust_tools = get_rust_tools();
         for tool in rust_tools {
             let rust_tool = RustTool::new(
@@ -819,6 +859,29 @@ impl ToolRouter {
         }
 
         match shinkai_tool {
+            ShinkaiTool::MCPServer(mcp_server_tool, _is_enabled) => {
+                let function_config = shinkai_tool.get_config_from_env();
+                let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
+                let mcp_server_ref = mcp_server_tool.mcp_server_ref.clone().parse::<i64>().map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!("Failed to parse MCP server reference: {}", e))
+                })?;
+                let mcp_server = self.sqlite_manager.get_mcp_server(mcp_server_ref)?;
+                if let Some(mcp_server) = mcp_server {
+                    let result = mcp_server_tool
+                        .run(mcp_server, function_args, function_config_vec)
+                        .await?;
+                    let result_str = serde_json::to_string(&result)
+                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                    Ok(ToolCallFunctionResponse {
+                        response: result_str,
+                        function_call,
+                    })
+                } else {
+                    return Err(LLMProviderError::FunctionExecutionError(
+                        "MCP server not found".to_string(),
+                    ));
+                }
+            }
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env

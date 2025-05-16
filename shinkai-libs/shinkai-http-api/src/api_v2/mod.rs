@@ -2,6 +2,7 @@ pub mod api_v2_handlers_cron;
 pub mod api_v2_handlers_ext_agent_offers;
 pub mod api_v2_handlers_general;
 pub mod api_v2_handlers_jobs;
+pub mod api_v2_handlers_mcp_servers;
 pub mod api_v2_handlers_my_agent_offers;
 pub mod api_v2_handlers_oauth;
 pub mod api_v2_handlers_prompts;
