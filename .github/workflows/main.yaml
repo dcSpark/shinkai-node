@@ -40,7 +40,7 @@ jobs:
           ./scripts/update_tools.sh
 
       - name: Build testing image
-        run: docker build -t testing_image:${SHORT_SHA} -f .github/Dockerfile .
+        run: docker build -t testing_image:${SHORT_SHA} --build-arg COMMIT_SHA=${GITHUB_SHA} -f .github/Dockerfile .
 
       - name: Run tests primitives cargo tests
         run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${SHORT_SHA}

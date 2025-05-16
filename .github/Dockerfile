@@ -1,6 +1,7 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
 ARG BUILD_TYPE
+ARG COMMIT_SHA
 RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld protobuf-compiler
 
 # Install nvm, npm and node
@@ -22,14 +23,17 @@ RUN node -v
 # Create a new directory for your app
 WORKDIR /app
 
-# Copy the Cargo.toml and Cargo.lock files to the container
-
-COPY . .
+# Clone the repository
+RUN git clone https://github.com/dcSpark/shinkai-node.git
+RUN cd shinkai-node && git checkout $COMMIT_SHA
 
 # Build the dependencies (cached)
+WORKDIR /app/shinkai-node
 RUN cargo clean
 RUN rustup component add rustfmt
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build $([ "$BUILD_TYPE" = "release" ] && echo "--release")
+
+RUN ./scripts/update_tools.sh
 
 COPY .github/run-main*.sh /entrypoints/
 RUN chmod 755 /entrypoints/*.sh
