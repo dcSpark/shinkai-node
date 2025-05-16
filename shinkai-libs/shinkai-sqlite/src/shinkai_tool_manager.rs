@@ -1094,7 +1094,7 @@ impl SqliteManager {
         }
         Ok(tools)
     }
-    fn delete_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<(), SqliteManagerError> {
+    pub fn delete_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("DELETE FROM shinkai_tools WHERE tool_type = 'MCPServer' AND name LIKE ?1 || '_%'")?;
         stmt.execute([mcp_server.name])?;

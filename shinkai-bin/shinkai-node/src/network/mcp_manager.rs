@@ -52,8 +52,23 @@ pub fn convert_to_shinkai_tool(
         output_arg: ToolOutputArg::empty(),
         result: ToolResult {
             r#type: "object".to_string(),
-            properties: serde_json::json!({}),
-            required: vec![],
+            properties: serde_json::json!({
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "description": "Content type", "enum": ["text", "image", "audio"]},
+                            "text": {"type": "string", "description": "Text content"},
+                            "data": {"type": "string", "description": "Image content"},
+                            "mimeType": {"type": "string", "description": "Mime type of the content"},
+                        },
+                        "required": ["type"]
+                    }
+                },
+                "isError": {"type": "boolean", "description": "Whether the tool call was successful"}
+            }),
+            required: vec!["content".to_string(), "isError".to_string()],
         },
         tool_set: Some(format!("__mcp_{}", server_name)),
     };

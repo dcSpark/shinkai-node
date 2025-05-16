@@ -2526,4 +2526,33 @@ impl Node {
         let _ = res.send(Ok(tools)).await;
         Ok(())
     }
+
+    pub async fn v2_api_delete_mcp_server(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!(
+                        "No MCP Server found with ID: {}",
+                        mcp_server_id
+                    ),
+                }))
+                .await;
+            return Ok(());
+        }
+        let _ = db.delete_mcp_server(mcp_server_id);
+        let _ = db.delete_all_tools_from_mcp_server(mcp_server.unwrap());
+        let _ = res.send(Ok(())).await;
+        Ok(())
+    }
 }
