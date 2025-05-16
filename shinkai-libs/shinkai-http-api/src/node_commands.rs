@@ -1311,6 +1311,11 @@ pub enum NodeCommand {
         mcp_server: AddMCPServerRequest,
         res: Sender<Result<MCPServer, APIError>>,
     },
+    V2ApiGetAllMCPServerTools {
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    },
     V2ApiSetToolEnabled {
         bearer: String,
         tool_router_key: String,

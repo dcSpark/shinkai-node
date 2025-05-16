@@ -2496,4 +2496,32 @@ impl Node {
         }
         Ok(())
     }
+
+    pub async fn v2_api_get_all_mcp_server_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!(
+                        "No MCP Server found with ID: {}",
+                        mcp_server_id
+                    ),
+                }))
+                .await;
+            return Ok(());
+        }
+        let tools = db.get_all_tools_from_mcp_server(mcp_server.unwrap())?;
+        let _ = res.send(Ok(tools)).await;
+        Ok(())
+    }
 }

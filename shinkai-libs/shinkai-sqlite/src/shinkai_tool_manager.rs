@@ -8,6 +8,7 @@ use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHead
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
 use std::collections::{HashMap, HashSet};
 use serde_json::Value;
+use shinkai_message_primitives::schemas::mcp_server::MCPServer;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
@@ -1070,6 +1071,28 @@ impl SqliteManager {
             // 4. Return vector of successfully updated tool keys
         }
         Ok(updated_tool_keys)
+    }
+
+    pub fn get_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<Vec<ShinkaiTool>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools WHERE tool_type = 'MCPServer' AND name LIKE ?1 || '_%'")?;
+        let mut rows = stmt.query([mcp_server.name])?;
+        let mut tools = Vec::new();
+        while let Some(row) = rows.next()? {
+            let tool_data: Vec<u8> = row.get(0)?;
+            let tool: ShinkaiTool = serde_json::from_slice(&tool_data).map_err(|e| {
+                eprintln!("Deserialization error: {}", e);
+                SqliteManagerError::SerializationError(e.to_string())
+            })?;
+            tools.push(tool);
+        }
+        Ok(tools)
+    }
+    fn delete_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("DELETE FROM shinkai_tools WHERE tool_type = 'MCPServer' AND name LIKE ?1 || '_%'")?;
+        stmt.execute([mcp_server.name])?;
+        Ok(())
     }
 }
 
