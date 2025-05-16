@@ -25,7 +25,10 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
     let tools = service.list_all_tools().await?;
 
     // 4. Gracefully shut down the service (drops stdio, child should exit)
-    service.cancel().await?;
+    let _ = service
+        .cancel()
+        .await
+        .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
 
     Ok(tools)
 }
@@ -54,7 +57,10 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
     let tools_result = client.list_all_tools().await?;
 
     // Gracefully shut down the client
-    let _ = client.cancel().await.inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
+    let _ = client
+        .cancel()
+        .await
+        .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
 
     Ok(tools_result)
 }
@@ -248,9 +254,14 @@ pub mod tests_mcp_manager {
                 println!("error {:?}", e);
             });
 
-        let result = list_tools_via_sse("http://localhost:8001/sse", None).await.inspect_err(|e| {
-            println!("error {:?}", e);
-        });
+        // Wait for server to be ready
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        let result = list_tools_via_sse("http://localhost:8001/sse", None)
+            .await
+            .inspect_err(|e| {
+                println!("error {:?}", e);
+            });
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
         assert!(unwrapped.len() == 8);
@@ -280,7 +291,12 @@ pub mod tests_mcp_manager {
 
     #[tokio::test]
     async fn test_list_tools_composio_gmail() {
-        let result = list_tools_via_sse("https://mcp.composio.dev/partner/composio/gmail?customerId=future-gorgeous-girl-OMlvSA&agent=cursor", None).await.inspect_err(|e| {
+        let result = list_tools_via_sse(
+            "https://mcp.composio.dev/partner/composio/gmail?customerId=future-gorgeous-girl-OMlvSA&agent=cursor",
+            None,
+        )
+        .await
+        .inspect_err(|e| {
             println!("error {:?}", e);
         });
         assert!(result.is_ok());
