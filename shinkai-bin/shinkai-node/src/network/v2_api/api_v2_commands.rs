@@ -27,6 +27,7 @@ use shinkai_http_api::{
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
     node_api_router::{APIError, GetPublicKeysResponse},
 };
+use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_sse};
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
@@ -2423,7 +2424,7 @@ impl Node {
                                 }));
                             }
                         }
-                        match mcp_manager::list_tools_via_command(command_str, server.env.clone()).await {
+                        match list_tools_via_command(command_str, server.env.clone()).await {
                             Ok(tools) => {
                                 for tool in tools {  
                                     // Use the new function from mcp_manager instead of inline conversion
@@ -2456,7 +2457,7 @@ impl Node {
                     }
                 } else if server.r#type == MCPServerType::Sse && server.is_enabled {
                     if let Some(url) = &server.url {
-                        match mcp_manager::list_tools_via_sse(url, None).await {
+                        match list_tools_via_sse(url, None).await {
                             Ok(tools) => {
                                 for tool in tools {  
                                     // Use the new function from mcp_manager instead of inline conversion
