@@ -22,8 +22,7 @@ RUN node -v
 # Create a new directory for your app
 WORKDIR /app
 
-# Copy the Cargo.toml and Cargo.lock files to the container
-
+# Clone the repository
 COPY . .
 
 # Build the dependencies (cached)

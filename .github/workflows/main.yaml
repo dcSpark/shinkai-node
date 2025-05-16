@@ -32,25 +32,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Add SHORT_SHA env property with commit short sha
-        run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
-
       - name: Download tools from store to pre-install folder
         run: |
           ./scripts/update_tools.sh
 
       - name: Build testing image
-        run: docker build -t testing_image:${SHORT_SHA} -f .github/Dockerfile .
+        run: docker build -t testing_image:${{ github.sha }} --build-arg COMMIT_SHA=${{ github.sha }} -f .github/Dockerfile .
 
       - name: Run tests primitives cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${SHORT_SHA}
+        run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${{ github.sha }}
 
       - name: Run tests main cargo tests
-        run: docker run --rm -e AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' -e AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' -e AWS_URL='${{ secrets.AWS_URL }}' --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${SHORT_SHA}
+        run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${{ github.sha }}
 
       - name: Remove image
         if: always()
-        run: docker rmi testing_image:${SHORT_SHA} || true
-    env:
-      FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
-      FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+        run: docker rmi testing_image:${{ github.sha }} || true
