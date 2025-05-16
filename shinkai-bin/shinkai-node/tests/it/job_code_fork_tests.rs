@@ -1,6 +1,6 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider,
+    LLMProviderInterface, Ollama, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
@@ -8,9 +8,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMes
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_tools_primitives::tools::{
-    parameters::Parameters,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    parameters::Parameters, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 
 use std::time::Duration;
@@ -18,8 +16,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration,
-    wait_for_default_tools,
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, wait_for_default_tools
 };
 use mockito::Server;
 
@@ -127,11 +124,8 @@ fn test_job_code_fork() {
                 };
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_api_key.clone(),
                     node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
                     agent,
                 )
                 .await;
@@ -145,9 +139,7 @@ fn test_job_code_fork() {
                 eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_api_key.clone(),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
                     &agent_subidentity.clone(),

@@ -3,15 +3,11 @@ use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
 use crate::network::node_shareable_logic::download_zip_from_url;
 use crate::network::zip_export_import::zip_export_import::{
-    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools,
+    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools
 };
 use crate::utils::environment::NodeEnvironment;
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
-    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, Node},
-    tools::tool_generation,
-    utils::update_global_identity::update_global_identity_name,
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 use async_channel::Sender;
 use ed25519_dalek::ed25519::signature::SignerMut;
@@ -21,35 +17,22 @@ use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
+use shinkai_http_api::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
-    node_api_router::{APIError, GetPublicKeysResponse},
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
 };
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler,
-    schemas::{
-        identity::{Identity, IdentityType, RegistrationCode},
-        inbox_name::InboxName,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
-        shinkai_name::ShinkaiName,
-        tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{
-            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod},
-        shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::signature_public_key_to_string,
-    },
-    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
+    schemas::ws_types::WSUpdateHandler, schemas::{
+        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
+    }, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::signature_public_key_to_string
+    }, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
 };
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;

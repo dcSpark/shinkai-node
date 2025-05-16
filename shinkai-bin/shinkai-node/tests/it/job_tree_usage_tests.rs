@@ -1,6 +1,6 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, Ollama, SerializedLLMProvider,
+    LLMProviderInterface, Ollama, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
@@ -13,7 +13,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job
 };
 use mockito::Server;
 
@@ -37,6 +37,7 @@ fn job_tree_usage_tests() {
             let node1_profile_encryption_sk = env.node1_profile_encryption_sk.clone();
             let node1_device_identity_sk = clone_signature_secret_key(&env.node1_device_identity_sk);
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
+            let node1_api_key = env.node1_api_key.clone();
             let node1_abort_handler = env.node1_abort_handler;
 
             {
@@ -134,11 +135,8 @@ fn job_tree_usage_tests() {
                 };
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_api_key.clone(),
                     node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
                     agent,
                 )
                 .await;
@@ -152,9 +150,7 @@ fn job_tree_usage_tests() {
                 eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_api_key.clone(),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
                     &agent_subidentity.clone(),
@@ -168,12 +164,7 @@ fn job_tree_usage_tests() {
                 let start = Instant::now();
                 api_message_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    &agent_subidentity.clone(),
+                    node1_api_key.clone(),
                     &job_id.clone().to_string(),
                     &job_message_content,
                     &[],
@@ -237,12 +228,7 @@ fn job_tree_usage_tests() {
                 let start = Instant::now();
                 api_message_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    &agent_subidentity.clone(),
+                    node1_api_key,
                     &job_id.clone().to_string(),
                     &second_job_message_content,
                     &[],

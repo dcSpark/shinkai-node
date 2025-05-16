@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, ShinkaiBackend,
+    Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, ShinkaiBackend
 };
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
@@ -16,18 +16,16 @@ use shinkai_message_primitives::shinkai_message::shinkai_message::{
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::{
-    schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider,
-    shinkai_message::shinkai_message_schemas::APIAddOllamaModels,
+    schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_message::shinkai_message_schemas::APIAddOllamaModels
 };
+use std::collections::HashMap;
 use utoipa::{OpenApi, ToSchema};
 use warp::filters::multipart::FormData;
 use warp::Filter;
-use std::collections::HashMap;
 
-use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
+use crate::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use crate::{
-    node_api_router::{APIError, GetPublicKeysResponse},
-    node_commands::NodeCommand,
+    node_api_router::{APIError, GetPublicKeysResponse}, node_commands::NodeCommand
 };
 
 use super::api_v2_router::{create_success_response, with_node_name, with_sender};
@@ -125,7 +123,10 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::query::<HashMap<String, String>>())
         .and_then(|sender, auth, params: HashMap<String, String>| {
-            let model_type = params.get("model").cloned().unwrap_or_else(|| "FREE_TEXT_INFERENCE".to_string());
+            let model_type = params
+                .get("model")
+                .cloned()
+                .unwrap_or_else(|| "FREE_TEXT_INFERENCE".to_string());
             shinkai_backend_quota_handler(sender, auth, model_type)
         });
 
@@ -338,7 +339,7 @@ pub async fn get_public_keys(sender: Sender<NodeCommand>) -> Result<impl warp::R
 pub async fn health_check(sender: Sender<NodeCommand>, node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
-     // Send the APIHealthCheck command to retrieve the pristine state and public HTTPS certificate
+    // Send the APIHealthCheck command to retrieve the pristine state and public HTTPS certificate
     sender
         .send(NodeCommand::V2ApiHealthCheck { res: res_sender })
         .await
@@ -1074,11 +1075,11 @@ pub async fn export_agent_handler(
         Err(error) => Ok(warp::reply::with_header(
             warp::reply::with_status(
                 error.message.as_bytes().to_vec(),
-                StatusCode::from_u16(error.code).unwrap()
+                StatusCode::from_u16(error.code).unwrap(),
             ),
             "Content-Type",
             "text/plain",
-        ))
+        )),
     }
 }
 
@@ -1249,19 +1250,20 @@ pub async fn import_agent_zip_handler(
             file_data,
             res: res_sender,
         })
-        .await {
-            Ok(_) => (),
-            Err(_) => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&APIError {
-                        code: 500,
-                        error: "Internal server error".to_string(),
-                        message: "Failed to process the request".to_string(),
-                    }),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                ))
-            }
-        };
+        .await
+    {
+        Ok(_) => (),
+        Err(_) => {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&APIError {
+                    code: 500,
+                    error: "Internal server error".to_string(),
+                    message: "Failed to process the request".to_string(),
+                }),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    };
 
     let result = match res_receiver.recv().await {
         Ok(result) => result,
@@ -1535,7 +1537,7 @@ pub async fn check_default_tools_sync_handler(
                 "message": if is_synced { "Default tools and agents are synchronized" } else { "Default tools and agents are not synchronized" }
             });
             Ok(warp::reply::json(&response))
-        },
+        }
         Err(error) => Err(warp::reject::custom(error)),
     }
 }

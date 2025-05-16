@@ -94,11 +94,8 @@ let provider = SerializedLLMProvider {
 // Register the provider
 api_llm_provider_registration(
     node_commands_sender.clone(),
-    clone_static_secret_key(&profile_encryption_sk),
-    encryption_pk,
-    clone_signature_secret_key(&profile_identity_sk),
+    bearer,
     identity_name,
-    profile_name,
     provider,
 ).await;
 ```
@@ -373,11 +370,8 @@ fn simple_job_message_test() {
 
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk,
-                    node1_profile_identity_sk.clone(),
+                    bearer,
                     node1_identity_name.as_str(),
-                    node1_profile_name.as_str(),
                     agent,
                 )
                 .await;
