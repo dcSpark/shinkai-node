@@ -62,6 +62,7 @@ use shinkai_tools_primitives::tools::{
     tool_output_arg::ToolOutputArg,
     tool_types::ToolResult,
 };
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use std::collections::HashMap;
 use std::time::Instant;
 use std::{env, sync::Arc};
@@ -2501,7 +2502,7 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         mcp_server_id: i64,
-        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+        res: Sender<Result<Vec<MCPServerTool>, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());

@@ -46,7 +46,9 @@ pub fn mcp_server_routes(
         .and(warp::query::<GetAllMCPServerToolsRequest>())
         .and_then(get_all_mcp_server_tools_handler);
 
-    list_mcp_servers_route.or(add_mcp_server_route)
+    list_mcp_servers_route
+        .or(add_mcp_server_route)
+        .or(get_all_mcp_server_tools_route)
 }
 
 #[utoipa::path(

@@ -16,6 +16,7 @@ use shinkai_message_primitives::{
 
 use shinkai_tools_primitives::tools::{
     shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets},
+    mcp_server_tool::MCPServerTool,
     tool_config::OAuth,
     tool_playground::ToolPlayground,
     tool_types::{OperatingSystem, RunnerType},
@@ -1314,7 +1315,7 @@ pub enum NodeCommand {
     V2ApiGetAllMCPServerTools {
         bearer: String,
         mcp_server_id: i64,
-        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+        res: Sender<Result<Vec<MCPServerTool>, APIError>>,
     },
     V2ApiSetToolEnabled {
         bearer: String,

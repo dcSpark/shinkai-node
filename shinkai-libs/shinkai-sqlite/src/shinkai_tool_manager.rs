@@ -5,6 +5,7 @@ use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
 use std::collections::{HashMap, HashSet};
 use serde_json::Value;
@@ -1073,7 +1074,7 @@ impl SqliteManager {
         Ok(updated_tool_keys)
     }
 
-    pub fn get_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<Vec<ShinkaiTool>, SqliteManagerError> {
+    pub fn get_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<Vec<MCPServerTool>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools WHERE tool_type = 'MCPServer' AND name LIKE ?1 || '_%'")?;
         let mut rows = stmt.query([mcp_server.name])?;
@@ -1084,7 +1085,12 @@ impl SqliteManager {
                 eprintln!("Deserialization error: {}", e);
                 SqliteManagerError::SerializationError(e.to_string())
             })?;
-            tools.push(tool);
+            if let ShinkaiTool::MCPServer(mcp_tool, _) = tool {
+                let mcp_server_id = mcp_server.id.expect("MCP Server ID should exist").to_string(); 
+                if mcp_tool.mcp_server_ref.to_string() == mcp_server_id {
+                    tools.push(mcp_tool);
+                }
+            }
         }
         Ok(tools)
     }
