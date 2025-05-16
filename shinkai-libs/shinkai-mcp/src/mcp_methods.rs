@@ -22,7 +22,10 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
     service.peer_info();
 
     // 3. Call the standard MCP `list_tools` method
-    let tools = service.list_all_tools().await?;
+    let tools = service
+        .list_all_tools()
+        .await
+        .inspect_err(|e| log::error!("error listing tools: {:?}", e));
 
     // 4. Gracefully shut down the service (drops stdio, child should exit)
     let _ = service
@@ -30,7 +33,7 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
         .await
         .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
 
-    Ok(tools)
+    Ok(tools.unwrap())
 }
 
 pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, String>>) -> Result<Vec<Tool>> {
@@ -54,7 +57,9 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
     let _ = client.peer_info();
 
     // List tools
-    let tools_result = client.list_all_tools().await?;
+    let tools_result = client.list_all_tools()
+        .await
+        .inspect_err(|e| log::error!("error listing tools: {:?}", e));
 
     // Gracefully shut down the client
     let _ = client
@@ -62,7 +67,7 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
         .await
         .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
 
-    Ok(tools_result)
+    Ok(tools_result.unwrap())
 }
 
 pub async fn run_tool_via_command(

@@ -26,8 +26,9 @@ pub fn convert_to_shinkai_tool(
         .unwrap_or_default();
 
     // Create the MCPServerTool
+    let tool_name = tool.name.to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
     let mcp_tool = MCPServerTool {
-        name: format!("{}_{}", server_name, tool.name),
+        name: format!("{}_{}", server_name, tool_name),
         author: node_name.to_string(),
         description: tool.description.to_string(),
         config: tools_config,
