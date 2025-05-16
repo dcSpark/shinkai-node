@@ -862,13 +862,25 @@ impl ToolRouter {
             ShinkaiTool::MCPServer(mcp_server_tool, _is_enabled) => {
                 let function_config = shinkai_tool.get_config_from_env();
                 let function_config_vec: Vec<ToolConfig> = function_config.into_iter().collect();
-                let result = mcp_server_tool.run(function_args, function_config_vec).await?;
-                let result_str = serde_json::to_string(&result)
-                    .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
-                return Ok(ToolCallFunctionResponse {
-                    response: result_str,
-                    function_call,
-                });
+                let mcp_server_ref = mcp_server_tool.mcp_server_ref.clone().parse::<i64>().map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!("Failed to parse MCP server reference: {}", e))
+                })?;
+                let mcp_server = self.sqlite_manager.get_mcp_server(mcp_server_ref)?;
+                if let Some(mcp_server) = mcp_server {
+                    let result = mcp_server_tool
+                        .run(mcp_server, function_args, function_config_vec)
+                        .await?;
+                    let result_str = serde_json::to_string(&result)
+                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                    Ok(ToolCallFunctionResponse {
+                        response: result_str,
+                        function_call,
+                    })
+                } else {
+                    return Err(LLMProviderError::FunctionExecutionError(
+                        "MCP server not found".to_string(),
+                    ));
+                }
             }
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let node_env = fetch_node_environment();

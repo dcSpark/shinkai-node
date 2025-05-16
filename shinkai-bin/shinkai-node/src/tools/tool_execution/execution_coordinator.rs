@@ -325,11 +325,22 @@ pub async fn execute_tool_cmd(
     }
 
     match tool {
-        ShinkaiTool::MCPServer(mcp_server_tool, _) => mcp_server_tool
-            .run(parameters, extra_config)
-            .await
-            .map(|result| json!(result.data)),
-
+        ShinkaiTool::MCPServer(mcp_server_tool, _) => {
+            let mcp_server_ref = mcp_server_tool.mcp_server_ref.clone().parse::<i64>().map_err(|e| {
+                ToolError::ExecutionError(format!("Failed to parse MCP server reference: {}", e))
+            })?;
+            let mcp_server = db.get_mcp_server(mcp_server_ref).map_err(|e| {
+                ToolError::ExecutionError(format!("Failed to get MCP server: {}", e))
+            })?;
+            if let Some(mcp_server) = mcp_server {
+                mcp_server_tool
+                .run(mcp_server, parameters, extra_config)
+                .await
+                .map(|result| json!(result.data))
+            } else {
+                Err(ToolError::ExecutionError("MCP server not found".to_string()))
+            }
+        }
         ShinkaiTool::Rust(_, _) => {
             try_to_execute_rust_tool(
                 &tool_router_key,
