@@ -25,7 +25,9 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
     let tools = service.list_all_tools().await?;
 
     // 4. Gracefully shut down the service (drops stdio, child should exit)
-    service.cancel().await?;
+    if let Err(e) = service.cancel().await {
+        eprintln!("Error during service.cancel: {:?}", e);
+    }
 
     Ok(tools)
 }
