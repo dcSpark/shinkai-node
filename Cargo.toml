@@ -32,6 +32,7 @@ shinkai_sqlite = { path = "./shinkai-libs/shinkai-sqlite" }
 shinkai_fs = { path = "./shinkai-libs/shinkai-fs" }
 shinkai_embedding = { path = "./shinkai-libs/shinkai-embedding" }
 shinkai_non_rust_code = { path = "./shinkai-libs/shinkai-non-rust-code" }
+shinkai_mcp = { path = "./shinkai-libs/shinkai-mcp" }
 
 futures = "0.3.30"
 keyphrases = "0.3.3"
