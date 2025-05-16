@@ -3000,6 +3000,17 @@ impl Node {
                 });
             }
 
+            NodeCommand::V2ApiDeleteMCPServer {
+                bearer,
+                mcp_server_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_delete_mcp_server(db_clone, bearer, mcp_server_id, res).await;
+                });
+            }
+
             NodeCommand::V2ApiGetAllMCPServerTools {
                 bearer,
                 mcp_server_id,

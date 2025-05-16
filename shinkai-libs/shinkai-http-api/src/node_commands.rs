@@ -28,7 +28,7 @@ use shinkai_tools_primitives::tools::{
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::{api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest, node_api_router::SendResponseBody};
+use crate::{api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse}, node_api_router::SendResponseBody};
 
 use super::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
@@ -1311,6 +1311,11 @@ pub enum NodeCommand {
         bearer: String,
         mcp_server: AddMCPServerRequest,
         res: Sender<Result<MCPServer, APIError>>,
+    },
+    V2ApiDeleteMCPServer {
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<DeleteMCPServerResponse, APIError>>,
     },
     V2ApiGetAllMCPServerTools {
         bearer: String,

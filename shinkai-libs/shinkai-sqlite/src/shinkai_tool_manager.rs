@@ -1076,8 +1076,8 @@ impl SqliteManager {
 
     pub fn get_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<Vec<MCPServerTool>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools WHERE tool_type = 'MCPServer' AND name LIKE ?1 || '_%'")?;
-        let mut rows = stmt.query([mcp_server.name])?;
+        let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools WHERE tool_type = 'MCPServer'")?;
+        let mut rows = stmt.query([])?;
         let mut tools = Vec::new();
         while let Some(row) = rows.next()? {
             let tool_data: Vec<u8> = row.get(0)?;
@@ -1094,11 +1094,13 @@ impl SqliteManager {
         }
         Ok(tools)
     }
-    pub fn delete_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<(), SqliteManagerError> {
+    pub fn delete_all_tools_from_mcp_server(&self, mcp_server: MCPServer) -> Result<usize, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("DELETE FROM shinkai_tools WHERE tool_type = 'MCPServer' AND name LIKE ?1 || '_%'")?;
-        stmt.execute([mcp_server.name])?;
-        Ok(())
+        let mcp_server_id = mcp_server.id.unwrap_or_default().to_string();
+        let pattern = format!("%:::mcp{}_%", mcp_server_id);
+        let mut stmt = conn.prepare("DELETE FROM shinkai_tools WHERE tool_type = 'MCPServer' AND tool_key LIKE ?")?;
+        let rows_deleted = stmt.execute([pattern])?;
+        Ok(rows_deleted)
     }
 }
 

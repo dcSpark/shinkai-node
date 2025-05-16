@@ -70,7 +70,7 @@ pub fn convert_to_shinkai_tool(
             }),
             required: vec!["content".to_string(), "isError".to_string()],
         },
-        tool_set: Some(format!("__mcp_{}", server_name)),
+        tool_set: Some(format!("__mcp{}_{}", server_id.to_string(), server_name)),
     };
 
     // Return the ShinkaiTool

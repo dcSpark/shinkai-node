@@ -21,7 +21,7 @@ use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
-use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
+use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse};
 use shinkai_http_api::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
@@ -2531,7 +2531,7 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         mcp_server_id: i64,
-        res: Sender<Result<(), APIError>>,
+        res: Sender<Result<DeleteMCPServerResponse, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
@@ -2551,8 +2551,26 @@ impl Node {
             return Ok(());
         }
         let _ = db.delete_mcp_server(mcp_server_id);
-        let _ = db.delete_all_tools_from_mcp_server(mcp_server.unwrap());
-        let _ = res.send(Ok(())).await;
+        let rows_deleted_result = db.delete_all_tools_from_mcp_server(mcp_server.clone().unwrap());
+
+        match rows_deleted_result {
+            Ok(count) => {
+                let response = DeleteMCPServerResponse {
+                    message: Some("MCP Server and associated tools deleted successfully".to_string()),
+                    tools_deleted: count as i64, // Cast usize to i64
+                    deleted_mcp_server: mcp_server.clone().unwrap(),
+                };
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to delete MCP server tools".to_string(),
+                    message: format!("Error deleting tools for MCP server ID {}: {}", mcp_server_id, err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
         Ok(())
     }
 }

@@ -1,7 +1,7 @@
 use async_channel::Sender;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerEnv};
-use utoipa::{openapi, OpenApi, ToSchema};
+use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 
 use crate::{node_api_router::APIError, node_commands::NodeCommand};
@@ -21,6 +21,18 @@ pub struct AddMCPServerRequest {
 #[derive(Deserialize, ToSchema, Debug)]
 pub struct GetAllMCPServerToolsRequest {
     pub mcp_server_id: i64,
+}
+
+#[derive(Deserialize, ToSchema, Debug)]
+pub struct DeleteMCPServerRequest {
+    pub mcp_server_id: i64,
+}
+
+#[derive(Deserialize, Serialize, ToSchema, Debug)]
+pub struct DeleteMCPServerResponse {
+    pub tools_deleted: i64,
+    pub deleted_mcp_server: MCPServer,
+    pub message: Option<String>,
 }
 
 pub fn mcp_server_routes(
@@ -46,9 +58,17 @@ pub fn mcp_server_routes(
         .and(warp::query::<GetAllMCPServerToolsRequest>())
         .and_then(get_all_mcp_server_tools_handler);
 
+    let delete_mcp_server_route = warp::path("delete_mcp_server")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(delete_mcp_server_handler);
+
     list_mcp_servers_route
         .or(add_mcp_server_route)
         .or(get_all_mcp_server_tools_route)
+        .or(delete_mcp_server_route)
 }
 
 #[utoipa::path(
@@ -101,6 +121,40 @@ pub async fn add_mcp_server_handler(
         .send(NodeCommand::V2ApiAddMCPServer {
             bearer,
             mcp_server: payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/delete_mcp_server",
+    request_body = DeleteMCPServerRequest,
+    responses(
+        (status = 200, description = "Successfully deleted MCP server", body = DeleteMCPServerResponse),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn delete_mcp_server_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: DeleteMCPServerRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiDeleteMCPServer {
+            bearer,
+            mcp_server_id: payload.mcp_server_id,
             res: res_sender,
         })
         .await
