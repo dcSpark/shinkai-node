@@ -3,7 +3,6 @@
 target
 storage_debug_my_local_ai
 shinkai-tools-runner-execution-storage
-pre-install
 shinkai-bin/shinkai-node/internal_tools_storage
 shinkai-bin/shinkai-node/shinkai-tools-runner-resources
 shinkai-bin/shinkai-node/storage
