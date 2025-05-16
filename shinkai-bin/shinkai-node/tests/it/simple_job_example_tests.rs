@@ -1,7 +1,7 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider,
+    LLMProviderInterface, OpenAI, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -9,8 +9,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use std::time::{Duration, Instant};
 
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
-    wait_for_default_tools,
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job, wait_for_default_tools
 };
 use super::utils::test_boilerplate::run_test_one_node_network;
 use mockito::Server;
@@ -161,11 +160,8 @@ fn simple_job_message_test() {
 
                 api_llm_provider_registration(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk,
-                    node1_profile_identity_sk.clone(),
+                    node1_api_key.clone(),
                     node1_identity_name.as_str(),
-                    node1_profile_name.as_str(),
                     agent,
                 )
                 .await;
@@ -179,9 +175,7 @@ fn simple_job_message_test() {
                 eprintln!("\n\nCreating a job");
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk,
-                    node1_profile_identity_sk.clone(),
+                    node1_api_key.clone(),
                     node1_identity_name.as_str(),
                     node1_profile_name.as_str(),
                     &agent_subidentity,
@@ -215,12 +209,7 @@ fn simple_job_message_test() {
                 let message_content = "This is a test message";
                 api_message_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk,
-                    node1_profile_identity_sk.clone(),
-                    node1_identity_name.as_str(),
-                    node1_profile_name.as_str(),
-                    &agent_subidentity,
+                    node1_api_key.clone(),
                     &job_id,
                     message_content,
                     &[], // No file paths

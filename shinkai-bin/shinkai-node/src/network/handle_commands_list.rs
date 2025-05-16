@@ -75,6 +75,12 @@ impl Node {
                     let _ = Node::fetch_and_send_last_messages(db_clone, limit, res).await;
                 });
             }
+            NodeCommand::GetAllSubidentities { res } => {
+                let identity_manager_clone = Arc::clone(&self.identity_manager);
+                tokio::spawn(async move {
+                    let _ = Node::local_get_all_subidentities(identity_manager_clone, res).await;
+                });
+            }
             NodeCommand::GetAllSubidentitiesDevicesAndLLMProviders(res) => {
                 let identity_manager_clone = Arc::clone(&self.identity_manager);
                 tokio::spawn(async move {
@@ -461,6 +467,20 @@ impl Node {
                         res,
                     )
                     .await;
+                });
+            }
+            NodeCommand::LocalAvailableLLMProviders { res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                let bearer = {
+                    let db = self.db.clone();
+                    match db.read_api_v2_key() {
+                        Ok(Some(api_key)) => api_key,
+                        Ok(None) | Err(_) => "".to_string(),
+                    }
+                };
+                tokio::spawn(async move {
+                    let _ = Node::v2_get_available_llm_providers(db_clone, node_name_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiAvailableLLMProviders { bearer, res } => {

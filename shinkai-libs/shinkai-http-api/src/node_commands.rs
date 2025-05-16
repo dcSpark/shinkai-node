@@ -64,6 +64,9 @@ pub enum NodeCommand {
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     },
+    GetAllSubidentities {
+        res: Sender<Result<Vec<StandardIdentity>, APIError>>,
+    },
     GetAllSubidentitiesDevicesAndLLMProviders(Sender<Result<Vec<Identity>, APIError>>),
     GetLastMessagesFromInbox {
         inbox_name: String,
@@ -101,78 +104,6 @@ pub enum NodeCommand {
         message_hash: String,
         res: Sender<Result<(), String>>,
     },
-    // APIAddInboxPermission {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<String, APIError>>,
-    // },
-    // AddInboxPermission {
-    //     inbox_name: String,
-    //     perm_type: String,
-    //     identity: String,
-    //     res: Sender<String>,
-    // },
-    // #[allow(dead_code)]
-    // APIRemoveInboxPermission {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<String, APIError>>,
-    // },
-    // #[allow(dead_code)]
-    // RemoveInboxPermission {
-    //     inbox_name: String,
-    //     perm_type: String,
-    //     identity: String,
-    //     res: Sender<String>,
-    // },
-    // #[allow(dead_code)]
-    // HasInboxPermission {
-    //     inbox_name: String,
-    //     perm_type: String,
-    //     identity: String,
-    //     res: Sender<bool>,
-    // },
-    // APICreateJob {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<String, APIError>>,
-    // },
-    // #[allow(dead_code)]
-    // CreateJob {
-    //     shinkai_message: ShinkaiMessage,
-    //     res: Sender<(String, String)>,
-    // },
-    // APIJobMessage {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<SendResponseBodyData, APIError>>,
-    // },
-    // #[allow(dead_code)]
-    // JobMessage {
-    //     shinkai_message: ShinkaiMessage,
-    //     res: Sender<(String, String)>,
-    // },
-    // APIAddAgent {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<String, APIError>>,
-    // },
-    // AddAgent {
-    //     agent: SerializedLLMProvider,
-    //     profile: ShinkaiName,
-    //     res: Sender<String>,
-    // },
-    // APIChangeJobAgent {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<String, APIError>>,
-    // },
-    // APIAvailableLLMProviders {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
-    // },
-    // APIRemoveAgent {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<String, APIError>>,
-    // },
-    // APIModifyAgent {
-    //     msg: ShinkaiMessage,
-    //     res: Sender<Result<String, APIError>>,
-    // },
     V2ApiImportAgent {
         bearer: String,
         url: String,
@@ -466,6 +397,9 @@ pub enum NodeCommand {
     V2ApiInitialRegistration {
         payload: InitialRegistrationRequest,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
+    },
+    LocalAvailableLLMProviders {
+        res: Sender<Result<Vec<SerializedLLMProvider>, APIError>>,
     },
     V2ApiAvailableLLMProviders {
         bearer: String,

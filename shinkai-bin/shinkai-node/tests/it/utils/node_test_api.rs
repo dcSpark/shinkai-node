@@ -7,11 +7,10 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::identity::{Identity, IdentityType, StandardIdentity};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
+    IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType
 };
-use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
+use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -131,24 +130,11 @@ pub async fn api_registration_profile_node(
         let permissions = IdentityPermissions::Admin;
         let code_type = RegistrationCodeType::Profile;
 
-        let msg = ShinkaiMessageBuilder::request_code_registration(
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-            permissions,
-            code_type,
-            "main".to_string().clone(),
-            node_identity_name.to_string().clone(),
-            node_identity_name.to_string().clone(),
-        )
-        .expect("Failed to create registration message");
-
-        eprintln!("Msg: {:?}", msg);
-
         let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APICreateRegistrationCode {
-                msg,
+            .send(NodeCommand::LocalCreateRegistrationCode {
+                permissions,
+                code_type,
                 res: res_registration_sender,
             })
             .await
@@ -167,7 +153,7 @@ pub async fn api_registration_profile_node(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
-            node_registration_code.unwrap().to_string(),
+            node_registration_code.to_string(),
             IdentityType::Profile.to_string(),
             IdentityPermissions::Admin.to_string(),
             node_profile_name.to_string().clone(),
@@ -208,7 +194,7 @@ pub async fn api_registration_profile_node(
             async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
         ) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APIGetAllSubidentities {
+            .send(NodeCommand::GetAllSubidentities {
                 res: res_all_subidentities_sender,
             })
             .await
@@ -293,7 +279,7 @@ pub async fn api_try_re_register_profile_node(
         async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
     ) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::APIGetAllSubidentities {
+        .send(NodeCommand::GetAllSubidentities {
             res: res1_all_subidentities_sender,
         })
         .await
@@ -308,29 +294,16 @@ pub async fn api_try_re_register_profile_node(
 
 pub async fn api_llm_provider_registration(
     node_commands_sender: Sender<NodeCommand>,
-    subidentity_encryption_sk: EncryptionStaticKey,
-    node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SigningKey,
+    bearer: String,
     node_name: &str,
-    subidentity_name: &str,
     llm_provider: SerializedLLMProvider,
 ) {
     {
-        let code_message = ShinkaiMessageBuilder::request_add_llm_provider(
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-            llm_provider.clone(),
-            subidentity_name.to_string(),
-            node_name.to_string(),
-            node_name.to_string(),
-        )
-        .unwrap();
-
         let (res_agent_registration_sender, res_agent_registration_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APIAddAgent {
-                msg: code_message,
+            .send(NodeCommand::V2ApiAddLlmProvider {
+                bearer: bearer,
+                agent: llm_provider.clone(),
                 res: res_agent_registration_sender,
             })
             .await
@@ -362,23 +335,9 @@ pub async fn api_llm_provider_registration(
 
         assert!(agent_identity.is_some(), "Agent was added to the node");
 
-        let available_llm_providers_msg = ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-            "".to_string(),
-            subidentity_name.to_string(),
-            node_name.to_string(),
-            node_name.to_string(),
-            MessageSchemaType::Empty,
-        )
-        .unwrap();
-        eprintln!("available_llm_providers_msg: {:?}", available_llm_providers_msg);
-
         let (res_available_llm_providers_sender, res_available_llm_providers_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APIAvailableLLMProviders {
-                msg: available_llm_providers_msg.clone(),
+            .send(NodeCommand::LocalAvailableLLMProviders {
                 res: res_available_llm_providers_sender,
             })
             .await
@@ -404,12 +363,7 @@ pub async fn api_llm_provider_registration(
 #[allow(clippy::too_many_arguments)]
 pub async fn api_message_job(
     node_commands_sender: Sender<NodeCommand>,
-    subidentity_encryption_sk: EncryptionStaticKey,
-    node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SigningKey,
-    sender: &str,
-    sender_subidentity: &str,
-    recipient_subidentity: &str,
+    bearer: String,
     job_id: &str,
     content: &str,
     files: &[&str],
@@ -417,25 +371,26 @@ pub async fn api_message_job(
 ) {
     {
         let files_vec = files.iter().map(|f| ShinkaiPath::new(f)).collect::<Vec<_>>();
-        let job_message = ShinkaiMessageBuilder::job_message(
-            job_id.to_string(),
-            content.to_string(),
-            files_vec,
-            parent.to_string(),
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-            sender.to_string(),
-            sender_subidentity.to_string(),
-            sender.to_string(),
-            recipient_subidentity.to_string(),
-        )
-        .unwrap();
+
+        let job_id_clone = job_id.clone();
+        let job_message = JobMessage {
+            job_id: job_id_clone.to_string(),
+            content: content.to_string(),
+            fs_files_paths: files_vec,
+            parent: Some(parent.to_string()),
+            sheet_job_data: None,
+            callback: None,
+            metadata: None,
+            tool_key: None,
+            job_filenames: vec![],
+            tools: None,
+        };
 
         let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APIJobMessage {
-                msg: job_message.clone(),
+            .send(NodeCommand::V2ApiJobMessage {
+                bearer: bearer,
+                job_message: job_message.clone(),
                 res: res_message_job_sender,
             })
             .await
@@ -449,9 +404,7 @@ pub async fn api_message_job(
 
 pub async fn api_create_job(
     node_commands_sender: Sender<NodeCommand>,
-    subidentity_encryption_sk: EncryptionStaticKey,
-    node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SigningKey,
+    bearer: String,
     sender: &str,
     sender_subidentity: &str,
     recipient_subidentity: &str,
@@ -459,9 +412,7 @@ pub async fn api_create_job(
     let job_scope = MinimalJobScope::default();
     api_create_job_with_scope(
         node_commands_sender,
-        subidentity_encryption_sk,
-        node_encryption_pk,
-        subidentity_signature_sk,
+        bearer,
         sender,
         sender_subidentity,
         recipient_subidentity,
@@ -472,9 +423,7 @@ pub async fn api_create_job(
 
 pub async fn api_create_job_with_scope(
     node_commands_sender: Sender<NodeCommand>,
-    subidentity_encryption_sk: EncryptionStaticKey,
-    node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SigningKey,
+    bearer: String,
     sender: &str,
     sender_subidentity: &str,
     recipient_subidentity: &str,
@@ -484,23 +433,18 @@ pub async fn api_create_job_with_scope(
         let full_sender = format!("{}/{}", sender, sender_subidentity);
         eprintln!("@@ full_sender: {}", full_sender);
 
-        let job_creation = ShinkaiMessageBuilder::job_creation(
-            job_scope,
-            false,
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-            sender.to_string(),
-            sender_subidentity.to_string(),
-            sender.to_string(),
-            recipient_subidentity.to_string(),
-        )
-        .unwrap();
+        let job_creation = JobCreationInfo {
+            scope: job_scope,
+            is_hidden: Some(false),
+            associated_ui: None,
+        };
 
         let (res_create_job_sender, res_create_job_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::APICreateJob {
-                msg: job_creation,
+            .send(NodeCommand::V2ApiCreateJob {
+                bearer: bearer,
+                job_creation_info: job_creation,
+                llm_provider: recipient_subidentity.to_string(),
                 res: res_create_job_sender,
             })
             .await
@@ -589,91 +533,6 @@ pub async fn api_initial_registration_with_no_code_for_device(
         format!("{}/main/device/{}", node_identity_name, device_name_for_profile),
         "Node has the right subidentity"
     );
-}
-
-pub async fn api_get_all_inboxes_from_profile(
-    node_commands_sender: Sender<NodeCommand>,
-    subidentity_encryption_sk: EncryptionStaticKey,
-    node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SigningKey,
-    sender: &str,
-    sender_subidentity: &str,
-    recipient: &str,
-) -> Vec<String> {
-    {
-        let inbox_message = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-            sender_subidentity.to_string(),
-            sender_subidentity.to_string(),
-            sender.to_string(),
-            recipient.to_string(),
-        )
-        .unwrap();
-        eprintln!("inbox_message: {:?}", inbox_message);
-
-        let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
-        node_commands_sender
-            .send(NodeCommand::APIGetAllInboxesForProfile {
-                msg: inbox_message,
-                res: res_message_job_sender,
-            })
-            .await
-            .unwrap();
-        let node_job_message = res_message_job_receiver.recv().await.unwrap();
-        eprintln!("get all inboxes: {:?}", node_job_message);
-        assert!(node_job_message.is_ok(), "Job message was successfully processed");
-        node_job_message.unwrap()
-    }
-}
-
-pub async fn api_get_all_smart_inboxes_from_profile(
-    node_commands_sender: Sender<NodeCommand>,
-    subidentity_encryption_sk: EncryptionStaticKey,
-    node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SigningKey,
-    sender: &str,
-    sender_subidentity: &str,
-    recipient: &str,
-) -> Vec<SmartInbox> {
-    {
-        let full_name = format!("{}/{}", sender, sender_subidentity);
-        let inbox_message = ShinkaiMessageBuilder::new(
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
-            node_encryption_pk,
-        )
-        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .internal_metadata_with_schema(
-            sender_subidentity.to_string(),
-            "".to_string(),
-            "".to_string(),
-            MessageSchemaType::TextContent,
-            EncryptionMethod::None,
-            None,
-        )
-        .external_metadata_with_intra_sender(
-            recipient.to_string(),
-            sender.to_string(),
-            sender_subidentity.to_string(),
-        )
-        .message_raw_content(full_name.to_string())
-        .build()
-        .unwrap();
-
-        let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
-        node_commands_sender
-            .send(NodeCommand::APIGetAllSmartInboxesForProfile {
-                msg: inbox_message,
-                res: res_message_job_sender,
-            })
-            .await
-            .unwrap();
-        let node_job_message = res_message_job_receiver.recv().await.unwrap();
-        assert!(node_job_message.is_ok(), "Job message was successfully processed");
-        node_job_message.unwrap()
-    }
 }
 
 pub async fn api_execute_tool(

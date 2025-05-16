@@ -7,7 +7,7 @@ use ed25519_dalek::SigningKey;
 use log::error;
 
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_message_primitives::schemas::identity::Identity;
+use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentity};
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
@@ -107,6 +107,41 @@ impl Node {
             error!("Failed to send code: {}", e);
             return Err(Box::new(e));
         }
+        Ok(())
+    }
+
+    pub async fn local_get_all_subidentities(
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        res: Sender<Result<Vec<StandardIdentity>, APIError>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Obtain the IdentityManager lock
+        let identity_manager = identity_manager.lock().await;
+
+        // Get all identities (both standard and agent)
+        let identities = identity_manager.get_all_subidentities();
+
+        // Filter out only the StandardIdentity instances
+        let subidentities: Vec<StandardIdentity> = identities
+            .into_iter()
+            .filter_map(|identity| {
+                if let Identity::Standard(std_identity) = identity {
+                    Some(std_identity)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Send the result back
+        if res.send(Ok(subidentities)).await.is_err() {
+            let error = APIError {
+                code: 500,
+                error: "ChannelSendError".to_string(),
+                message: "Failed to send data through the channel".to_string(),
+            };
+            let _ = res.send(Err(error)).await;
+        }
+
         Ok(())
     }
 
