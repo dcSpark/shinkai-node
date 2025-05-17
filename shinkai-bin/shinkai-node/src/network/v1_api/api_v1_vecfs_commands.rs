@@ -1,29 +1,21 @@
-use std::{env, fs, path::Path, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
-    managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    managers::IdentityManager, network::{node_error::NodeError, Node}
 };
 use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use shinkai_embedding::embedding_generator::EmbeddingGenerator;
-use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
+use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::{
-    schemas::{identity::Identity, shinkai_name::ShinkaiName},
-    shinkai_message::{
-        shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{
-            APIConvertFilesAndSaveToFolder, APIVecFSRetrieveVRObject, APIVecFSRetrieveVectorResource,
-            APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
-            APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson,
-            APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType,
-        },
-    },
-    shinkai_utils::shinkai_path::ShinkaiPath,
+    schemas::{identity::Identity, shinkai_name::ShinkaiName}, shinkai_message::{
+        shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
+            APIVecFSRetrieveVRObject, APIVecFSRetrieveVectorResource, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveVectorSearchSimplifiedJson, APIVecFsSearchItems, MessageSchemaType
+        }
+    }, shinkai_utils::shinkai_path::ShinkaiPath
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -252,7 +244,8 @@ impl Node {
         // Ok(())
     }
 
-    // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS) and one for the VRKai returned too
+    // TODO: implement a vector search endpoint for finding FSItems (we'll need for the search UI in Visor for the FS)
+    // and one for the VRKai returned too
     pub async fn api_vec_fs_retrieve_vector_search_simplified_json(
         _db: Arc<SqliteManager>,
         node_name: ShinkaiName,

@@ -1,11 +1,11 @@
-use crate::api_v1;
-use crate::api_v2;
 use crate::api_sse;
+use crate::api_v2;
 
 use super::node_commands::NodeCommand;
 use async_channel::Sender;
 use hyper::server::conn::Http;
 use reqwest::StatusCode;
+use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
@@ -32,6 +32,16 @@ pub struct SendResponseBody {
     pub status: String,
     pub message: String,
     pub data: Option<SendResponseBodyData>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone)]
+pub struct APIUseRegistrationCodeSuccessResponse {
+    pub message: String,
+    pub node_name: String,
+    pub encryption_public_key: String,
+    pub identity_public_key: String,
+    pub api_v2_key: String,
+    pub api_v2_cert: Option<String>,
 }
 
 #[derive(serde::Serialize, ToSchema, Debug, Clone)]
@@ -127,15 +137,8 @@ pub async fn run_api(
             "x-shinkai-tool-id",
             "x-shinkai-app-id",
             "x-shinkai-llm-provider",
-            "x-shinkai-original-tool-router-key"
+            "x-shinkai-original-tool-router-key",
         ]);
-
-    let v1_routes = warp::path("v1").and(
-        api_v1::api_v1_router::v1_routes(node_commands_sender.clone(), node_name.clone())
-            .recover(handle_rejection)
-            .with(log)
-            .with(cors.clone()),
-    );
 
     let v2_routes = warp::path("v2").and(
         api_v2::api_v2_router::v2_routes(node_commands_sender.clone(), node_name.clone())
@@ -152,10 +155,7 @@ pub async fn run_api(
     );
 
     // Combine all routes
-    let routes = v1_routes
-        .or(v2_routes)
-        .or(mcp_routes)
-        .with(log).with(cors);
+    let routes = v2_routes.or(mcp_routes).with(log).with(cors);
 
     // Wrap the HTTP server in an async block that returns a Result
     let http_server = async {

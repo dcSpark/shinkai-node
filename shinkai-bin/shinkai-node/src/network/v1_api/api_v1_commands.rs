@@ -5,9 +5,6 @@ use crate::{
         node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
     }, utils::update_global_identity::update_global_identity_name
 };
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use async_channel::Sender;
 use blake3::Hasher;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -17,8 +14,7 @@ use serde_json::{json, Value as JsonValue};
 
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::EmbeddingModelType;
-use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
-use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
+use shinkai_http_api::node_api_router::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
 };
