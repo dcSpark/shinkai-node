@@ -26,8 +26,9 @@ pub fn convert_to_shinkai_tool(
         .unwrap_or_default();
 
     // Create the MCPServerTool
+    let tool_name = tool.name.to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
     let mcp_tool = MCPServerTool {
-        name: format!("{}_{}", server_name, tool.name),
+        name: format!("{}_{}", server_name, tool_name),
         author: node_name.to_string(),
         description: tool.description.to_string(),
         config: tools_config,
@@ -52,10 +53,25 @@ pub fn convert_to_shinkai_tool(
         output_arg: ToolOutputArg::empty(),
         result: ToolResult {
             r#type: "object".to_string(),
-            properties: serde_json::json!({}),
-            required: vec![],
+            properties: serde_json::json!({
+                "content": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "description": "Content type", "enum": ["text", "image", "audio"]},
+                            "text": {"type": "string", "description": "Text content"},
+                            "data": {"type": "string", "description": "Image content"},
+                            "mimeType": {"type": "string", "description": "Mime type of the content"},
+                        },
+                        "required": ["type"]
+                    }
+                },
+                "isError": {"type": "boolean", "description": "Whether the tool call was successful"}
+            }),
+            required: vec!["content".to_string(), "isError".to_string()],
         },
-        tool_set: Some(format!("__mcp_{}", server_name)),
+        tool_set: Some(format!("__mcp{}_{}", server_id.to_string(), server_name)),
     };
 
     // Return the ShinkaiTool
@@ -146,7 +162,7 @@ pub mod tests_mcp_manager {
             assert_eq!(mcp_tool.description, "Retrieves information without modifying anything");
             assert_eq!(mcp_tool.mcp_server_ref, "test_server_123");
             assert_eq!(mcp_tool.mcp_server_tool, "get_info");
-            assert_eq!(mcp_tool.tool_set, Some("__mcp_test_server".to_string()));
+            assert_eq!(mcp_tool.tool_set, Some("__mcptest_server_123_test_server".to_string()));
             assert_eq!(enabled, true);
 
             // Check that properties were correctly extracted
@@ -156,11 +172,8 @@ pub mod tests_mcp_manager {
 
             // Verify config was properly set
             assert_eq!(mcp_tool.config.len(), 1);
-            if let ToolConfig::BasicConfig(basic_config) = &mcp_tool.config[0] {
-                assert_eq!(basic_config.key_name, "api_key");
-            } else {
-                panic!("Expected BasicConfig");
-            }
+            let ToolConfig::BasicConfig(basic_config) = &mcp_tool.config[0];
+            assert_eq!(basic_config.key_name, "api_key");
         } else {
             panic!("Expected ShinkaiTool::MCPServer variant");
         }
