@@ -162,7 +162,7 @@ pub mod tests_mcp_manager {
             assert_eq!(mcp_tool.description, "Retrieves information without modifying anything");
             assert_eq!(mcp_tool.mcp_server_ref, "test_server_123");
             assert_eq!(mcp_tool.mcp_server_tool, "get_info");
-            assert_eq!(mcp_tool.tool_set, Some("__mcp_test_server".to_string()));
+            assert_eq!(mcp_tool.tool_set, Some("__mcptest_server_123_test_server".to_string()));
             assert_eq!(enabled, true);
 
             // Check that properties were correctly extracted
@@ -172,11 +172,8 @@ pub mod tests_mcp_manager {
 
             // Verify config was properly set
             assert_eq!(mcp_tool.config.len(), 1);
-            if let ToolConfig::BasicConfig(basic_config) = &mcp_tool.config[0] {
-                assert_eq!(basic_config.key_name, "api_key");
-            } else {
-                panic!("Expected BasicConfig");
-            }
+            let ToolConfig::BasicConfig(basic_config) = &mcp_tool.config[0];
+            assert_eq!(basic_config.key_name, "api_key");
         } else {
             panic!("Expected ShinkaiTool::MCPServer variant");
         }

@@ -114,7 +114,10 @@ pub async fn run_tool_via_sse(
     tool: String,
     parameters: serde_json::Map<String, serde_json::Value>,
 ) -> anyhow::Result<CallToolResult> {
-    let transport = SseTransport::start(url).await?;
+    let transport = SseTransport::start(url)
+        .await
+        .inspect_err(|e| log::error!("error starting sse transport: {:?}", e))?;
+
     let client_info = ClientInfo {
         protocol_version: Default::default(),
         capabilities: ClientCapabilities::default(),
@@ -136,7 +139,8 @@ pub async fn run_tool_via_sse(
             name: tool.into(),
             arguments: Some(parameters),
         })
-        .await;
+        .await
+        .inspect_err(|e| log::error!("error calling tool: {:?}", e));
     let _ = client
         .cancel()
         .await
@@ -196,7 +200,7 @@ pub mod tests_mcp_manager {
             .inspect_err(|e| {
                 println!("error {:?}", e);
             });
-
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let params = json!({
             "a": 1,
             "b": 2,
@@ -208,11 +212,16 @@ pub mod tests_mcp_manager {
             .inspect_err(|e| {
                 println!("error {:?}", e);
             });
-
-        assert!(result.is_ok());
-        let unwrapped = result.unwrap();
-        assert_eq!(unwrapped.content.len(), 1);
-        assert!(unwrapped.content[0].as_text().unwrap().text.contains("3"));
+        match result {
+            Ok(result) => {
+                assert!(result.content.len() == 1);
+                assert!(result.content[0].as_text().unwrap().text.contains("3"));
+            }
+            Err(e) => {
+                println!("error {:?}", e);
+                assert!(false);
+            }
+        }
     }
 
     #[tokio::test]
