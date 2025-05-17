@@ -2975,7 +2975,7 @@ mod tests {
             input_args: Parameters::new(),
             output_arg: ToolOutputArg::empty(),
             activated: true,
-            embedding: None,
+            embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             tool_set: None,
             mcp_server_ref: mcp_server_id,
@@ -3007,7 +3007,7 @@ mod tests {
             input_args: Parameters::new(),
             output_arg: ToolOutputArg::empty(),
             activated: true,
-            embedding: None,
+            embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             sql_tables: None,
             sql_queries: None,
@@ -3063,9 +3063,9 @@ mod tests {
         };
 
         // Tools are still created with Uuid for mcp_server_ref via create_mcp_shinkai_tool
-        let tool1_s1 = create_mcp_shinkai_tool("Tool1S1", mcp_server_uuid1.clone(), "profile1", "1.0");
-        let tool2_s1 = create_mcp_shinkai_tool("Tool2S1", mcp_server_uuid1, "profile1", "1.0");
-        let tool1_s2 = create_mcp_shinkai_tool("Tool1S2", mcp_server_uuid2, "profile2", "1.0");
+        let tool1_s1 = create_mcp_shinkai_tool("Tool1S1", mcp_server1.id.unwrap_or_default().to_string(), "profile1", "1.0");
+        let tool2_s1 = create_mcp_shinkai_tool("Tool2S1", mcp_server1.id.unwrap_or_default().to_string(), "profile1", "1.0");
+        let tool1_s2 = create_mcp_shinkai_tool("Tool1S2", mcp_server2.id.unwrap_or_default().to_string(), "profile2", "1.0");
         let deno_tool = create_deno_shinkai_tool("MyDenoTool", "DenoAuthor", "1.0");
 
         manager.add_tool(tool1_s1.clone()).await.unwrap();
@@ -3121,12 +3121,12 @@ mod tests {
         };
 
         // Tools are still created with Uuid for mcp_server_ref
-        let tool1_del = create_mcp_shinkai_tool("MCPTool1ToDel", mcp_server_uuid_del.clone(), "profile_del", "1.0");
+        let tool1_del = create_mcp_shinkai_tool("MCPTool1ToDel", mcp_server_del.id.unwrap_or_default().to_string(), "profile_del", "1.0");
         let tool1_del_key = tool1_del.tool_router_key().to_string_without_version();
-        let tool2_del = create_mcp_shinkai_tool("MCPTool2ToDel", mcp_server_uuid_del.clone(), "profile_del", "1.0");
+        let tool2_del = create_mcp_shinkai_tool("MCPTool2ToDel", mcp_server_del.id.unwrap_or_default().to_string(), "profile_del", "1.0");
         let tool2_del_key = tool2_del.tool_router_key().to_string_without_version();
 
-        let tool_keep_mcp = create_mcp_shinkai_tool("MCPToolToKeep", mcp_server_uuid_keep.clone(), "profile_keep", "1.0");
+        let tool_keep_mcp = create_mcp_shinkai_tool("MCPToolToKeep", mcp_server_keep.id.unwrap_or_default().to_string(), "profile_keep", "1.0");
         let tool_keep_mcp_key = tool_keep_mcp.tool_router_key().to_string_without_version();
         
         let deno_tool_keep = create_deno_shinkai_tool("DenoToolToKeep", "DenoAuthor", "1.0");
