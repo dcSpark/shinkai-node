@@ -11,8 +11,7 @@ use shinkai_message_primitives::schemas::shinkai_subscription_req::FolderSubscri
 use shinkai_message_primitives::schemas::shinkai_subscription_req::PaymentOption;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem,
-    APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType,
+    APIAvailableSharedItems, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsRetrievePathSimplifiedJson, FileDestinationCredentials, MessageSchemaType
 };
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -121,52 +120,6 @@ pub async fn remove_item(
         .unwrap();
     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
     eprintln!("resp: {:?}", resp);
-}
-
-#[allow(clippy::too_many_arguments)]
-pub async fn retrieve_file_info(
-    commands_sender: &Sender<NodeCommand>,
-    encryption_sk: EncryptionStaticKey,
-    signature_sk: SigningKey,
-    encryption_pk: EncryptionPublicKey,
-    identity_name: &str,
-    profile_name: &str,
-    path: &str,
-    is_simple: bool,
-) -> Value {
-    let payload = APIVecFsRetrievePathSimplifiedJson {
-        path: path.to_string(),
-        depth: Some(1),
-    };
-
-    let msg = generate_message_with_payload(
-        serde_json::to_string(&payload).unwrap(),
-        MessageSchemaType::VecFsRetrievePathSimplifiedJson,
-        encryption_sk.clone(),
-        signature_sk.clone(),
-        encryption_pk,
-        identity_name,
-        profile_name,
-        identity_name,
-        profile_name,
-    );
-
-    // Prepare the response channel
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-
-    // Send the command
-    commands_sender
-        .send(NodeCommand::APIVecFSRetrievePathMinimalJson { msg, res: res_sender })
-        .await
-        .unwrap();
-    let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-
-    if is_simple {
-        print_tree_simple(resp.clone());
-    } else {
-        eprintln!("resp for current file system files: {}", resp);
-    }
-    resp
 }
 
 #[allow(clippy::too_many_arguments)]
