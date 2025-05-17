@@ -1,4 +1,4 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::collections::HashMap;
 
 use async_channel::Sender;
 use chrono::{DateTime, Local, Utc};
@@ -9,7 +9,7 @@ use shinkai_message_primitives::{
         coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse}, shinkai_name::ShinkaiName, shinkai_subscription::ShinkaiSubscription, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::{SmartInbox, V2SmartInbox}, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
     }, shinkai_message::{
         shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
-            APIAddOllamaModels, APIAvailableSharedItems, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
+            APIAddOllamaModels, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
         }
     }, shinkai_utils::job_scope::MinimalJobScope
 };
@@ -167,203 +167,203 @@ pub enum NodeCommand {
         models: Vec<String>,
         res: Sender<Result<(), String>>,
     },
-    APIVecFSRetrievePathSimplifiedJson {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIVecFSRetrievePathMinimalJson {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIVecFSRetrieveVectorResource {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIVecFSRetrieveVectorSearchSimplifiedJson {
-        msg: ShinkaiMessage,
-        #[allow(clippy::complexity)]
-        res: Sender<Result<Vec<(String, Vec<String>, f32)>, APIError>>,
-    },
-    APIConvertFilesAndSaveToFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Vec<Value>, APIError>>,
-    },
-    APIVecFSCreateFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIVecFSMoveItem {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIVecFSCopyItem {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIVecFSMoveFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIVecFSCopyFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIVecFSDeleteFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIVecFSDeleteItem {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIVecFSSearchItems {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
-    },
-    APIAvailableSharedItems {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIAvailableSharedItemsOpen {
-        msg: APIAvailableSharedItems,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APICreateShareableFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIUpdateShareableFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIUnshareFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APISubscribeToSharedFolder {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIUnsubscribe {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    APIMySubscriptions {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIGetMySubscribers {
-        msg: ShinkaiMessage,
-        res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
-    },
-    APIGetHttpFreeSubscriptionLinks {
-        subscription_profile_path: String,
-        res: Sender<Result<Value, APIError>>,
-    },
-    RetrieveVRKai {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    RetrieveVRPack {
-        msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
-    },
-    #[allow(dead_code)]
-    LocalExtManagerProcessSubscriptionUpdates {
-        res: Sender<Result<(), String>>,
-    },
-    #[allow(dead_code)]
-    LocalHttpUploaderProcessSubscriptionUpdates {
-        res: Sender<Result<(), String>>,
-    },
-    #[allow(dead_code)]
-    LocalMySubscriptionCallJobMessageProcessing {
-        res: Sender<Result<(), String>>,
-    },
-    #[allow(dead_code)]
-    LocalMySubscriptionTriggerHttpDownload {
-        res: Sender<Result<(), String>>,
-    },
-    APIGetLastNotifications {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIGetNotificationsBeforeTimestamp {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APISearchWorkflows {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APISearchShinkaiTool {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIAddWorkflow {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIUpdateWorkflow {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIRemoveWorkflow {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIGetWorkflowInfo {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIListAllWorkflows {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APISetColumn {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIRemoveColumn {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIAddRows {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIRemoveRows {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIUserSheets {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APICreateSheet {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIRemoveSheet {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APISetCellValue {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIGetSheet {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIImportSheet {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
-    APIExportSheet {
-        msg: ShinkaiMessage,
-        res: Sender<Result<Value, APIError>>,
-    },
+    // APIVecFSRetrievePathSimplifiedJson {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIVecFSRetrievePathMinimalJson {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIVecFSRetrieveVectorResource {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIVecFSRetrieveVectorSearchSimplifiedJson {
+    //     msg: ShinkaiMessage,
+    //     #[allow(clippy::complexity)]
+    //     res: Sender<Result<Vec<(String, Vec<String>, f32)>, APIError>>,
+    // },
+    // APIConvertFilesAndSaveToFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Vec<Value>, APIError>>,
+    // },
+    // APIVecFSCreateFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIVecFSMoveItem {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIVecFSCopyItem {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIVecFSMoveFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIVecFSCopyFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIVecFSDeleteFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIVecFSDeleteItem {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIVecFSSearchItems {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Vec<String>, APIError>>,
+    // },
+    // APIAvailableSharedItems {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIAvailableSharedItemsOpen {
+    //     msg: APIAvailableSharedItems,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APICreateShareableFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIUpdateShareableFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIUnshareFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APISubscribeToSharedFolder {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIUnsubscribe {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // APIMySubscriptions {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIGetMySubscribers {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<HashMap<String, Vec<ShinkaiSubscription>>, APIError>>,
+    // },
+    // APIGetHttpFreeSubscriptionLinks {
+    //     subscription_profile_path: String,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // RetrieveVRKai {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // RetrieveVRPack {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<String, APIError>>,
+    // },
+    // #[allow(dead_code)]
+    // LocalExtManagerProcessSubscriptionUpdates {
+    //     res: Sender<Result<(), String>>,
+    // },
+    // #[allow(dead_code)]
+    // LocalHttpUploaderProcessSubscriptionUpdates {
+    //     res: Sender<Result<(), String>>,
+    // },
+    // #[allow(dead_code)]
+    // LocalMySubscriptionCallJobMessageProcessing {
+    //     res: Sender<Result<(), String>>,
+    // },
+    // #[allow(dead_code)]
+    // LocalMySubscriptionTriggerHttpDownload {
+    //     res: Sender<Result<(), String>>,
+    // },
+    // APIGetLastNotifications {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIGetNotificationsBeforeTimestamp {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APISearchWorkflows {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APISearchShinkaiTool {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIAddWorkflow {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIUpdateWorkflow {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIRemoveWorkflow {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIGetWorkflowInfo {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIListAllWorkflows {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APISetColumn {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIRemoveColumn {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIAddRows {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIRemoveRows {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIUserSheets {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APICreateSheet {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIRemoveSheet {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APISetCellValue {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIGetSheet {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIImportSheet {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
+    // APIExportSheet {
+    //     msg: ShinkaiMessage,
+    //     res: Sender<Result<Value, APIError>>,
+    // },
     APIUpdateDefaultEmbeddingModel {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,

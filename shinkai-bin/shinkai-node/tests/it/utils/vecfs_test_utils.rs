@@ -1,262 +1,41 @@
+use std::path::Path;
+
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};
-use ed25519_dalek::SigningKey;
-use rust_decimal::Decimal;
 use serde_json::Value;
 
 use shinkai_fs::shinkai_fs_error::ShinkaiFsError;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    APIAvailableSharedItems, APICreateShareableFolder, APIVecFsCreateFolder, APIVecFsDeleteFolder, FileDestinationCredentials, MessageSchemaType
-};
-use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-
-use std::path::Path;
-use std::time::Duration;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
-#[allow(clippy::too_many_arguments)]
-pub fn generate_message_with_payload<T: ToString>(
-    payload: T,
-    schema: MessageSchemaType,
-    my_encryption_secret_key: EncryptionStaticKey,
-    my_signature_secret_key: SigningKey,
-    receiver_public_key: EncryptionPublicKey,
-    sender: &str,
-    sender_subidentity: &str,
-    recipient: &str,
-    recipient_subidentity: &str,
-) -> ShinkaiMessage {
-    let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
-
-    ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
-        .message_raw_content(payload.to_string())
-        .body_encryption(EncryptionMethod::None)
-        .message_schema_type(schema)
-        .internal_metadata_with_inbox(
-            sender_subidentity.to_string(),
-            recipient_subidentity.to_string(),
-            "".to_string(),
-            EncryptionMethod::None,
-            None,
-        )
-        .external_metadata_with_schedule(recipient.to_string(), sender.to_string(), timestamp)
-        .build()
-        .unwrap()
-}
-
-// pub async fn fetch_last_messages(
-//     commands_sender: &Sender<NodeCommand>,
-//     limit: usize,
-// ) -> Result<Vec<ShinkaiMessage>, APIError> {
-//     let (res_sender, res_receiver) = async_channel::bounded(1);
-//     commands_sender
-//         .send(NodeCommand::FetchLastMessages { limit, res: res_sender })
-//         .await
-//         .unwrap();
-//     Ok(res_receiver.recv().await.unwrap())
-// }
-
-// #[allow(clippy::too_many_arguments)]
-// pub async fn make_folder_shareable(
-//     commands_sender: &Sender<NodeCommand>,
-//     folder_path: &str,
-//     encryption_sk: EncryptionStaticKey,
-//     signature_sk: SigningKey,
-//     encryption_pk: EncryptionPublicKey,
-//     identity_name: &str,
-//     profile_name: &str,
-//     credentials: Option<FileDestinationCredentials>,
-// ) {
-//     let has_web_alternative = credentials.is_some();
-//     let payload = APICreateShareableFolder {
-//         path: folder_path.to_string(),
-//         subscription_req: FolderSubscription {
-//             minimum_token_delegation: Some(100),
-//             minimum_time_delegated_hours: Some(100),
-//             monthly_payment: Some(PaymentOption::USD(Decimal::new(1000, 2))), // Represents 10.00
-//             is_free: false,
-//             has_web_alternative: Some(has_web_alternative),
-//             folder_description: "This is a test folder".to_string(),
-//         },
-//         credentials,
-//     };
-
-//     let msg = generate_message_with_payload(
-//         serde_json::to_string(&payload).unwrap(),
-//         MessageSchemaType::CreateShareableFolder,
-//         encryption_sk,
-//         signature_sk,
-//         encryption_pk,
-//         identity_name,
-//         profile_name,
-//         identity_name,
-//         profile_name,
-//     );
-
-//     // Prepare the response channel
-//     let (res_sender, res_receiver) = async_channel::bounded(1);
-
-//     // Send the command
-//     commands_sender
-//         .send(NodeCommand::APICreateShareableFolder { msg, res: res_sender })
-//         .await
-//         .unwrap();
-//     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-//     eprintln!("Make folder shareable resp: {:?}", resp);
-// }
-
-// #[allow(clippy::too_many_arguments)]
-// pub async fn make_folder_shareable_http_free(
-//     commands_sender: &Sender<NodeCommand>,
-//     folder_path: &str,
-//     encryption_sk: EncryptionStaticKey,
-//     signature_sk: SigningKey,
-//     encryption_pk: EncryptionPublicKey,
-//     identity_name: &str,
-//     profile_name: &str,
-//     credentials: Option<FileDestinationCredentials>,
-// ) {
-//     let payload = APICreateShareableFolder {
-//         path: folder_path.to_string(),
-//         subscription_req: FolderSubscription {
-//             minimum_token_delegation: None,
-//             minimum_time_delegated_hours: None,
-//             monthly_payment: None,
-//             is_free: true,
-//             has_web_alternative: Some(true),
-//             folder_description: "This is a test folder".to_string(),
-//         },
-//         credentials,
-//     };
-
-//     let msg = generate_message_with_payload(
-//         serde_json::to_string(&payload).unwrap(),
-//         MessageSchemaType::CreateShareableFolder,
-//         encryption_sk,
-//         signature_sk,
-//         encryption_pk,
-//         identity_name,
-//         profile_name,
-//         identity_name,
-//         profile_name,
-//     );
-
-//     // Prepare the response channel
-//     let (res_sender, res_receiver) = async_channel::bounded(1);
-
-//     // Send the command
-//     commands_sender
-//         .send(NodeCommand::APICreateShareableFolder { msg, res: res_sender })
-//         .await
-//         .unwrap();
-//     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-//     eprintln!("Make folder shareable resp: {:?}", resp);
-// }
-
-// #[allow(clippy::too_many_arguments)]
-// pub async fn show_available_shared_items(
-//     streamer_node_name: &str,
-//     streamer_profile_name: &str,
-//     commands_sender: &Sender<NodeCommand>,
-//     encryption_sk: EncryptionStaticKey,
-//     signature_sk: SigningKey,
-//     encryption_pk: EncryptionPublicKey,
-//     identity_name: &str,
-//     profile_name: &str,
-// ) {
-//     let payload = APIAvailableSharedItems {
-//         path: "/".to_string(), // Assuming you want to list items at the root
-//         streamer_node_name: streamer_node_name.to_string(),
-//         streamer_profile_name: streamer_profile_name.to_string(),
-//     };
-
-//     let msg = generate_message_with_payload(
-//         serde_json::to_string(&payload).unwrap(),
-//         MessageSchemaType::AvailableSharedItems,
-//         encryption_sk,
-//         signature_sk,
-//         encryption_pk,
-//         identity_name,
-//         profile_name,
-//         identity_name,
-//         streamer_profile_name,
-//     );
-
-//     // Prepare the response channel
-//     let (res_sender, res_receiver) = async_channel::bounded(1);
-
-//     // Send the command
-//     commands_sender
-//         .send(NodeCommand::APIAvailableSharedItems { msg, res: res_sender })
-//         .await
-//         .unwrap();
-//     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-//     eprintln!("Available shared items resp: {:?}", resp);
-// }
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::APIVecFsCreateFolder;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn create_folder(
     commands_sender: &Sender<NodeCommand>,
     folder_path: &str,
     folder_name: &str,
-    encryption_sk: EncryptionStaticKey,
-    signature_sk: SigningKey,
-    encryption_pk: EncryptionPublicKey,
-    identity_name: &str,
-    profile_name: &str,
+    bearer_token: &str,
 ) {
     let payload = APIVecFsCreateFolder {
         path: folder_path.to_string(),
         folder_name: folder_name.to_string(),
     };
 
-    let msg = generate_message_with_payload(
-        serde_json::to_string(&payload).unwrap(),
-        MessageSchemaType::VecFsCreateFolder,
-        encryption_sk,
-        signature_sk,
-        encryption_pk,
-        identity_name,
-        profile_name,
-        identity_name,
-        profile_name,
-    );
-
     // Prepare the response channel
     let (res_sender, res_receiver) = async_channel::bounded(1);
 
     // Send the command
     commands_sender
-        .send(NodeCommand::APIVecFSCreateFolder { msg, res: res_sender })
+        .send(NodeCommand::V2ApiVecFSCreateFolder {
+            bearer: bearer_token.to_string(),
+            payload,
+            res: res_sender,
+        })
         .await
         .unwrap();
     let resp = res_receiver.recv().await.unwrap().expect("Failed to receive response");
     eprintln!("resp: {:?}", resp);
 }
-
-// pub fn remove_timestamps_from_shared_folder_cache_response(value: &mut serde_json::Value) {
-//     match value {
-//         serde_json::Value::Object(map) => {
-//             map.remove("last_ext_node_response");
-//             map.remove("last_request_to_ext_node");
-//             map.remove("last_updated");
-//             map.remove("response_last_updated");
-//             map.remove("last_modified");
-//             // Use a closure to explicitly call `remove_timestamps_from_response`
-//             map.values_mut()
-//                 .for_each(remove_timestamps_from_shared_folder_cache_response);
-//         }
-//         serde_json::Value::Array(vec) => {
-//             vec.iter_mut()
-//                 .for_each(remove_timestamps_from_shared_folder_cache_response);
-//         }
-//         _ => {}
-//     }
-// }
 
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
