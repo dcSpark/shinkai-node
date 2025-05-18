@@ -4,6 +4,21 @@
 </h1>
 <p align="center">Shinkai allows you to create AI agents without touching code. Define tasks, schedule actions, and let Shinkai write custom code for you. Native crypto support included.<br/><br/> There is a companion repo called Shinkai Apps which contains the frontend that encapsulates this project, you can find it <a href="https://github.com/dcSpark/shinkai-apps">here</a>.</p><br/>
 
+## Overview
+
+Shinkai Node is the backend service that powers the Shinkai network of AI agents. It exposes an HTTP API, manages jobs and tasks, runs inference chains and handles vector searches. The project is written in Rust and organized as a cargo workspace composed of several crates.
+
+### Repository Structure
+
+- `shinkai-bin/shinkai-node/` – main executable crate. The entry point is `src/main.rs` which starts the node via `runner.rs`.
+- `shinkai-libs/` – collection of library crates used by the node (crypto identities, message primitives, filesystem, embedding, HTTP API, tools primitives, sqlite helpers, etc.).
+- `docs/` – architecture notes, installation guides, OpenAPI schemas and testing documentation.
+- `scripts/` – helper scripts for local development such as `run_node_localhost.sh`.
+- `cloud-node/` – example configuration for running the node on cloud VMs.
+- `perf_scripts/` – scripts for performance testing.
+
+You can browse the documentation in the `docs/` folder to learn more about inference chains, endpoint creation and testing practices.
+
 ## Documentation
 
 General Documentation: [https://docs.shinkai.com](https://docs.shinkai.com)
