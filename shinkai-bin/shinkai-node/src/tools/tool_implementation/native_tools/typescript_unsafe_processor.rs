@@ -16,7 +16,6 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
-use crate::network::Node;
 use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
