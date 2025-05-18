@@ -8,7 +8,7 @@ authors = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_embedding = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 serde_json = { workspace = true }
 

@@ -11,13 +11,7 @@ rand = { workspace = true }
 blake3 = { workspace = true }
 chrono = { workspace = true }
 thiserror = "2.0.3"
-reqwest = { workspace = true, features = [
-    "json",
-    "tokio-native-tls",
-    "blocking",
-    "multipart",
-    "default-tls",
-] }
+reqwest = { workspace = true, features = ["json", "tokio-native-tls", "blocking"] }
 lazy_static = "1.5.0"
 async-trait = { workspace = true }
 keyphrases = { workspace = true }
