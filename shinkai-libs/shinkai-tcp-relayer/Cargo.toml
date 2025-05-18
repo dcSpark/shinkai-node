@@ -10,8 +10,8 @@ authors = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
-shinkai_message_primitives = { path = "../shinkai-message-primitives" }
-shinkai_crypto_identities = { path = "../shinkai-crypto-identities" }
+shinkai_message_primitives = { workspace = true }
+shinkai_crypto_identities = { workspace = true }
 x25519-dalek = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }

@@ -9,7 +9,7 @@ authors = { workspace = true }
 [dependencies]
 tokio = { workspace = true }
 serde_json = { workspace = true }
-shinkai_message_primitives = { path = "../shinkai-message-primitives" }
+shinkai_message_primitives = { workspace = true }
 x25519-dalek = { workspace = true }
 ed25519-dalek = { workspace = true }
 chrono = { workspace = true }
