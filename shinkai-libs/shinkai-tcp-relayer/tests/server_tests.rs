@@ -562,7 +562,6 @@ pub fn generate_message_with_payload<T: ToString>(
         .unwrap()
 }
 
-#[allow(dead_code)]
 async fn create_shinkai_message_for_shared_files(
     sender: &str,
     recipient: &str,

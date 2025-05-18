@@ -467,6 +467,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generates embeddings using a Hugging Face Text Embeddings Inference server
+    #[allow(dead_code)]
     fn generate_embedding_tei_blocking(
         &self,
         input_strings: Vec<String>,
@@ -593,6 +594,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
+    #[allow(dead_code)]
     fn generate_embedding_open_ai_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         // Prepare the request body
         let request_body = EmbeddingRequestBody {

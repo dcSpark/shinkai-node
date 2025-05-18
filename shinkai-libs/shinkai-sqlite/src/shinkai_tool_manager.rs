@@ -1,5 +1,4 @@
 use crate::{SqliteManager, SqliteManagerError};
-use bincode::Error;
 use bytemuck::cast_slice;
 use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};

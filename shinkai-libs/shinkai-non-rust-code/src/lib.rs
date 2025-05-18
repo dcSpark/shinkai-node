@@ -52,6 +52,7 @@ pub enum NonRustRuntime {
     Python,
 }
 
+#[allow(dead_code)]
 fn get_python_binary_path() -> PathBuf {
     PathBuf::from(env::var("SHINKAI_TOOLS_RUNNER_PYTHON_BINARY_PATH").unwrap_or_else(|_| "python3".to_string()))
 }

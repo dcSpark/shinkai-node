@@ -58,7 +58,7 @@ mod tests {
     fn test_serde_encode_decode_message() {
         // Initialize the message
         let (my_encryption_secret_key, my_encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
-        let (my_signature_secret_key, my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
+        let (my_signature_secret_key, _my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
         let receiver_public_key = my_encryption_public_key.clone();
 
         let message = ShinkaiMessageBuilder::new(
