@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use crate::errors::SqliteManagerError;
 use crate::SqliteManager;
-use crate::preferences::serde_json::Value;
 use rusqlite::{OptionalExtension, Result, ToSql};
 use serde;
 use serde_json;

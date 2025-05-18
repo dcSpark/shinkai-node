@@ -1,5 +1,4 @@
-use rusqlite::{Result, Row, ToSql, OptionalExtension};
-use std::time::{SystemTime, UNIX_EPOCH};
+use rusqlite::{OptionalExtension, Result, Row, ToSql};
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 

@@ -153,7 +153,7 @@ impl SqliteManager {
                     agent.full_identity_name.node_name.clone(),
                     agent.agent_id
                 ))
-                .map_err(|e| SqliteManagerError::InvalidData)?;
+                .map_err(|_e| SqliteManagerError::InvalidData)?;
                 manager.update_agent(agent)?;
             }
         }
@@ -580,7 +580,7 @@ impl SqliteManager {
     }
 
     fn initialize_tools_table(conn: &rusqlite::Connection) -> Result<()> {
-        let result = conn.execute(
+        let _result = conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
