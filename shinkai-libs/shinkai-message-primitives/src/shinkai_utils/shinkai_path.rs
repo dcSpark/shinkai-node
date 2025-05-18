@@ -226,7 +226,10 @@ mod tests {
                 env::var("NODE_STORAGE_PATH").unwrap()
             ))
         );
-        assert_eq!(path.relative_path(), os_path::OsPath::from("word_files/christmas.docx").to_string());
+        assert_eq!(
+            path.relative_path(),
+            os_path::OsPath::from("word_files/christmas.docx").to_string()
+        );
     }
 
     #[test]
@@ -239,7 +242,10 @@ mod tests {
             path.as_path(),
             Path::new("storage/filesystem/word_files/christmas.docx")
         );
-        assert_eq!(path.relative_path(), os_path::OsPath::from("word_files/christmas.docx").to_string());
+        assert_eq!(
+            path.relative_path(),
+            os_path::OsPath::from("word_files/christmas.docx").to_string()
+        );
     }
 
     #[test]
@@ -247,7 +253,10 @@ mod tests {
     fn test_relative_path_outside_base() {
         let _dir = testing_create_tempdir_and_set_env_var();
         let absolute_outside = ShinkaiPath::from_string("/some/other/path".to_string());
-        assert_eq!(absolute_outside.relative_path(), os_path::OsPath::from("some/other/path").to_string());
+        assert_eq!(
+            absolute_outside.relative_path(),
+            os_path::OsPath::from("some/other/path").to_string()
+        );
     }
 
     #[test]
@@ -348,7 +357,8 @@ mod tests {
         let serialized_path = serde_json::to_string(&path).unwrap();
 
         // Check if the serialized output matches the expected relative path
-        let serialized_path_str = serde_json::to_string(&os_path::OsPath::from("word_files/christmas.docx").to_string()).unwrap();
+        let serialized_path_str =
+            serde_json::to_string(&os_path::OsPath::from("word_files/christmas.docx").to_string()).unwrap();
 
         assert_eq!(serialized_path, serialized_path_str);
     }
