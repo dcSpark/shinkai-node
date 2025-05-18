@@ -24,13 +24,10 @@ impl EmbeddingFunction {
     }
 
     pub async fn request_embeddings(&self, prompt: &str) -> Result<Vec<f32>, rusqlite::Error> {
-        let model_str = match &self.model_type {
-            EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
-            _ => {
-                println!("Unsupported embedding model type: {:?}", self.model_type);
-                return Err(rusqlite::Error::InvalidQuery);
-            }
-        };
+        // Currently `EmbeddingModelType` only supports `OllamaTextEmbeddingsInference`.
+        // Using a `match` with a catch-all arm triggers an `unreachable_pattern`
+        // warning, so directly convert the enum to a string instead.
+        let model_str = self.model_type.to_string();
 
         let max_tokens = self.model_type.max_input_token_count();
         let truncated_prompt = if prompt.len() > max_tokens {
