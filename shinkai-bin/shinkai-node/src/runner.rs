@@ -54,7 +54,7 @@ pub async fn initialize_node() -> Result<
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let main_db: &str = "main_db";
-    let vector_fs_db: &str = "vector_fs_db";
+    let _vector_fs_db: &str = "vector_fs_db";
     let secrets_file: &str = ".secret";
 
     // Fetch Env vars/args

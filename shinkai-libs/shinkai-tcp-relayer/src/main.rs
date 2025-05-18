@@ -93,7 +93,7 @@ async fn main() -> Result<(), NetworkMessageError> {
     let identity_secret_key = matches.value_of("identity_secret_key").unwrap().to_string();
     let encryption_secret_key = matches.value_of("encryption_secret_key").unwrap().to_string();
     let node_name = matches.value_of("node_name").unwrap().to_string();
-    let open_to_all = matches.value_of("open_to_all").map(|v| v == "true").unwrap_or(true);
+    let _open_to_all = matches.value_of("open_to_all").map(|v| v == "true").unwrap_or(true);
     let max_connections = matches.value_of("max_connections").map(|v| v.parse().unwrap_or(20));
 
 
