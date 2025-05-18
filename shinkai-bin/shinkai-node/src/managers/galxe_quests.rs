@@ -10,6 +10,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
+use base64::Engine;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -701,7 +702,7 @@ pub fn generate_proof(node_signature: String, payload: String) -> Result<(String
         "{}:::{}:::{}",
         public_key_hex,
         last_8_chars,
-        base64::encode(payload.as_bytes())
+        base64::engine::general_purpose::STANDARD.encode(payload.as_bytes())
     );
 
     // Create the final signature by:

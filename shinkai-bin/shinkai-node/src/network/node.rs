@@ -18,6 +18,7 @@ use async_channel::Receiver;
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
+use base64::Engine;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
@@ -1586,7 +1587,7 @@ impl Node {
     fn generate_api_v2_key() -> String {
         let mut key = [0u8; 32]; // 256-bit key
         OsRng.fill_bytes(&mut key);
-        base64::encode(&key)
+        base64::engine::general_purpose::STANDARD.encode(&key)
     }
 
     pub fn generic_api_error(e: &str) -> APIError {
