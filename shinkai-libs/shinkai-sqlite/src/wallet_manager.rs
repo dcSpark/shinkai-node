@@ -74,8 +74,8 @@ mod tests {
         let result = manager.save_wallet_manager(&wallet_data);
         assert!(result.is_ok());
 
-        let wallet_data = manager.read_wallet_manager().unwrap();
-        assert_eq!(wallet_data, wallet_data);
+        let retrieved_wallet_data = manager.read_wallet_manager().unwrap();
+        assert_eq!(retrieved_wallet_data, wallet_data);
 
         // Update wallet data
         let wallet_data = serde_json::json!({
@@ -86,8 +86,8 @@ mod tests {
         let result = manager.save_wallet_manager(&wallet_data);
         assert!(result.is_ok());
 
-        let wallet_data = manager.read_wallet_manager().unwrap();
-        assert_eq!(wallet_data, wallet_data);
+        let retrieved_wallet_data = manager.read_wallet_manager().unwrap();
+        assert_eq!(retrieved_wallet_data, wallet_data);
 
         // Verify that shinkai_wallet table has only one row
         let conn = manager.get_connection().unwrap();
