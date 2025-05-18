@@ -416,7 +416,7 @@ impl Node {
         identity_secret_key: SigningKey,
         llm_provider: SerializedLLMProvider,
         profile: &ShinkaiName,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
         match db.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {

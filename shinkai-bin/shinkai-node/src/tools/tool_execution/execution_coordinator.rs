@@ -539,7 +539,7 @@ pub async fn execute_mcp_tool_cmd(
             // Preference not set, trigger fallback
             Err("Preference not set")
         }
-        Err(e) => {
+        Err(_e) => {
             // Error getting preference, trigger fallback
             Err("Error getting preference")
         }

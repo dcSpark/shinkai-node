@@ -148,7 +148,7 @@ impl TypescriptUnsafeProcessorTool {
                         ToolError::ExecutionError(format!("Failed to run npm install: {}", e))
                     }
                 })?;
-            let npm_output_string = String::from_utf8_lossy(&npm_output.stdout).to_string();
+            let _npm_output_string = String::from_utf8_lossy(&npm_output.stdout).to_string();
 
             if !npm_output.status.success() {
                 return Err(ToolError::ExecutionError(format!(

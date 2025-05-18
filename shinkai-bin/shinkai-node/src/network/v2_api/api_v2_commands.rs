@@ -1309,7 +1309,7 @@ impl Node {
                     Ok(cron_tasks) => {
                         agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         agent.cron_tasks = None;
                     }
                 }

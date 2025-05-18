@@ -1626,7 +1626,7 @@ impl Node {
         // TODO: Review and fix this
 
         // Retrieve the filenames in the inboxes
-        let file_inboxes = v2_chat_messages
+        let _file_inboxes = v2_chat_messages
             .iter()
             .flatten()
             .map(|message| message.job_message.fs_files_paths.clone())

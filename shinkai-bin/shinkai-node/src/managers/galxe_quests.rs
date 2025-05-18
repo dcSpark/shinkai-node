@@ -305,7 +305,7 @@ pub async fn compute_quests(
 }
 
 pub async fn compute_create_identity_quest(
-    db: Arc<SqliteManager>,
+    _db: Arc<SqliteManager>,
     node_name: ShinkaiName,
     encryption_public_key: EncryptionPublicKey,
     identity_public_key: VerifyingKey,

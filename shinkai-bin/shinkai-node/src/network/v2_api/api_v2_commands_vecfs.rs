@@ -279,8 +279,8 @@ impl Node {
 
     pub async fn v2_copy_folder(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        input_payload: APIVecFsCopyFolder,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        _input_payload: APIVecFsCopyFolder,
         bearer: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
@@ -573,8 +573,8 @@ impl Node {
 
     pub async fn v2_retrieve_vector_resource(
         db: Arc<SqliteManager>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        path: String,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
+        _path: String,
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
