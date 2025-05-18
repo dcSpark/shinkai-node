@@ -466,85 +466,6 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    /// Generates embeddings using a Hugging Face Text Embeddings Inference server
-    fn generate_embedding_tei_blocking(
-        &self,
-        input_strings: Vec<String>,
-    ) -> Result<Vec<Vec<f32>>, ShinkaiEmbeddingError> {
-        // Prepare the request body
-        let request_body = EmbeddingArrayRequestBody {
-            inputs: input_strings.iter().map(|s| s.to_string()).collect(),
-        };
-
-        // Create the HTTP client with a custom timeout
-        let timeout = Duration::from_secs(60); // Set the desired timeout duration
-        let client = Client::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|err| ShinkaiEmbeddingError::RequestFailed(format!("Failed to create HTTP client: {}", err)))?;
-
-        // Build the request
-        let mut request = client
-            .post(&format!("{}", self.tei_endpoint_url()))
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        // Add the API key to the header if it's available
-        if let Some(api_key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", api_key));
-        }
-
-        // Send the request with retries
-        let max_retries = 3;
-        let mut retry_count = 0;
-        let response = loop {
-            let cloned_request = match request.try_clone() {
-                Some(req) => req,
-                None => {
-                    return Err(ShinkaiEmbeddingError::RequestFailed(
-                        "Failed to clone request for retry".into(),
-                    ))
-                }
-            };
-            match cloned_request.send() {
-                Ok(response) => break response,
-                Err(err) => {
-                    if retry_count < max_retries {
-                        retry_count += 1;
-                        eprintln!(
-                            "Request failed with error: {}. Retrying ({}/{})...",
-                            err, retry_count, max_retries
-                        );
-                        std::thread::sleep(Duration::from_secs(1)); // Optional: Add a delay between retries
-                    } else {
-                        return Err(ShinkaiEmbeddingError::RequestFailed(format!(
-                            "HTTP request failed after {} retries: {}",
-                            max_retries, err
-                        )));
-                    }
-                }
-            }
-        };
-
-        // Check if the response is successful
-        if response.status().is_success() {
-            let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>();
-            match embedding_response {
-                Ok(embedding_response) => Ok(embedding_response),
-                Err(err) => Err(ShinkaiEmbeddingError::RequestFailed(format!(
-                    "Failed to deserialize response JSON: {}",
-                    err
-                ))),
-            }
-        } else {
-            // Handle non-successful HTTP responses (e.g., server error)
-            Err(ShinkaiEmbeddingError::RequestFailed(format!(
-                "HTTP request failed with status: {}",
-                response.status()
-            )))
-        }
-    }
-
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     pub async fn generate_embedding_open_ai(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
         // Prepare the request body
@@ -578,53 +499,6 @@ impl RemoteEmbeddingGenerator {
             // Deserialize the response JSON into a struct (assuming you have an
             // EmbeddingResponse struct)
             let embedding_response: EmbeddingResponse = response.json().await.map_err(|err| {
-                ShinkaiEmbeddingError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
-            })?;
-
-            // Use the response to create an Embedding instance
-            Ok(embedding_response.data[0].embedding.clone())
-        } else {
-            // Handle non-successful HTTP responses (e.g., server error)
-            Err(ShinkaiEmbeddingError::RequestFailed(format!(
-                "HTTP request failed with status: {}",
-                response.status()
-            )))
-        }
-    }
-
-    /// Generate an Embedding for an input string by using the external OpenAI-matching API.
-    fn generate_embedding_open_ai_blocking(&self, input_string: &str) -> Result<Vec<f32>, ShinkaiEmbeddingError> {
-        // Prepare the request body
-        let request_body = EmbeddingRequestBody {
-            input: String::from(input_string),
-            model: self.model_type().to_string(),
-        };
-
-        // Create the HTTP client
-        let client = Client::new();
-
-        // Build the request
-        let mut request = client
-            .post(&format!("{}", self.api_url))
-            .header("Content-Type", "application/json")
-            .json(&request_body);
-
-        // Add the API key to the header if it's available
-        if let Some(api_key) = &self.api_key {
-            request = request.header("Authorization", format!("Bearer {}", api_key));
-        }
-
-        // Send the request and check for errors
-        let response = request.send().map_err(|err| {
-            // Handle any HTTP client errors here (e.g., request creation failure)
-            ShinkaiEmbeddingError::RequestFailed(format!("HTTP request failed: {}", err))
-        })?;
-
-        // Check if the response is successful
-        if response.status().is_success() {
-            // Deserialize the response JSON into a struct (assuming you have an
-            // EmbeddingResponse struct)
-            let embedding_response: EmbeddingResponse = response.json().map_err(|err| {
                 ShinkaiEmbeddingError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
             })?;
 
