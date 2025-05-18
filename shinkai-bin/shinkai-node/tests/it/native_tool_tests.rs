@@ -2,18 +2,18 @@ use async_channel::{bounded, Receiver, Sender};
 use serde_json::{json, Map};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider,
+    LLMProviderInterface, OpenAI, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, unsafe_deterministic_encryption_keypair,
+    clone_static_secret_key, unsafe_deterministic_encryption_keypair
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
 use shinkai_message_primitives::shinkai_utils::search_mode::VectorSearchMode;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -24,7 +24,7 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::runtime::Runtime;
 
-use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool, wait_for_rust_tools};
+use crate::it::utils::node_test_api::{api_create_job_with_scope, api_execute_tool};
 use crate::it::utils::vecfs_test_utils::{create_folder, upload_file};
 
 use super::utils::db_handlers::setup_node_storage_path;
@@ -202,17 +202,7 @@ fn native_tool_test_knowledge() {
                 // Send message (APICreateFilesInboxWithSymmetricKey) from Device subidentity to Node 1
                 {
                     // Create test folder
-                    create_folder(
-                        &node1_commands_sender,
-                        "/",
-                        "test_folder",
-                        node1_profile_encryption_sk.clone(),
-                        clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk,
-                        node1_identity_name,
-                        node1_profile_name,
-                    )
-                    .await;
+                    create_folder(&node1_commands_sender, "/", "test_folder", &api_key_bearer.clone()).await;
 
                     // Upload File to /test_folder
                     let file_path = Path::new("../../files/shinkai_intro.vrkai");
