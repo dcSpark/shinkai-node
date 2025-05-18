@@ -5,18 +5,18 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [dependencies]
-utoipa = "4.2.3"
+utoipa = { workspace = true }
 utoipa-swagger-ui = "7.1.0"
 chrono = { workspace = true }
 bytes = "1.10.1"
 async-trait = { workspace = true }
 once_cell = "1.19.0"
-warp = { version = "0.3.7", features = ["compression-gzip", "tls"] }
+warp = { workspace = true, features = ["compression-gzip", "tls"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
-async-channel = "1.6.1"
-x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
-ed25519-dalek = "2.1.0"
+async-channel = { workspace = true }
+x25519-dalek = { workspace = true }
+ed25519-dalek = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
 reqwest = { workspace = true }

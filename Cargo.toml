@@ -53,3 +53,18 @@ rand = "=0.8.5"
 hex = "=0.4.3"
 env_logger = "0.11.5"
 async-trait = "0.1.74"
+ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
+x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
+tempfile = "3.19"
+lazy_static = "1.5.0"
+async-channel = "1.6.1"
+csv = "1.1.6"
+thiserror = "2.0.3"
+dashmap = "5.5.3"
+clap = "3.0.0-beta.5"
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.25"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+os_path = "0.8.0"
+utoipa = "4.2.3"
+warp = "0.3.7"

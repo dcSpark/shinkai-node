@@ -11,7 +11,7 @@ chrono = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4"] }
 regex = { workspace = true }
 shinkai_message_primitives = { workspace = true }
-async-channel = "1.6.1"
+async-channel = { workspace = true }
 
 [dependencies.serde]
 workspace = true
