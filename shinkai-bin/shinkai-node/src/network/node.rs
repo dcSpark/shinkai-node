@@ -548,7 +548,7 @@ impl Node {
         pin_mut!(listen_future);
 
         let retry_interval_secs = 2;
-        let mut retry_interval = async_std::stream::interval(Duration::from_secs(retry_interval_secs));
+        let mut retry_interval = tokio::time::interval(Duration::from_secs(retry_interval_secs));
 
         let ping_interval_secs = if self.ping_interval_secs == 0 {
             315576000 * 10 // 10 years in seconds
@@ -561,23 +561,23 @@ impl Node {
             &format!("Automatic Ping interval set to {} seconds", ping_interval_secs),
         );
 
-        let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
-        let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
+        let _check_peers_interval = tokio::time::interval(Duration::from_secs(check_peers_interval_secs));
 
         // Add 6-hour interval for periodic tasks
         let six_hours_in_secs = 6 * 60 * 60; // 6 hours in seconds
-        let mut six_hour_interval = async_std::stream::interval(Duration::from_secs(six_hours_in_secs));
+        let mut six_hour_interval = tokio::time::interval(Duration::from_secs(six_hours_in_secs));
 
         // TODO: implement a TCP connection here with a proxy if it's set
 
         loop {
-            let ping_future = ping_interval.next().fuse();
+            let ping_future = ping_interval.tick().fuse();
             let commands_future = commands_clone.next().fuse();
-            let retry_future = retry_interval.next().fuse();
-            let six_hour_future = six_hour_interval.next().fuse();
+            let retry_future = retry_interval.tick().fuse();
+            let six_hour_future = six_hour_interval.tick().fuse();
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
