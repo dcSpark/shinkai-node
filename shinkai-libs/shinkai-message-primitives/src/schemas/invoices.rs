@@ -1,5 +1,7 @@
 use std::{cmp::Ordering, fmt};
 
+use base64::Engine;
+
 use chrono::{DateTime, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -141,7 +143,8 @@ impl InternalInvoiceRequest {
         let random_number: u64 = rand::thread_rng().gen();
 
         // Encode the random number in base64
-        let random_number_base64 = base64::encode(&random_number.to_be_bytes());
+        let random_number_base64 =
+            base64::engine::general_purpose::STANDARD.encode(&random_number.to_be_bytes());
 
         // Use only the first half of the base64 encoded string
         let short_random_number = &random_number_base64[..random_number_base64.len() / 2];

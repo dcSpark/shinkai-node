@@ -1,6 +1,5 @@
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json;
 use std::env;
 use std::fmt;
 use std::hash::Hash;
