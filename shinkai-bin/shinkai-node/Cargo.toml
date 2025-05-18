@@ -19,7 +19,7 @@ console = ["console-subscriber"]
 doctest = false
 
 [dependencies]
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 tokio-util = { workspace = true }
 log = { workspace = true }
 chrono = { workspace = true }
@@ -39,12 +39,7 @@ clap = "3.0.0-beta.5"
 regex = { workspace = true }
 csv = "1.1.6"
 uuid = { workspace = true, features = ["v4"] }
-reqwest = { workspace = true, features = [
-    "json",
-    "tokio-native-tls",
-    "blocking",
-    "stream",
-] }
+reqwest = { workspace = true, features = ["json", "tokio-native-tls", "multipart", "stream"] }
 keyphrases = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
