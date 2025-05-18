@@ -15,7 +15,7 @@ use crate::network::ws_routes::run_ws_api;
 use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
-use chashmap::CHashMap;
+use dashmap::DashMap;
 use chrono::Utc;
 use core::panic;
 use base64::Engine;
@@ -89,7 +89,7 @@ pub struct Node {
     // Secrets file path
     pub secrets_file_path: String,
     // A map of known peer nodes.
-    pub peers: CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
+    pub peers: DashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
     // The interval at which this node pings all known peers.
     pub ping_interval_secs: u64,
     // The channel from which this node receives commands.
@@ -382,7 +382,7 @@ impl Node {
             encryption_public_key,
             private_https_certificate,
             public_https_certificate,
-            peers: CHashMap::new(),
+            peers: DashMap::new(),
             listen_address,
             secrets_file_path,
             ping_interval_secs,
