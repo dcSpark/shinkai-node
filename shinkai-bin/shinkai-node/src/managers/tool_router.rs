@@ -807,7 +807,7 @@ impl ToolRouter {
         let agent = context.agent().clone();
         match agent {
             ProviderOrAgent::Agent(agent) => {
-                if let Some(agent_id) = &agent_id {
+                if agent_id.is_some() {
                     function_config_vec = override_tool_config(
                         shinkai_tool.tool_router_key().to_string_without_version().clone(),
                         agent,
