@@ -16,8 +16,6 @@ pub struct NodeEnvironment {
     pub api_https_listen_address: SocketAddr,
     pub ws_address: Option<SocketAddr>,
     pub ping_interval: u64,
-    pub starting_num_qr_profiles: u32,
-    pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
     pub no_secrets_file: bool,
     pub node_storage_path: Option<String>,
@@ -127,16 +125,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
 
     let ws_port: Option<u16> = env::var("NODE_WS_PORT").ok().and_then(|p| p.parse().ok());
 
-    // TODO: remove this and just assume one device per profile
-    let starting_num_qr_profiles: u32 = env::var("STARTING_NUM_QR_PROFILES")
-        .unwrap_or_else(|_| "0".to_string())
-        .parse()
-        .expect("Failed to parse starting number of QR profiles");
-
-    let starting_num_qr_devices: u32 = env::var("STARTING_NUM_QR_DEVICES")
-        .unwrap_or_else(|_| "1".to_string())
-        .parse()
-        .expect("Failed to parse starting number of QR devices");
 
     let first_device_needs_registration_code: bool = env::var("FIRST_DEVICE_NEEDS_REGISTRATION_CODE")
         .unwrap_or_else(|_| "true".to_string())
@@ -216,8 +204,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         api_listen_address,
         ws_address,
         ping_interval,
-        starting_num_qr_profiles,
-        starting_num_qr_devices,
         first_device_needs_registration_code,
         no_secrets_file,
         node_storage_path,
