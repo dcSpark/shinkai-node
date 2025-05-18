@@ -52,8 +52,6 @@ shinkai_embedding = { workspace = true }
 shinkai_fs = { workspace = true }
 # shinkai_baml = { workspace = true }
 bincode = { workspace = true }
-qrcode = "0.12"
-image = "0.23"
 urlencoding = "2.1.0"
 hex = { workspace = true }
 aes-gcm = "0.10.3"
