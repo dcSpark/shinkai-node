@@ -26,10 +26,6 @@ impl EmbeddingFunction {
     pub async fn request_embeddings(&self, prompt: &str) -> Result<Vec<f32>, rusqlite::Error> {
         let model_str = match &self.model_type {
             EmbeddingModelType::OllamaTextEmbeddingsInference(model) => model.to_string(),
-            _ => {
-                println!("Unsupported embedding model type: {:?}", self.model_type);
-                return Err(rusqlite::Error::InvalidQuery);
-            }
         };
 
         let max_tokens = self.model_type.max_input_token_count();

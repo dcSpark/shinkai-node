@@ -6,6 +6,7 @@ use crate::llm_provider::providers::shared::openai_api;
 use crate::managers::model_capabilities_manager::{PromptResult, PromptResultEnum};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
+#[cfg(test)]
 use uuid::Uuid;
 
 // Re-export OpenAI API types for DeepSeek

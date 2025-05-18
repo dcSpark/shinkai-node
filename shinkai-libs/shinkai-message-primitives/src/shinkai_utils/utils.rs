@@ -31,6 +31,7 @@ pub fn random_string() -> String {
 /// where every three normal letters (a-zA-Z) allow an empty space to not be counted,
 /// and other symbols are counted as 1 token.
 /// This implementation avoids floating point arithmetic by scaling counts.
+#[allow(dead_code)]
 pub fn count_tokens_from_message_llama3(message: &str) -> usize {
     let mut token_count = 0;
     let mut alphabetic_count = 0; // Total count of alphabetic characters

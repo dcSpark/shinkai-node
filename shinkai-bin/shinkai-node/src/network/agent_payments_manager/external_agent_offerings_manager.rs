@@ -26,7 +26,7 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::{env, fmt};
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, Semaphore};
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 

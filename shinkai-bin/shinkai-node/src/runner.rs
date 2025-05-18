@@ -8,7 +8,6 @@ use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
 use shinkai_http_api::node_api_router;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -56,7 +55,7 @@ pub async fn initialize_node() -> Result<
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let main_db: &str = "main_db";
-    let vector_fs_db: &str = "vector_fs_db";
+    let _vector_fs_db: &str = "vector_fs_db";
     let secrets_file: &str = ".secret";
 
     // Fetch Env vars/args

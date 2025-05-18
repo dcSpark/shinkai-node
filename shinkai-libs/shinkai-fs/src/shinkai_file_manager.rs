@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -593,7 +592,7 @@ impl ShinkaiFileManager {
         let content_results = Self::search_files_by_content(base_path, search_text, sqlite_manager)?;
 
         // Use a HashMap to keep track of unique paths
-        let mut unique_results = std::collections::HashMap::new();
+        let mut unique_results: HashMap<ShinkaiPath, FileInfo> = HashMap::new();
 
         // Add all name search results
         for file_info in name_results {

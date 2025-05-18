@@ -55,8 +55,7 @@ use shinkai_tools_primitives::tools::{
 use std::{
     collections::HashMap,
     env,
-    fs::File,
-    io::{Read, Write},
+    io::Read,
     path::{absolute, PathBuf},
     sync::Arc,
     time::Instant,
