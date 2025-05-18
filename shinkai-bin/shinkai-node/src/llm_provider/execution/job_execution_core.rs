@@ -328,7 +328,7 @@ impl JobManager {
                     // Retrieve the file content
                     match ShinkaiFileManager::get_file_content(file_path.clone()) {
                         Ok(content) => {
-                            let base64_content = base64::encode(&content);
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                             image_files.insert(file_path.relative_path().to_string(), base64_content);
                         }
                         Err(_) => continue,
@@ -351,7 +351,7 @@ impl JobManager {
                         // Retrieve the file content
                         match ShinkaiFileManager::get_file_content(file_path.clone()) {
                             Ok(content) => {
-                                let base64_content = base64::encode(&content);
+                                let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                                 image_files.insert(filename.clone(), base64_content);
                             }
                             Err(_) => continue,

@@ -726,7 +726,7 @@ impl Node {
                         // Create the assets
                         for asset in assets {
                             let asset_path = file_path.join(asset.file_name);
-                            let asset_content = base64::decode(asset.data).unwrap();
+                            let asset_content = base64::engine::general_purpose::STANDARD.decode(asset.data).unwrap();
                             let status = fs::write(asset_path, asset_content).await;
                             if status.is_err() {
                                 let api_error = APIError {

@@ -701,7 +701,7 @@ pub fn generate_proof(node_signature: String, payload: String) -> Result<(String
         "{}:::{}:::{}",
         public_key_hex,
         last_8_chars,
-        base64::encode(payload.as_bytes())
+        base64::engine::general_purpose::STANDARD.encode(payload.as_bytes())
     );
 
     // Create the final signature by:
