@@ -9,7 +9,10 @@ use shinkai_sqlite::SqliteManager;
 use uuid::Uuid;
 
 use super::{
-    coinbase_mpc_wallet::CoinbaseMPCWallet, wallet_error::WalletError, wallet_traits::{PaymentWallet, ReceivingWallet}
+    coinbase_mpc_wallet::CoinbaseMPCWallet,
+    x402_wallet::X402Wallet,
+    wallet_error::WalletError,
+    wallet_traits::{PaymentWallet, ReceivingWallet},
 };
 
 /// Enum to represent different wallet types.
@@ -17,6 +20,7 @@ use super::{
 #[serde(tag = "type", content = "data")]
 pub enum WalletEnum {
     CoinbaseMPCWallet(CoinbaseMPCWallet),
+    X402Wallet(X402Wallet),
 }
 
 pub struct WalletManager {
@@ -53,9 +57,11 @@ impl<'de> Deserialize<'de> for WalletManager {
         Ok(WalletManager {
             payment_wallet: match helper.payment_wallet {
                 WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+                WalletEnum::X402Wallet(wallet) => Box::new(wallet),
             },
             receiving_wallet: match helper.receiving_wallet {
                 WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+                WalletEnum::X402Wallet(wallet) => Box::new(wallet),
             },
         })
     }
@@ -190,5 +196,36 @@ impl WalletManager {
             payment_wallet,
             receiving_wallet,
         })
+    }
+
+    pub async fn create_x402_wallet_manager(
+        network: Network,
+        sqlite_manager: Arc<SqliteManager>,
+        _node_name: ShinkaiName,
+    ) -> Result<WalletManager, WalletError> {
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(
+            X402Wallet::create_wallet(network.clone(), Arc::downgrade(&sqlite_manager)).await?,
+        );
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(
+            X402Wallet::create_wallet(network, Arc::downgrade(&sqlite_manager)).await?,
+        );
+
+        Ok(WalletManager { payment_wallet, receiving_wallet })
+    }
+
+    pub async fn recover_x402_wallet_manager(
+        network: Network,
+        sqlite_manager: Arc<SqliteManager>,
+        wallet_id: String,
+        _node_name: ShinkaiName,
+    ) -> Result<WalletManager, WalletError> {
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(
+            X402Wallet::restore_wallet(network.clone(), Arc::downgrade(&sqlite_manager), wallet_id.clone()).await?,
+        );
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(
+            X402Wallet::restore_wallet(network, Arc::downgrade(&sqlite_manager), wallet_id).await?,
+        );
+
+        Ok(WalletManager { payment_wallet, receiving_wallet })
     }
 }
