@@ -4,7 +4,6 @@ use rmcp::{
 };
 use std::collections::HashMap;
 use tokio::process::Command;
-
 use crate::{command::CommandWrappedInShellBuilder, utils::disect_command};
 
 pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String, String>>) -> Result<Vec<Tool>> {

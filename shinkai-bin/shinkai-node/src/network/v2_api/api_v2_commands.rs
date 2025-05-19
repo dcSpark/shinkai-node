@@ -2499,6 +2499,32 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_api_import_mcp_server_from_github_url(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        github_url: String,
+        res: Sender<Result<AddMCPServerRequest, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = mcp_manager::import_mcp_server_from_github_url(github_url).await;
+        match mcp_server {
+            Ok(mcp_server) => {
+                let _ = res.send(Ok(mcp_server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to import MCP server from GitHub URL: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+    
     pub async fn v2_api_get_all_mcp_server_tools(
         db: Arc<SqliteManager>,
         bearer: String,

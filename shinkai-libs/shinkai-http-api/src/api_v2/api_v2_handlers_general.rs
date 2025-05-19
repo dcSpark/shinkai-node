@@ -25,7 +25,6 @@ use warp::Filter;
 use std::collections::HashMap;
 
 use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
-use crate::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
 use crate::{
     node_api_router::{APIError, GetPublicKeysResponse},
     node_commands::NodeCommand,

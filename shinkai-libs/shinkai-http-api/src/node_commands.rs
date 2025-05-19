@@ -1312,6 +1312,11 @@ pub enum NodeCommand {
         mcp_server: AddMCPServerRequest,
         res: Sender<Result<MCPServer, APIError>>,
     },
+    V2ApiImportMCPServerFromGitHubURL {
+        bearer: String,
+        github_url: String,
+        res: Sender<Result<AddMCPServerRequest, APIError>>,
+    },
     V2ApiDeleteMCPServer {
         bearer: String,
         mcp_server_id: i64,

@@ -1,7 +1,15 @@
+use std::collections::{HashMap, HashSet};
+
 use rmcp::model::Tool;
+use reqwest::Client;
+use serde_json::Value;
+use shinkai_message_primitives::schemas::mcp_server::MCPServerType;
 use shinkai_tools_primitives::tools::{
     mcp_server_tool::MCPServerTool, parameters::{Parameters, Property}, shinkai_tool::ShinkaiTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg, tool_types::ToolResult
 };
+use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
+use toml::Table;
+use crate::utils::github_mcp::{extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url, GitHubRepo};
 
 /// Converts an rmcp Tool to a ShinkaiTool::MCPServer
 pub fn convert_to_shinkai_tool(
@@ -77,6 +85,161 @@ pub fn convert_to_shinkai_tool(
     // Return the ShinkaiTool
     ShinkaiTool::MCPServer(mcp_tool, true)
 }
+
+async fn process_python_mcp_project(
+    pyproject_toml_content: String,
+    repo_info: &GitHubRepo,
+    env_vars: HashSet<String>,
+) -> Result<AddMCPServerRequest, String> {
+    // Parse pyproject.toml
+    let pyproject_toml: Table = pyproject_toml_content
+        .parse::<Table>()
+        .map_err(|e| format!("Failed to parse pyproject.toml: {}", e))?;
+
+    // Extract package name
+    let project = pyproject_toml
+        .get("project")
+        .ok_or_else(|| "Missing 'project' section in pyproject.toml".to_string())?
+        .as_table()
+        .ok_or_else(|| "Invalid 'project' section in pyproject.toml".to_string())?;
+
+    let package_name = project
+        .get("name")
+        .ok_or_else(|| "Missing 'name' field in pyproject.toml".to_string())?
+        .as_str()
+        .ok_or_else(|| "Invalid 'name' field in pyproject.toml".to_string())?
+        .to_string();
+
+    // Check for project.scripts section to determine entry point
+    let entry_point = if let Some(scripts) = project.get("scripts").and_then(|v| v.as_table()) {
+        // Use the first script as entry point
+        if !scripts.is_empty() {
+            let script_name = scripts.keys().next().unwrap();
+            Some(script_name.to_string())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // Create server name from package name
+    let server_name = format!("{} MCP Server", package_name);
+
+    // Create environment variables map from extracted env vars
+    let mut env_map = HashMap::new();
+    for var_name in env_vars {
+        env_map.insert(
+            var_name.clone(),
+            "".to_string(),
+        );
+    }
+
+    // Create configuration based on entry point
+    let command: String = if let Some(script) = entry_point {
+        format!("uvx run {}", script)
+    } else {
+        // Fallback to python -m if no script found
+        format!("python -m {}", package_name.replace("-", "_"))
+    };
+
+    let request = AddMCPServerRequest {
+        name: server_name,
+        r#type: MCPServerType::Command,
+        url: Some(repo_info.url.to_string()),
+        command: Some(command),
+        env: Some(env_map),
+        is_enabled: true,
+    };
+
+    return Ok(request)
+}
+
+async fn process_nodejs_mcp_project(
+    package_json_content: String,
+    repo_info: &GitHubRepo,
+    env_vars: HashSet<String>,
+) -> Result<AddMCPServerRequest, String> {
+    // Parse package.json
+    let package_json: Value = serde_json::from_str(&package_json_content)
+        .map_err(|e| format!("Failed to parse package.json: {}", e))?;
+
+    // Extract package name
+    let package_name = package_json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing 'name' field in package.json".to_string())?
+        .to_string();
+
+    // Create server name from package name
+    let server_name = format!("{} MCP Server", package_name);
+
+    // Create environment variables map from extracted env vars
+    let mut env_map = HashMap::new();
+    for var_name in env_vars {
+        env_map.insert(
+            var_name.clone(),
+            "".to_string(),
+        );
+    }
+
+    // Create configuration
+    let command = format!("npx -y {}", package_name);
+
+    // Create registration request
+    let request = AddMCPServerRequest {
+        name: server_name,
+        r#type: MCPServerType::Command,
+        url: Some(repo_info.url.to_string()),
+        command: Some(command),
+        env: Some(env_map),
+        is_enabled: true,
+    };
+
+    Ok(request)
+}
+
+pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<AddMCPServerRequest, String> {
+    let repo_info = parse_github_url(&github_url)?;
+
+    let client = Client::builder()
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    // Try to fetch README.md to extract environment variables
+    let mut env_vars = HashSet::new();
+    let readme_result =
+        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
+
+    if let Ok(readme_content) = readme_result {
+        env_vars = extract_mcp_env_vars_from_readme(&readme_content);
+    } else {
+        log::info!("README.md not found or could not be parsed");
+    }
+
+    // Try to fetch package.json first (Node.js project)
+    let package_json_result =
+        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
+
+    if let Ok(package_json_content) = package_json_result {
+        return process_nodejs_mcp_project(package_json_content, &repo_info, env_vars).await;
+    }
+
+    // If package.json not found, try pyproject.toml (Python project)
+    let pyproject_toml_result =
+        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "pyproject.toml").await;
+
+    if let Ok(pyproject_toml_content) = pyproject_toml_result {
+        return process_python_mcp_project(pyproject_toml_content, &repo_info, env_vars).await;
+    }
+
+    // If neither found, return error
+    Err(format!(
+        "Could not find package.json or pyproject.toml in repository {}/{}",
+        repo_info.owner, repo_info.repo
+    ))
+}
+
 
 #[cfg(test)]
 pub mod tests_mcp_manager {
@@ -177,5 +340,23 @@ pub mod tests_mcp_manager {
         } else {
             panic!("Expected ShinkaiTool::MCPServer variant");
         }
+    }
+
+    #[tokio::test]
+    async fn test_import_mcp_server_from_github_url_nodejs() {
+        let github_url = "https://github.com/dcSpark/mcp-server-helius".to_string();
+        let result = import_mcp_server_from_github_url(github_url).await;
+
+        assert!(result.is_ok(), "Import failed: {:?}", result.err());
+        let request = result.unwrap();
+
+        assert_eq!(request.name, "@mcp-dockmaster/mcp-server-helius MCP Server");
+        assert_eq!(request.r#type, MCPServerType::Command);
+        assert_eq!(request.url, Some("https://github.com/dcSpark/mcp-server-helius".to_string()));
+        assert_eq!(request.command, Some("npx -y @mcp-dockmaster/mcp-server-helius".to_string()));
+        assert!(request.env.is_some());
+        let env_map = request.env.unwrap();
+        assert_eq!(env_map.get("HELIUS_API_KEY"), Some(&"".to_string()));
+        assert_eq!(request.is_enabled, true);
     }
 }

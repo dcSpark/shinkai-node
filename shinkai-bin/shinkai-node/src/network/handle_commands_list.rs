@@ -3000,6 +3000,17 @@ impl Node {
                 });
             }
 
+            NodeCommand::V2ApiImportMCPServerFromGitHubURL {
+                bearer,
+                github_url,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_mcp_server_from_github_url(db_clone, bearer, github_url, res).await;
+                });
+            }
+
             NodeCommand::V2ApiDeleteMCPServer {
                 bearer,
                 mcp_server_id,
