@@ -32,7 +32,6 @@ warp = { workspace = true, features = ["compression-gzip"] }
 x25519-dalek = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }
-chashmap = "2.2.2"
 async-channel = { workspace = true }
 lazy_static = { workspace = true }
 clap = { workspace = true }
