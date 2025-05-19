@@ -86,9 +86,17 @@ pub fn convert_to_shinkai_tool(
     ShinkaiTool::MCPServer(mcp_tool, true)
 }
 
+fn sanitize_mcp_server_name(name: String) -> String {
+    name
+    .replace("@", "")
+    .trim()
+    .to_lowercase()
+    .replace(|c: char| !c.is_alphanumeric() && c != '_', "_")
+}
+
 async fn process_python_mcp_project(
     pyproject_toml_content: String,
-    repo_info: &GitHubRepo,
+    _repo_info: &GitHubRepo,
     env_vars: HashSet<String>,
 ) -> Result<AddMCPServerRequest, String> {
     // Parse pyproject.toml
@@ -144,9 +152,9 @@ async fn process_python_mcp_project(
     };
 
     let request = AddMCPServerRequest {
-        name: server_name,
+        name: sanitize_mcp_server_name(server_name),
         r#type: MCPServerType::Command,
-        url: Some(repo_info.url.to_string()),
+        url: None,
         command: Some(command),
         env: Some(env_map),
         is_enabled: true,
@@ -157,7 +165,7 @@ async fn process_python_mcp_project(
 
 async fn process_nodejs_mcp_project(
     package_json_content: String,
-    repo_info: &GitHubRepo,
+    _repo_info: &GitHubRepo,
     env_vars: HashSet<String>,
 ) -> Result<AddMCPServerRequest, String> {
     // Parse package.json
@@ -188,9 +196,9 @@ async fn process_nodejs_mcp_project(
 
     // Create registration request
     let request = AddMCPServerRequest {
-        name: server_name,
+        name: sanitize_mcp_server_name(server_name),
         r#type: MCPServerType::Command,
-        url: Some(repo_info.url.to_string()),
+        url: None,
         command: Some(command),
         env: Some(env_map),
         is_enabled: true,
@@ -352,7 +360,7 @@ pub mod tests_mcp_manager {
 
         assert_eq!(request.name, "@mcp-dockmaster/mcp-server-helius MCP Server");
         assert_eq!(request.r#type, MCPServerType::Command);
-        assert_eq!(request.url, Some("https://github.com/dcSpark/mcp-server-helius".to_string()));
+        assert_eq!(request.url, None);
         assert_eq!(request.command, Some("npx -y @mcp-dockmaster/mcp-server-helius".to_string()));
         assert!(request.env.is_some());
         let env_map = request.env.unwrap();
