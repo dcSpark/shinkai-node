@@ -4,11 +4,9 @@ use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_llm_provider_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
-use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
 use shinkai_http_api::node_api_router;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -56,7 +54,7 @@ pub async fn initialize_node() -> Result<
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let main_db: &str = "main_db";
-    let vector_fs_db: &str = "vector_fs_db";
+    let _vector_fs_db: &str = "vector_fs_db";
     let secrets_file: &str = ".secret";
 
     // Fetch Env vars/args
@@ -208,22 +206,13 @@ pub async fn initialize_node() -> Result<
     // Check if the node is ready
     if !node.lock().await.is_node_ready().await {
         println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
-        let _ = generate_qr_codes(
-            &node_commands_sender,
-            &node_env.clone(),
-            &node_keys,
-            global_identity_name.as_str(),
-            identity_public_key_string.as_str(),
-        )
-        .await;
-    } else {
-        print_node_info(
-            &node_env,
-            &encryption_public_key_string,
-            &identity_public_key_string,
-            &main_db_path,
-        );
     }
+    print_node_info(
+        &node_env,
+        &encryption_public_key_string,
+        &identity_public_key_string,
+        &main_db_path,
+    );
 
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;

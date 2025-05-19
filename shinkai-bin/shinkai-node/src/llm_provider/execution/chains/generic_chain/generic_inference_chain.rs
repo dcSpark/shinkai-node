@@ -38,6 +38,7 @@ use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use base64::Engine;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -120,7 +121,7 @@ impl GenericInferenceChain {
                     // Retrieve the file content
                     match ShinkaiFileManager::get_file_content(file_path.clone()) {
                         Ok(content) => {
-                            let base64_content = base64::encode(&content);
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                             image_files.insert(file_path.relative_path().to_string(), base64_content);
                         }
                         Err(_) => continue,
@@ -140,7 +141,7 @@ impl GenericInferenceChain {
                 {
                     match ShinkaiFileManager::get_file_content(file_path.clone()) {
                         Ok(content) => {
-                            let base64_content = base64::encode(&content);
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                             image_files.insert(file_path.relative_path().to_string(), base64_content);
                         }
                         Err(_) => continue,
@@ -170,7 +171,7 @@ impl GenericInferenceChain {
                             let shinkai_path = ShinkaiPath::from_string(path.to_string_lossy().to_string());
                             match ShinkaiFileManager::get_file_content(shinkai_path.clone()) {
                                 Ok(content) => {
-                                    let base64_content = base64::encode(&content);
+                                    let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                                     image_files.insert(shinkai_path.relative_path().to_string(), base64_content);
                                 }
                                 Err(_) => continue,

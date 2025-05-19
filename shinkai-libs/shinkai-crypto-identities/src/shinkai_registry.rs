@@ -404,6 +404,12 @@ mod tests {
         use std::path::PathBuf;
         use tempfile::tempdir;
 
+        // Check if offline mode is enabled
+        if env::var("IS_OFFLINE").unwrap_or_else(|_| "false".to_string()) == "true" {
+            println!("Skipping online test in offline mode");
+            return;
+        }
+
         let dir = tempdir().unwrap();
         env::set_var("NODE_STORAGE_PATH", dir.path().to_string_lossy().to_string());
 

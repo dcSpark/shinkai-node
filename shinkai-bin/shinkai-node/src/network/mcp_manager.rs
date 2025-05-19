@@ -1,15 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use rmcp::model::Tool;
+use crate::utils::github_mcp::{extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url, GitHubRepo};
 use reqwest::Client;
+use rmcp::model::Tool;
 use serde_json::Value;
+use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
 use shinkai_message_primitives::schemas::mcp_server::MCPServerType;
 use shinkai_tools_primitives::tools::{
     mcp_server_tool::MCPServerTool, parameters::{Parameters, Property}, shinkai_tool::ShinkaiTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg, tool_types::ToolResult
 };
-use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
 use toml::Table;
-use crate::utils::github_mcp::{extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url, GitHubRepo};
 
 /// Converts an rmcp Tool to a ShinkaiTool::MCPServer
 pub fn convert_to_shinkai_tool(
@@ -34,7 +34,10 @@ pub fn convert_to_shinkai_tool(
         .unwrap_or_default();
 
     // Create the MCPServerTool
-    let tool_name = tool.name.to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
+    let tool_name = tool
+        .name
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
     let mcp_tool = MCPServerTool {
         name: format!("{}_{}", server_name, tool_name),
         author: node_name.to_string(),
@@ -87,11 +90,10 @@ pub fn convert_to_shinkai_tool(
 }
 
 fn sanitize_mcp_server_name(name: String) -> String {
-    name
-    .replace("@", "")
-    .trim()
-    .to_lowercase()
-    .replace(|c: char| !c.is_alphanumeric() && c != '_', "_")
+    name.replace("@", "")
+        .trim()
+        .to_lowercase()
+        .replace(|c: char| !c.is_alphanumeric() && c != '_', "_")
 }
 
 async fn process_python_mcp_project(
@@ -137,10 +139,7 @@ async fn process_python_mcp_project(
     // Create environment variables map from extracted env vars
     let mut env_map = HashMap::new();
     for var_name in env_vars {
-        env_map.insert(
-            var_name.clone(),
-            "".to_string(),
-        );
+        env_map.insert(var_name.clone(), "".to_string());
     }
 
     // Create configuration based on entry point
@@ -160,7 +159,7 @@ async fn process_python_mcp_project(
         is_enabled: true,
     };
 
-    return Ok(request)
+    return Ok(request);
 }
 
 async fn process_nodejs_mcp_project(
@@ -169,8 +168,8 @@ async fn process_nodejs_mcp_project(
     env_vars: HashSet<String>,
 ) -> Result<AddMCPServerRequest, String> {
     // Parse package.json
-    let package_json: Value = serde_json::from_str(&package_json_content)
-        .map_err(|e| format!("Failed to parse package.json: {}", e))?;
+    let package_json: Value =
+        serde_json::from_str(&package_json_content).map_err(|e| format!("Failed to parse package.json: {}", e))?;
 
     // Extract package name
     let package_name = package_json
@@ -185,10 +184,7 @@ async fn process_nodejs_mcp_project(
     // Create environment variables map from extracted env vars
     let mut env_map = HashMap::new();
     for var_name in env_vars {
-        env_map.insert(
-            var_name.clone(),
-            "".to_string(),
-        );
+        env_map.insert(var_name.clone(), "".to_string());
     }
 
     // Create configuration
@@ -216,8 +212,7 @@ pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<Add
 
     // Try to fetch README.md to extract environment variables
     let mut env_vars = HashSet::new();
-    let readme_result =
-        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
+    let readme_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
 
     if let Ok(readme_content) = readme_result {
         env_vars = extract_mcp_env_vars_from_readme(&readme_content);
@@ -226,16 +221,14 @@ pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<Add
     }
 
     // Try to fetch package.json first (Node.js project)
-    let package_json_result =
-        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
+    let package_json_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
 
     if let Ok(package_json_content) = package_json_result {
         return process_nodejs_mcp_project(package_json_content, &repo_info, env_vars).await;
     }
 
     // If package.json not found, try pyproject.toml (Python project)
-    let pyproject_toml_result =
-        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "pyproject.toml").await;
+    let pyproject_toml_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "pyproject.toml").await;
 
     if let Ok(pyproject_toml_content) = pyproject_toml_result {
         return process_python_mcp_project(pyproject_toml_content, &repo_info, env_vars).await;
@@ -247,7 +240,6 @@ pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<Add
         repo_info.owner, repo_info.repo
     ))
 }
-
 
 #[cfg(test)]
 pub mod tests_mcp_manager {
@@ -358,10 +350,13 @@ pub mod tests_mcp_manager {
         assert!(result.is_ok(), "Import failed: {:?}", result.err());
         let request = result.unwrap();
 
-        assert_eq!(request.name, "@mcp-dockmaster/mcp-server-helius MCP Server");
+        assert_eq!(request.name, "mcp_dockmaster_mcp_server_helius_mcp_server");
         assert_eq!(request.r#type, MCPServerType::Command);
         assert_eq!(request.url, None);
-        assert_eq!(request.command, Some("npx -y @mcp-dockmaster/mcp-server-helius".to_string()));
+        assert_eq!(
+            request.command,
+            Some("npx -y @mcp-dockmaster/mcp-server-helius".to_string())
+        );
         assert!(request.env.is_some());
         let env_map = request.env.unwrap();
         assert_eq!(env_map.get("HELIUS_API_KEY"), Some(&"".to_string()));

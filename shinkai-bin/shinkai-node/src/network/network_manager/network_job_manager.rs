@@ -210,7 +210,7 @@ impl NetworkJobManager {
 
             let mut handles = Vec::new();
             loop {
-                let mut continue_immediately = false;
+                let mut continue_immediately;
 
                 // Scope for acquiring and releasing the lock quickly
                 let job_ids_to_process: Vec<String> = {

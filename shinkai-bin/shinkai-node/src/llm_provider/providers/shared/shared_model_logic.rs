@@ -1,4 +1,5 @@
-use base64::decode;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine as _;
 use shinkai_message_primitives::{schemas::{
     llm_providers::serialized_llm_provider::LLMProviderInterface, prompts::Prompt,
 }, shinkai_utils::utils::count_tokens_from_message_llama3};
@@ -28,7 +29,7 @@ pub fn llama_prepare_messages(
 }
 
 pub fn get_image_type(base64_str: &str) -> Option<&'static str> {
-    let decoded = decode(base64_str).ok()?;
+    let decoded = BASE64.decode(base64_str).ok()?;
     if decoded.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some("jpeg")
     } else if decoded.starts_with(&[0x89, b'P', b'N', b'G', b'\r', b'\n', b'\x1A', b'\n']) {

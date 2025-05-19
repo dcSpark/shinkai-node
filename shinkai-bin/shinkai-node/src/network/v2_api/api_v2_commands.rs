@@ -3,15 +3,11 @@ use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
 use crate::network::node_shareable_logic::download_zip_from_url;
 use crate::network::zip_export_import::zip_export_import::{
-    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools,
+    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools
 };
 use crate::utils::environment::NodeEnvironment;
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
-    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
-    network::{node_error::NodeError, Node},
-    tools::tool_generation,
-    utils::update_global_identity::update_global_identity_name,
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
 };
 use async_channel::Sender;
 use ed25519_dalek::ed25519::signature::SignerMut;
@@ -22,48 +18,31 @@ use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse};
+use shinkai_http_api::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::{
-    api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
-    node_api_router::{APIError, GetPublicKeysResponse},
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
 };
 use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_sse};
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler,
-    schemas::{
-        identity::{Identity, IdentityType, RegistrationCode},
-        inbox_name::InboxName,
-        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
-        shinkai_name::ShinkaiName,
-    },
-    shinkai_message::shinkai_message_schemas::JobCreationInfo,
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{
-            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod},
-        shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::signature_public_key_to_string,
-    },
-    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
+    schemas::ws_types::WSUpdateHandler, schemas::{
+        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
+    }, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::signature_public_key_to_string
+    }, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
 };
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::{
-    agent_tool_wrapper::AgentToolWrapper,
-    shinkai_tool::ShinkaiTool,
-    tool_config::{ToolConfig, BasicConfig},
-    parameters::Parameters,
-    tool_output_arg::ToolOutputArg,
-    tool_types::ToolResult,
-};
 use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
+use shinkai_tools_primitives::tools::{
+    agent_tool_wrapper::AgentToolWrapper, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::{BasicConfig, ToolConfig}, tool_output_arg::ToolOutputArg, tool_types::ToolResult
+};
 use std::collections::HashMap;
 use std::time::Instant;
 use std::{env, sync::Arc};
@@ -1337,7 +1316,7 @@ impl Node {
                     Ok(cron_tasks) => {
                         agent.cron_tasks = if cron_tasks.is_empty() { None } else { Some(cron_tasks) };
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         agent.cron_tasks = None;
                     }
                 }
@@ -2297,12 +2276,11 @@ impl Node {
         let _ = res.send(Ok(last_used_agents_llms)).await;
         Ok(())
     }
-    
-        pub async fn v2_api_list_mcp_servers(
+
+    pub async fn v2_api_list_mcp_servers(
         db: Arc<SqliteManager>,
         bearer: String,
         res: Sender<Result<Vec<MCPServer>, APIError>>,
-
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
@@ -2366,7 +2344,7 @@ impl Node {
                         .await;
                     return Ok(());
                 }
-            },
+            }
             MCPServerType::Sse => {
                 if let Some(url) = &mcp_server.url {
                     log::info!("MCP Server Type Sse: URL='{}'", url);
@@ -2376,17 +2354,17 @@ impl Node {
                         .send(Err(APIError {
                             code: StatusCode::BAD_REQUEST.as_u16(),
                             error: "Invalid MCP Server Configuration".to_string(),
-                            message: format!(
-                                "No URL provided for MCP Server '{}' of type Sse.",
-                                mcp_server.name
-                            ),
+                            message: format!("No URL provided for MCP Server '{}' of type Sse.", mcp_server.name),
                         }))
                         .await;
                     return Ok(());
                 }
-            },
+            }
             _ => {
-                log::warn!("MCP Server type not yet fully implemented or recognized: {:?}", mcp_server.r#type);
+                log::warn!(
+                    "MCP Server type not yet fully implemented or recognized: {:?}",
+                    mcp_server.r#type
+                );
                 // For now, we allow adding other types to the DB but won't attempt to spawn them.
                 // If a type is strictly unsupported, this block could return an error.
                 // The current logic proceeds to add to DB, which is fine.
@@ -2403,13 +2381,22 @@ impl Node {
             mcp_server.is_enabled,
         ) {
             Ok(server) => {
-                log::info!("MCP Server '{}' (ID: {:?}) added to database successfully.", server.name, server.id);
+                log::info!(
+                    "MCP Server '{}' (ID: {:?}) added to database successfully.",
+                    server.name,
+                    server.id
+                );
                 if let Some(env) = &server.env {
                     log::info!("MCP Server '{}' (ID: {:?}) env: {:?}", server.name, server.id, env);
                 }
                 if server.r#type == MCPServerType::Command && server.is_enabled {
                     if let Some(command_str) = &server.command {
-                        log::info!("Attempting to spawn MCP server '{}' (ID: {:?}) with command: '{}'", server.name, server.id, command_str);
+                        log::info!(
+                            "Attempting to spawn MCP server '{}' (ID: {:?}) with command: '{}'",
+                            server.name,
+                            server.id,
+                            command_str
+                        );
 
                         log::info!("Attempting to list tools for command: '{}' (Note: this runs the command separately for listing tools)", command_str);
                         let mut tools_config: Vec<ToolConfig> = vec![];
@@ -2427,7 +2414,7 @@ impl Node {
                         }
                         match list_tools_via_command(command_str, server.env.clone()).await {
                             Ok(tools) => {
-                                for tool in tools {  
+                                for tool in tools {
                                     // Use the new function from mcp_manager instead of inline conversion
                                     let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
                                     let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
@@ -2437,14 +2424,18 @@ impl Node {
                                         &node_name.to_string(),
                                         tools_config.clone(),
                                     );
-                                    
+
                                     if let Err(err) = db.add_tool(shinkai_tool).await {
                                         eprintln!("Warning: Failed to add mcp server tool: {}", err);
                                     };
                                 }
                             }
                             Err(e) => {
-                                log::error!("Failed to list tools for command '{}' via list_tools_via_command: {:?}", command_str, e);
+                                log::error!(
+                                    "Failed to list tools for command '{}' via list_tools_via_command: {:?}",
+                                    command_str,
+                                    e
+                                );
                             }
                         }
                     } else {
@@ -2460,7 +2451,7 @@ impl Node {
                     if let Some(url) = &server.url {
                         match list_tools_via_sse(url, None).await {
                             Ok(tools) => {
-                                for tool in tools {  
+                                for tool in tools {
                                     // Use the new function from mcp_manager instead of inline conversion
                                     let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
                                     let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
@@ -2470,7 +2461,7 @@ impl Node {
                                         &node_name.to_string(),
                                         vec![],
                                     );
-                                    
+
                                     if let Err(err) = db.add_tool(shinkai_tool).await {
                                         eprintln!("Warning: Failed to add mcp server tool: {}", err);
                                     };
@@ -2524,7 +2515,7 @@ impl Node {
         }
         Ok(())
     }
-    
+
     pub async fn v2_api_get_all_mcp_server_tools(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -2540,10 +2531,7 @@ impl Node {
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Invalid MCP Server ID".to_string(),
-                    message: format!(
-                        "No MCP Server found with ID: {}",
-                        mcp_server_id
-                    ),
+                    message: format!("No MCP Server found with ID: {}", mcp_server_id),
                 }))
                 .await;
             return Ok(());
@@ -2568,10 +2556,7 @@ impl Node {
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Invalid MCP Server ID".to_string(),
-                    message: format!(
-                        "No MCP Server found with ID: {}",
-                        mcp_server_id
-                    ),
+                    message: format!("No MCP Server found with ID: {}", mcp_server_id),
                 }))
                 .await;
             return Ok(());

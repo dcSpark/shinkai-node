@@ -7,7 +7,7 @@ use crate::network::node_error::NodeError;
 use crate::network::Node;
 
 use async_channel::Sender;
-use chashmap::CHashMap;
+use dashmap::DashMap;
 use chrono::Utc;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use log::{error, info};
@@ -39,7 +39,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 impl Node {
     pub async fn send_peer_addresses(
-        peers: CHashMap<(SocketAddr, String), chrono::DateTime<chrono::Utc>>,
+        peers: DashMap<(SocketAddr, String), chrono::DateTime<chrono::Utc>>,
         sender: Sender<Vec<SocketAddr>>,
     ) -> Result<(), Error> {
         let peer_addresses: Vec<SocketAddr> = peers.into_iter().map(|(k, _)| k.0).collect();
@@ -416,7 +416,7 @@ impl Node {
         identity_secret_key: SigningKey,
         llm_provider: SerializedLLMProvider,
         profile: &ShinkaiName,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
         match db.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
@@ -563,7 +563,7 @@ impl Node {
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
         identity_secret_key: SigningKey,
-        peers: CHashMap<(SocketAddr, String), chrono::DateTime<Utc>>,
+        peers: DashMap<(SocketAddr, String), chrono::DateTime<Utc>>,
         db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,

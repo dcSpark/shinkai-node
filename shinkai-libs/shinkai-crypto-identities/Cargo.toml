@@ -7,14 +7,14 @@ authors = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 serde_json = { workspace = true }
-shinkai_message_primitives = { path = "../shinkai-message-primitives" }
-x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
-ed25519-dalek = { version = "2.1.0", features = ["rand_core"] }
+shinkai_message_primitives = { workspace = true }
+x25519-dalek = { workspace = true }
+ed25519-dalek = { workspace = true }
 chrono = { workspace = true }
-dashmap = "5.5.3"
-lazy_static = "1.5.0"
+dashmap = { workspace = true }
+lazy_static = { workspace = true }
 trust-dns-resolver = "0.23.2"
 shinkai_non_rust_code = { workspace = true }
-tempfile = "3.19"
+tempfile = { workspace = true }

@@ -15,9 +15,10 @@ use crate::network::ws_routes::run_ws_api;
 use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
-use chashmap::CHashMap;
+use dashmap::DashMap;
 use chrono::Utc;
 use core::panic;
+use base64::Engine;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
@@ -88,7 +89,7 @@ pub struct Node {
     // Secrets file path
     pub secrets_file_path: String,
     // A map of known peer nodes.
-    pub peers: CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
+    pub peers: DashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
     // The interval at which this node pings all known peers.
     pub ping_interval_secs: u64,
     // The channel from which this node receives commands.
@@ -381,7 +382,7 @@ impl Node {
             encryption_public_key,
             private_https_certificate,
             public_https_certificate,
-            peers: CHashMap::new(),
+            peers: DashMap::new(),
             listen_address,
             secrets_file_path,
             ping_interval_secs,
@@ -547,7 +548,7 @@ impl Node {
         pin_mut!(listen_future);
 
         let retry_interval_secs = 2;
-        let mut retry_interval = async_std::stream::interval(Duration::from_secs(retry_interval_secs));
+        let mut retry_interval = tokio::time::interval(Duration::from_secs(retry_interval_secs));
 
         let ping_interval_secs = if self.ping_interval_secs == 0 {
             315576000 * 10 // 10 years in seconds
@@ -560,23 +561,23 @@ impl Node {
             &format!("Automatic Ping interval set to {} seconds", ping_interval_secs),
         );
 
-        let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
-        let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
+        let _check_peers_interval = tokio::time::interval(Duration::from_secs(check_peers_interval_secs));
 
         // Add 6-hour interval for periodic tasks
         let six_hours_in_secs = 6 * 60 * 60; // 6 hours in seconds
-        let mut six_hour_interval = async_std::stream::interval(Duration::from_secs(six_hours_in_secs));
+        let mut six_hour_interval = tokio::time::interval(Duration::from_secs(six_hours_in_secs));
 
         // TODO: implement a TCP connection here with a proxy if it's set
 
         loop {
-            let ping_future = ping_interval.next().fuse();
+            let ping_future = ping_interval.tick().fuse();
             let commands_future = commands_clone.next().fuse();
-            let retry_future = retry_interval.next().fuse();
-            let six_hour_future = six_hour_interval.next().fuse();
+            let retry_future = retry_interval.tick().fuse();
+            let six_hour_future = six_hour_interval.tick().fuse();
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
@@ -1586,7 +1587,7 @@ impl Node {
     fn generate_api_v2_key() -> String {
         let mut key = [0u8; 32]; // 256-bit key
         OsRng.fill_bytes(&mut key);
-        base64::encode(&key)
+        base64::engine::general_purpose::STANDARD.encode(&key)
     }
 
     pub fn generic_api_error(e: &str) -> APIError {

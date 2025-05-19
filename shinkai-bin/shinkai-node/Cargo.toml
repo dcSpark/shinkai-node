@@ -19,7 +19,7 @@ console = ["console-subscriber"]
 doctest = false
 
 [dependencies]
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 tokio-util = { workspace = true }
 log = { workspace = true }
 chrono = { workspace = true }
@@ -27,30 +27,24 @@ futures = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }
-async-trait = "0.1.74"
-warp = { version = "0.3.7", features = ["compression-gzip"] }
-x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
-ed25519-dalek = "2.1.0"
+async-trait = { workspace = true }
+warp = { workspace = true, features = ["compression-gzip"] }
+x25519-dalek = { workspace = true }
+ed25519-dalek = { workspace = true }
 rand = { workspace = true }
-chashmap = "2.2.2"
-async-channel = "1.6.1"
-lazy_static = "1.5.0"
-clap = "3.0.0-beta.5"
+async-channel = { workspace = true }
+lazy_static = { workspace = true }
+clap = { workspace = true }
 regex = { workspace = true }
+csv = { workspace = true }
 once_cell = "1.19.0"
 rmcp = { version = "0.1.5", features = [
     "transport-child-process",
     "client",
     "transport-sse",
 ] }
-csv = "1.1.6"
 uuid = { workspace = true, features = ["v4"] }
-reqwest = { workspace = true, features = [
-    "json",
-    "tokio-native-tls",
-    "blocking",
-    "stream",
-] }
+reqwest = { workspace = true, features = ["json", "tokio-native-tls", "multipart", "stream"] }
 keyphrases = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
@@ -64,29 +58,24 @@ shinkai_fs = { workspace = true }
 shinkai_mcp = { workspace = true }
 # shinkai_baml = { workspace = true }
 bincode = { workspace = true }
-qrcode = "0.12"
-image = "0.23"
 urlencoding = "2.1.0"
 hex = { workspace = true }
 aes-gcm = "0.10.3"
 blake3 = { workspace = true }
 cron-parser = "0.8.1"
-dashmap = "5.5.3"
-tiny-bip39 = "0.8.0"
+dashmap = { workspace = true }
 async-lock = "2.4.0"
 governor = "0.6.3"
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 console-subscriber = { version = "0.1", optional = true }
-bip32 = "0.5.2"
 downcast-rs = "1.2.1"
 bigdecimal = "0.2.2"
 rust_decimal = "1.17.0"
 rcgen = "0.13.1"
 serde = { workspace = true, features = ["derive"] }
-r2d2 = "0.8.10"
-r2d2_sqlite = "0.25"
-rusqlite = { version = "0.32.1", features = ["bundled"] }
-async-std = { version = "1.5.0", features = ["unstable"] }
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
+rusqlite = { workspace = true }
 env_logger = { workspace = true }
 zip = "2.2.1"
 open = "5.3.2"
@@ -96,6 +85,6 @@ toml = "0.8.22"
 [dev-dependencies]
 mockito = "1.0.2"
 tokio-tungstenite = "0.15.0"
-tempfile = "3.19"
+tempfile = { workspace = true }
 fs_extra = "1.2.0"
-utoipa = { version = "4.2.3", features = ["yaml"] }
+utoipa = { workspace = true, features = ["yaml"] }

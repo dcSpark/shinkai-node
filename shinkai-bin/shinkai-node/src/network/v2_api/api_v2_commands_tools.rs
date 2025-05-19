@@ -65,6 +65,7 @@ use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use base64::Engine;
 
 // Helper function to serialize Vec<ToolConfig> into the specific object format
 fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> Value {
@@ -726,7 +727,7 @@ impl Node {
                         // Create the assets
                         for asset in assets {
                             let asset_path = file_path.join(asset.file_name);
-                            let asset_content = base64::decode(asset.data).unwrap();
+                            let asset_content = base64::engine::general_purpose::STANDARD.decode(asset.data).unwrap();
                             let status = fs::write(asset_path, asset_content).await;
                             if status.is_err() {
                                 let api_error = APIError {

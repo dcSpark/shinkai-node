@@ -22,6 +22,7 @@ use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message_schemas::JobMessage, shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key}
 };
 use shinkai_sqlite::SqliteManager;
+use base64::Engine;
 use std::result::Result::Ok;
 use std::sync::Weak;
 use std::time::Instant;
@@ -328,7 +329,7 @@ impl JobManager {
                     // Retrieve the file content
                     match ShinkaiFileManager::get_file_content(file_path.clone()) {
                         Ok(content) => {
-                            let base64_content = base64::encode(&content);
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                             image_files.insert(file_path.relative_path().to_string(), base64_content);
                         }
                         Err(_) => continue,
@@ -351,7 +352,7 @@ impl JobManager {
                         // Retrieve the file content
                         match ShinkaiFileManager::get_file_content(file_path.clone()) {
                             Ok(content) => {
-                                let base64_content = base64::encode(&content);
+                                let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                                 image_files.insert(filename.clone(), base64_content);
                             }
                             Err(_) => continue,

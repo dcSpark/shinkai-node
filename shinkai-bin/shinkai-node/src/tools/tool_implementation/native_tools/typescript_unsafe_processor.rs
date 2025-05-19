@@ -16,7 +16,6 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
-use crate::network::Node;
 use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
@@ -149,7 +148,7 @@ impl TypescriptUnsafeProcessorTool {
                         ToolError::ExecutionError(format!("Failed to run npm install: {}", e))
                     }
                 })?;
-            let npm_output_string = String::from_utf8_lossy(&npm_output.stdout).to_string();
+            let _npm_output_string = String::from_utf8_lossy(&npm_output.stdout).to_string();
 
             if !npm_output.status.success() {
                 return Err(ToolError::ExecutionError(format!(

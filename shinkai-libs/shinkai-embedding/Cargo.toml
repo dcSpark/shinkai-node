@@ -10,20 +10,14 @@ serde_json = { workspace = true }
 rand = { workspace = true }
 blake3 = { workspace = true }
 chrono = { workspace = true }
-thiserror = "2.0.3"
-reqwest = { workspace = true, features = [
-    "json",
-    "tokio-native-tls",
-    "blocking",
-    "multipart",
-    "default-tls",
-] }
-lazy_static = "1.5.0"
+thiserror = { workspace = true }
+reqwest = { workspace = true, features = ["json", "tokio-native-tls", "blocking"] }
+lazy_static = { workspace = true }
 async-trait = { workspace = true }
 keyphrases = { workspace = true }
 futures = { workspace = true }
-csv = "1.1.6"
-utoipa = "4.2.3"
+csv = { workspace = true }
+utoipa = { workspace = true }
 regex = { workspace = true }
 
 [dependencies.serde]

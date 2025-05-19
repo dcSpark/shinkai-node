@@ -13,7 +13,7 @@ use crate::tools::tool_execution::{
     execute_agent_dynamic::execute_agent_tool, execution_coordinator::override_tool_config, execution_custom::try_to_execute_rust_tool, execution_header_generator::{check_tool, generate_execution_environment}
 };
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
-use async_std::path::PathBuf;
+use std::path::PathBuf;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -192,7 +192,7 @@ impl ToolRouter {
             }
         };
 
-        if !directory_path.exists().await {
+        if !directory_path.exists() {
             eprintln!("Install directory not found: {}", directory_path.display());
             return Ok(());
         }
@@ -847,7 +847,7 @@ impl ToolRouter {
         let agent = context.agent().clone();
         match agent {
             ProviderOrAgent::Agent(agent) => {
-                if let Some(agent_id) = &agent_id {
+                if agent_id.is_some() {
                     function_config_vec = override_tool_config(
                         shinkai_tool.tool_router_key().to_string_without_version().clone(),
                         agent,

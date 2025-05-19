@@ -9,4 +9,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 shinkai_tools_runner = { workspace = true }
-tempfile = "3.19"
+tempfile = { workspace = true }
