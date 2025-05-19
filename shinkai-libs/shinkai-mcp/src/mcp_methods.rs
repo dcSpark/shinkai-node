@@ -4,7 +4,6 @@ use rmcp::{
 };
 use std::collections::HashMap;
 use tokio::process::Command;
-
 use crate::{command::CommandWrappedInShellBuilder, utils::disect_command};
 
 pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String, String>>) -> Result<Vec<Tool>> {
@@ -22,7 +21,10 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
     service.peer_info();
 
     // 3. Call the standard MCP `list_tools` method
-    let tools = service.list_all_tools().await?;
+    let tools = service
+        .list_all_tools()
+        .await
+        .inspect_err(|e| log::error!("error listing tools: {:?}", e));
 
     // 4. Gracefully shut down the service (drops stdio, child should exit)
     let _ = service
@@ -30,7 +32,7 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
         .await
         .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
 
-    Ok(tools)
+    Ok(tools.unwrap())
 }
 
 pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, String>>) -> Result<Vec<Tool>> {
@@ -54,7 +56,9 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
     let _ = client.peer_info();
 
     // List tools
-    let tools_result = client.list_all_tools().await?;
+    let tools_result = client.list_all_tools()
+        .await
+        .inspect_err(|e| log::error!("error listing tools: {:?}", e));
 
     // Gracefully shut down the client
     let _ = client
@@ -62,7 +66,7 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
         .await
         .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
 
-    Ok(tools_result)
+    Ok(tools_result.unwrap())
 }
 
 pub async fn run_tool_via_command(
@@ -109,7 +113,10 @@ pub async fn run_tool_via_sse(
     tool: String,
     parameters: serde_json::Map<String, serde_json::Value>,
 ) -> anyhow::Result<CallToolResult> {
-    let transport = SseTransport::start(url).await?;
+    let transport = SseTransport::start(url)
+        .await
+        .inspect_err(|e| log::error!("error starting sse transport: {:?}", e))?;
+
     let client_info = ClientInfo {
         protocol_version: Default::default(),
         capabilities: ClientCapabilities::default(),
@@ -131,7 +138,8 @@ pub async fn run_tool_via_sse(
             name: tool.into(),
             arguments: Some(parameters),
         })
-        .await;
+        .await
+        .inspect_err(|e| log::error!("error calling tool: {:?}", e));
     let _ = client
         .cancel()
         .await
@@ -191,7 +199,7 @@ pub mod tests_mcp_manager {
             .inspect_err(|e| {
                 println!("error {:?}", e);
             });
-
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let params = json!({
             "a": 1,
             "b": 2,
@@ -203,11 +211,16 @@ pub mod tests_mcp_manager {
             .inspect_err(|e| {
                 println!("error {:?}", e);
             });
-
-        assert!(result.is_ok());
-        let unwrapped = result.unwrap();
-        assert_eq!(unwrapped.content.len(), 1);
-        assert!(unwrapped.content[0].as_text().unwrap().text.contains("3"));
+        match result {
+            Ok(result) => {
+                assert!(result.content.len() == 1);
+                assert!(result.content[0].as_text().unwrap().text.contains("3"));
+            }
+            Err(e) => {
+                println!("error {:?}", e);
+                assert!(false);
+            }
+        }
     }
 
     #[tokio::test]

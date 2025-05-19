@@ -106,4 +106,11 @@ impl SqliteManager {
             }
         }
     }
+
+    pub fn delete_mcp_server(&self, id: i64) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("DELETE FROM mcp_servers WHERE id = ?")?;
+        stmt.execute([id])?;
+        Ok(())
+    }
 }

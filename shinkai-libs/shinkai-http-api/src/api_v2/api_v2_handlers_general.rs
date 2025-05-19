@@ -25,13 +25,17 @@ use warp::Filter;
 use std::collections::HashMap;
 
 use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
-use crate::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
 use crate::{
     node_api_router::{APIError, GetPublicKeysResponse},
     node_commands::NodeCommand,
 };
 
-use super::api_v2_handlers_mcp_servers::{add_mcp_server_handler, list_mcp_servers_handler};
+use super::api_v2_handlers_mcp_servers::{
+    add_mcp_server_handler,
+    list_mcp_servers_handler,
+    get_all_mcp_server_tools_handler,
+    GetAllMCPServerToolsRequest,
+};
 use super::api_v2_router::{create_success_response, with_node_name, with_sender};
 
 pub fn general_routes(
@@ -272,6 +276,13 @@ pub fn general_routes(
         .and(warp::body::json())
         .and_then(add_mcp_server_handler);
 
+    let get_all_mcp_server_tools_route = warp::path("get_all_mcp_server_tools")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetAllMCPServerToolsRequest>())
+        .and_then(get_all_mcp_server_tools_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -307,6 +318,7 @@ pub fn general_routes(
         .or(check_default_tools_sync_route)
         .or(list_mcp_servers_route)
         .or(add_mcp_server_route)
+        .or(get_all_mcp_server_tools_route)
 }
 
 #[derive(Deserialize)]

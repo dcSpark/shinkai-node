@@ -21,7 +21,7 @@ use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
-use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::AddMCPServerRequest;
+use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse};
 use shinkai_http_api::{
     api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse,
     api_v2::api_v2_handlers_general::InitialRegistrationRequest,
@@ -63,6 +63,7 @@ use shinkai_tools_primitives::tools::{
     tool_output_arg::ToolOutputArg,
     tool_types::ToolResult,
 };
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use std::collections::HashMap;
 use std::time::Instant;
 use std::{env, sync::Arc};
@@ -2491,6 +2492,107 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to add MCP server: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_import_mcp_server_from_github_url(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        github_url: String,
+        res: Sender<Result<AddMCPServerRequest, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = mcp_manager::import_mcp_server_from_github_url(github_url).await;
+        match mcp_server {
+            Ok(mcp_server) => {
+                let _ = res.send(Ok(mcp_server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to import MCP server from GitHub URL: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+    
+    pub async fn v2_api_get_all_mcp_server_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<Vec<MCPServerTool>, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!(
+                        "No MCP Server found with ID: {}",
+                        mcp_server_id
+                    ),
+                }))
+                .await;
+            return Ok(());
+        }
+        let tools = db.get_all_tools_from_mcp_server(mcp_server.unwrap())?;
+        let _ = res.send(Ok(tools)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_delete_mcp_server(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<DeleteMCPServerResponse, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!(
+                        "No MCP Server found with ID: {}",
+                        mcp_server_id
+                    ),
+                }))
+                .await;
+            return Ok(());
+        }
+        let _ = db.delete_mcp_server(mcp_server_id);
+        let rows_deleted_result = db.delete_all_tools_from_mcp_server(mcp_server.clone().unwrap());
+
+        match rows_deleted_result {
+            Ok(count) => {
+                let response = DeleteMCPServerResponse {
+                    message: Some("MCP Server and associated tools deleted successfully".to_string()),
+                    tools_deleted: count as i64, // Cast usize to i64
+                    deleted_mcp_server: mcp_server.clone().unwrap(),
+                };
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to delete MCP server tools".to_string(),
+                    message: format!("Error deleting tools for MCP server ID {}: {}", mcp_server_id, err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }

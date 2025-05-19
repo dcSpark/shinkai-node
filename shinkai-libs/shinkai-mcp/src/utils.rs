@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-
 use regex::Regex;
 
 pub fn disect_command(command: String) -> (HashMap<String, String>, String, Vec<String>) {
