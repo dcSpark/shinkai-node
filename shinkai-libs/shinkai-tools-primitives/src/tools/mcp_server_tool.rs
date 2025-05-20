@@ -69,9 +69,23 @@ impl MCPServerTool {
         &self,
         mcp_server: MCPServer,
         parameters: serde_json::Map<String, serde_json::Value>,
-        config: Vec<ToolConfig>,
+        extra_config: Vec<ToolConfig>,
     ) -> Result<RunResult, ToolError> {
-        let value = MCPServerTool::run_tool(mcp_server, self.mcp_server_tool.clone(), config, parameters).await?;
+        let mut env: HashMap<String, String> = MCPServerTool::tool_config_to_env_vars(self.config.clone());
+
+        // Merge extra_config into the config hashmap
+        for c in extra_config {
+            let ToolConfig::BasicConfig(basic_config) = c;
+            if let Some(value) = basic_config.key_value {
+                let mut parsed_value = value.to_string();
+                if let Some(value) = value.as_str() {
+                    parsed_value = value.to_string();
+                }
+                env.insert(basic_config.key_name.clone(), parsed_value);
+            }
+        }
+
+        let value = MCPServerTool::run_tool(mcp_server, self.mcp_server_tool.clone(), env, parameters).await?;
         if value.is_error.unwrap_or(false) {
             let error = MCPServerTool::map_content_to_error_message(value.content).await;
             return Err(ToolError::ExecutionError(error));
@@ -87,13 +101,12 @@ impl MCPServerTool {
     pub async fn run_tool(
         mcp_server: MCPServer,
         tool: String,
-        config: Vec<ToolConfig>,
+        env: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
     ) -> anyhow::Result<CallToolResult> {
         match mcp_server.r#type {
             MCPServerType::Command => {
-                let env_vars = MCPServerTool::tool_config_to_env_vars(config);
-                run_tool_via_command(mcp_server.command.unwrap_or_default(), tool, env_vars, parameters).await
+                run_tool_via_command(mcp_server.command.unwrap_or_default(), tool, env, parameters).await
             }
             MCPServerType::Sse => run_tool_via_sse(mcp_server.url.unwrap_or_default(), tool, parameters).await,
         }
@@ -106,7 +119,7 @@ impl MCPServerTool {
             .collect::<Vec<String>>()
             .join("\n")
     }
-    
+
     pub fn map_content_to_value(content: Vec<Content>) -> Value {
         serde_json::to_value(content).unwrap_or(serde_json::Value::Null)
     }
@@ -117,7 +130,11 @@ impl MCPServerTool {
             .filter_map(|c| {
                 if let ToolConfig::BasicConfig(c) = c {
                     if let Some(value) = &c.key_value {
-                        Some((c.key_name.clone(), value.to_string()))
+                        let mut parsed_value = value.to_string();
+                        if let Some(value) = value.as_str() {
+                            parsed_value = value.to_string();
+                        }
+                        Some((c.key_name.clone(), parsed_value))
                     } else {
                         None
                     }
@@ -156,7 +173,7 @@ mod tests {
                 env: None,
             },
             "add".to_string(),
-            vec![],
+            HashMap::new(),
             json!({
                 "a": 1,
                 "b": 2,
