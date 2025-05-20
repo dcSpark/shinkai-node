@@ -2,6 +2,7 @@ use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
 use crate::tools::tool_definitions::definition_generation::generate_tool_definitions;
 use crate::tools::tool_execution::execute_agent_dynamic::execute_agent_tool;
+use crate::tools::tool_execution::execute_mcp_server_dynamic::execute_mcp_server_dynamic;
 use crate::tools::tool_execution::execution_custom::try_to_execute_rust_tool;
 use crate::tools::tool_execution::execution_deno_dynamic::{check_deno_tool, execute_deno_tool};
 use crate::tools::tool_execution::execution_header_generator::{check_tool, generate_execution_environment};
@@ -326,17 +327,19 @@ pub async fn execute_tool_cmd(
 
     match tool {
         ShinkaiTool::MCPServer(mcp_server_tool, _) => {
-            let mcp_server_ref = mcp_server_tool.mcp_server_ref.clone().parse::<i64>().map_err(|e| {
-                ToolError::ExecutionError(format!("Failed to parse MCP server reference: {}", e))
-            })?;
-            let mcp_server = db.get_mcp_server(mcp_server_ref).map_err(|e| {
-                ToolError::ExecutionError(format!("Failed to get MCP server: {}", e))
-            })?;
+            let mcp_server_ref = mcp_server_tool
+                .mcp_server_ref
+                .clone()
+                .parse::<i64>()
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to parse MCP server reference: {}", e)))?;
+            let mcp_server = db
+                .get_mcp_server(mcp_server_ref)
+                .map_err(|e| ToolError::ExecutionError(format!("Failed to get MCP server: {}", e)))?;
             if let Some(mcp_server) = mcp_server {
                 mcp_server_tool
-                .run(mcp_server, parameters, extra_config)
-                .await
-                .map(|result| json!(result.data))
+                    .run(mcp_server, parameters, extra_config)
+                    .await
+                    .map(|result| json!(result.data))
             } else {
                 Err(ToolError::ExecutionError("MCP server not found".to_string()))
             }
@@ -690,6 +693,7 @@ pub async fn execute_code(
             )
             .await
         }
+        DynamicToolType::McpServerDynamic => execute_mcp_server_dynamic(db, tool_id, parameters, extra_config).await,
     }
 }
 
@@ -733,6 +737,7 @@ pub async fn check_code(
         }
         DynamicToolType::PythonDynamic => Err(ToolError::ExecutionError("NYI Python".to_string())),
         DynamicToolType::AgentDynamic => Err(ToolError::ExecutionError("NYI Agent".to_string())),
+        DynamicToolType::McpServerDynamic => Err(ToolError::ExecutionError("NYI MCP".to_string())),
     }
 }
 

@@ -304,6 +304,7 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Deno(d, _) => d.tool_set.clone(),
             ShinkaiTool::Python(p, _) => p.tool_set.clone(),
+            ShinkaiTool::MCPServer(m, _) => m.tool_set.clone(),
             _ => None,
         }
     }

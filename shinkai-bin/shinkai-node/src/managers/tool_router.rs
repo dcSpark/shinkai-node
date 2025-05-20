@@ -533,46 +533,7 @@ impl ToolRouter {
             .map_err(|e| ToolError::DatabaseError(e.to_string()))
     }
 
-    async fn add_mcp_server_tool(&self) -> Result<(), ToolError> {
-        // ADD MCP SERVER TOOL``
-        let _ = match self
-            .sqlite_manager
-            .get_tool_by_key("local:::__official_shinkai:::mcp_server")
-        {
-            Err(SqliteManagerError::ToolNotFound(_)) => {
-                let mcp_server_tool = MCPServerTool {
-                    version: "1.0.0".to_string(),
-                    name: "mcp_server".to_string(),
-                    author: "@@official.shinkai".to_string(),
-                    mcp_server_ref: "_unknown_".to_string(),
-                    tool_router_key: None,
-                    description: "A tool for interacting with the MCP server".to_string(),
-                    mcp_server_url: "https://mcp.shinkai.io".to_string(),
-                    mcp_server_tool: "mcp_server".to_string(),
-                    config: vec![],
-                    keywords: vec![],
-                    input_args: Parameters::new(),
-                    output_arg: ToolOutputArg { json: "".to_string() },
-                    activated: true,
-                    embedding: None,
-                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-                    tool_set: None,
-                    mcp_enabled: Some(true),
-                };
-                self.sqlite_manager
-                    .add_tool(ShinkaiTool::MCPServer(mcp_server_tool, true))
-                    .await
-                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-            }
-            Ok(_) => {}
-            Err(e) => return Err(ToolError::DatabaseError(e.to_string())),
-        };
-        Ok(())
-    }
-
     pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
-        self.add_mcp_server_tool().await?;
-
         let rust_tools = get_rust_tools();
         for tool in rust_tools {
             let rust_tool = RustTool::new(
