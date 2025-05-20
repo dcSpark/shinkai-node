@@ -6,8 +6,7 @@ use serde_json::{self, Value};
 
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion,
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageType},
+    indexable_version::IndexableVersion, shinkai_tool_offering::{ShinkaiToolOffering, UsageType}
 };
 
 use super::agent_tool_wrapper::AgentToolWrapper;
@@ -15,8 +14,7 @@ use super::tool_config::OAuth;
 use super::tool_playground::{SqlQuery, SqlTable, ToolPlaygroundMetadata};
 use super::tool_types::{OperatingSystem, RunnerType};
 use super::{
-    deno_tools::DenoTool, mcp_server_tool::MCPServerTool, network_tool::NetworkTool, parameters::Parameters,
-    python_tools::PythonTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg,
+    deno_tools::DenoTool, mcp_server_tool::MCPServerTool, network_tool::NetworkTool, parameters::Parameters, python_tools::PythonTool, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
 
 pub type IsEnabled = bool;
@@ -117,9 +115,12 @@ impl ShinkaiTool {
             ShinkaiTool::Agent(a, _) => {
                 ToolRouterKey::new("local".to_string(), a.author.clone(), a.agent_id.clone(), None)
             }
-            ShinkaiTool::MCPServer(m, _) => {
-                ToolRouterKey::new("local".to_string(), m.author.clone(), format!("mcp{}_{}", m.mcp_server_ref, m.name), None)
-            }
+            ShinkaiTool::MCPServer(m, _) => ToolRouterKey::new(
+                "local".to_string(),
+                m.author.clone(),
+                format!("mcp_{}_{}", m.mcp_server_ref, m.mcp_server_tool),
+                None,
+            ),
         }
     }
 

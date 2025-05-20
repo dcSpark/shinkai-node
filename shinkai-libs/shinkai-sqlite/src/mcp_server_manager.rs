@@ -1,12 +1,12 @@
-use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerEnv};
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerEnv, MCPServerType};
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 
 impl SqliteManager {
     pub fn get_all_mcp_servers(&self) -> Result<Vec<MCPServer>, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt =
-            conn.prepare("SELECT id, created_at, updated_at, name, type, url, command, env, is_enabled FROM mcp_servers")?;
+        let mut stmt = conn
+            .prepare("SELECT id, created_at, updated_at, name, type, url, command, env, is_enabled FROM mcp_servers")?;
 
         let servers = stmt.query_map([], |row| {
             Ok(MCPServer {
@@ -112,5 +112,31 @@ impl SqliteManager {
         let mut stmt = conn.prepare("DELETE FROM mcp_servers WHERE id = ?")?;
         stmt.execute([id])?;
         Ok(())
+    }
+
+    pub fn update_mcp_server_enabled_status(&self, id: i64, is_enabled: bool) -> Result<MCPServer, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "UPDATE mcp_servers SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled"
+        )?;
+        let mut rows = stmt.query([is_enabled as i32, id as i32])?;
+
+        match rows.next()? {
+            Some(row) => Ok(MCPServer {
+                id: row.get(0)?,
+                created_at: row.get(1)?,
+                updated_at: row.get(2)?,
+                name: row.get(3)?,
+                r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
+                url: row.get(5)?,
+                command: row.get(6)?,
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                },
+                is_enabled: row.get::<_, bool>(8)?,
+            }),
+            None => Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
+        }
     }
 }

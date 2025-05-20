@@ -1,6 +1,6 @@
 use async_channel::Sender;
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType, MCPServerEnv};
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerEnv, MCPServerType};
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
 
@@ -40,6 +40,12 @@ pub struct DeleteMCPServerResponse {
     pub message: Option<String>,
 }
 
+#[derive(Deserialize, ToSchema, Debug)]
+pub struct SetEnableMCPServerRequest {
+    pub mcp_server_id: i64,
+    pub is_enabled: bool,
+}
+
 pub fn mcp_server_routes(
     node_commands_sender: Sender<NodeCommand>,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -77,11 +83,19 @@ pub fn mcp_server_routes(
         .and(warp::body::json())
         .and_then(delete_mcp_server_handler);
 
+    let set_enable_mcp_server_route = warp::path("set_enable_mcp_server")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(set_enable_mcp_server_handler);
+
     list_mcp_servers_route
         .or(add_mcp_server_route)
         .or(get_all_mcp_server_tools_route)
         .or(delete_mcp_server_route)
         .or(import_mcp_server_from_github_url_route)
+        .or(set_enable_mcp_server_route)
 }
 
 #[utoipa::path(
@@ -96,6 +110,7 @@ pub async fn list_mcp_servers_handler(
     sender: Sender<NodeCommand>,
     bearer: String,
 ) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = bearer.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiListMCPServers {
@@ -205,7 +220,7 @@ pub async fn get_all_mcp_server_tools_handler(
         })
         .await
         .map_err(|_| warp::reject::reject())?;
-    
+
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
@@ -248,6 +263,41 @@ pub async fn import_mcp_server_from_github_url_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/set_enable_mcp_server",
+    request_body = SetEnableMCPServerRequest,
+    responses(
+        (status = 200, description = "Successfully set enable MCP server", body = MCPServer),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn set_enable_mcp_server_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: SetEnableMCPServerRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiSetEnableMCPServer {
+            bearer,
+            mcp_server_id: payload.mcp_server_id,
+            is_enabled: payload.is_enabled,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -256,6 +306,7 @@ pub async fn import_mcp_server_from_github_url_handler(
         get_all_mcp_server_tools_handler,
         import_mcp_server_from_github_url_handler,
         delete_mcp_server_handler,
+        set_enable_mcp_server_handler,
     ),
     components(
         schemas(AddMCPServerRequest, MCPServer, APIError)

@@ -2447,6 +2447,18 @@ impl Node {
                 });
             }
 
+            NodeCommand::V2ApiSetEnableMCPServer {
+                bearer,
+                mcp_server_id,
+                is_enabled,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_enable_mcp_server(db_clone, bearer, mcp_server_id, is_enabled, res).await;
+                });
+            }
+
             NodeCommand::V2ApiGetAllMCPServerTools {
                 bearer,
                 mcp_server_id,

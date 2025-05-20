@@ -1038,4 +1038,10 @@ pub enum NodeCommand {
         tool_router_key: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiSetEnableMCPServer {
+        bearer: String,
+        mcp_server_id: i64,
+        is_enabled: bool,
+        res: Sender<Result<MCPServer, APIError>>,
+    },
 }

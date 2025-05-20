@@ -2536,7 +2536,7 @@ impl Node {
                 .await;
             return Ok(());
         }
-        let tools = db.get_all_tools_from_mcp_server(mcp_server.unwrap())?;
+        let tools = db.get_all_tools_from_mcp_server(mcp_server.unwrap().id.unwrap_or_default().to_string())?;
         let _ = res.send(Ok(tools)).await;
         Ok(())
     }
@@ -2562,7 +2562,8 @@ impl Node {
             return Ok(());
         }
         let _ = db.delete_mcp_server(mcp_server_id);
-        let rows_deleted_result = db.delete_all_tools_from_mcp_server(mcp_server.clone().unwrap());
+        let rows_deleted_result =
+            db.delete_all_tools_from_mcp_server(mcp_server.clone().unwrap().id.unwrap_or_default().to_string());
 
         match rows_deleted_result {
             Ok(count) => {
@@ -2578,6 +2579,48 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Failed to delete MCP server tools".to_string(),
                     message: format!("Error deleting tools for MCP server ID {}: {}", mcp_server_id, err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_set_enable_mcp_server(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        is_enabled: bool,
+        res: Sender<Result<MCPServer, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Check if the MCP server exists
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!("No MCP Server found with ID: {}", mcp_server_id),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        // Update the MCP server's enabled status
+        match db.update_mcp_server_enabled_status(mcp_server_id, is_enabled) {
+            Ok(updated_server) => {
+                let _ = res.send(Ok(updated_server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to update MCP server status".to_string(),
+                    message: format!("Error updating MCP server ID {}: {}", mcp_server_id, err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
