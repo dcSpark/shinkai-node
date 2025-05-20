@@ -8,6 +8,7 @@ use rmcp::model::{CallToolResult, Content};
 use serde_json::Value;
 use shinkai_mcp::mcp_methods::{run_tool_via_command, run_tool_via_sse};
 use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::run_result::RunResult;
 use std::collections::HashMap;
 
@@ -21,6 +22,11 @@ pub struct MCPServerTool {
     pub mcp_server_url: String,
     pub mcp_server_tool: String,
 
+    #[serde(
+        serialize_with = "ToolRouterKey::serialize_tool_router_key",
+        deserialize_with = "ToolRouterKey::deserialize_tool_router_key"
+    )]
+    pub tool_router_key: Option<ToolRouterKey>,
     pub config: Vec<ToolConfig>,
     pub keywords: Vec<String>,
     pub input_args: Parameters,
@@ -33,6 +39,15 @@ pub struct MCPServerTool {
 }
 
 impl MCPServerTool {
+    pub fn create_tool_router_key(node_name: String, server_id: String, tool_name: String) -> ToolRouterKey {
+        ToolRouterKey::new(
+            "local".to_string(),
+            node_name.to_string(),
+            format!("mcp_{}_{}", server_id, tool_name),
+            None,
+        )
+    }
+
     pub fn get_metadata(&self) -> ToolPlaygroundMetadata {
         ToolPlaygroundMetadata {
             name: self.name.clone(),

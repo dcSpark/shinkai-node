@@ -115,11 +115,10 @@ impl ShinkaiTool {
             ShinkaiTool::Agent(a, _) => {
                 ToolRouterKey::new("local".to_string(), a.author.clone(), a.agent_id.clone(), None)
             }
-            ShinkaiTool::MCPServer(m, _) => ToolRouterKey::new(
-                "local".to_string(),
-                m.author.clone(),
-                format!("mcp_{}_{}", m.mcp_server_ref, m.mcp_server_tool),
-                None,
+            ShinkaiTool::MCPServer(m, _) => MCPServerTool::create_tool_router_key(
+                m.author.to_string(),
+                m.mcp_server_ref.clone(),
+                m.mcp_server_tool.clone(),
             ),
         }
     }

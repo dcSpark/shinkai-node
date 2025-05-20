@@ -38,12 +38,15 @@ pub fn convert_to_shinkai_tool(
         .name
         .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
+    let tool_router_key =
+        MCPServerTool::create_tool_router_key(node_name.to_string(), server_id.to_string(), tool_name.to_string());
     let mcp_tool = MCPServerTool {
         name: format!("{}_{}", server_name, tool_name),
         author: node_name.to_string(),
         description: tool.description.to_string(),
         config: tools_config,
         activated: true,
+        tool_router_key: Some(tool_router_key),
         input_args: Parameters {
             schema_type: tool
                 .input_schema

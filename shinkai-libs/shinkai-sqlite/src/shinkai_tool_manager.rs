@@ -3033,6 +3033,12 @@ mod tests {
             mcp_server_tool: name.to_string(),
             mcp_server_url: "http://mcp.example.com".to_string(),
             author: "Test MCP Author".to_string(),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Test MCP Author".to_string(),
+                name.to_string(),
+                None,
+            )),
             version: version.to_string(),
             mcp_enabled: Some(true),
             config: vec![],

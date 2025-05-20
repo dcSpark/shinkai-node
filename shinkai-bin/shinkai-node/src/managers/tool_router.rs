@@ -545,6 +545,7 @@ impl ToolRouter {
                     name: "mcp_server".to_string(),
                     author: "@@official.shinkai".to_string(),
                     mcp_server_ref: "_unknown_".to_string(),
+                    tool_router_key: None,
                     description: "A tool for interacting with the MCP server".to_string(),
                     mcp_server_url: "https://mcp.shinkai.io".to_string(),
                     mcp_server_tool: "mcp_server".to_string(),
