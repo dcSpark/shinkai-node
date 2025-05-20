@@ -7,6 +7,7 @@ pub enum DynamicToolType {
     DenoDynamic,
     PythonDynamic,
     AgentDynamic,
+    McpServerDynamic,
 }
 
 impl std::fmt::Display for DynamicToolType {
@@ -15,6 +16,7 @@ impl std::fmt::Display for DynamicToolType {
             DynamicToolType::DenoDynamic => write!(f, "deno_dynamic"),
             DynamicToolType::PythonDynamic => write!(f, "python_dynamic"),
             DynamicToolType::AgentDynamic => write!(f, "agent_dynamic"),
+            DynamicToolType::McpServerDynamic => write!(f, "mcp_server_dynamic"),
         }
     }
 }

@@ -1208,6 +1208,17 @@ pub async fn code_execution_handler(
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    let mut tool_id = tool_id;
+    let mut app_id = app_id;
+    let mut agent_id = agent_id;
+
+    if !matches!(payload.tool_type, DynamicToolType::McpServerDynamic) {
+        app_id = safe_folder_name(&app_id);
+        agent_id = agent_id.map(|id| safe_folder_name(&id));
+        tool_id = safe_folder_name(&tool_id);
+    }
+
     sender
         .send(NodeCommand::V2ApiExecuteCode {
             bearer,
@@ -1217,9 +1228,9 @@ pub async fn code_execution_handler(
             parameters,
             extra_config,
             oauth: payload.oauth,
-            tool_id: safe_folder_name(&tool_id),
-            app_id: safe_folder_name(&app_id),
-            agent_id: agent_id.map(|id| safe_folder_name(&id)),
+            tool_id: tool_id,
+            app_id: app_id,
+            agent_id: agent_id,
             llm_provider: payload.llm_provider,
             mounts: payload.mounts,
             runner: payload.runner,

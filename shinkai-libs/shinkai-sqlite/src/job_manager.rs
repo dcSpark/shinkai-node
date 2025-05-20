@@ -805,7 +805,8 @@ mod tests {
 
         // Check the content of the messages
         // TODO This is a flacky test, sometimes it returns 3 and sometimes it returns 4
-        assert!(last_messages_inbox.len() == 3 || last_messages_inbox.len() == 4);
+        let inbox_len = last_messages_inbox.len();
+        assert!(inbox_len == 3 || inbox_len == 4);
 
         // Check the content of the first message array
         assert_eq!(last_messages_inbox[0].len(), 1);
