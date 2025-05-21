@@ -1,9 +1,9 @@
 use serde::Deserialize;
 use serde_json::json;
+use shinkai_message_primitives::schemas::x402_types::PaymentRequirements;
 
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
-use super::types::PaymentRequirements;
 use super::verify_payment::Input;
 
 pub type PaymentRequirementsInput = Input;
@@ -24,10 +24,10 @@ pub async fn get_payment_requirements(input: PaymentRequirementsInput) -> Result
 
 #[cfg(test)]
 mod tests {
+    use shinkai_message_primitives::schemas::x402_types::{FacilitatorConfig, Network, Price};
+
     use super::*;
-    use crate::{
-        functions::x402::types::{FacilitatorConfig, Network, Price}, test_utils::testing_create_tempdir_and_set_env_var
-    };
+    use crate::test_utils::testing_create_tempdir_and_set_env_var;
 
     #[tokio::test]
     async fn test_payment_requirements() {

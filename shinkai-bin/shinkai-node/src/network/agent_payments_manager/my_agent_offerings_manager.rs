@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::AddressBalanceList
+        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
     }, shinkai_message::shinkai_message_schemas::MessageSchemaType, shinkai_utils::{
         encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
     }
@@ -270,13 +270,17 @@ impl MyAgentOfferingsManager {
 
         let my_address = wallet.payment_wallet.get_address();
 
+        // Create the Asset struct
+        let asset = Asset {
+            network_id: asset_payment.network.clone(),
+            asset_id: asset_payment.asset.clone(),
+            decimals: None,
+            contract_address: None,
+        };
+
         // Check the balance before attempting to pay
         let balance = match wallet
-            .check_balance_payment_wallet(
-                my_address.clone().into(),
-                asset_payment.asset.clone(),
-                node_name.clone(),
-            )
+            .check_balance_payment_wallet(my_address.clone().into(), asset, node_name.clone())
             .await
         {
             Ok(balance) => balance,
@@ -290,7 +294,7 @@ impl MyAgentOfferingsManager {
         };
         println!("wallet {} balance: {:?}", my_address.address_id.clone(), balance);
 
-        let required_amount = asset_payment.amount.parse::<u128>().map_err(|e| {
+        let required_amount = asset_payment.max_amount_required.parse::<u128>().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to parse required amount: {}", e))
         })?;
         println!("required_amount: {:?}", required_amount);

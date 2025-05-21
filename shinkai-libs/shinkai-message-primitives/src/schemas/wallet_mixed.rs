@@ -1,10 +1,14 @@
 // Heavily inspired by the Coinbase SDK so we can easily connect to it
 // Add more about this ^
 
+// TODO: to remove this entirely or most of it
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+
+use super::x402_types;
 
 /// Represents an address in a wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -68,12 +72,13 @@ pub struct AddressList {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct Asset {
     /// The ID of the blockchain network.
-    pub network_id: NetworkIdentifier,
+    pub network_id: x402_types::Network,
     /// The ID for the asset on the network.
     pub asset_id: String,
     /// The number of decimals the asset supports. This is used to convert from atomic units to base units.
     pub decimals: Option<u32>,
-    /// The optional contract address for the asset. This will be specified for smart contract-based assets, for example ERC20s.
+    /// The optional contract address for the asset. This will be specified for smart contract-based assets, for
+    /// example ERC20s.
     pub contract_address: Option<String>,
 }
 
@@ -85,7 +90,7 @@ pub enum AssetType {
 }
 
 impl Asset {
-    pub fn new(asset_type: AssetType, network: &NetworkIdentifier) -> Option<Self> {
+    pub fn new(asset_type: AssetType, network: &x402_types::Network) -> Option<Self> {
         match (asset_type, network) {
             (AssetType::ETH, _) => Some(Asset {
                 network_id: network.clone(),
@@ -93,44 +98,21 @@ impl Asset {
                 decimals: Some(18),
                 contract_address: None,
             }),
-            (AssetType::USDC, NetworkIdentifier::BaseSepolia) => Some(Asset {
-                network_id: NetworkIdentifier::BaseSepolia,
+            (AssetType::USDC, x402_types::Network::BaseSepolia) => Some(Asset {
+                network_id: x402_types::Network::BaseSepolia,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
             }),
-            (AssetType::USDC, NetworkIdentifier::BaseMainnet) => Some(Asset {
-                network_id: NetworkIdentifier::BaseMainnet,
+            (AssetType::USDC, x402_types::Network::Base) => Some(Asset {
+                network_id: x402_types::Network::Base,
                 asset_id: "USDC".to_string(),
                 decimals: Some(6),
                 contract_address: Some("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".to_string()),
             }),
-            (AssetType::USDC, NetworkIdentifier::EthereumSepolia) => Some(Asset {
-                network_id: NetworkIdentifier::EthereumSepolia,
-                asset_id: "USDC".to_string(),
-                decimals: Some(6),
-                contract_address: Some("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".to_string()),
-            }),
-            (AssetType::USDC, NetworkIdentifier::EthereumMainnet) => Some(Asset {
-                network_id: NetworkIdentifier::EthereumMainnet,
-                asset_id: "USDC".to_string(),
-                decimals: Some(6),
-                contract_address: Some("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48".to_string()),
-            }),
-            (AssetType::USDC, NetworkIdentifier::ArbitrumSepolia) => Some(Asset {
-                network_id: NetworkIdentifier::ArbitrumSepolia,
-                asset_id: "USDC".to_string(),
-                decimals: Some(6),
-                contract_address: Some("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238".to_string()),
-            }),
-            (AssetType::USDC, NetworkIdentifier::ArbitrumMainnet) => Some(Asset {
-                network_id: NetworkIdentifier::ArbitrumMainnet,
-                asset_id: "USDC".to_string(),
-                decimals: Some(6),
-                contract_address: Some("0xaf88d065e77c8cC2239327C5EDb3A432268e5831".to_string()),
-            }),
             (AssetType::KAI, _) => None, // KAI is not specified for any network yet
-            (_, NetworkIdentifier::Anvil) => None, // No tokens specified for Anvil network
+            (AssetType::USDC, x402_types::Network::AvalancheFuji) => None, // USDC not specified for Avalanche Fuji
+            (AssetType::USDC, x402_types::Network::Avalanche) => None, // USDC not specified for Avalanche
         }
     }
 
@@ -205,7 +187,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
+                    network_id: x402_types::Network::BaseSepolia,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -217,7 +199,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 false,
                 Asset {
-                    network_id: NetworkIdentifier::BaseMainnet,
+                    network_id: x402_types::Network::Base,
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -229,7 +211,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: NetworkIdentifier::EthereumSepolia,
+                    network_id: x402_types::Network::BaseSepolia, // TODO: Add Ethereum networks to x402_types::Network
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -241,7 +223,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 false,
                 Asset {
-                    network_id: NetworkIdentifier::EthereumMainnet,
+                    network_id: x402_types::Network::Base, // TODO: Add Ethereum networks to x402_types::Network
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -253,7 +235,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: NetworkIdentifier::ArbitrumSepolia,
+                    network_id: x402_types::Network::BaseSepolia, // TODO: Add Arbitrum networks to x402_types::Network
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -265,7 +247,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 false,
                 Asset {
-                    network_id: NetworkIdentifier::ArbitrumMainnet,
+                    network_id: x402_types::Network::Base, // TODO: Add Arbitrum networks to x402_types::Network
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -277,7 +259,7 @@ impl Network {
                 NetworkProtocolFamilyEnum::Evm,
                 true,
                 Asset {
-                    network_id: NetworkIdentifier::Anvil,
+                    network_id: x402_types::Network::BaseSepolia, // TODO: Add Anvil network to x402_types::Network
                     asset_id: "ETH".to_string(),
                     decimals: Some(18),
                     contract_address: None,
@@ -356,7 +338,8 @@ pub struct Transaction {
     pub signed_payload: Option<String>,
     /// The hash of the transaction.
     pub transaction_hash: Option<String>,
-    /// The link to view the transaction on a block explorer. This is optional and may not be present for all transactions.
+    /// The link to view the transaction on a block explorer. This is optional and may not be present for all
+    /// transactions.
     pub transaction_link: Option<String>,
     /// The status of the transaction.
     pub status: TransactionStatusEnum,

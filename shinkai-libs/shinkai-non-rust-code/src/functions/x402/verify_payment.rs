@@ -3,7 +3,9 @@ use serde_json::json;
 
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
-use super::types::{FacilitatorConfig, Network, PaymentPayload, PaymentRequirements, Price};
+use shinkai_message_primitives::schemas::x402_types::{
+    FacilitatorConfig, Network, PaymentPayload, PaymentRequirements, Price
+};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]

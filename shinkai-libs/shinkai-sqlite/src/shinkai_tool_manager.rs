@@ -2,11 +2,11 @@ use crate::{SqliteManager, SqliteManagerError};
 use bytemuck::cast_slice;
 use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
+use serde_json::Value;
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
 use std::collections::{HashMap, HashSet};
-use serde_json::Value;
 
 impl SqliteManager {
     // Adds a ShinkaiTool entry to the shinkai_tools table
@@ -1074,15 +1074,17 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use shinkai_embedding::model_type::EmbeddingModelType;
     use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::schemas::shinkai_tool_offering::PaymentRequirements;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
+    use shinkai_message_primitives::schemas::x402_types::Network;
+    use shinkai_message_primitives::schemas::x402_types::PaymentRequirements;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
@@ -1093,10 +1095,9 @@ mod tests {
     use shinkai_tools_primitives::tools::tool_types::OperatingSystem;
     use shinkai_tools_primitives::tools::tool_types::RunnerType;
     use shinkai_tools_primitives::tools::tool_types::ToolResult;
+    use std::collections::{HashMap, HashSet};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
-    use std::collections::HashMap;
-    use serde_json::json;
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
@@ -1909,13 +1910,20 @@ mod tests {
         };
 
         let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
-            asset: Asset {
-                network_id: NetworkIdentifier::BaseSepolia,
-                asset_id: "USDC".to_string(),
-                decimals: Some(6),
-                contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-            },
-            amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            scheme: "exact".to_string(),
+            description: "Payment for service".to_string(),
+            network: Network::BaseSepolia,
+            max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            resource: "https://shinkai.com".to_string(),
+            mime_type: "application/json".to_string(),
+            pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+            max_timeout_seconds: 300,
+            asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+            output_schema: Some(serde_json::json!({})),
+            extra: Some(serde_json::json!({
+                "decimals": 6,
+                "asset_id": "USDC"
+            })),
         }]));
 
         let input_args = Parameters::with_single_property(
@@ -2604,7 +2612,7 @@ mod tests {
             js_code: "console.log('B1');".to_string(),
             description: "Tool B1 description".to_string(),
             tool_set: Some("Set B".to_string()),
-             homepage: None,
+            homepage: None,
             mcp_enabled: Some(false),
             tools: vec![],
             config: vec![],
@@ -2685,10 +2693,18 @@ mod tests {
         let shinkai_tool3 = ShinkaiTool::Python(tool3, true);
         let shinkai_tool4 = ShinkaiTool::Deno(tool4, true);
 
-        manager.add_tool_with_vector(shinkai_tool1, SqliteManager::generate_vector_for_testing(0.1)).unwrap();
-        manager.add_tool_with_vector(shinkai_tool2, SqliteManager::generate_vector_for_testing(0.2)).unwrap();
-        manager.add_tool_with_vector(shinkai_tool3, SqliteManager::generate_vector_for_testing(0.3)).unwrap();
-        manager.add_tool_with_vector(shinkai_tool4, SqliteManager::generate_vector_for_testing(0.4)).unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool1, SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool2, SqliteManager::generate_vector_for_testing(0.2))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool3, SqliteManager::generate_vector_for_testing(0.3))
+            .unwrap();
+        manager
+            .add_tool_with_vector(shinkai_tool4, SqliteManager::generate_vector_for_testing(0.4))
+            .unwrap();
 
         // Retrieve tools for "Set A"
         let set_a_tools = manager.get_tools_by_tool_set("Set A").unwrap();
@@ -2736,11 +2752,28 @@ mod tests {
                 }),
             ],
             // Fill in other required fields...
-            tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author A".to_string(), "Tool Set Member 1".to_string(), None)),
-            homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
-            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Author A".to_string(),
+                "Tool Set Member 1".to_string(),
+                None,
+            )),
+            homepage: None,
+            mcp_enabled: Some(false),
+            tools: vec![],
+            oauth: None,
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-            sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
         };
 
         // Tool 2: Part of "MySet" with different config
@@ -2759,7 +2792,8 @@ mod tests {
                     type_name: Some("string".to_string()),
                     key_value: Some(json!("old_key_2")),
                 }),
-                 ToolConfig::BasicConfig(BasicConfig { // Different key
+                ToolConfig::BasicConfig(BasicConfig {
+                    // Different key
                     key_name: "timeout".to_string(),
                     description: "Timeout".to_string(),
                     required: false,
@@ -2768,36 +2802,68 @@ mod tests {
                 }),
             ],
             // Fill in other required fields...
-             tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author B".to_string(), "Tool Set Member 2".to_string(), None)),
-             homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
-             input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
-             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-             sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Author B".to_string(),
+                "Tool Set Member 2".to_string(),
+                None,
+            )),
+            homepage: None,
+            mcp_enabled: Some(false),
+            tools: vec![],
+            oauth: None,
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
         };
 
         // Tool 3: Not part of "MySet"
-         let tool3 = DenoTool {
+        let tool3 = DenoTool {
             name: "Tool Not In Set".to_string(),
             author: "Author C".to_string(),
             version: "1.0.0".to_string(),
             js_code: "console.log('TS2');".to_string(),
             description: "Tool TS2 description".to_string(),
             tool_set: Some("AnotherSet".to_string()), // Different set
-            config: vec![
-                 ToolConfig::BasicConfig(BasicConfig {
-                    key_name: "api_key".to_string(),
-                    description: "API Key".to_string(),
-                    required: true,
-                    type_name: Some("string".to_string()),
-                    key_value: Some(json!("old_key_3")),
-                }),
-            ],
-             // Fill in other required fields...
-             tool_router_key: Some(ToolRouterKey::new("local".to_string(), "Author C".to_string(), "Tool Not In Set".to_string(), None)),
-            homepage: None, mcp_enabled: Some(false), tools: vec![], oauth: None, keywords: vec![],
-            input_args: Parameters::new(), output_arg: ToolOutputArg::empty(), activated: true, embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
+            config: vec![ToolConfig::BasicConfig(BasicConfig {
+                key_name: "api_key".to_string(),
+                description: "API Key".to_string(),
+                required: true,
+                type_name: Some("string".to_string()),
+                key_value: Some(json!("old_key_3")),
+            })],
+            // Fill in other required fields...
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Author C".to_string(),
+                "Tool Not In Set".to_string(),
+                None,
+            )),
+            homepage: None,
+            mcp_enabled: Some(false),
+            tools: vec![],
+            oauth: None,
+            keywords: vec![],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-            sql_tables: None, sql_queries: None, file_inbox: None, assets: None, runner: RunnerType::OnlyHost, operating_system: vec![OperatingSystem::Windows],
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
         };
 
         // Add tools
@@ -2822,7 +2888,13 @@ mod tests {
 
         // Check if the expected tools were updated
         let expected_updated_count = 2; // tool1 and tool2 should be updated
-        assert_eq!(updated_keys.len(), expected_updated_count, "Expected {} tools to be updated, but {} were.", expected_updated_count, updated_keys.len());
+        assert_eq!(
+            updated_keys.len(),
+            expected_updated_count,
+            "Expected {} tools to be updated, but {} were.",
+            expected_updated_count,
+            updated_keys.len()
+        );
 
         // Optionally, check if the specific keys are present (order doesn't matter)
         use std::collections::HashSet;
@@ -2831,7 +2903,9 @@ mod tests {
         assert!(updated_keys_set.contains(&shinkai_tool2.tool_router_key().to_string_without_version()));
 
         // Verify Tool 1 config
-        let updated_tool1 = manager.get_tool_by_key(&shinkai_tool1.tool_router_key().to_string_without_version()).unwrap();
+        let updated_tool1 = manager
+            .get_tool_by_key(&shinkai_tool1.tool_router_key().to_string_without_version())
+            .unwrap();
         if let ShinkaiTool::Deno(t, _) = updated_tool1 {
             let api_key_config = t.config.iter().find(|c| c.name() == "api_key").unwrap();
             assert_eq!(api_key_config.header(), json!("new_common_key"));
@@ -2842,21 +2916,24 @@ mod tests {
         }
 
         // Verify Tool 2 config
-        let updated_tool2 = manager.get_tool_by_key(&shinkai_tool2.tool_router_key().to_string_without_version()).unwrap();
-         if let ShinkaiTool::Python(t, _) = updated_tool2 {
+        let updated_tool2 = manager
+            .get_tool_by_key(&shinkai_tool2.tool_router_key().to_string_without_version())
+            .unwrap();
+        if let ShinkaiTool::Python(t, _) = updated_tool2 {
             let api_key_config = t.config.iter().find(|c| c.name() == "api_key").unwrap();
             assert_eq!(api_key_config.header(), json!("new_common_key"));
-             let timeout_config = t.config.iter().find(|c| c.name() == "timeout").unwrap();
-             assert_eq!(timeout_config.header(), json!(100)); // Should remain unchanged
+            let timeout_config = t.config.iter().find(|c| c.name() == "timeout").unwrap();
+            assert_eq!(timeout_config.header(), json!(100)); // Should remain unchanged
         } else {
             panic!("Tool 2 is not PythonTool");
         }
 
-
         // Verify Tool 3 config (should be unchanged)
-        let updated_tool3 = manager.get_tool_by_key(&shinkai_tool3.tool_router_key().to_string_without_version()).unwrap();
+        let updated_tool3 = manager
+            .get_tool_by_key(&shinkai_tool3.tool_router_key().to_string_without_version())
+            .unwrap();
         if let ShinkaiTool::Deno(t, _) = updated_tool3 {
-             let api_key_config = t.config.iter().find(|c| c.name() == "api_key").unwrap();
+            let api_key_config = t.config.iter().find(|c| c.name() == "api_key").unwrap();
             assert_eq!(api_key_config.header(), json!("old_key_3")); // Should be unchanged
         } else {
             panic!("Tool 3 is not DenoTool");

@@ -4298,6 +4298,7 @@ version = "1.0.4"
 dependencies = [
  "serde",
  "serde_json",
+ "shinkai_message_primitives",
  "shinkai_tools_runner",
  "tempfile",
  "tokio",

@@ -89,16 +89,24 @@ impl WalletManager {
             _ => return Err(WalletError::InvalidPayment("Invalid payment type".to_string())),
         };
 
-        println!("Sending transaction with amount: {}", asset_payment.amount);
+        println!("Sending transaction with amount: {}", asset_payment.max_amount_required);
         println!("Sending transaction to address: {:?}", invoice.address);
         println!("Sending transaction with asset: {:?}", asset_payment.asset);
+
+        // Construct a proper Asset struct
+        let asset = Asset {
+            network_id: asset_payment.network.id.clone(),
+            asset_id: asset_payment.asset.clone(),
+            decimals: None, // We don't have decimals info in PaymentRequirements
+            contract_address: Some(asset_payment.asset.clone()),
+        };
 
         let transaction_hash = self
             .payment_wallet
             .send_transaction(
                 invoice.address,
-                Some(asset_payment.asset.clone()),
-                asset_payment.amount.clone(),
+                Some(asset),
+                asset_payment.max_amount_required.clone(),
                 invoice.invoice_id.clone(),
                 node_name.clone(),
             )
