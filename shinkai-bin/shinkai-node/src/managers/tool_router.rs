@@ -13,7 +13,6 @@ use crate::tools::tool_execution::{
     execute_agent_dynamic::execute_agent_tool, execution_coordinator::override_tool_config, execution_custom::try_to_execute_rust_tool, execution_header_generator::{check_tool, generate_execution_environment}
 };
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
-use std::path::PathBuf;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,8 +20,9 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::x402_types::Network;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{PaymentRequirements, ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, wallet_mixed::{Asset, NetworkIdentifier}, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}
+    indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}, x402_types::PaymentRequirements
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -33,6 +33,7 @@ use shinkai_tools_primitives::tools::{
     error::ToolError, network_tool::NetworkTool, parameters::Parameters, rust_tools::RustTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -561,13 +562,20 @@ impl ToolRouter {
         // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_EXTERNAL_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
             let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
-                asset: Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
-                    asset_id: "USDC".to_string(),
-                    decimals: Some(6),
-                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                },
-                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                scheme: "exact".to_string(),
+                description: "Payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
             }]));
 
             // Manually create NetworkTool

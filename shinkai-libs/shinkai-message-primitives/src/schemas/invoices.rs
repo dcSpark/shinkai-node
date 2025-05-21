@@ -16,12 +16,10 @@ pub fn generate_x402_nonce() -> String {
 }
 
 use super::{
-    shinkai_name::ShinkaiName,
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
-    wallet_mixed::PublicAddress,
+    shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, wallet_mixed::PublicAddress
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Invoice {
     pub invoice_id: String,
     pub provider_name: ShinkaiName,
@@ -36,20 +34,14 @@ pub struct Invoice {
     pub address: PublicAddress,
     pub tool_data: Option<Value>, // expected to have all of the required input_args: Vec<ToolArgument>,
     pub response_date_time: Option<DateTime<Utc>>, // when the response was sent back to the requester
-    pub result_str: Option<String>, // depending on the tool, the result varies
-                                  // Note: Maybe add something related to current estimated response times
-                                  // average response time / congestion level or something like that
-}
-
-impl Ord for Invoice {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.invoice_date_time.cmp(&other.invoice_date_time)
-    }
+    pub result_str: Option<String>, /* depending on the tool, the result varies
+                                   * Note: Maybe add something related to current estimated response times
+                                   * average response time / congestion level or something like that */
 }
 
 impl PartialOrd for Invoice {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        Some(self.invoice_date_time.cmp(&other.invoice_date_time))
     }
 }
 

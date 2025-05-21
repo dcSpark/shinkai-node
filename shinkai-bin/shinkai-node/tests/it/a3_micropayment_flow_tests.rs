@@ -3,16 +3,15 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    PaymentRequirements, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
+    ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
 use shinkai_message_primitives::schemas::wallet_complementary::{WalletRole, WalletSource};
-use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
+use shinkai_message_primitives::schemas::x402_types::{self, Network, PaymentRequirements};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair
 };
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -314,13 +313,20 @@ fn micropayment_flow_test() {
             let shinkai_tool_offering = ShinkaiToolOffering {
                 tool_key: test_local_tool_key_name.to_string(),
                 usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
-                    asset: Asset {
-                        network_id: NetworkIdentifier::BaseSepolia,
-                        asset_id: "USDC".to_string(),
-                        decimals: Some(6),
-                        contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                    },
-                    amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                    scheme: "exact".to_string(),
+                    description: "Echo tool payment".to_string(),
+                    network: Network::BaseSepolia,
+                    max_amount_required: "1000".to_string(),
+                    resource: "https://shinkai.com".to_string(),
+                    mime_type: "application/json".to_string(),
+                    pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                    max_timeout_seconds: 300,
+                    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                    output_schema: Some(serde_json::json!({})),
+                    extra: Some(serde_json::json!({
+                        "name": "USDC",
+                        "version": "2"
+                    })),
                 }])),
                 meta_description: Some("Echo tool offering".to_string()),
             };
@@ -449,7 +455,7 @@ fn micropayment_flow_test() {
                 node1_commands_sender
                     .send(NodeCommand::V2ApiCreateLocalEthersWallet {
                         bearer: api_v2_key.to_string(),
-                        network: NetworkIdentifier::BaseSepolia,
+                        network: x402_types::Network::BaseSepolia,
                         role: WalletRole::Both,
                         res: sender,
                     })
@@ -466,7 +472,7 @@ fn micropayment_flow_test() {
                 node2_commands_sender
                     .send(NodeCommand::V2ApiRestoreLocalEthersWallet {
                         bearer: api_v2_key.to_string(),
-                        network: NetworkIdentifier::BaseSepolia,
+                        network: x402_types::Network::BaseSepolia,
                         source: WalletSource::Mnemonic(std::env::var("RESTORE_WALLET_MNEMONICS_NODE2").unwrap()),
                         role: WalletRole::Both,
                         res: sender,
@@ -483,7 +489,7 @@ fn micropayment_flow_test() {
                 // node2_commands_sender
                 //     .send(NodeCommand::V2ApiRestoreCoinbaseMPCWallet {
                 //         bearer: api_v2_key.to_string(),
-                //         network: NetworkIdentifier::BaseSepolia,
+                //         network: Network::BaseSepolia,
                 //         config: None,
                 //         wallet_id: std::env::var("COINBASE_API_WALLET_ID").unwrap(),
                 //         role: WalletRole::Both,

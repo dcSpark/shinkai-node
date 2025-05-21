@@ -3,7 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::wallet_mixed::Asset;
+use super::x402_types::PaymentRequirements;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum UsageTypeInquiry {
@@ -18,7 +18,7 @@ impl fmt::Display for UsageTypeInquiry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ShinkaiToolOffering {
     pub tool_key: String,
     pub usage_type: UsageType,
@@ -48,7 +48,7 @@ impl ShinkaiToolOffering {
 }
 
 // Updated enum to include aliases for prices
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum UsageType {
     PerUse(ToolPrice),
 }
@@ -61,27 +61,9 @@ impl UsageType {
     }
 }
 
-impl ToolPrice {
-    // TODO: expand to support the other assets correctly
-    pub fn to_usd_float(&self) -> f32 {
-        match self {
-            ToolPrice::Free => 0.0,
-            ToolPrice::DirectDelegation(_) => 0.0, // Handle this case as needed
-            ToolPrice::Payment(payments) => {
-                for payment in payments {
-                    if payment.asset.asset_id == "USDC" {
-                        return payment.amount.parse::<f32>().unwrap_or(999_999_999.0);
-                    }
-                }
-                999_999_999.0 // Return 999_999_999 if USDC is not found
-            }
-        }
-    }
-}
-
 type KAIAmount = String;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum ToolPrice {
     Free,
     #[schema(value_type = String)]
@@ -89,21 +71,21 @@ pub enum ToolPrice {
     Payment(Vec<PaymentRequirements>),
 }
 
-// New Code
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub enum AssetType {
-    ETH,
-    USDC,
-    KAI,
-}
-
-/// Represents a payment requirement with an asset and amount.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct PaymentRequirements {
-    /// The asset to be paid.
-    pub asset: Asset,
-    /// The amount to be paid in atomic units of the asset.
-    pub amount: String,
+impl ToolPrice {
+    pub fn to_usd_float(&self) -> f32 {
+        match self {
+            ToolPrice::Free => 0.0,
+            ToolPrice::DirectDelegation(_) => 0.0, // Handle this case as needed
+            ToolPrice::Payment(payments) => {
+                for payment in payments {
+                    if payment.asset == "USDC" {
+                        return payment.max_amount_required.parse::<f32>().unwrap_or(999_999_999.0);
+                    }
+                }
+                999_999_999.0 // Return 999_999_999 if USDC is not found
+            }
+        }
+    }
 }
 
 #[cfg(test)]

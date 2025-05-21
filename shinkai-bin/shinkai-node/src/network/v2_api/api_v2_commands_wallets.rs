@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::WalletRole, wallet_mixed::{Network, NetworkIdentifier}
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::WalletRole, x402_types::Network
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -20,7 +20,7 @@ impl Node {
         db: Arc<SqliteManager>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
-        network_identifier: NetworkIdentifier,
+        network: Network,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
         role: WalletRole,
@@ -45,7 +45,6 @@ impl Node {
         let mut wallet_manager_lock = wallet_manager.lock().await;
 
         // Logic to restore Coinbase MPC wallet
-        let network = Network::new(network_identifier);
         let restored_wallet_manager =
             WalletManager::recover_coinbase_mpc_wallet_manager(network, db.clone(), config, wallet_id, node_name).await;
 
@@ -119,7 +118,7 @@ impl Node {
         db: Arc<SqliteManager>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
-        network_identifier: NetworkIdentifier,
+        network: Network,
         config: Option<CoinbaseMPCWalletConfig>,
         role: WalletRole,
         node_name: ShinkaiName,
@@ -133,7 +132,6 @@ impl Node {
         let mut wallet_manager_lock = wallet_manager.lock().await;
 
         // Logic to create Coinbase MPC wallet
-        let network = Network::new(network_identifier);
         let created_wallet_manager =
             WalletManager::create_coinbase_mpc_wallet_manager(network, db.clone(), config, node_name).await;
 

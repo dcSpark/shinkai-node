@@ -542,8 +542,6 @@ impl ExtAgentOfferingsManager {
             ));
         }
 
-        // TODO: MODIFY FROM HERE
-
         // Scoped block to get address and network
         let public_address = {
             let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {

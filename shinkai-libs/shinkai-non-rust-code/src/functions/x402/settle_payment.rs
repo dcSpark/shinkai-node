@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
-use super::types::{FacilitatorConfig, PaymentPayload, PaymentRequirements};
+use shinkai_message_primitives::schemas::x402_types::{FacilitatorConfig, PaymentPayload, PaymentRequirements};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,11 +43,11 @@ pub async fn settle_payment(input: Input) -> Result<Output, RunError> {
 
 #[cfg(test)]
 mod tests {
+    use shinkai_message_primitives::schemas::x402_types::{Network, Price};
+
     use super::*;
     use crate::{
-        functions::x402::{
-            create_payment, types::{Network, Price}, verify_payment
-        }, test_utils::testing_create_tempdir_and_set_env_var
+        functions::x402::{create_payment, verify_payment}, test_utils::testing_create_tempdir_and_set_env_var
     };
 
     #[tokio::test]

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 pub type Money = f64;
 
@@ -28,7 +29,7 @@ pub enum Price {
     ERC20TokenAmount(ERC20TokenAmount),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Network {
     #[serde(rename = "base-sepolia")]
     BaseSepolia,
@@ -53,7 +54,7 @@ impl Default for FacilitatorConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
 pub struct PaymentRequirements {
     pub scheme: String,
     pub description: String,
@@ -71,6 +72,49 @@ pub struct PaymentRequirements {
     #[serde(rename = "outputSchema")]
     pub output_schema: Option<serde_json::Value>,
     pub extra: Option<serde_json::Value>,
+}
+
+impl PaymentRequirements {
+    pub fn new(network: Network, max_amount_required: String, pay_to: String, asset: String, resource: String) -> Self {
+        Self {
+            scheme: "exact".to_string(),
+            description: String::new(),
+            network,
+            max_amount_required,
+            resource,
+            mime_type: String::new(),
+            pay_to,
+            max_timeout_seconds: 300,
+            asset,
+            output_schema: Some(serde_json::json!({})),
+            extra: None,
+        }
+    }
+
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = description;
+        self
+    }
+
+    pub fn with_mime_type(mut self, mime_type: String) -> Self {
+        self.mime_type = mime_type;
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout_seconds: u64) -> Self {
+        self.max_timeout_seconds = timeout_seconds;
+        self
+    }
+
+    pub fn with_extra(mut self, extra: serde_json::Value) -> Self {
+        self.extra = Some(extra);
+        self
+    }
+
+    pub fn with_output_schema(mut self, schema: serde_json::Value) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
