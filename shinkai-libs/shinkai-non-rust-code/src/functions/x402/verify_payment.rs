@@ -62,9 +62,9 @@ mod tests {
             network: Network::BaseSepolia,
             // This is Shinkai Faucet address
             pay_to: std::env::var("X402_PAY_TO").expect("X402_PAY_TO must be set"),
-            payment: None,
             x402_version: 1,
             facilitator: FacilitatorConfig::default(),
+            payment: None,
         };
 
         let output = verify_payment(input).await.unwrap();

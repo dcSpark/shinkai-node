@@ -1,19 +1,12 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
-use super::types::{FacilitatorConfig, Network, PaymentRequirements, Price};
+use super::types::PaymentRequirements;
+use super::verify_payment::Input;
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PaymentRequirementsInput {
-    pub price: Price,
-    pub network: Network,
-    pub pay_to: String,
-    pub x402_version: u32,
-    pub facilitator: FacilitatorConfig,
-}
+pub type PaymentRequirementsInput = Input;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +25,9 @@ pub async fn get_payment_requirements(input: PaymentRequirementsInput) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::testing_create_tempdir_and_set_env_var;
+    use crate::{
+        functions::x402::types::{FacilitatorConfig, Network, Price}, test_utils::testing_create_tempdir_and_set_env_var
+    };
 
     #[tokio::test]
     async fn test_payment_requirements() {
@@ -43,6 +38,7 @@ mod tests {
             price: Price::Money(price_in_raw_usd),
             network: Network::BaseSepolia,
             pay_to: std::env::var("X402_PAY_TO").expect("X402_PAY_TO must be set"),
+            payment: None,
             x402_version: 1,
             facilitator: FacilitatorConfig::default(),
         };
