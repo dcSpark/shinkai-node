@@ -1077,7 +1077,7 @@ mod tests {
     use shinkai_embedding::model_type::EmbeddingModelType;
     use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::schemas::shinkai_tool_offering::AssetPayment;
+    use shinkai_message_primitives::schemas::shinkai_tool_offering::PaymentRequirements;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
@@ -1908,7 +1908,7 @@ mod tests {
             tool_set: None,
         };
 
-        let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+        let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
             asset: Asset {
                 network_id: NetworkIdentifier::BaseSepolia,
                 asset_id: "USDC".to_string(),

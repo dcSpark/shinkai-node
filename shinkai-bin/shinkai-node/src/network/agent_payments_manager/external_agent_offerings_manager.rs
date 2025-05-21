@@ -1063,7 +1063,7 @@ mod tests {
     //             if shinkai_tool.name() == "shinkai__weather_by_city" {
     //                 let shinkai_offering = ShinkaiToolOffering {
     //                     tool_key: shinkai_tool.tool_router_key(),
-    //                     usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+    //                     usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
     //                         asset: Asset {
     //                             network_id: NetworkIdentifier::Anvil,
     //                             asset_id: "ETH".to_string(),

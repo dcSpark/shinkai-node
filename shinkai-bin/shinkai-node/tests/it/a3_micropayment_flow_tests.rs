@@ -3,7 +3,7 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
-    AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
+    PaymentRequirements, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
 use shinkai_message_primitives::schemas::wallet_complementary::{WalletRole, WalletSource};
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
@@ -313,7 +313,7 @@ fn micropayment_flow_test() {
 
             let shinkai_tool_offering = ShinkaiToolOffering {
                 tool_key: test_local_tool_key_name.to_string(),
-                usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+                usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                     asset: Asset {
                         network_id: NetworkIdentifier::BaseSepolia,
                         asset_id: "USDC".to_string(),

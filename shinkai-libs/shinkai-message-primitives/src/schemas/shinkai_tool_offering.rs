@@ -86,7 +86,7 @@ pub enum ToolPrice {
     Free,
     #[schema(value_type = String)]
     DirectDelegation(KAIAmount),
-    Payment(Vec<AssetPayment>),
+    Payment(Vec<PaymentRequirements>),
 }
 
 // New Code
@@ -97,9 +97,9 @@ pub enum AssetType {
     KAI,
 }
 
-/// Represents a payment with an asset and amount.
+/// Represents a payment requirement with an asset and amount.
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct AssetPayment {
+pub struct PaymentRequirements {
     /// The asset to be paid.
     pub asset: Asset,
     /// The amount to be paid in atomic units of the asset.

@@ -6,7 +6,7 @@ use warp::http::StatusCode;
 use warp::Filter;
 
 use shinkai_message_primitives::schemas::{
-    shinkai_tool_offering::{AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType},
+    shinkai_tool_offering::{PaymentRequirements, ShinkaiToolOffering, ToolPrice, UsageType},
     wallet_mixed::{Asset, NetworkIdentifier},
 };
 
@@ -232,7 +232,7 @@ pub async fn get_all_tool_offerings_handler(
         get_all_tool_offerings_handler
     ),
     components(
-        schemas(ShinkaiToolOffering, APIError, GetToolOfferingRequest, UsageType, ToolPrice, AssetPayment, Asset, NetworkIdentifier,
+        schemas(ShinkaiToolOffering, APIError, GetToolOfferingRequest, UsageType, ToolPrice, PaymentRequirements, Asset, NetworkIdentifier,
             RemoveToolOfferingRequest, SetToolOfferingRequest)
     ),
     tags(
