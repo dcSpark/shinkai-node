@@ -7,10 +7,14 @@ use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
-use futures::Future;
-use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::invoices::{
     Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
+};
+use shinkai_non_rust_code::functions::x402::{
+    settle_payment, verify_payment,
+};
+use shinkai_non_rust_code::functions::x402::types::{
+    FacilitatorConfig, Network, PaymentPayload, PaymentRequirements, Price,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
@@ -20,13 +24,9 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::SqliteManager;
-use std::collections::HashSet;
-use std::pin::Pin;
-use std::result::Result::Ok;
-use std::sync::Arc;
 use std::sync::Weak;
-use std::{env, fmt};
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use std::fmt;
+use tokio::sync::Mutex;
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -75,13 +75,10 @@ pub struct ExtAgentOfferingsManager {
     // Identity manager like trait
     pub identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     // pub shared_tools: Arc<DashMap<String, ShinkaiToolOffering>>, // (streamer_profile:::path, shared_folder)
-    pub offerings_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
-    pub offering_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub tool_router: Weak<ToolRouter>,
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
 }
 
-const NUM_THREADS: usize = 4;
 
 impl ExtAgentOfferingsManager {
     #[allow(clippy::too_many_arguments)]
@@ -114,50 +111,6 @@ impl ExtAgentOfferingsManager {
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
         // need tool_router
     ) -> Self {
-        let db_prefix = "shinkai__tool__offering_"; // dont change it
-        let offerings_queue = JobQueueManager::<Invoice>::new(db.clone(), Some(db_prefix.to_string()))
-            .await
-            .unwrap();
-
-        let thread_number = env::var("AGENTS_OFFERING_NETWORK_CONCURRENCY")
-            .unwrap_or(NUM_THREADS.to_string())
-            .parse::<usize>()
-            .unwrap_or(NUM_THREADS); // Start processing the job queue
-
-        let offerings_queue_manager = Arc::new(Mutex::new(offerings_queue));
-
-        let offering_queue_handler = ExtAgentOfferingsManager::process_offerings_queue(
-            offerings_queue_manager.clone(),
-            db.clone(),
-            node_name.clone(),
-            my_signature_secret_key.clone(),
-            my_encryption_secret_key.clone(),
-            identity_manager.clone(),
-            thread_number,
-            proxy_connection_info.clone(),
-            tool_router.clone(),
-            |invoice_payment,
-             db,
-             node_name,
-             my_signature_secret_key,
-             my_encryption_secret_key,
-             identity_manager,
-             proxy_connection_info,
-             tool_router| {
-                ExtAgentOfferingsManager::process_invoice_payment(
-                    invoice_payment,
-                    db,
-                    node_name,
-                    my_signature_secret_key,
-                    my_encryption_secret_key,
-                    identity_manager,
-                    proxy_connection_info,
-                    tool_router,
-                )
-            },
-        )
-        .await;
-
         Self {
             db,
             node_name,
@@ -165,241 +118,54 @@ impl ExtAgentOfferingsManager {
             my_encryption_secret_key,
             proxy_connection_info,
             identity_manager,
-            offerings_queue_manager,
-            offering_processing_task: Some(offering_queue_handler),
             tool_router,
             wallet_manager,
         }
     }
+    /// [`AgentOfferingManagerError`].
+    pub async fn x402_verify_payment(
+        &self,
+        price: f64,
+        network: Network,
+        pay_to: String,
+        payment: Option<String>,
+    ) -> Result<verify_payment::Output, AgentOfferingManagerError> {
+        let input = verify_payment::Input {
+            price: Price::Money(price),
+            network,
+            pay_to,
+            payment,
+            x402_version: 1,
+            facilitator: FacilitatorConfig::default(),
+        };
 
-    // TODO: Should be split this into two? one for invoices and one for actual tool jobs?
-    #[allow(clippy::too_many_arguments)]
-    ///
-    /// Processes the offerings queue.
-    ///
-    /// # Arguments
-    ///
-    /// * `offering_queue_manager` - The job queue manager for invoices.
-    /// * `db` - Weak reference to the ShinkaiDB.
-    /// * `vector_fs` - Weak reference to the VectorFS.
-    /// * `node_name` - The name of the node.
-    /// * `my_signature_secret_key` - The secret key used for signing operations.
-    /// * `my_encryption_secret_key` - The secret key used for encryption and decryption.
-    /// * `identity_manager` - Weak reference to the identity manager.
-    /// * `thread_number` - The number of threads to use for processing.
-    /// * `proxy_connection_info` - Weak reference to the proxy connection info.
-    /// * `tool_router` - Weak reference to the tool router.
-    /// * `process_job` - The function to process each job.
-    ///
-    /// # Returns
-    ///
-    /// * `tokio::task::JoinHandle<()>` - A handle to the spawned task.
-    pub async fn process_offerings_queue(
-        offering_queue_manager: Arc<Mutex<JobQueueManager<Invoice>>>,
-        db: Weak<SqliteManager>,
-        node_name: ShinkaiName,
-        my_signature_secret_key: SigningKey,
-        my_encryption_secret_key: EncryptionStaticKey,
-        identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
-        // shared_folders_trees: Arc<DashMap<String, SharedFolderInfo>>,
-        thread_number: usize,
-        proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        tool_router: Weak<ToolRouter>,
-        process_job: impl Fn(
-                Invoice,
-                Weak<SqliteManager>,
-                ShinkaiName,
-                SigningKey,
-                EncryptionStaticKey,
-                Weak<Mutex<dyn IdentityManagerTrait + Send>>,
-                Weak<Mutex<Option<ProxyConnectionInfo>>>,
-                Weak<ToolRouter>,
-            ) -> Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send>>
-            + Send
-            + Sync
-            + 'static,
-    ) -> tokio::task::JoinHandle<()> {
-        let offering_queue_manager = Arc::clone(&offering_queue_manager);
-        let mut receiver = offering_queue_manager.lock().await.subscribe_to_all().await;
-        let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
-        let semaphore = Arc::new(Semaphore::new(thread_number));
-        let process_job = Arc::new(process_job);
-
-        let is_testing = env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
-
-        if is_testing {
-            return tokio::spawn(async {});
-        }
-
-        tokio::spawn(async move {
-            shinkai_log(
-                ShinkaiLogOption::ExtSubscriptions,
-                ShinkaiLogLevel::Info,
-                "process_subscription_queue> Starting subscribers processing loop",
-            );
-
-            let mut handles = Vec::new();
-            loop {
-                let mut continue_immediately;
-
-                // Get the jobs to process
-                let jobs_sorted = {
-                    let mut processing_jobs_lock = processing_jobs.lock().await;
-                    let job_queue_manager_lock = offering_queue_manager.lock().await;
-                    let all_jobs = job_queue_manager_lock.get_all_elements_interleave().await;
-                    drop(job_queue_manager_lock);
-
-                    let filtered_jobs = all_jobs
-                        .unwrap_or(Vec::new())
-                        .into_iter()
-                        .filter_map(|invoice_payment| {
-                            let invoice_id = invoice_payment.invoice_id.clone(); // All jobs are now of the form of payment
-                            if !processing_jobs_lock.contains(&invoice_id) {
-                                processing_jobs_lock.insert(invoice_id.clone());
-                                Some(invoice_payment)
-                            } else {
-                                None
-                            }
-                        })
-                        .take(thread_number)
-                        .collect::<Vec<_>>();
-
-                    // Check if the number of jobs to process is equal to max_parallel_jobs
-                    continue_immediately = filtered_jobs.len() == thread_number;
-
-                    std::mem::drop(processing_jobs_lock);
-                    filtered_jobs
-                };
-                // TODO: Sort jobs by paid and then by inquiry
-
-                for invoice in jobs_sorted {
-                    eprintln!(">> (process_offerings_queue) Processing job_offering: {:?}", invoice);
-                    let offering_queue_manager = Arc::clone(&offering_queue_manager);
-                    let processing_jobs = Arc::clone(&processing_jobs);
-                    let semaphore = semaphore.clone();
-                    let db = db.clone();
-                    let node_name = node_name.clone();
-                    let my_signature_secret_key = my_signature_secret_key.clone();
-                    let my_encryption_secret_key = my_encryption_secret_key.clone();
-                    let identity_manager = identity_manager.clone();
-                    let process_job = process_job.clone();
-                    let proxy_connection_info = proxy_connection_info.clone();
-                    let invoice = invoice.clone();
-                    let tool_router = tool_router.clone();
-
-                    let handle = tokio::spawn(async move {
-                        let _permit = semaphore.acquire().await.expect("Failed to acquire semaphore permit");
-
-                        // Acquire the lock, process the job, and immediately release the lock
-                        let result = {
-                            let result = process_job(
-                                invoice.clone(),
-                                db.clone(),
-                                node_name.clone(),
-                                my_signature_secret_key.clone(),
-                                my_encryption_secret_key.clone(),
-                                identity_manager.clone(),
-                                proxy_connection_info.clone(),
-                                tool_router.clone(),
-                            )
-                            .await;
-                            if let Ok(Some(_)) = offering_queue_manager
-                                .lock()
-                                .await
-                                .dequeue(invoice.invoice_id.as_str())
-                                .await
-                            {
-                                result
-                            } else {
-                                Err(AgentOfferingManagerError::OperationFailed(format!(
-                                    "Failed to dequeue job: {}",
-                                    invoice.invoice_id.as_str()
-                                )))
-                            }
-                        };
-                        match result {
-                            Ok(_) => {
-                                shinkai_log(
-                                    ShinkaiLogOption::ExtSubscriptions,
-                                    ShinkaiLogLevel::Debug,
-                                    "process_subscription_queue: Job processed successfully",
-                                );
-                            } // handle success case
-                            Err(_) => {
-                                shinkai_log(
-                                    ShinkaiLogOption::ExtSubscriptions,
-                                    ShinkaiLogLevel::Error,
-                                    "Job processing failed",
-                                );
-                            } // handle error case
-                        }
-
-                        drop(_permit);
-                        processing_jobs.lock().await.remove(&invoice.invoice_id);
-                    });
-                    handles.push(handle);
-                }
-
-                let handles_to_join = std::mem::take(&mut handles);
-                futures::future::join_all(handles_to_join).await;
-                handles.clear();
-
-                // If job_ids_to_process was equal to max_parallel_jobs, loop again immediately
-                // without waiting for a new job from receiver.recv().await
-                if continue_immediately {
-                    continue;
-                }
-
-                // Receive new jobs
-                if let Some(new_job) = receiver.recv().await {
-                    shinkai_log(
-                        ShinkaiLogOption::ExtSubscriptions,
-                        ShinkaiLogLevel::Info,
-                        format!("Received new paid invoice job {:?}", new_job.invoice_id.as_str()).as_str(),
-                    );
-                }
-            }
-        })
+        verify_payment::verify_payment(input)
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!(
+                "x402 verify_payment error: {:?}",
+                e
+            )))
     }
 
-    /// Note: The idea of this function is to be able to process the invoice payment and then
-    /// call the tool router to process the tool job
-    /// but in a way that we can have control of how many jobs are processed at the same time
+    /// Settle a previously verified x402 payment. This wraps the
+    /// [`settle_payment`] helper from `shinkai_non_rust_code`.
+    pub async fn x402_settle_payment(
+        &self,
+        payment: PaymentPayload,
+        accepts: Vec<PaymentRequirements>,
+    ) -> Result<settle_payment::Output, AgentOfferingManagerError> {
+        let input = settle_payment::Input {
+            payment,
+            accepts,
+            facilitator: FacilitatorConfig::default(),
+        };
 
-    /// Processes the invoice payment.
-    ///
-    /// # Arguments
-    ///
-    /// * `_invoice` - The invoice to be processed.
-    /// * `_db` - Weak reference to the ShinkaiDB.
-    /// * `_vector_fs` - Weak reference to the VectorFS.
-    /// * `_node_name` - The name of the node.
-    /// * `_my_signature_secret_key` - The secret key used for signing operations.
-    /// * `_my_encryption_secret_key` - The secret key used for encryption and decryption.
-    /// * `_maybe_identity_manager` - Weak reference to the identity manager.
-    /// * `_proxy_connection_info` - Weak reference to the proxy connection info.
-    /// * `_tool_router` - Weak reference to the tool router.
-    ///
-    /// # Returns
-    ///
-    /// * `Pin<Box<dyn Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>>` - A future that
-    ///   resolves to the result of the processing.
-    #[allow(clippy::too_many_arguments)]
-    fn process_invoice_payment(
-        _invoice: Invoice,
-        _db: Weak<SqliteManager>,
-        _node_name: ShinkaiName,
-        _my_signature_secret_key: SigningKey,
-        _my_encryption_secret_key: EncryptionStaticKey,
-        _maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
-        _proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
-        _tool_router: Weak<ToolRouter>,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<String, AgentOfferingManagerError>> + Send + 'static>> {
-        Box::pin(async move {
-            // Actually do the work by calling tool_router
-            // Then craft the message with the response and send it back to the requester
-            unimplemented!()
-        })
+        settle_payment::settle_payment(input)
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!(
+                "x402 settle_payment error: {:?}",
+                e
+            )))
     }
 
     ///

@@ -4275,6 +4275,7 @@ dependencies = [
  "shinkai_http_api",
  "shinkai_job_queue_manager",
  "shinkai_message_primitives",
+ "shinkai_non_rust_code",
  "shinkai_sqlite",
  "shinkai_tcp_relayer",
  "shinkai_tools_primitives",
