@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_agent_with_tools_config_override() {
-        use serde_json::{json, Map};
+        use serde_json::json;
         use std::collections::HashMap;
 
         // Create a test agent with tools_config_override

@@ -57,7 +57,7 @@ impl JobManager {
 
         // Fetch data we need to execute job step
         let fetch_data_result = JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await;
-        let (mut full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
+        let (full_job, llm_provider_found, _, user_profile) = match fetch_data_result {
             Ok(data) => data,
             Err(e) => return Self::handle_error(&db, None, &job_id, &identity_secret_key, e, ws_manager).await,
         };
