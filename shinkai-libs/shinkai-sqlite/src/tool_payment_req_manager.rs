@@ -99,7 +99,7 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::{
-        shinkai_tool_offering::{AssetPayment, ToolPrice},
+        shinkai_tool_offering::{PaymentRequirements, ToolPrice},
         wallet_mixed::{Asset, NetworkIdentifier},
     };
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
@@ -121,7 +121,7 @@ mod tests {
         let manager = setup_test_db();
         let tool_offering = ShinkaiToolOffering {
             tool_key: "tool_key".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 asset: Asset {
                     network_id: NetworkIdentifier::BaseSepolia,
                     asset_id: "USDC".to_string(),
@@ -148,7 +148,7 @@ mod tests {
         let manager = setup_test_db();
         let tool_offering = ShinkaiToolOffering {
             tool_key: "tool_key".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 asset: Asset {
                     network_id: NetworkIdentifier::BaseSepolia,
                     asset_id: "USDC".to_string(),
@@ -178,7 +178,7 @@ mod tests {
         let manager = setup_test_db();
         let tool_offering1 = ShinkaiToolOffering {
             tool_key: "tool_key1".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 asset: Asset {
                     network_id: NetworkIdentifier::BaseSepolia,
                     asset_id: "USDC".to_string(),
@@ -192,7 +192,7 @@ mod tests {
 
         let tool_offering2 = ShinkaiToolOffering {
             tool_key: "tool_key2".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 asset: Asset {
                     network_id: NetworkIdentifier::BaseSepolia,
                     asset_id: "USDC".to_string(),
