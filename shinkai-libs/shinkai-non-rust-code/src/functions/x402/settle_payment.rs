@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
-use super::types::{FacilitatorConfig, Network, PaymentPayload, PaymentRequirements, Price};
+use super::types::{FacilitatorConfig, PaymentPayload, PaymentRequirements};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +44,11 @@ pub async fn settle_payment(input: Input) -> Result<Output, RunError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{functions::x402::{create_payment, types::{ERC20Asset, ERC20TokenAmount, EIP712}, verify_payment}, test_utils::testing_create_tempdir_and_set_env_var};
+    use crate::{
+        functions::x402::{
+            create_payment, types::{Network, Price}, verify_payment
+        }, test_utils::testing_create_tempdir_and_set_env_var
+    };
 
     #[tokio::test]
     async fn test_settle_payment() {
@@ -83,6 +87,18 @@ mod tests {
         verify_input.payment = Some(payment.clone());
 
         let verify_output = verify_payment::verify_payment(verify_input).await.unwrap();
+
+        // Check for insufficient funds error
+        if let Some(invalid) = &verify_output.invalid {
+            if invalid.error == "Invalid payment - insufficient_funds" {
+                let payment_req = &invalid.accepts[0];
+                panic!(
+                    "Insufficient funds error detected: Required {} {} on {:?} network",
+                    payment_req.max_amount_required, payment_req.asset, payment_req.network
+                );
+            }
+        }
+
         assert!(verify_output.valid.is_some());
         let decoded_payment = verify_output.valid.unwrap().decoded_payment;
 

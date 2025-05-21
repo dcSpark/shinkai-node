@@ -3,7 +3,7 @@ use serde_json::json;
 
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
-use super::types::{FacilitatorConfig, Network, PaymentPayload, PaymentRequirements, Price};
+use super::types::PaymentRequirements;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,7 +30,7 @@ pub async fn create_payment(input: Input) -> Result<Output, RunError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::testing_create_tempdir_and_set_env_var;
+    use crate::{functions::x402::types::Network, test_utils::testing_create_tempdir_and_set_env_var};
 
     #[tokio::test]
     async fn test_create_payment() {

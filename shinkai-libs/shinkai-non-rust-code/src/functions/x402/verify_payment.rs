@@ -51,6 +51,7 @@ pub async fn verify_payment(input: Input) -> Result<Output, RunError> {
 mod tests {
     use super::*;
     use crate::test_utils::testing_create_tempdir_and_set_env_var;
+
     #[tokio::test]
     async fn test_verify_payment() {
         let _dir = testing_create_tempdir_and_set_env_var();
@@ -70,6 +71,9 @@ mod tests {
         println!("{:?}", output);
         assert!(output.valid.is_none());
         assert!(output.invalid.is_some());
-        assert_eq!(output.invalid.unwrap().accepts.first().unwrap().max_amount_required, (price_in_raw_usd * 1000000.0).to_string());
+        assert_eq!(
+            output.invalid.unwrap().accepts.first().unwrap().max_amount_required,
+            (price_in_raw_usd * 1000000.0).to_string()
+        );
     }
 }
