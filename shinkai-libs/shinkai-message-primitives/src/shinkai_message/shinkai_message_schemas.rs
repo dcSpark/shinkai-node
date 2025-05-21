@@ -81,11 +81,7 @@ pub enum MessageSchemaType {
     ListAllShinkaiTools,
     GetShinkaiTool,
     SearchShinkaiTool,
-    InvoiceRequest,
-    Invoice,
-    PaidInvoice,
-    InvoiceResult,
-    InvoiceRequestNetworkError,
+    X402JobFailedNotification,
 }
 
 impl MessageSchemaType {
@@ -158,11 +154,7 @@ impl MessageSchemaType {
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
             "SearchShinkaiTool" => Some(Self::SearchShinkaiTool),
-            "InvoiceRequest" => Some(Self::InvoiceRequest),
-            "Invoice" => Some(Self::Invoice),
-            "PaidInvoice" => Some(Self::PaidInvoice),
-            "InvoiceResult" => Some(Self::InvoiceResult),
-            "InvoiceRequestNetworkError" => Some(Self::InvoiceRequestNetworkError),
+            "X402JobFailedNotification" => Some(Self::X402JobFailedNotification),
             _ => None,
         }
     }
@@ -235,11 +227,7 @@ impl MessageSchemaType {
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
             Self::SearchShinkaiTool => "SearchShinkaiTool",
-            Self::InvoiceRequest => "InvoiceRequest",
-            Self::Invoice => "Invoice",
-            Self::PaidInvoice => "PaidInvoice",
-            Self::InvoiceResult => "InvoiceResult",
-            Self::InvoiceRequestNetworkError => "InvoiceRequestNetworkError",
+            Self::X402JobFailedNotification => "X402JobFailedNotification",
             Self::Empty => "",
         }
     }

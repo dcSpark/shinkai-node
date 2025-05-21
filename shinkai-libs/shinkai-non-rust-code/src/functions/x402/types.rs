@@ -99,3 +99,10 @@ pub struct PaymentAuthorization {
     pub valid_before: String,
     pub nonce: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentRequirementsRequest {
+    pub tool_key_name: String,
+    pub tool_data: Option<String>, // JSON string of tool arguments
+}

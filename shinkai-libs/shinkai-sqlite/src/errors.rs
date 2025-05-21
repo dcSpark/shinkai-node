@@ -32,10 +32,6 @@ pub enum SqliteManagerError {
     DataAlreadyExists,
     #[error("Invalid identity name: {0}")]
     InvalidIdentityName(String),
-    #[error("Invoice not found with id: {0}")]
-    InvoiceNotFound(String),
-    #[error("Network error not found with id: {0}")]
-    InvoiceNetworkErrorNotFound(String),
     #[error("Profile does not exist: {0}")]
     ProfileNotFound(String),
     #[error("Profile name already exists")]

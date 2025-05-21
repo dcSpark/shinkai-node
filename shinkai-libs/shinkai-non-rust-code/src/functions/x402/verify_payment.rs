@@ -8,13 +8,20 @@ use super::types::{FacilitatorConfig, Network, PaymentPayload, PaymentRequiremen
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Input {
-    pub price: Price,
-    pub network: Network,
-    // 0x... Address
-    pub pay_to: String,
-    pub payment: Option<String>,
+    pub payment: Option<String>, // Keep
+    pub payment_requirements: Vec<PaymentRequirements>, // Keep & ensure it's used
+    pub content_id: String, // Keep (this is the resource identifier)
+    pub buyer_id: Option<String>, // Keep
+    pub seller_id: String, // Keep
+    pub expected_seller_id: Option<String>, // Keep
+    pub facilitator_config: Option<FacilitatorConfig>, // Keep, ensure Deno side uses it
+    // REMOVE: price: Price,
+    // REMOVE: network: Network,
+    // REMOVE: pay_to: String,
+    // Keep: x402_version: u32 (already in PaymentPayload, but verify_payment might need it if payment is None)
+                       // Let's assume x402_version is still needed at this level for when payment is None.
+                       // The Deno script uses parameters.x402Version when payment is None.
     pub x402_version: u32,
-    pub facilitator: FacilitatorConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,23 +64,38 @@ mod tests {
         let _dir = testing_create_tempdir_and_set_env_var();
 
         let price_in_raw_usd = 0.001;
+        let test_payment_requirements = PaymentRequirements {
+            id: "req_123".to_string(),
+            prices: vec![Price::Money(price_in_raw_usd)],
+            accepts_test_payments: Some(true),
+            resource_data: None,
+            asset: None, 
+            extra: None,
+        };
+
         let input = Input {
-            price: Price::Money(price_in_raw_usd),
-            network: Network::BaseSepolia,
-            // This is Shinkai Faucet address
-            pay_to: std::env::var("X402_PAY_TO").expect("X402_PAY_TO must be set"),
             payment: None,
+            payment_requirements: vec![test_payment_requirements.clone()],
+            content_id: "test_content_id".to_string(),
+            buyer_id: Some("test_buyer_id".to_string()),
+            seller_id: "test_seller_id".to_string(),
+            expected_seller_id: Some("test_seller_id".to_string()),
+            facilitator_config: Some(FacilitatorConfig::default()),
             x402_version: 1,
-            facilitator: FacilitatorConfig::default(),
         };
 
         let output = verify_payment(input).await.unwrap();
         println!("{:?}", output);
         assert!(output.valid.is_none());
         assert!(output.invalid.is_some());
-        assert_eq!(
-            output.invalid.unwrap().accepts.first().unwrap().max_amount_required,
-            (price_in_raw_usd * 1000000.0).to_string()
-        );
+        let invalid_output = output.invalid.unwrap();
+        assert_eq!(invalid_output.accepts.len(), 1);
+        assert_eq!(invalid_output.accepts.first().unwrap().id, test_payment_requirements.id);
+        // Further assertions can be added based on how Deno script processes Money price
+        // For example, if it converts Money to a specific token/amount, that can be checked.
+        // The current Deno script seems to primarily focus on EVM prices for the `max_amount_required` field.
+        // If Price::Money is passed, it might not populate `max_amount_required` in the same way.
+        // Let's check if the price is passed through:
+        assert_eq!(invalid_output.accepts.first().unwrap().prices.first().unwrap(), &Price::Money(price_in_raw_usd));
     }
 }

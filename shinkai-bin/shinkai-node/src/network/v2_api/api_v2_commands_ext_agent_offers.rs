@@ -8,8 +8,33 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffer
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
 use tokio::sync::RwLock;
+use serde::Deserialize; // Add for API request structs
+use serde_json::Value; // For API responses
+
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_libs::shinkai_non_rust_code::functions::x402; // For x402::types::PaymentRequirementsRequest
 
 use crate::network::{node_error::NodeError, Node};
+
+
+// --- Structs for API Request Bodies ---
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct X402PaymentRequirementsApiRequest {
+    pub tool_key_name: String,
+    pub tool_data: Option<String>,
+    // pub requester_node_name: Option<String>, // If needed to be specified by the caller
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct X402ConfirmPaymentApiRequest {
+    pub payment_jwt: String,
+    pub tool_key_name: String,
+    // pub requester_node_name: Option<String>, // If needed
+}
+
 
 impl Node {
     pub async fn v2_api_get_tool_offering(
@@ -195,6 +220,123 @@ impl Node {
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_api_request_x402_payment_requirements(
+        node: Arc<RwLock<Node>>,
+        bearer: String,
+        request_body: X402PaymentRequirementsApiRequest,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate bearer token and get associated identity (requester_node_name)
+        let db = {
+            let r_node = node.read().await;
+            r_node.db.clone()
+        };
+        let requester_identity = match Self::validate_bearer_token_and_get_identity(&bearer, db.clone(), &res).await {
+            Ok(identity) => identity,
+            Err(_) => return Ok(()), // Error already sent by validate_bearer_token
+        };
+        // Assuming StandardIdentity has a way to get ShinkaiName, or just use the string form if appropriate
+        let requester_node_name = requester_identity.get_full_shinkai_name();
+
+
+        let tool_key_shinkai_name = match ShinkaiName::new(&request_body.tool_key_name) {
+            Ok(name) => name,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "InvalidToolKeyName".to_string(),
+                    message: format!("Invalid tool_key_name format: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let x402_req = x402::types::PaymentRequirementsRequest {
+            tool_key_name: tool_key_shinkai_name.to_string(), // Assuming x402 type expects String
+            tool_data: request_body.tool_data,
+        };
+
+        let mut w_node = node.write().await;
+        let offerings_manager = Arc::clone(&w_node.ext_agent_offerings_manager);
+        drop(w_node); // Release lock on node
+
+        let mut manager_lock = offerings_manager.lock().await;
+        
+        match manager_lock.network_request_payment_requirements(requester_node_name.clone(), x402_req).await {
+            Ok(_) => {
+                // The manager method sends the response/error over the network.
+                // API returns an immediate acknowledgment.
+                let _ = res.send(Ok(serde_json::json!({"status": "processing", "message": "Payment requirements request is being processed."}))).await;
+            }
+            Err(e) => {
+                // This error is if the local processing/setup for network_request_payment_requirements failed
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "ProcessingError".to_string(),
+                    message: format!("Failed to initiate payment requirements request: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_confirm_x402_payment(
+        node: Arc<RwLock<Node>>,
+        bearer: String,
+        request_body: X402ConfirmPaymentApiRequest,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        let db = {
+            let r_node = node.read().await;
+            r_node.db.clone()
+        };
+        let requester_identity = match Self::validate_bearer_token_and_get_identity(&bearer, db.clone(), &res).await {
+            Ok(identity) => identity,
+            Err(_) => return Ok(()), 
+        };
+        let requester_node_name = requester_identity.get_full_shinkai_name();
+
+        let tool_key_shinkai_name = match ShinkaiName::new(&request_body.tool_key_name) {
+            Ok(name) => name,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "InvalidToolKeyName".to_string(),
+                    message: format!("Invalid tool_key_name format: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut w_node = node.write().await;
+        let offerings_manager = Arc::clone(&w_node.ext_agent_offerings_manager);
+        drop(w_node);
+
+        let mut manager_lock = offerings_manager.lock().await;
+
+        match manager_lock.network_process_payment_confirmation(
+            requester_node_name.clone(), 
+            request_body.payment_jwt, 
+            tool_key_shinkai_name
+        ).await {
+            Ok(_) => {
+                let _ = res.send(Ok(serde_json::json!({"status": "processing", "message": "Payment confirmation is being processed."}))).await;
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "ProcessingError".to_string(),
+                    message: format!("Failed to initiate payment confirmation: {:?}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
         Ok(())
     }
 }
