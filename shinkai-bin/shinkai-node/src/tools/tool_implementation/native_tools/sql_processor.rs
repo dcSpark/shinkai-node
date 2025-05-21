@@ -29,7 +29,7 @@ use rusqlite::{params_from_iter, ToSql};
 // LLM Tool
 pub struct SQLProcessorTool {
     pub tool: ShinkaiToolHeader,
-    pub tool_embedding: Option<Vec<f32>>,
+    pub _tool_embedding: Option<Vec<f32>>,
 }
 
 impl SQLProcessorTool {
@@ -81,7 +81,7 @@ SELECT field_1, field_3 FROM table_name WHERE field_3 > 100 ORDER BY field_2 DES
                 usage_type: None,
                 tool_offering: None,
             },
-            tool_embedding: None, // TODO: add tool embedding
+            _tool_embedding: None, // TODO: add tool embedding
         }
     }
 }
@@ -305,7 +305,7 @@ mod tests {
             mcp_enabled: sql_processor_tool.tool.mcp_enabled.clone(),
             input_args: sql_processor_tool.tool.input_args.clone(),
             output_arg: sql_processor_tool.tool.output_arg.clone(),
-            tool_embedding: sql_processor_tool.tool_embedding.clone(),
+            tool_embedding: sql_processor_tool._tool_embedding.clone(),
             tool_router_key: sql_processor_tool.tool.tool_router_key.clone(),
         };
 
@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(rust_tool.description, sql_processor_tool.tool.description);
         assert_eq!(rust_tool.input_args, sql_processor_tool.tool.input_args);
         assert_eq!(rust_tool.output_arg, sql_processor_tool.tool.output_arg);
-        assert_eq!(rust_tool.tool_embedding, sql_processor_tool.tool_embedding);
+        assert_eq!(rust_tool.tool_embedding, sql_processor_tool._tool_embedding);
         assert_eq!(rust_tool.tool_router_key, sql_processor_tool.tool.tool_router_key);
     }
 }
