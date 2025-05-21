@@ -10,7 +10,7 @@ use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::invoices::{
-    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
+    Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum, generate_x402_nonce
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
@@ -535,8 +535,11 @@ impl ExtAgentOfferingsManager {
             },
         };
 
+        // Generate an invoice id from the provider side
+        let provider_invoice_id = generate_x402_nonce();
+
         // Check if an invoice with the same ID already exists
-        if db.get_invoice(&invoice_request.unique_id).is_ok() {
+        if db.get_invoice(&provider_invoice_id).is_ok() {
             return Err(AgentOfferingManagerError::OperationFailed(
                 "Invoice with the same ID already exists".to_string(),
             ));
@@ -555,7 +558,7 @@ impl ExtAgentOfferingsManager {
         };
 
         let invoice = Invoice {
-            invoice_id: invoice_request.unique_id.clone(),
+            invoice_id: provider_invoice_id.clone(),
             provider_name: self.node_name.clone(),
             requester_name: invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {

@@ -1,4 +1,5 @@
 use rusqlite::params;
+use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::{invoices::InternalInvoiceRequest, shinkai_name::ShinkaiName};
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -130,6 +131,58 @@ impl SqliteManager {
 
         Ok(())
     }
+
+    pub fn update_internal_invoice_request_unique_id(
+        &self,
+        old_unique_id: &str,
+        new_unique_id: &str,
+    ) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "UPDATE invoice_requests SET unique_id = ?1 WHERE unique_id = ?2",
+        )?;
+
+        let rows_updated = stmt.execute(params![new_unique_id, old_unique_id])?;
+        if rows_updated == 0 {
+            return Err(SqliteManagerError::DataNotFound);
+        }
+        Ok(())
+    }
+
+    pub fn get_internal_invoice_request_by_details(
+        &self,
+        provider_name: &ShinkaiName,
+        requester_name: &ShinkaiName,
+        tool_key_name: &str,
+        date_time: DateTime<Utc>,
+    ) -> Result<InternalInvoiceRequest, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT unique_id, usage_type_inquiry FROM invoice_requests WHERE provider_name = ?1 AND requester_name = ?2 AND tool_key_name = ?3 AND date_time = ?4",
+        )?;
+
+        let mut rows = stmt.query(params![
+            provider_name.full_name,
+            requester_name.full_name,
+            tool_key_name,
+            date_time.to_rfc3339(),
+        ])?;
+
+        let row = rows.next()?.ok_or(SqliteManagerError::DataNotFound)?;
+
+        Ok(InternalInvoiceRequest {
+            provider_name: provider_name.clone(),
+            requester_name: requester_name.clone(),
+            tool_key_name: tool_key_name.to_string(),
+            usage_type_inquiry: serde_json::from_str(&row.get::<_, String>(1)?).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(Box::new(
+                    SqliteManagerError::SerializationError(e.to_string()),
+                ))
+            })?,
+            date_time,
+            unique_id: row.get(0)?,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -222,5 +275,57 @@ mod tests {
         let result = db.get_internal_invoice_request("test_unique_id");
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_internal_invoice_request_unique_id() {
+        let db = setup_test_db();
+
+        let invoice_request = InternalInvoiceRequest {
+            unique_id: "old_id".to_string(),
+            provider_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
+            requester_name: ShinkaiName::new("@@node2.shinkai/main_profile_node2".to_string()).unwrap(),
+            tool_key_name: "test_tool_key_name".to_string(),
+            usage_type_inquiry: UsageTypeInquiry::PerUse,
+            date_time: chrono::Utc::now(),
+        };
+
+        db.set_internal_invoice_request(&invoice_request).unwrap();
+
+        db.update_internal_invoice_request_unique_id("old_id", "new_id").unwrap();
+
+        let updated = db.get_internal_invoice_request("new_id").unwrap();
+        assert_eq!(updated.unique_id, "new_id");
+
+        let old_result = db.get_internal_invoice_request("old_id");
+        assert!(old_result.is_err());
+    }
+
+    #[test]
+    fn test_get_internal_invoice_request_by_details() {
+        let db = setup_test_db();
+
+        let dt = chrono::Utc::now();
+        let invoice_request = InternalInvoiceRequest {
+            unique_id: "detail_id".to_string(),
+            provider_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
+            requester_name: ShinkaiName::new("@@node2.shinkai/main_profile_node2".to_string()).unwrap(),
+            tool_key_name: "test_tool_key_name".to_string(),
+            usage_type_inquiry: UsageTypeInquiry::PerUse,
+            date_time: dt,
+        };
+
+        db.set_internal_invoice_request(&invoice_request).unwrap();
+
+        let fetched = db
+            .get_internal_invoice_request_by_details(
+                &invoice_request.provider_name,
+                &invoice_request.requester_name,
+                &invoice_request.tool_key_name,
+                dt,
+            )
+            .unwrap();
+
+        assert_eq!(fetched.unique_id, "detail_id");
     }
 }

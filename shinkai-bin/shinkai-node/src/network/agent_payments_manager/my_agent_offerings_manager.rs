@@ -340,6 +340,17 @@ impl MyAgentOfferingsManager {
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
         let db_write = db;
 
+        if let Ok(req) = db_write.get_internal_invoice_request_by_details(
+            &invoice.provider_name,
+            &invoice.requester_name,
+            &invoice.shinkai_offering.tool_key,
+            invoice.request_date_time,
+        ) {
+            if req.unique_id != invoice.invoice_id {
+                let _ = db_write.update_internal_invoice_request_unique_id(&req.unique_id, &invoice.invoice_id);
+            }
+        }
+
         db_write
             .set_invoice(invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
@@ -360,6 +371,17 @@ impl MyAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
         let db_write = db;
+
+        if let Ok(req) = db_write.get_internal_invoice_request_by_details(
+            &invoice.provider_name,
+            &invoice.requester_name,
+            &invoice.shinkai_offering.tool_key,
+            invoice.request_date_time,
+        ) {
+            if req.unique_id != invoice.invoice_id {
+                let _ = db_write.update_internal_invoice_request_unique_id(&req.unique_id, &invoice.invoice_id);
+            }
+        }
 
         db_write
             .set_invoice(invoice)
