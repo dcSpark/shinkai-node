@@ -75,8 +75,8 @@ pub fn deepseek_prepare_messages(
 mod tests {
     use super::*;
     use uuid::Uuid;
-    use serde_json::json;
-    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{DeepSeek, SerializedLLMProvider};
+    
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::DeepSeek;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
     #[test]

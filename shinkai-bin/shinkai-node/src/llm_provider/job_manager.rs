@@ -475,7 +475,7 @@ impl JobManager {
                                     let agent_id = agent_name
                                         .get_agent_name_string()
                                         .ok_or(LLMProviderError::LLMProviderNotFound)?;
-                                    let mut job_creation: JobCreationInfo =
+                                    let job_creation: JobCreationInfo =
                                         serde_json::from_str(&data.message_raw_content)
                                             .map_err(|_| LLMProviderError::ContentParseFailed)?;
 

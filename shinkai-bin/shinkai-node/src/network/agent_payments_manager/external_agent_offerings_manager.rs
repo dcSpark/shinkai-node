@@ -240,7 +240,7 @@ impl ExtAgentOfferingsManager {
 
             let mut handles = Vec::new();
             loop {
-                let mut continue_immediately;
+                let continue_immediately;
 
                 // Get the jobs to process
                 let jobs_sorted = {
