@@ -534,15 +534,6 @@ impl ExtAgentOfferingsManager {
                     ))
                 }
             },
-            UsageTypeInquiry::Downloadable => match shinkai_offering.usage_type {
-                UsageType::Downloadable(price) => UsageType::Downloadable(price),
-                UsageType::Both { download_price, .. } => UsageType::Downloadable(download_price),
-                _ => {
-                    return Err(AgentOfferingManagerError::InvalidUsageType(
-                        "Invalid usage type for Downloadable inquiry".to_string(),
-                    ))
-                }
-            },
         };
 
         // Check if an invoice with the same ID already exists

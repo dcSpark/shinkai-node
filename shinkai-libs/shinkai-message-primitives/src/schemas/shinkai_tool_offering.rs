@@ -8,14 +8,12 @@ use super::wallet_mixed::Asset;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum UsageTypeInquiry {
     PerUse,
-    Downloadable,
 }
 
 impl fmt::Display for UsageTypeInquiry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UsageTypeInquiry::PerUse => write!(f, "PerUse"),
-            UsageTypeInquiry::Downloadable => write!(f, "Downloadable"),
         }
     }
 }
@@ -31,9 +29,7 @@ impl ShinkaiToolOffering {
     pub fn get_price_for_usage(&self, usage_type_inquiry: &UsageTypeInquiry) -> Option<&ToolPrice> {
         match (usage_type_inquiry, &self.usage_type) {
             (UsageTypeInquiry::PerUse, UsageType::PerUse(price)) => Some(price),
-            (UsageTypeInquiry::Downloadable, UsageType::Downloadable(price)) => Some(price),
             (UsageTypeInquiry::PerUse, UsageType::Both { per_use_price, .. }) => Some(per_use_price),
-            (UsageTypeInquiry::Downloadable, UsageType::Both { download_price, .. }) => Some(download_price),
             _ => None,
         }
     }

@@ -248,7 +248,7 @@ impl MyAgentOfferingsManager {
         })?;
 
         // Get the price for the usage type
-        let usage_type_inquiry = UsageTypeInquiry::PerUse; // or UsageTypeInquiry::Downloadable based on your context
+        let usage_type_inquiry = UsageTypeInquiry::PerUse;
         let price = invoice
             .shinkai_offering
             .get_price_for_usage(&usage_type_inquiry)
