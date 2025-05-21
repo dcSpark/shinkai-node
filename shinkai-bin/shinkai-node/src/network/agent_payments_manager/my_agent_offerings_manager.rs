@@ -274,7 +274,7 @@ impl MyAgentOfferingsManager {
         let asset = Asset {
             network_id: asset_payment.network.clone(),
             asset_id: asset_payment.asset.clone(),
-            decimals: None,
+            decimals: None, // TODO: this should be retrieved from the asset
             contract_address: None,
         };
 

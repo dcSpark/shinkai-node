@@ -1,7 +1,6 @@
 use rusqlite::params;
 use shinkai_message_primitives::schemas::{
-    invoices::{Invoice, InvoiceRequestNetworkError},
-    shinkai_name::ShinkaiName,
+    invoices::{Invoice, InvoiceRequestNetworkError}, shinkai_name::ShinkaiName
 };
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -415,13 +414,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::schemas::{
-        invoices::InvoiceStatusEnum,
-        shinkai_name::ShinkaiName,
-        shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry},
-        wallet_mixed::{NetworkIdentifier, PublicAddress},
-    };
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::{
+        invoices::InvoiceStatusEnum, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry}, wallet_mixed::{NetworkIdentifier, PublicAddress}, x402_types::Network
+    };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -454,7 +450,7 @@ mod tests {
             status: InvoiceStatusEnum::Pending,
             payment: None,
             address: PublicAddress {
-                network_id: NetworkIdentifier::BaseSepolia,
+                network_id: Network::BaseSepolia,
                 address_id: "address_id".to_string(),
             },
             tool_data: None,
@@ -486,7 +482,7 @@ mod tests {
             status: InvoiceStatusEnum::Pending,
             payment: None,
             address: PublicAddress {
-                network_id: NetworkIdentifier::BaseSepolia,
+                network_id: Network::BaseSepolia,
                 address_id: "address_id".to_string(),
             },
             tool_data: None,
@@ -510,7 +506,7 @@ mod tests {
             status: InvoiceStatusEnum::Pending,
             payment: None,
             address: PublicAddress {
-                network_id: NetworkIdentifier::BaseSepolia,
+                network_id: Network::BaseSepolia,
                 address_id: "address_id".to_string(),
             },
             tool_data: None,
@@ -546,7 +542,7 @@ mod tests {
             status: InvoiceStatusEnum::Pending,
             payment: None,
             address: PublicAddress {
-                network_id: NetworkIdentifier::BaseSepolia,
+                network_id: Network::BaseSepolia,
                 address_id: "address_id".to_string(),
             },
             tool_data: None,

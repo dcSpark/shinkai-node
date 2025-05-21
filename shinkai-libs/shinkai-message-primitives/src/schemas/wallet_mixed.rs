@@ -16,7 +16,7 @@ pub struct Address {
     /// The ID of the wallet that owns the address.
     pub wallet_id: String,
     /// The ID of the blockchain network.
-    pub network_id: NetworkIdentifier,
+    pub network_id: x402_types::Network,
     /// The public key from which the address is derived.
     pub public_key: Option<String>,
     /// The onchain address derived on the server-side.
@@ -36,7 +36,7 @@ impl From<Address> for PublicAddress {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicAddress {
     /// The ID of the blockchain network.
-    pub network_id: NetworkIdentifier,
+    pub network_id: x402_types::Network,
     /// The onchain address derived on the server-side.
     pub address_id: String,
 }

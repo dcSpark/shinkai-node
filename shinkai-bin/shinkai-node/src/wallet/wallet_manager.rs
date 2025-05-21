@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, invoices::{Invoice, Payment, PaymentStatusEnum}, shinkai_name::ShinkaiName, shinkai_tool_offering::ToolPrice, wallet_mixed::{Asset, Balance, Network, PublicAddress}
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, invoices::{Invoice, Payment, PaymentStatusEnum}, shinkai_name::ShinkaiName, shinkai_tool_offering::ToolPrice, wallet_mixed::{Asset, Balance, PublicAddress}, x402_types::Network
 };
 use shinkai_sqlite::SqliteManager;
 use uuid::Uuid;
@@ -95,7 +95,7 @@ impl WalletManager {
 
         // Construct a proper Asset struct
         let asset = Asset {
-            network_id: asset_payment.network.id.clone(),
+            network_id: asset_payment.network.clone(),
             asset_id: asset_payment.asset.clone(),
             decimals: None, // We don't have decimals info in PaymentRequirements
             contract_address: Some(asset_payment.asset.clone()),
