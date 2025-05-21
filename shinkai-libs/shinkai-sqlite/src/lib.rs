@@ -732,8 +732,7 @@ impl SqliteManager {
                 requester_name TEXT NOT NULL,
                 tool_key_name TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,
-                date_time TEXT NOT NULL,
-                secret_prehash TEXT NOT NULL
+                date_time TEXT NOT NULL
             );",
             [],
         )?;
