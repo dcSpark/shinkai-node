@@ -9,7 +9,6 @@ use shinkai_sqlite::SqliteManager;
 
 use tokio::sync::Mutex;
 
-use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
 use std::env;
