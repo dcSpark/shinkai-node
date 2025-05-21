@@ -747,8 +747,9 @@ impl SqliteManager {
                 invoice_id TEXT NOT NULL UNIQUE,
                 provider_name TEXT NOT NULL,
                 requester_name TEXT NOT NULL,
+                tool_key TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,
-                shinkai_offering_key TEXT NOT NULL,
+                payment_requirements TEXT NOT NULL,
                 request_date_time TEXT NOT NULL,
                 invoice_date_time TEXT NOT NULL,
                 expiration_time TEXT NOT NULL,
@@ -757,9 +758,7 @@ impl SqliteManager {
                 address TEXT NOT NULL, -- Store as a JSON string
                 tool_data BLOB,
                 response_date_time TEXT,
-                result_str TEXT,
-
-                FOREIGN KEY(shinkai_offering_key) REFERENCES tool_micropayments_requirements(tool_key)
+                result_str TEXT
             );",
             [],
         )?;

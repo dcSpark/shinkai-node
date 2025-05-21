@@ -5,6 +5,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     AssetPayment, ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry,
 };
+use shinkai_message_primitives::schemas::x402::{Network, PaymentRequirements};
 use shinkai_message_primitives::schemas::wallet_complementary::{WalletRole, WalletSource};
 use shinkai_message_primitives::schemas::wallet_mixed::{Asset, NetworkIdentifier};
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -733,6 +734,7 @@ fn micropayment_flow_test() {
                                         && invoice.status == InvoiceStatusEnum::Processed
                                         && invoice.result_str.is_some()
                                     {
+                                        assert_eq!(invoice.payment_requirements.network, Network::BaseSepolia);
                                         found_processed_invoice = true;
                                         eprintln!("Found processed invoice: {:?}", invoice);
                                         break;

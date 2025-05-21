@@ -24,6 +24,7 @@ pub mod shinkai_proxy_builder_info;
 pub mod shinkai_subscription;
 pub mod shinkai_subscription_req;
 pub mod shinkai_tool_offering;
+pub mod x402;
 pub mod shinkai_tools;
 pub mod smart_inbox;
 pub mod subprompts;
