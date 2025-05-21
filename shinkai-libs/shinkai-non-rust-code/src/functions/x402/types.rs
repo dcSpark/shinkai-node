@@ -28,7 +28,7 @@ pub enum Price {
     ERC20TokenAmount(ERC20TokenAmount),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum Network {
     #[serde(rename = "base-sepolia")]
     BaseSepolia,

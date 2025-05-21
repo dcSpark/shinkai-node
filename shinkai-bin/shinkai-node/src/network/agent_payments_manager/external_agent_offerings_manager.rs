@@ -507,7 +507,7 @@ impl ExtAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<Invoice, AgentOfferingManagerError>` - The generated invoice or an error.
-    pub async fn request_invoice(
+    pub async fn invoice_requested(
         &mut self,
         _requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
@@ -542,6 +542,8 @@ impl ExtAgentOfferingsManager {
             ));
         }
 
+        // TODO: MODIFY FROM HERE
+
         // Scoped block to get address and network
         let public_address = {
             let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
@@ -565,7 +567,7 @@ impl ExtAgentOfferingsManager {
             },
             expiration_time: Utc::now() + Duration::hours(12),
             status: InvoiceStatusEnum::Pending,
-            payment: None,
+            payment: None, // Payment will be set when the buyer pays
             address: public_address,
             usage_type_inquiry: invoice_request.usage_type_inquiry,
             request_date_time: invoice_request.request_date_time,
@@ -593,14 +595,14 @@ impl ExtAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<Invoice, AgentOfferingManagerError>` - The generated invoice or an error.
-    pub async fn network_request_invoice(
+    pub async fn network_invoice_requested(
         &mut self,
         requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         // Call request_invoice to generate an invoice
         let invoice = self
-            .request_invoice(requester_node_name.clone(), invoice_request.clone())
+            .invoice_requested(requester_node_name.clone(), invoice_request.clone())
             .await;
 
         let invoice = match invoice {
