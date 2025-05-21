@@ -654,6 +654,17 @@ impl JobManager {
 
         Ok(job_message.job_id.clone().to_string())
     }
+
+    /// Removes all queued messages associated with `job_id` from both the
+    /// normal and immediate job queues.
+    pub async fn clear_job_queues(&self, job_id: &str) {
+        let mut normal = self.job_queue_manager_normal.lock().await;
+        let _ = normal.clear_queue(job_id).await;
+        drop(normal);
+
+        let mut imm = self.job_queue_manager_immediate.lock().await;
+        let _ = imm.clear_queue(job_id).await;
+    }
 }
 
 impl JobManagerTrait for JobManager {

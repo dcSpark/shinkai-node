@@ -160,6 +160,13 @@ pub fn job_routes(
         .and(warp::body::json())
         .and_then(remove_job_handler);
 
+    let kill_job_route = warp::path("kill_job")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(kill_job_handler);
+
     let export_messages_from_inbox_route = warp::path("export_messages_from_inbox")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -200,6 +207,7 @@ pub fn job_routes(
         .or(get_tooling_logs_route)
         .or(fork_job_messages_route)
         .or(remove_job_route)
+        .or(kill_job_route)
         .or(export_messages_from_inbox_route)
         .or(add_messages_god_mode_route)
         .or(get_job_provider_route)
@@ -1167,6 +1175,45 @@ pub async fn remove_job_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::V2ApiRemoveJob {
+            bearer,
+            job_id: payload.job_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/kill_job",
+    request_body = RemoveJobRequest,
+    responses(
+        (status = 200, description = "Successfully killed job", body = SendResponseBody),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn kill_job_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: RemoveJobRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiKillJob {
             bearer,
             job_id: payload.job_id,
             res: res_sender,

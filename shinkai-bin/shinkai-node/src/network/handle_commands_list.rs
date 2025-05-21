@@ -805,6 +805,14 @@ impl Node {
                     let _ = Node::v2_remove_job(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiKillJob { bearer, job_id, res } => {
+                let db_clone = self.db.clone();
+                let job_manager = self.job_manager.as_ref().unwrap().clone();
+                let stopper_clone = self.llm_stopper.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_kill_job(db_clone, job_manager, stopper_clone, bearer, job_id, res).await;
+                });
+            }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {
                 let db_clone = Arc::clone(&self.db);
 

@@ -189,6 +189,20 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         Ok(None)
     }
 
+    /// Clears all queued elements for a given key and persists the empty queue
+    /// to the database. If the queue does not exist no action is taken.
+    pub async fn clear_queue(&mut self, key: &str) -> Result<(), SqliteManagerError> {
+        let mut queues = self.queues.lock().await;
+        if let Some(queue) = queues.get_mut(key) {
+            let mut guarded_queue = queue.lock().await;
+            guarded_queue.clear();
+
+            let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db")?;
+            db_arc.persist_queue(key, &guarded_queue, self.prefix.clone())?;
+        }
+        Ok(())
+    }
+
     pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, SqliteManagerError> {
         let db_arc = self.db.upgrade().ok_or("Failed to upgrade shinkai_db")?;
         let mut db_queues: HashMap<_, _> = db_arc.get_all_queues::<T>(self.prefix.clone())?;

@@ -254,6 +254,11 @@ pub enum NodeCommand {
         job_id: String,
         res: Sender<Result<SendResponseBody, APIError>>,
     },
+    V2ApiKillJob {
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<SendResponseBody, APIError>>,
+    },
     V2ApiVecFSRetrievePathSimplifiedJson {
         bearer: String,
         payload: APIVecFsRetrievePathSimplifiedJson,
