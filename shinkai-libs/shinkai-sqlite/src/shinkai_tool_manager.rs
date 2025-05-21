@@ -62,13 +62,12 @@ impl SqliteManager {
             SqliteManagerError::SerializationError(e.to_string())
         })?;
 
-        // Extract on_demand_price and is_network
-        let (on_demand_price, is_network) = match tool_clone {
+        // Extract payment_url, facilitator_url and is_network
+        let (payment_url, facilitator_url, is_network) = match tool_clone {
             ShinkaiTool::Network(ref network_tool, _) => {
-                let price = network_tool.usage_type.per_use_usd_price();
-                (Some(price), true)
+                (network_tool.payment_url.clone(), network_tool.facilitator_url.clone(), true)
             }
-            _ => (None, false),
+            _ => (None, None, false),
         };
 
         let version_number = tool_clone.version_number()?;
@@ -86,10 +85,11 @@ impl SqliteManager {
                 author,
                 version,
                 is_enabled,
-                on_demand_price,
+                payment_url,
+                facilitator_url,
                 is_network,
                 mcp_enabled
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 tool_clone.name(),
                 tool_clone.description(),
@@ -101,18 +101,12 @@ impl SqliteManager {
                 tool_clone.author(),
                 version_number,
                 is_enabled as i32,
-                on_demand_price,
+                payment_url,
+                facilitator_url,
                 is_network as i32,
                 mcp_enabled as i32,
             ],
         )?;
-
-        // Extract is_enabled and is_network
-        let is_enabled = tool_clone.is_enabled() && tool_clone.can_be_enabled();
-        let (_, is_network) = match tool_clone {
-            ShinkaiTool::Network(_, _) => (Some(0.0), true),
-            _ => (None, false),
-        };
 
         // Insert the embedding into the shinkai_tools_vec_items table with metadata
         tx.execute(
@@ -122,7 +116,7 @@ impl SqliteManager {
                 is_network, 
                 tool_key
             ) VALUES (?1, ?2, ?3, ?4)",
-            params![cast_slice(&embedding), is_enabled as i32, is_network as i32, tool_key],
+            params![cast_slice(&embedding), is_enabled as i32, is_network as i32, tool_key.clone()],
         )?;
 
         // Update the FTS table using the in-memory connection
@@ -477,13 +471,12 @@ impl SqliteManager {
             eprintln!("Tool cannot be enabled, disabling");
         }
 
-        // Extract on_demand_price and is_network
-        let (on_demand_price, is_network) = match tool {
+        // Extract payment_url, facilitator_url and is_network
+        let (payment_url, facilitator_url, is_network) = match tool {
             ShinkaiTool::Network(ref network_tool, _) => {
-                let price = network_tool.usage_type.per_use_usd_price();
-                (Some(price), true)
+                (network_tool.payment_url.clone(), network_tool.facilitator_url.clone(), true)
             }
-            _ => (None, false),
+            _ => (None, None, false),
         };
 
         // Update the tool in the database
@@ -499,10 +492,11 @@ impl SqliteManager {
                 author = ?8,
                 version = ?9,
                 is_enabled = ?10,
-                on_demand_price = ?11,
-                is_network = ?12,
-                mcp_enabled = ?13
-             WHERE rowid = ?14",
+                payment_url = ?11,
+                facilitator_url = ?12,
+                is_network = ?13,
+                mcp_enabled = ?14
+             WHERE rowid = ?15",
             params![
                 tool.name(),
                 tool.description(),
@@ -514,7 +508,8 @@ impl SqliteManager {
                 tool.author(),
                 version_number,
                 is_enabled as i32,
-                on_demand_price,
+                payment_url,
+                facilitator_url,
                 is_network as i32,
                 tool.is_mcp_enabled() as i32,
                 rowid,

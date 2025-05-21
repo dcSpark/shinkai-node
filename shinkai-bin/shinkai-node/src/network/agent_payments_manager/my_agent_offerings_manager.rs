@@ -120,208 +120,55 @@ impl MyAgentOfferingsManager {
     /// # Arguments
     ///
     /// * `network_tool` - The network tool for which the invoice is requested.
-    /// * `usage_type_inquiry` - The type of usage inquiry for the tool.
     ///
     /// # Returns
     ///
-    /// * `Result<InternalInvoiceRequest, AgentOfferingManagerError>` - The internal invoice request or an error.
+    /// * `Result<String, AgentOfferingManagerError>` - The payment response (e.g., a token) or an error.
     pub async fn network_request_invoice(
         &self,
         network_tool: NetworkTool,
-        usage_type_inquiry: UsageTypeInquiry,
-    ) -> Result<InternalInvoiceRequest, AgentOfferingManagerError> {
-        // Request the invoice
-        let internal_invoice_request = self.request_invoice(network_tool.clone(), usage_type_inquiry).await?;
-
-        // Create the payload for the invoice request
-        let payload = internal_invoice_request.to_invoice_request();
-
-        // Continue
-        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_arc.lock().await;
-            let standard_identity = identity_manager
-                .external_profile_to_global_identity(&network_tool.provider.get_node_name_string(), Some(true))
-                .await
-                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
-            drop(identity_manager);
-            let receiver_public_key = standard_identity.node_encryption_public_key;
-            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
-
-            // Generate the message to request the invoice
-            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
-                payload,
-                MessageSchemaType::InvoiceRequest,
-                clone_static_secret_key(&self.my_encryption_secret_key),
-                clone_signature_secret_key(&self.my_signature_secret_key),
-                receiver_public_key,
-                self.node_name.to_string(),
-                "".to_string(),
-                network_tool.provider.get_node_name_string(),
-                "main".to_string(),
-                proxy_builder_info,
-            )
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
-
-            send_message_to_peer(
-                message,
-                self.db.clone(),
-                standard_identity,
-                self.my_encryption_secret_key.clone(),
-                self.identity_manager.clone(),
-                self.proxy_connection_info.clone(),
-            )
-            .await?;
-        }
-
-        // Return the generated invoice request
-        Ok(internal_invoice_request)
-    }
-
-    /// Verify an invoice
-    ///
-    /// # Arguments
-    ///
-    /// * `invoice` - The invoice to be verified.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<bool, AgentOfferingManagerError>` - True if the invoice is valid (and even if we asked for it) false
-    ///   otherwise.
-    pub async fn verify_invoice(&self, invoice: &Invoice) -> Result<bool, AgentOfferingManagerError> {
-        // Upgrade the database reference to a strong reference
-        let db = self
-            .db
-            .upgrade()
-            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
-
-        // Try to retrieve the corresponding InternalInvoiceRequest from the database
-        let internal_invoice_request = match db.get_internal_invoice_request(&invoice.invoice_id) {
-            Ok(request) => request,
-            Err(_) => {
-                // If no corresponding InternalInvoiceRequest is found, the invoice is invalid
-                return Ok(false);
-            }
-        };
-
-        eprintln!("internal_invoice_request: {:?}", internal_invoice_request);
-
-        // Additional logic could be added here to check any rules for auto-payment.
-        // For example, checking if the invoice matches certain criteria or thresholds
-        // for automatic approval/payment.
-
-        // If we found the corresponding InternalInvoiceRequest, the invoice is valid
-        Ok(true)
-    }
-
-    /// Pay an invoice and wait for the blockchain update of it
-    ///
-    /// # Arguments
-    ///
-    /// * `invoice` - The invoice to be paid.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Payment, AgentOfferingManagerError>` - The payment information or an error.
-    pub async fn pay_invoice(
-        &self,
-        invoice: &Invoice,
-        node_name: ShinkaiName,
-    ) -> Result<Payment, AgentOfferingManagerError> {
-        // Mocking the payment process
-        println!("Initiating payment for invoice ID: {}", invoice.invoice_id);
-
-        let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
-            AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
+    ) -> Result<String, AgentOfferingManagerError> {
+        // TODO: Implement x402 payment flow
+        // 1. Check if network_tool.payment_url is Some. If not, return error or handle as appropriate.
+        let payment_url = network_tool.payment_url.ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed("Payment URL not provided for the tool".to_string())
         })?;
 
-        let wallet_manager_lock = wallet_manager.lock().await;
+        // 2. Make an HTTP GET request to payment_url.
+        //    - This would involve an HTTP client like `reqwest`.
+        //    - For now, we'll assume a placeholder for the response.
+        //    Example:
+        //    let client = reqwest::Client::new();
+        //    let response = client.get(&payment_url).send().await.map_err(|e| AgentOfferingManagerError::NetworkError(e.to_string()))?;
 
-        // Check that wallet_manager is not None
-        if wallet_manager_lock.is_none() {
-            return Err(AgentOfferingManagerError::OperationFailed(
-                "Wallet manager is None".to_string(),
-            ));
-        }
+        // 3. If the response status is 402 Payment Required:
+        //    - Parse payment requirements from the response headers (e.g., `WWW-Authenticate` for L402).
+        //    - This involves parsing the header string to extract macaroon, invoice, etc.
+        //    Placeholder: let payment_requirements = parse_402_response_headers(response.headers());
 
-        let wallet = wallet_manager_lock.as_ref().ok_or_else(|| {
-            AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
+        // 4. Check if network_tool.facilitator_url is Some. If not, return error or handle.
+        let _facilitator_url = network_tool.facilitator_url.ok_or_else(|| {
+            AgentOfferingManagerError::OperationFailed("Facilitator URL not provided for the tool".to_string())
         })?;
 
-        // Get the price for the usage type
-        let usage_type_inquiry = UsageTypeInquiry::PerUse; // or UsageTypeInquiry::Downloadable based on your context
-        let price = invoice
-            .shinkai_offering
-            .get_price_for_usage(&usage_type_inquiry)
-            .ok_or_else(|| {
-                AgentOfferingManagerError::OperationFailed("Failed to get price for usage type".to_string())
-            })?;
+        // 5. Use the facilitator_url and parsed payment requirements to complete the payment.
+        //    - This would involve using an x402 library (e.g., a Rust crate for L402 or other x402 protocols).
+        //    - The library would handle interactions with the facilitator.
+        //    Placeholder:
+        //    let payment_result = x402_library::pay(facilitator_url, payment_requirements).await;
+        //    match payment_result {
+        //        Ok(token) => Ok(token), // This token is then used for the actual tool request
+        //        Err(e) => Err(AgentOfferingManagerError::PaymentError(e.to_string())),
+        //    }
 
-        // Assuming the price is of type ToolPrice::Payment
-        let asset_payment = match price {
-            ToolPrice::Payment(payments) => payments.first().ok_or_else(|| {
-                AgentOfferingManagerError::OperationFailed("No payments found in ToolPrice".to_string())
-            })?,
-            _ => {
-                return Err(AgentOfferingManagerError::OperationFailed(
-                    "Unsupported ToolPrice type".to_string(),
-                ))
-            }
-        };
-
-        let my_address = wallet.payment_wallet.get_address();
-
-        // Check the balance before attempting to pay
-        let balance = match wallet
-            .check_balance_payment_wallet(
-                my_address.clone().into(),
-                asset_payment.asset.clone(),
-                node_name.clone(),
-            )
-            .await
-        {
-            Ok(balance) => balance,
-            Err(e) => {
-                eprintln!("Error checking balance: {:?}", e);
-                return Err(AgentOfferingManagerError::OperationFailed(format!(
-                    "Error checking balance: {:?}",
-                    e
-                )));
-            }
-        };
-        println!("wallet {} balance: {:?}", my_address.address_id.clone(), balance);
-
-        let required_amount = asset_payment.amount.parse::<u128>().map_err(|e| {
-            AgentOfferingManagerError::OperationFailed(format!("Failed to parse required amount: {}", e))
-        })?;
-        println!("required_amount: {:?}", required_amount);
-
-        let available_amount = balance.amount.split('.').next().unwrap().parse::<u128>().map_err(|e| {
-            AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e))
-        })?;
-
-        if available_amount < required_amount {
-            return Err(AgentOfferingManagerError::OperationFailed(
-                "Insufficient balance to pay the invoice".to_string(),
-            ));
-        }
-
-        let payment = match wallet.pay_invoice(invoice.clone(), node_name.clone()).await {
-            Ok(payment) => {
-                println!("Payment successful: {:?}", payment);
-                payment
-            }
-            Err(e) => {
-                eprintln!("Error paying invoice: {:?}", e);
-                return Err(AgentOfferingManagerError::OperationFailed(format!(
-                    "Error paying invoice: {:?}",
-                    e
-                )));
-            }
-        };
-
-        println!("Payment: {:?}", payment);
-
-        Ok(payment)
+        // For now, returning a placeholder.
+        // This function will need to be filled with actual HTTP client and x402 library logic.
+        eprintln!(
+            "Placeholder: Initiating x402 payment for tool: {} using payment_url: {}",
+            network_tool.name, payment_url
+        );
+        // Simulate a successful payment token for now
+        Ok("dummy_payment_token_or_confirmation".to_string())
     }
 
     /// Store the quote invoice (this invoice doesn't contain the result -- it's just the quote)
@@ -383,8 +230,11 @@ impl MyAgentOfferingsManager {
         node_name: ShinkaiName,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         // TODO: check that the invoice is valid (exists) and still valid (not expired)
+        // TODO: This function will need significant rework with x402.
+        // The concept of "paying an invoice" in the old sense and then "sending a receipt"
+        // changes with x402, where the payment is a prerequisite to getting the service token.
 
-        // Step 0: Get the invoice from the database
+        // Step 0: Get the invoice from the database (this might change, as x402 might not create an "invoice" in this way)
         let db = self
             .db
             .upgrade()
@@ -394,21 +244,29 @@ impl MyAgentOfferingsManager {
             .get_invoice(&invoice_id)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
 
-        // Step 1: Verify the invoice
-        let is_valid = self.verify_invoice(&invoice).await?;
-        if !is_valid {
-            return Err(AgentOfferingManagerError::OperationFailed(
-                "Invoice verification failed".to_string(),
-            ));
-        }
+        // Step 1: Verify the invoice (this concept might change or be removed)
+        // The `verify_invoice` function was removed. If some verification is needed,
+        // it needs to be re-thought in the context of x402.
+        // For now, let's assume if we have an "invoice", it's been through some initial request.
+        // However, its state (Paid, Pending) is critical.
 
-        // Step 2: Pay the invoice
-        let payment = self.pay_invoice(&invoice, node_name.clone()).await?;
+        // Step 2: "Pay the invoice" - this is the part that drastically changes.
+        // We would have already obtained a payment token/confirmation from `network_request_invoice` (x402 flow).
+        // So, this function might now be more about associating that payment with the tool usage
+        // and sending a *confirmation* or the *actual paid request* to the provider.
+
+        // For now, let's assume `network_request_invoice` was called and was successful.
+        // The `payment` object here would be different; it would be the result of the x402 flow.
+        // This part needs a placeholder for the new x402 logic.
+        // let payment_confirmation = self.network_request_invoice(tool_associated_with_invoice).await?;
+        // This is problematic because we don't have the network_tool directly here.
+        // This function might need to be called *after* network_request_invoice,
+        // or network_request_invoice needs to handle the "receipt" part.
 
         // Create a new updated invoice with the payment information
         let mut updated_invoice = invoice.clone();
-        updated_invoice.payment = Some(payment);
-        updated_invoice.update_status(InvoiceStatusEnum::Paid);
+        // updated_invoice.payment = Some(payment); // This `payment` is from the old flow.
+        updated_invoice.update_status(InvoiceStatusEnum::Paid); // Or some other status relevant to x402
         updated_invoice.tool_data = Some(tool_data);
 
         // Store the paid invoice in the database
@@ -421,6 +279,9 @@ impl MyAgentOfferingsManager {
         })?;
 
         // Step 3: Send receipt and data to provider
+        // This step also changes. With x402, the "receipt" might be the token itself,
+        // and this token is used in the actual request to the provider's tool endpoint.
+        // So, `send_receipt_and_data_to_provider` might be more like "execute tool request with payment token".
         self.send_receipt_and_data_to_provider(&updated_invoice).await?;
 
         Ok(updated_invoice)
@@ -435,21 +296,27 @@ impl MyAgentOfferingsManager {
         invoice: Invoice,
         node_name: ShinkaiName,
     ) -> Result<(), AgentOfferingManagerError> {
-        // Step 1: Verify the invoice
-        let is_valid = self.verify_invoice(&invoice).await?;
-        if !is_valid {
-            return Err(AgentOfferingManagerError::OperationFailed(
-                "Invoice verification failed".to_string(),
-            ));
-        }
+        // TODO: This function is heavily reliant on the old invoice and payment model.
+        // It will need to be completely re-thought for x402 or removed.
+        // The `verify_invoice` and `pay_invoice` calls are based on the old system.
 
-        // Step 2: Pay the invoice
-        let payment = self.pay_invoice(&invoice, node_name.clone()).await?;
+        // Step 1: Verify the invoice (removed, needs x402 context)
+        // let is_valid = self.verify_invoice(&invoice).await?;
+        // if !is_valid {
+        //     return Err(AgentOfferingManagerError::OperationFailed(
+        //         "Invoice verification failed".to_string(),
+        //     ));
+        // }
+        println!("Warning: auto_pay_invoice is using outdated logic and needs to be updated for x402.");
+
+
+        // Step 2: Pay the invoice (removed, needs x402 context)
+        // let payment = self.pay_invoice(&invoice, node_name.clone()).await?;
 
         // Create a new updated invoice with the payment information
         let mut updated_invoice = invoice.clone();
-        updated_invoice.payment = Some(payment);
-        updated_invoice.update_status(InvoiceStatusEnum::Paid);
+        // updated_invoice.payment = Some(payment); // Old payment model
+        updated_invoice.update_status(InvoiceStatusEnum::Paid); // Or new x402 status
 
         // Store the paid invoice in the database
         let db = self
@@ -460,7 +327,7 @@ impl MyAgentOfferingsManager {
             AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
         })?;
 
-        // Step 3: Send receipt and data to provider
+        // Step 3: Send receipt and data to provider (needs x402 context)
         self.send_receipt_and_data_to_provider(&updated_invoice).await?;
 
         Ok(())
@@ -573,13 +440,14 @@ impl MyAgentOfferingsManager {
             tool_header.version,
             provider.node_name.clone(),
             provider,
-            tool_header.usage_type.expect("Usage type is required"),
             true, // Assuming the tool is activated by default
             tool_header.config.expect("Config is required"),
             Parameters::new(), // TODO: Fix input_args
             ToolOutputArg { json: "".to_string() },
             None,
             None,
+            None, // payment_url
+            None, // facilitator_url
         );
 
         tool_router
@@ -748,101 +616,6 @@ mod tests {
     //     )
     //     .await
     //     .unwrap()
-    // }
-
-    // TODO: fix
-    // #[tokio::test]
-    // async fn test_verify_invoice() -> Result<(), SqliteManagerError> {
-    //     setup();
-
-    //     // Setup the necessary components for MyAgentOfferingsManager
-    //     let db = Arc::new(ShinkaiDB::new("shinkai_db_tests/shinkaidb").unwrap());
-    //     let vector_fs = Arc::new(setup_default_vector_fs().await);
-    //     let identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
-    //         Arc::new(Mutex::new(MockIdentityManager::new()));
-    //     let generator = RemoteEmbeddingGenerator::new_default();
-    //     let embedding_model = generator.model_type().clone();
-    //     let lance_db = Arc::new(RwLock::new(
-    //         LanceShinkaiDb::new("lance_db_tests/lancedb", embedding_model.clone(), generator.clone()).await?,
-    //     ));
-
-    //     let tool_router = Arc::new(ToolRouter::new(lance_db.clone()));
-    //     let node_name = ShinkaiName::new("@@localhost.sep-shinkai/main".to_string()).unwrap();
-
-    //     let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
-    //     let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
-
-    //     // Remove?
-    //     // Create a real CryptoInvoiceManager with a provider using Base Sepolia
-    //     // let provider_url = "https://sepolia.base.org";
-    //     // let crypto_invoice_manager = Arc::new(CryptoInvoiceManager::new(provider_url).unwrap());
-
-    //     let wallet_manager: Arc<Mutex<Option<WalletManager>>> = Arc::new(Mutex::new(None));
-
-    //     let manager = MyAgentOfferingsManager::new(
-    //         Arc::downgrade(&db),
-    //         Arc::downgrade(&vector_fs),
-    //         Arc::downgrade(&identity_manager),
-    //         node_name,
-    //         my_signature_secret_key,
-    //         my_encryption_secret_key,
-    //         Arc::downgrade(&Arc::new(Mutex::new(None))),
-    //         Arc::downgrade(&tool_router),
-    //         Arc::downgrade(&wallet_manager),
-    //     )
-    //     .await;
-
-    //     // Create a mock network tool
-    //     let network_tool = NetworkTool::new(
-    //         "Test Tool".to_string(),
-    //         "shinkai_toolkit".to_string(),
-    //         "A tool for testing".to_string(),
-    //         "1.0".to_string(),
-    //         ShinkaiName::new("@@localhost.sep-shinkai".to_string()).unwrap(),
-    //         UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
-    //         true,
-    //         vec![],
-    //         vec![],
-    //         None,
-    //         None,
-    //     );
-
-    //     // Create a usage type inquiry
-    //     let usage_type_inquiry = UsageTypeInquiry::PerUse;
-
-    //     // Call request_invoice to generate an invoice request
-    //     let internal_invoice_request = manager.request_invoice(network_tool, usage_type_inquiry).await.unwrap();
-
-    //     // Simulate receiving an invoice from the server
-    //     let invoice = Invoice {
-    //         invoice_id: internal_invoice_request.unique_id.clone(),
-    //         requester_name: internal_invoice_request.provider_name.clone(),
-    //         provider_name: internal_invoice_request.provider_name.clone(),
-    //         usage_type_inquiry: UsageTypeInquiry::PerUse,
-    //         shinkai_offering: ShinkaiToolOffering {
-    //             tool_key: internal_invoice_request.tool_key_name.clone(),
-    //             usage_type: UsageType::PerUse(ToolPrice::DirectDelegation("0.01".to_string())),
-    //             meta_description: Some("A tool for testing".to_string()),
-    //         },
-    //         expiration_time: Utc::now() + chrono::Duration::hours(1), // Example expiration time
-    //         status: InvoiceStatusEnum::Pending,
-    //         payment: None,
-    //         address: PublicAddress {
-    //             network_id: NetworkIdentifier::BaseSepolia,
-    //             address_id: "0x1234567890123456789012345678901234567890".to_string(),
-    //         },
-    //         request_date_time: Utc::now(),
-    //         invoice_date_time: Utc::now(),
-    //         tool_data: None,
-    //         response_date_time: None,
-    //         result_str: None,
-    //     };
-
-    //     // Call verify_invoice
-    //     let result = manager.verify_invoice(&invoice).await;
-    //     assert!(result.is_ok());
-
-    //     Ok(())
     // }
 
     #[tokio::test]

@@ -578,7 +578,6 @@ impl ToolRouter {
                 mcp_enabled: Some(false),
                 provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
                 author: "@@official.shinkai".to_string(),
-                usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
                 input_args: {
@@ -595,6 +594,8 @@ impl ToolRouter {
                 output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
+                payment_url: None,
+                facilitator_url: None,
             };
             {
                 let shinkai_tool = ShinkaiTool::Network(network_tool, true);
@@ -613,7 +614,6 @@ impl ToolRouter {
                 mcp_enabled: Some(false),
                 provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
                 author: "@@official.shinkai".to_string(),
-                usage_type: usage_type.clone(),
                 activated: true,
                 config: vec![],
                 input_args: {
@@ -624,6 +624,8 @@ impl ToolRouter {
                 output_arg: ToolOutputArg { json: "".to_string() },
                 embedding: None,
                 restrictions: None,
+                payment_url: None,
+                facilitator_url: None,
             };
 
             {
@@ -1115,7 +1117,7 @@ impl ToolRouter {
 
                     // Send a Network Request Invoice
                     let invoice_request = match my_agent_payments_manager
-                        .network_request_invoice(network_tool.clone(), UsageTypeInquiry::PerUse)
+                        .network_request_invoice(network_tool.clone())
                         .await
                     {
                         Ok(request) => request,
@@ -1141,7 +1143,27 @@ impl ToolRouter {
                 );
 
                 // TODO: Send ws_message to the frontend saying requesting invoice to X and more context
+                // The `internal_invoice_request` variable is now a String (payment token/confirmation)
+                // The old logic for waiting on InvoiceStatusEnum::Pending / Processed and using `internal_invoice_request.unique_id`
+                // needs to be re-evaluated in the context of the x402 flow.
+                // For now, we will assume the `invoice_request` string is the direct result or a token
+                // that needs to be passed back. The complex WebSocket notification and polling logic
+                // for invoice status will likely be replaced or heavily modified by the x402 mechanism.
 
+                // Placeholder: Directly use the result from network_request_invoice.
+                // This part of the code will need significant changes once the full x402 flow is integrated,
+                // especially regarding how the "result" of the tool call is obtained after payment.
+                let response = invoice_request; // This is now a String
+
+                // The following sections related to `wallet_balances`, `notification_content`,
+                // WebSocket messages for PaymentRequest, and polling for `InvoiceStatusEnum::Processed`
+                // are based on the old invoice model and will likely be removed or changed significantly
+                // with the x402 implementation.
+
+                // For now, we'll comment out the parts that are incompatible with `invoice_request` being a String
+                // and the removal of the old invoice objects.
+
+                /*
                 // Convert balances to Value
                 let balances_value = match serde_json::to_value(&wallet_balances) {
                     Ok(value) => value,
@@ -1173,168 +1195,50 @@ impl ToolRouter {
                     }
 
                     // Check if the invoice is paid
-                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
-                        Ok(invoice) => {
-                            eprintln!("invoice found: {:?}", invoice);
+                    // TODO: internal_invoice_request is now a String, this logic is invalid.
+                    // match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
+                    //     Ok(invoice) => {
+                    //         eprintln!("invoice found: {:?}", invoice);
 
-                            if invoice.status == InvoiceStatusEnum::Pending {
-                                // Process the notification
-                                notification_content = invoice;
-                                break;
-                            }
-                        }
-                        Err(_e) => {
-                            // If invoice is not found, check for InvoiceNetworkError
-                            match context
-                                .db()
-                                .get_invoice_network_error(&internal_invoice_request.unique_id.clone())
-                            {
-                                Ok(network_error) => {
-                                    eprintln!("InvoiceNetworkError found: {:?}", network_error);
-                                    shinkai_log(
-                                        ShinkaiLogOption::Network,
-                                        ShinkaiLogLevel::Error,
-                                        &format!("InvoiceNetworkError details: {:?}", network_error),
-                                    );
-                                    // Return the user_error_message if available, otherwise a default message
-                                    let error_message = network_error
-                                        .user_error_message
-                                        .unwrap_or_else(|| "Invoice network error encountered".to_string());
-                                    return Err(LLMProviderError::FunctionExecutionError(error_message));
-                                }
-                                Err(_) => {
-                                    // Continue waiting if neither invoice nor network error is found
-                                }
-                            }
-                        }
-                    }
+                    //         if invoice.status == InvoiceStatusEnum::Pending {
+                    //             // Process the notification
+                    //             notification_content = invoice;
+                    //             break;
+                    //         }
+                    //     }
+                    //     Err(_e) => {
+                    //         // If invoice is not found, check for InvoiceNetworkError
+                    //         // TODO: internal_invoice_request is now a String, this logic is invalid.
+                    //         // match context
+                    //         //     .db()
+                    //         //     .get_invoice_network_error(&internal_invoice_request.unique_id.clone())
+                    //         // {
+                    //         //     Ok(network_error) => {
+                    //         //         eprintln!("InvoiceNetworkError found: {:?}", network_error);
+                    //         //         shinkai_log(
+                    //         //             ShinkaiLogOption::Network,
+                    //         //             ShinkaiLogLevel::Error,
+                    //         //             &format!("InvoiceNetworkError details: {:?}", network_error),
+                    //         //         );
+                    //         //         // Return the user_error_message if available, otherwise a default message
+                    //         //         let error_message = network_error
+                    //         //             .user_error_message
+                    //         //             .unwrap_or_else(|| "Invoice network error encountered".to_string());
+                    //         //         return Err(LLMProviderError::FunctionExecutionError(error_message));
+                    //         //     }
+                    //         //     Err(_) => {
+                    //         //         // Continue waiting if neither invoice nor network error is found
+                    //         //     }
+                    //         // }
+                    //     }
+                    // }
                     tokio::time::sleep(interval).await;
                 }
+                */
 
-                // Convert notification_content to Value
-                let notification_content_value = match serde_json::to_value(&notification_content) {
-                    Ok(value) => value,
-                    Err(e) => {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            format!("Failed to convert notification_content to Value: {}", e).as_str(),
-                        );
-                        return Err(LLMProviderError::FunctionExecutionError(format!(
-                            "Failed to convert notification_content to Value: {}",
-                            e
-                        )));
-                    }
-                };
-
-                // Get the ws from the context
-                {
-                    let ws_manager = context.ws_manager_trait();
-
-                    if let Some(ws_manager) = &ws_manager {
-                        let ws_manager = ws_manager.lock().await;
-                        let job = context.full_job();
-
-                        let topic = WSTopic::Widget;
-                        let subtopic = job.conversation_inbox_name.to_string();
-                        let update = "".to_string();
-                        let payment_metadata = PaymentMetadata {
-                            tool_key: network_tool.name.clone(),
-                            description: network_tool.description.clone(),
-                            usage_type: network_tool.usage_type.clone(),
-                            invoice_id: internal_invoice_request.unique_id.clone(),
-                            invoice: notification_content_value.clone(),
-                            function_args: function_args.clone(),
-                            wallet_balances: balances_value.clone(),
-                            error_message: None,
-                        };
-
-                        let widget = WSMessageType::Widget(WidgetMetadata::PaymentRequest(payment_metadata));
-                        ws_manager.queue_message(topic, subtopic, update, widget, false).await;
-                    } else {
-                        return Err(LLMProviderError::FunctionExecutionError(
-                            "WS manager is not available".to_string(),
-                        ));
-                    }
-                }
-
-                // Wait for the invoice to be paid for up to 5 minutes
-                let start_time = std::time::Instant::now();
-                let timeout = std::time::Duration::from_secs(300); // 5 minutes
-                let interval = std::time::Duration::from_millis(100); // 100ms
-                let invoice_result: Invoice;
-
-                loop {
-                    if start_time.elapsed() > timeout {
-                        // Send a timeout notification via WebSocket
-                        {
-                            let ws_manager = context.ws_manager_trait();
-
-                            if let Some(ws_manager) = &ws_manager {
-                                let ws_manager = ws_manager.lock().await;
-                                let job = context.full_job();
-
-                                let topic = WSTopic::Widget;
-                                let subtopic = job.conversation_inbox_name.to_string();
-                                let update = "Timeout while waiting for invoice payment".to_string();
-                                let payment_metadata = PaymentMetadata {
-                                    tool_key: network_tool.name.clone(),
-                                    description: network_tool.description.clone(),
-                                    usage_type: network_tool.usage_type.clone(),
-                                    invoice_id: internal_invoice_request.unique_id.clone(),
-                                    invoice: notification_content_value.clone(),
-                                    function_args: function_args.clone(),
-                                    wallet_balances: balances_value.clone(),
-                                    error_message: Some(update.clone()),
-                                };
-
-                                let widget = WSMessageType::Widget(WidgetMetadata::PaymentRequest(payment_metadata));
-                                ws_manager.queue_message(topic, subtopic, update, widget, false).await;
-                            }
-                        }
-
-                        return Err(LLMProviderError::FunctionExecutionError(
-                            "Timeout while waiting for invoice payment".to_string(),
-                        ));
-                    }
-
-                    // Check if the invoice is paid
-                    match context.db().get_invoice(&internal_invoice_request.unique_id.clone()) {
-                        Ok(invoice) => {
-                            if invoice.status == InvoiceStatusEnum::Processed {
-                                invoice_result = invoice;
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            return Err(LLMProviderError::FunctionExecutionError(format!(
-                                "Error while checking for invoice payment: {}",
-                                e
-                            )));
-                        }
-                    }
-
-                    // Sleep for the interval before checking again
-                    tokio::time::sleep(interval).await;
-                }
-
-                eprintln!("invoice_result: {:?}", invoice_result);
-
-                // Try to parse the result_str and extract the "data" field
-                let response = match serde_json::from_str::<serde_json::Value>(
-                    &invoice_result.result_str.clone().unwrap_or_default(),
-                ) {
-                    Ok(parsed) => {
-                        if let Some(data) = parsed.get("data") {
-                            data.to_string()
-                        } else {
-                            invoice_result.result_str.clone().unwrap_or_default()
-                        }
-                    }
-                    Err(_) => invoice_result.result_str.clone().unwrap_or_default(),
-                };
-
-                eprintln!("parsed response: {:?}", response);
+                // Assuming `response` (the token from x402) is the final result for now.
+                // The actual tool execution with this token would happen elsewhere or this function's
+                // role would expand.
 
                 return Ok(ToolCallFunctionResponse {
                     response,

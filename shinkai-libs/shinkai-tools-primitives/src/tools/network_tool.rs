@@ -13,7 +13,6 @@ pub struct NetworkTool {
     pub author: String,
     pub mcp_enabled: Option<bool>,
     pub provider: ShinkaiName,
-    pub usage_type: UsageType, // includes pricing
     pub activated: bool,
     pub config: Vec<ToolConfig>,
     pub input_args: Parameters,
@@ -21,6 +20,8 @@ pub struct NetworkTool {
     pub embedding: Option<Vec<f32>>,
     pub restrictions: Option<String>, // Could be a JSON string or a more structured type
                                       // ^ What was this for? I think it was *internal* user restrictions (e.g. max_requests_per_day, max_total_budget etc.)
+    pub payment_url: Option<String>,
+    pub facilitator_url: Option<String>,
 }
 // Asking Myself (AM): do we want transparency about knowing if it's a wrapped JSTool or Workflow?
 // TODO: add the same JS configuration to NetworkTool most likely we will use JSTool and Workflows (which is a subgroup)
@@ -32,13 +33,14 @@ impl NetworkTool {
         version: String,
         author: String,
         provider: ShinkaiName,
-        usage_type: UsageType,
         activated: bool,
         config: Vec<ToolConfig>,
         input_args: Parameters,
         output_arg: ToolOutputArg,
         embedding: Option<Vec<f32>>,
         restrictions: Option<String>,
+        payment_url: Option<String>,
+        facilitator_url: Option<String>,
     ) -> Self {
         Self {
             name,
@@ -46,7 +48,6 @@ impl NetworkTool {
             version,
             author,
             provider,
-            usage_type,
             activated,
             config,
             input_args,

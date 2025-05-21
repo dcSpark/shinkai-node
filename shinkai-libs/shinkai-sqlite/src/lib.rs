@@ -592,7 +592,8 @@ impl SqliteManager {
                 tool_type TEXT NOT NULL,
                 author TEXT NOT NULL,
                 is_enabled INTEGER NOT NULL,
-                on_demand_price REAL,
+                payment_url TEXT,
+                facilitator_url TEXT,
                 is_network INTEGER NOT NULL,
                 mcp_enabled INTEGER,
                 PRIMARY KEY(tool_key, version)
@@ -606,17 +607,31 @@ impl SqliteManager {
     }
 
     fn migrate_tools_table(conn: &rusqlite::Connection) -> Result<()> {
-        // Check if the mcp_enabled column already exists
-        let columns = conn
-            .prepare("PRAGMA table_info(shinkai_tools)")?
-            .query_map([], |row| {
-                let name: String = row.get(1)?;
-                Ok(name)
-            })?
-            .collect::<Result<Vec<String>, _>>()?;
+        // Get existing columns
+        let mut stmt = conn.prepare("PRAGMA table_info(shinkai_tools)")?;
+        let columns_iter = stmt.query_map([], |row| Ok(row.get::<_, String>(1)?))?;
+        let mut existing_columns = std::collections::HashSet::new();
+        for column in columns_iter {
+            existing_columns.insert(column?);
+        }
 
-        // Only add the column if it doesn't exist
-        if !columns.contains(&"mcp_enabled".to_string()) {
+        // Drop on_demand_price if it exists
+        if existing_columns.contains("on_demand_price") {
+            conn.execute("ALTER TABLE shinkai_tools DROP COLUMN on_demand_price", [])?;
+        }
+
+        // Add payment_url if it doesn't exist
+        if !existing_columns.contains("payment_url") {
+            conn.execute("ALTER TABLE shinkai_tools ADD COLUMN payment_url TEXT", [])?;
+        }
+
+        // Add facilitator_url if it doesn't exist
+        if !existing_columns.contains("facilitator_url") {
+            conn.execute("ALTER TABLE shinkai_tools ADD COLUMN facilitator_url TEXT", [])?;
+        }
+        
+        // Add mcp_enabled if it doesn't exist (keeping existing migration logic)
+        if !existing_columns.contains("mcp_enabled") {
             conn.execute("ALTER TABLE shinkai_tools ADD COLUMN mcp_enabled INTEGER", [])?;
         }
 

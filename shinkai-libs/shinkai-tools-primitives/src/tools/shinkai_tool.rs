@@ -57,9 +57,8 @@ pub struct ShinkaiToolHeader {
     pub input_args: Parameters,
     pub output_arg: ToolOutputArg,
     pub config: Option<Vec<ToolConfig>>,
-    pub usage_type: Option<UsageType>, // includes pricing
-    // Note: do we need usage_type? it's already contained in the tool_offering
-    pub tool_offering: Option<ShinkaiToolOffering>,
+    pub payment_url: Option<String>,
+    pub facilitator_url: Option<String>,
 }
 
 impl ShinkaiToolHeader {
@@ -87,8 +86,14 @@ impl ShinkaiTool {
             input_args: self.input_args(),
             output_arg: self.output_arg(),
             config: self.get_js_tool_config().cloned(),
-            usage_type: self.get_usage_type(),
-            tool_offering: None,
+            payment_url: match self {
+                ShinkaiTool::Network(n, _) => n.payment_url.clone(),
+                _ => None,
+            },
+            facilitator_url: match self {
+                ShinkaiTool::Network(n, _) => n.facilitator_url.clone(),
+                _ => None,
+            },
         }
     }
 
