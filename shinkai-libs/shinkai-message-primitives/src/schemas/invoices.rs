@@ -9,8 +9,9 @@ use serde_json::Value;
 
 use super::{
     shinkai_name::ShinkaiName,
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
     wallet_mixed::PublicAddress,
+    x402::PaymentRequirements,
+    shinkai_tool_offering::UsageTypeInquiry,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -18,8 +19,9 @@ pub struct Invoice {
     pub invoice_id: String,
     pub provider_name: ShinkaiName,
     pub requester_name: ShinkaiName,
+    pub tool_key: String,
     pub usage_type_inquiry: UsageTypeInquiry,
-    pub shinkai_offering: ShinkaiToolOffering,
+    pub payment_requirements: PaymentRequirements,
     pub request_date_time: DateTime<Utc>,
     pub invoice_date_time: DateTime<Utc>,
     pub expiration_time: DateTime<Utc>,
