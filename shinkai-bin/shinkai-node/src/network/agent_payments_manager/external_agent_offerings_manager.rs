@@ -527,7 +527,6 @@ impl ExtAgentOfferingsManager {
         let usage_type = match invoice_request.usage_type_inquiry {
             UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
                 UsageType::PerUse(price) => UsageType::PerUse(price),
-                UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
                 _ => {
                     return Err(AgentOfferingManagerError::InvalidUsageType(
                         "Invalid usage type for PerUse inquiry".to_string(),
