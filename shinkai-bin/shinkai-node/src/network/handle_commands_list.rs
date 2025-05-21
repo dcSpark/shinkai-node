@@ -1436,6 +1436,7 @@ impl Node {
                 bearer,
                 invoice_id,
                 data_for_tool,
+                x402_payment,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1448,6 +1449,7 @@ impl Node {
                         bearer,
                         invoice_id,
                         data_for_tool,
+                        x402_payment,
                         node_name,
                         res,
                     )

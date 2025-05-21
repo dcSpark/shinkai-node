@@ -543,6 +543,7 @@ pub enum NodeCommand {
         bearer: String,
         invoice_id: String,
         data_for_tool: Value,
+        x402_payment: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListInvoices {

@@ -143,6 +143,7 @@ pub async fn create_local_wallet_handler(
 pub struct PayInvoiceRequest {
     pub invoice_id: String,
     pub data_for_tool: Value,
+    pub x402_payment: Option<String>,
 }
 
 #[utoipa::path(
@@ -166,6 +167,7 @@ pub async fn pay_invoice_handler(
             bearer,
             invoice_id: payload.invoice_id,
             data_for_tool: payload.data_for_tool,
+            x402_payment: payload.x402_payment,
             res: res_sender,
         })
         .await

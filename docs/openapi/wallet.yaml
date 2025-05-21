@@ -259,6 +259,9 @@ components:
         data_for_tool: {}
         invoice_id:
           type: string
+        x402_payment:
+          type: string
+          nullable: true
     RestoreCoinbaseMPCWalletRequest:
       type: object
       required:

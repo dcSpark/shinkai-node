@@ -10,6 +10,7 @@ use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageTypeInquiry
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use tokio::sync::Mutex;
+use shinkai_non_rust_code::functions::x402::verify_payment::{InvalidOutput, Output as X402Output};
 
 use crate::network::{
     agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager, node_error::NodeError, Node,
@@ -104,6 +105,7 @@ impl Node {
         bearer: String,
         invoice_id: String,
         data_for_tool: Value,
+        x402_payment: Option<String>,
         node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -141,12 +143,26 @@ impl Node {
         };
 
         if !is_valid {
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "Invoice is not valid".to_string(),
+            let invalid = InvalidOutput {
+                error: "Invoice is not valid".to_string(),
+                accepts: vec![],
+                x402_version: 1,
+                payer: None,
             };
-            let _ = res.send(Err(api_error)).await;
+            let output = X402Output { invalid: Some(invalid), valid: None };
+            let output_value = match serde_json::to_value(output) {
+                Ok(v) => v,
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to serialize invalid payment info: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+            let _ = res.send(Ok(output_value)).await;
             return Ok(());
         }
 
