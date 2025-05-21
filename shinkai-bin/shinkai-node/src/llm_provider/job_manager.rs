@@ -13,7 +13,6 @@ use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueMan
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName, shinkai_message::{
