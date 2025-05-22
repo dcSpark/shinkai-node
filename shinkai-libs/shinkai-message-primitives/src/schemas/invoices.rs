@@ -1,19 +1,25 @@
 use std::{cmp::Ordering, fmt};
 
-use base64::Engine;
+use rand::RngCore;
 
 use chrono::{DateTime, Utc};
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Generates a random 32-byte nonce encoded as a hex string prefixed with `0x`.
+/// This mimics the nonce used by x402 payment requests and is used as the
+/// unique identifier for invoices.
+pub fn generate_x402_nonce() -> String {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    format!("0x{}", hex::encode(bytes))
+}
+
 use super::{
-    shinkai_name::ShinkaiName,
-    shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
-    wallet_mixed::PublicAddress,
+    shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, wallet_mixed::PublicAddress
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Invoice {
     pub invoice_id: String,
     pub provider_name: ShinkaiName,
@@ -28,20 +34,14 @@ pub struct Invoice {
     pub address: PublicAddress,
     pub tool_data: Option<Value>, // expected to have all of the required input_args: Vec<ToolArgument>,
     pub response_date_time: Option<DateTime<Utc>>, // when the response was sent back to the requester
-    pub result_str: Option<String>, // depending on the tool, the result varies
-                                  // Note: Maybe add something related to current estimated response times
-                                  // average response time / congestion level or something like that
-}
-
-impl Ord for Invoice {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.invoice_date_time.cmp(&other.invoice_date_time)
-    }
+    pub result_str: Option<String>, /* depending on the tool, the result varies
+                                   * Note: Maybe add something related to current estimated response times
+                                   * average response time / congestion level or something like that */
 }
 
 impl PartialOrd for Invoice {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        Some(self.invoice_date_time.cmp(&other.invoice_date_time))
     }
 }
 
@@ -129,7 +129,6 @@ pub struct InternalInvoiceRequest {
     pub usage_type_inquiry: UsageTypeInquiry,
     pub date_time: DateTime<Utc>,
     pub unique_id: String,
-    pub secret_prehash: String,
 }
 
 impl InternalInvoiceRequest {
@@ -139,21 +138,8 @@ impl InternalInvoiceRequest {
         tool_key_name: String,
         usage_type_inquiry: UsageTypeInquiry,
     ) -> Self {
-        // Generate a random number
-        let random_number: u64 = rand::thread_rng().gen();
-
-        // Encode the random number in base64
-        let random_number_base64 =
-            base64::engine::general_purpose::STANDARD.encode(&random_number.to_be_bytes());
-
-        // Use only the first half of the base64 encoded string
-        let short_random_number = &random_number_base64[..random_number_base64.len() / 2];
-
-        // Combine the short random number and timestamp to create a unique ID
-        let unique_id = format!("{}", short_random_number);
-
-        // Generate a secret prehash value (example: using the tool_key_name and random number)
-        let secret_prehash = format!("{}{}", tool_key_name, random_number);
+        // Generate the unique invoice identifier using an x402-style nonce
+        let unique_id = generate_x402_nonce();
 
         Self {
             provider_name: provider,
@@ -162,7 +148,6 @@ impl InternalInvoiceRequest {
             usage_type_inquiry,
             date_time: Utc::now(),
             unique_id,
-            secret_prehash,
         }
     }
 

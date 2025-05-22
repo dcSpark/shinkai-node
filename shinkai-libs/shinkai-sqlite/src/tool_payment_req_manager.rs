@@ -98,11 +98,10 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::schemas::{
-        shinkai_tool_offering::{AssetPayment, ToolPrice},
-        wallet_mixed::{Asset, NetworkIdentifier},
-    };
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::{
+        shinkai_tool_offering::ToolPrice, x402_types::{Network, PaymentRequirements}
+    };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -121,14 +120,21 @@ mod tests {
         let manager = setup_test_db();
         let tool_offering = ShinkaiToolOffering {
             tool_key: "tool_key".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                asset: Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
-                    asset_id: "USDC".to_string(),
-                    decimals: Some(6),
-                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                },
-                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
             }])),
             meta_description: Some("meta_description".to_string()),
         };
@@ -148,14 +154,21 @@ mod tests {
         let manager = setup_test_db();
         let tool_offering = ShinkaiToolOffering {
             tool_key: "tool_key".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                asset: Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
-                    asset_id: "USDC".to_string(),
-                    decimals: Some(6),
-                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                },
-                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
             }])),
             meta_description: Some("meta_description".to_string()),
         };
@@ -178,28 +191,42 @@ mod tests {
         let manager = setup_test_db();
         let tool_offering1 = ShinkaiToolOffering {
             tool_key: "tool_key1".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                asset: Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
-                    asset_id: "USDC".to_string(),
-                    decimals: Some(6),
-                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                },
-                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service 1".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
             }])),
             meta_description: Some("meta_description1".to_string()),
         };
 
         let tool_offering2 = ShinkaiToolOffering {
             tool_key: "tool_key2".to_string(),
-            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                asset: Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
-                    asset_id: "USDC".to_string(),
-                    decimals: Some(6),
-                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                },
-                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service 2".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
             }])),
             meta_description: Some("meta_description2".to_string()),
         };

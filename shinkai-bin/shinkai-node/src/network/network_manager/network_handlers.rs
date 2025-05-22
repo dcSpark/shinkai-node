@@ -1,34 +1,21 @@
 use crate::{
-    managers::IdentityManager,
-    network::{
+    managers::IdentityManager, network::{
         agent_payments_manager::{
-            external_agent_offerings_manager::ExtAgentOfferingsManager,
-            my_agent_offerings_manager::MyAgentOfferingsManager,
-        },
-        node::ProxyConnectionInfo,
-        Node,
-    },
+            external_agent_offerings_manager::ExtAgentOfferingsManager, my_agent_offerings_manager::MyAgentOfferingsManager
+        }, node::ProxyConnectionInfo, Node
+    }
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError},
-        shinkai_name::ShinkaiName,
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_error::ShinkaiMessageError,
-        shinkai_message_extension::EncryptionStatus,
-        shinkai_message_schemas::MessageSchemaType,
-    },
-    shinkai_utils::{
-        encryption::clone_static_secret_key,
-        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-        shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
-        signatures::{clone_signature_secret_key, signature_public_key_to_string},
-    },
+        invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError}, shinkai_name::ShinkaiName
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_error::ShinkaiMessageError, shinkai_message_extension::EncryptionStatus, shinkai_message_schemas::MessageSchemaType
+    }, shinkai_utils::{
+        encryption::clone_static_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}, signatures::{clone_signature_secret_key, signature_public_key_to_string}
+    }
 };
 use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};
@@ -409,8 +396,7 @@ pub async fn handle_network_message_cases(
     let schema_result = message.get_message_content_schema();
     let should_save = matches!(
         schema_result,
-        Ok(MessageSchemaType::TextContent)
-            | Ok(MessageSchemaType::JobMessageSchema)
+        Ok(MessageSchemaType::TextContent) | Ok(MessageSchemaType::JobMessageSchema)
     ) || matches!(
         schema_result,
         Err(ShinkaiMessageError::InvalidMessageSchemaType(err)) if err == "Message data is encrypted"
@@ -477,7 +463,7 @@ pub async fn handle_network_message_cases(
                             // Successfully converted, you can now use shared_folder_infos
                             let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
                             let _ = ext_agent_offering_manager
-                                .network_request_invoice(requester, invoice_request)
+                                .network_invoice_requested(requester, invoice_request)
                                 .await;
                         }
                         Err(e) => {

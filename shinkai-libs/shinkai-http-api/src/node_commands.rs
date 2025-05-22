@@ -6,7 +6,7 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse}, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::V2SmartInbox, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::NetworkIdentifier
+        coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse}, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::V2SmartInbox, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, x402_types::Network
     }, shinkai_message::{
         shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
             APIAddOllamaModels, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
@@ -503,27 +503,27 @@ pub enum NodeCommand {
     },
     V2ApiRestoreLocalEthersWallet {
         bearer: String,
-        network: NetworkIdentifier,
+        network: Network,
         source: WalletSource,
         role: WalletRole,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiCreateLocalEthersWallet {
         bearer: String,
-        network: NetworkIdentifier,
+        network: Network,
         role: WalletRole,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiCreateCoinbaseMPCWallet {
         bearer: String,
-        network: NetworkIdentifier,
+        network: Network,
         config: Option<CoinbaseMPCWalletConfig>,
         role: WalletRole,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiRestoreCoinbaseMPCWallet {
         bearer: String,
-        network: NetworkIdentifier,
+        network: Network,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
         role: WalletRole,

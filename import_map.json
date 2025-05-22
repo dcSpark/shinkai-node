@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "viem": "npm:viem",
+    "viem/accounts": "npm:viem/accounts",
+    "x402/types": "npm:x402/types",
+    "x402/client": "npm:x402/client"
+  }
+} 
