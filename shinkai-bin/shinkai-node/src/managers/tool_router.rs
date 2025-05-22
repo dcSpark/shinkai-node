@@ -561,6 +561,7 @@ impl ToolRouter {
     async fn add_testing_network_tools(&self) -> Result<(), ToolError> {
         // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_EXTERNAL_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
+            println!("Adding testing external network echo tool");
             let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 scheme: "exact".to_string(),
                 description: "Payment for service".to_string(),
@@ -584,7 +585,7 @@ impl ToolRouter {
                 description: "Echoes the input message".to_string(),
                 version: "0.1".to_string(),
                 mcp_enabled: Some(false),
-                provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
+                provider: ShinkaiName::new("@@node1_test.sep-shinkai".to_string()).unwrap(),
                 author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
@@ -611,84 +612,6 @@ impl ToolRouter {
                     .add_tool(shinkai_tool)
                     .await
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-            }
-
-            // Manually create another NetworkTool
-            let youtube_tool = NetworkTool {
-                name: "youtube_transcript_with_timestamps".to_string(),
-                description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
-                version: "0.1".to_string(),
-                mcp_enabled: Some(false),
-                provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
-                author: "@@official.shinkai".to_string(),
-                usage_type: usage_type.clone(),
-                activated: true,
-                config: vec![],
-                input_args: {
-                    let mut params = Parameters::new();
-                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true, None);
-                    params
-                },
-                output_arg: ToolOutputArg { json: "".to_string() },
-                embedding: None,
-                restrictions: None,
-            };
-
-            {
-                let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
-                self.sqlite_manager
-                    .add_tool(shinkai_tool)
-                    .await
-                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-            }
-        }
-
-        // Check if ADD_TESTING_NETWORK_ECHO is set
-        if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            match self
-                .sqlite_manager
-                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
-            {
-                Ok(shinkai_tool) => {
-                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        js_tool.name = "network__echo".to_string();
-                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
-                            .add_tool(modified_tool)
-                            .await
-                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                    }
-                }
-                Err(SqliteManagerError::ToolNotFound(_)) => {
-                    eprintln!("Tool not found: local:::shinkai-tool-echo:::shinkai__echo");
-                    // Handle the case where the tool is not found, if necessary
-                }
-                Err(e) => {
-                    return Err(ToolError::DatabaseError(e.to_string()));
-                }
-            }
-
-            match self
-                .sqlite_manager
-                .get_tool_by_key("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
-            {
-                Ok(shinkai_tool) => {
-                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        js_tool.name = "youtube_transcript_with_timestamps".to_string();
-                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
-                            .add_tool(modified_tool)
-                            .await
-                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                    }
-                }
-                Err(SqliteManagerError::ToolNotFound(_)) => {
-                    eprintln!("Tool not found: local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript");
-                    // Handle the case where the tool is not found, if necessary
-                }
-                Err(e) => {
-                    return Err(ToolError::DatabaseError(e.to_string()));
-                }
             }
         }
 
