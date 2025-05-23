@@ -9,6 +9,7 @@ pub mod node_error;
 pub mod node_shareable_logic;
 pub mod v1_api;
 pub mod v2_api;
+pub mod libp2p;
 pub mod ws_manager;
 pub mod ws_routes;
 pub mod zip_export_import;
