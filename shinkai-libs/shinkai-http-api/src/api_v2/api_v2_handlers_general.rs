@@ -338,6 +338,7 @@ pub async fn get_public_keys(sender: Sender<NodeCommand>) -> Result<impl warp::R
 )]
 pub async fn health_check(sender: Sender<NodeCommand>, node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
+    println!("Health check route called");
 
     // Send the APIHealthCheck command to retrieve the pristine state and public HTTPS certificate
     sender
