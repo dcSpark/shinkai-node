@@ -7,7 +7,6 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
-use tokio::sync::RwLock;
 
 use crate::network::{node_error::NodeError, Node};
 

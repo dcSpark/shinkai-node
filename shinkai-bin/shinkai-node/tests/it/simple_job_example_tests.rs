@@ -171,7 +171,7 @@ fn simple_job_message_test() {
                 .await;
             }
 
-            let mut job_id: String;
+            let job_id: String;
             let agent_subidentity = format!("{}/agent/{}", node1_profile_name, node1_agent);
 
             {
