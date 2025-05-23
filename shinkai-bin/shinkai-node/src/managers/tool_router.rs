@@ -13,7 +13,6 @@ use crate::tools::tool_execution::{
     execute_agent_dynamic::execute_agent_tool, execution_coordinator::override_tool_config, execution_custom::try_to_execute_rust_tool, execution_header_generator::{check_tool, generate_execution_environment}
 };
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
-use std::path::PathBuf;
 use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,6 +32,7 @@ use shinkai_tools_primitives::tools::{
     error::ToolError, network_tool::NetworkTool, parameters::Parameters, rust_tools::RustTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -90,6 +90,11 @@ impl ToolRouter {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
+        println!(
+            "Initializing tool router - Database empty: {}, Has JS tools: {}",
+            is_empty, has_any_js_tools
+        );
+
         if let Err(e) = self.add_rust_tools().await {
             eprintln!("Error adding rust tools: {}", e);
         }
@@ -99,6 +104,7 @@ impl ToolRouter {
         let full_identity =
             ShinkaiName::new(format!("{}/main", node_name)).map_err(|e| ToolError::ExecutionError(e.to_string()))?;
 
+        println!("Importing tools from directory for node: {}", node_name);
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
             full_identity,
@@ -112,6 +118,7 @@ impl ToolRouter {
         }
 
         if is_empty {
+            println!("Database is empty, adding static prompts and testing network tools");
             if let Err(e) = self.add_static_prompts(embedding_generator).await {
                 eprintln!("Error adding static prompts: {}", e);
             }
@@ -119,6 +126,7 @@ impl ToolRouter {
                 eprintln!("Error adding testing network tools: {}", e);
             }
         } else if !has_any_js_tools {
+            println!("No JS tools found, adding testing network tools");
             if let Err(e) = self.add_testing_network_tools().await {
                 eprintln!("Error adding testing network tools: {}", e);
             }
@@ -274,21 +282,13 @@ impl ToolRouter {
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
         let node_env = fetch_node_environment();
-        // When the App starts, there is no identity yet.
-        Self::import_from_local_directory(
-            db.clone(),
-            full_identity.clone(),
-            node_env.clone(),
-            embedding_generator.clone(),
-        )
-        .await?;
 
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
             .to_lowercase()
             .eq("true")
         {
-            // Set the sync status to true after successful completion
+            println!("Skipping directory imports due to SKIP_IMPORT_FROM_DIRECTORY flag");
             let internal_comms = ShinkaiInternalComms {
                 internal_has_sync_default_tools: true,
             };
@@ -301,6 +301,15 @@ impl ToolRouter {
             }
             return Ok(());
         }
+
+        println!("Starting import from local directory");
+        Self::import_from_local_directory(
+            db.clone(),
+            full_identity.clone(),
+            node_env.clone(),
+            embedding_generator.clone(),
+        )
+        .await?;
 
         // Set the sync status to false at the start
         let internal_comms = ShinkaiInternalComms {
@@ -320,6 +329,7 @@ impl ToolRouter {
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
             .unwrap_or_else(|_| format!("https://store-api.shinkai.com/store/defaults"));
 
+        println!("Fetching tools from remote directory: {}", url);
         let client = reqwest::Client::new();
         let response = client
             .get(url)
@@ -340,6 +350,8 @@ impl ToolRouter {
             .await
             .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
 
+        println!("Found {} tools in remote directory", tools.len());
+
         // Collect default tool router keys
         let default_tool_keys: Vec<String> = tools
             .iter()
@@ -353,6 +365,8 @@ impl ToolRouter {
                 }
             })
             .collect();
+
+        println!("Found {} default tool router keys", default_tool_keys.len());
 
         // Store the default tool keys in the ToolRouter
         {
@@ -376,8 +390,18 @@ impl ToolRouter {
             })
             .collect::<Vec<_>>();
 
+        println!("Processing {} tools in chunks", tool_infos.len());
+        let mut tools_added = 0;
+        let mut tools_skipped = 0;
+        let mut tools_failed = 0;
+
         let chunk_size = 5;
-        for chunk in tool_infos.chunks(chunk_size) {
+        for (chunk_index, chunk) in tool_infos.chunks(chunk_size).enumerate() {
+            println!(
+                "Processing chunk {}/{}",
+                chunk_index + 1,
+                (tool_infos.len() + chunk_size - 1) / chunk_size
+            );
             let futures = chunk
                 .iter()
                 .map(|(tool_name, tool_url, router_key, new_version, r#type)| {
@@ -399,12 +423,12 @@ impl ToolRouter {
                                     let remote_ver = IndexableVersion::from_string(new_version)?;
                                     Ok(remote_ver > local_ver)
                                 }
-                                Err(SqliteManagerError::ToolNotFound(_)) => Ok(true), // Update needed
+                                Err(SqliteManagerError::ToolNotFound(_)) => Ok(true),
                                 Err(e) => Err(ToolError::DatabaseError(e.to_string())),
                             }?;
 
                             if !do_install {
-                                // Skip installation
+                                tools_skipped += 1;
                                 return Ok::<(), ToolError>(());
                             }
 
@@ -422,9 +446,11 @@ impl ToolRouter {
                             // We stored the tool under val["tool"] in the JSON response
                             match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
                                 Ok(_tool) => {
+                                    tools_added += 1;
                                     println!("Successfully imported tool {} (version: {})", tool_name, new_version);
                                 }
                                 Err(err) => {
+                                    tools_failed += 1;
                                     eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
                                 }
                             }
@@ -439,7 +465,7 @@ impl ToolRouter {
                                 Err(e) => Err(ToolError::DatabaseError(e.to_string())),
                             }?;
                             if !do_install {
-                                // Skip installation
+                                tools_skipped += 1;
                                 return Ok::<(), ToolError>(());
                             }
 
@@ -456,9 +482,11 @@ impl ToolRouter {
 
                             match serde_json::from_value::<Agent>(val["agent"].clone()) {
                                 Ok(agent) => {
+                                    tools_added += 1;
                                     println!("Successfully imported agent {}", agent.name);
                                 }
                                 Err(err) => {
+                                    tools_failed += 1;
                                     eprintln!("Couldn't parse 'agent' field as Agent: {}", err);
                                 }
                             }
@@ -470,9 +498,13 @@ impl ToolRouter {
         }
 
         let duration = start_time.elapsed();
-        println!("Total time taken to import/upgrade tools: {:?}", duration);
+        println!("Tool import summary:");
+        println!("- Total tools processed: {}", tool_infos.len());
+        println!("- Tools added: {}", tools_added);
+        println!("- Tools skipped: {}", tools_skipped);
+        println!("- Tools failed: {}", tools_failed);
+        println!("- Total time taken: {:?}", duration);
 
-        // Set the sync status to true after successful completion
         let internal_comms = ShinkaiInternalComms {
             internal_has_sync_default_tools: true,
         };
@@ -533,6 +565,10 @@ impl ToolRouter {
 
     pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
         let rust_tools = get_rust_tools();
+        println!("Adding {} Rust tools", rust_tools.len());
+        let mut added_count = 0;
+        let mut skipped_count = 0;
+
         for tool in rust_tools {
             let rust_tool = RustTool::new(
                 tool.name,
@@ -544,16 +580,24 @@ impl ToolRouter {
             );
 
             let _ = match self.sqlite_manager.get_tool_by_key(&rust_tool.tool_router_key) {
-                // TODO We have no good mechanism to check if the tool is up to date.
-                Err(SqliteManagerError::ToolNotFound(_)) => self
-                    .sqlite_manager
-                    .add_tool(ShinkaiTool::Rust(rust_tool, true))
-                    .await
-                    .map_err(|e| ToolError::DatabaseError(e.to_string())),
+                Err(SqliteManagerError::ToolNotFound(_)) => {
+                    added_count += 1;
+                    self.sqlite_manager
+                        .add_tool(ShinkaiTool::Rust(rust_tool, true))
+                        .await
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))
+                }
                 Err(e) => Err(ToolError::DatabaseError(e.to_string())),
-                Ok(_db_tool) => continue,
+                Ok(_db_tool) => {
+                    skipped_count += 1;
+                    continue;
+                }
             }?;
         }
+        println!(
+            "Rust tools installation complete - Added: {}, Skipped: {}",
+            added_count, skipped_count
+        );
         Ok(())
     }
 
