@@ -704,7 +704,7 @@ impl SqliteManager {
                 SqliteManagerError::DatabaseError(e)
             })?;
 
-        Ok(count >= 4)
+        Ok(count >= 5)
     }
 
     // Update the FTS table when inserting or updating a tool
