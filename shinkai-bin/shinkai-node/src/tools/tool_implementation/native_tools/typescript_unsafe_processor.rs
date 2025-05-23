@@ -28,7 +28,7 @@ use std::{env, fs};
 // LLM Tool
 pub struct TypescriptUnsafeProcessorTool {
     pub tool: ShinkaiToolHeader,
-    pub tool_embedding: Option<Vec<f32>>,
+    pub _tool_embedding: Option<Vec<f32>>,
 }
 
 impl TypescriptUnsafeProcessorTool {
@@ -83,7 +83,7 @@ impl TypescriptUnsafeProcessorTool {
                 usage_type: None,
                 tool_offering: None,
             },
-            tool_embedding: None,
+            _tool_embedding: None,
         }
     }
 

@@ -175,7 +175,6 @@ pub async fn generate_tool_definitions(
                     .collect();
                 ToolResult::new(result_type.to_string(), properties, required)
             }
-            _ => return Err(APIError::from("Unsupported tool type".to_string())),
         };
 
         match language {

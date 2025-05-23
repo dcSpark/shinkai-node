@@ -24,7 +24,7 @@ use tokio::sync::Mutex;
 
 pub struct ConfigSetupTool {
     pub tool: ShinkaiToolHeader,
-    pub tool_embedding: Option<Vec<f32>>,
+    pub _tool_embedding: Option<Vec<f32>>,
 }
 
 impl ConfigSetupTool {
@@ -63,7 +63,7 @@ Example usage:
                 usage_type: None,
                 tool_offering: None,
             },
-            tool_embedding: None,
+            _tool_embedding: None,
         }
     }
 }

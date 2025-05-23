@@ -21,7 +21,7 @@ pub struct NodeEnvironment {
     pub node_storage_path: Option<String>,
     pub embeddings_server_url: Option<String>,
     pub embeddings_server_api_key: Option<String>,
-    pub auto_detect_local_llms: bool,
+    pub _auto_detect_local_llms: bool,
     pub proxy_identity: Option<String>,
     pub default_embedding_model: EmbeddingModelType,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
@@ -29,6 +29,7 @@ pub struct NodeEnvironment {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StaticServerEnvironment {
     pub ip: IpAddr,
     pub port: u16,
@@ -147,7 +148,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     };
 
     // Inside the fetch_node_environment function, add the following line to initialize auto_detect_local_llms
-    let auto_detect_local_llms: bool = env::var("AUTO_DETECT_LOCAL_LLMS")
+    let _auto_detect_local_llms: bool = env::var("AUTO_DETECT_LOCAL_LLMS")
         .unwrap_or_else(|_| "true".to_string())
         .parse()
         .expect("Failed to parse AUTO_DETECT_LOCAL_LLMS");
@@ -209,7 +210,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         node_storage_path,
         embeddings_server_url,
         embeddings_server_api_key,
-        auto_detect_local_llms,
+        _auto_detect_local_llms,
         proxy_identity,
         default_embedding_model,
         supported_embedding_models,

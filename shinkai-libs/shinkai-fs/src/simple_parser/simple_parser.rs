@@ -118,7 +118,6 @@ impl SimpleParser {
             SupportedFileType::Xls => {
                 LocalFileParser::process_xlsx_file(file_path.as_path().to_path_buf(), max_node_text_size).await
             }
-            _ => Err(ShinkaiFsError::UnsupportedFileType(file_type.to_string())),
         }
     }
 }
