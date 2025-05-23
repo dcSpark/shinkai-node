@@ -252,26 +252,6 @@ components:
         properties:
           PerUse:
             $ref: '#/components/schemas/ToolPrice'
-      - type: object
-        required:
-        - Downloadable
-        properties:
-          Downloadable:
-            $ref: '#/components/schemas/ToolPrice'
-      - type: object
-        required:
-        - Both
-        properties:
-          Both:
-            type: object
-            required:
-            - per_use_price
-            - download_price
-            properties:
-              download_price:
-                $ref: '#/components/schemas/ToolPrice'
-              per_use_price:
-                $ref: '#/components/schemas/ToolPrice'
 tags:
 - name: tool_offerings
   description: Tool Offering API endpoints
