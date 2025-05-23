@@ -1,4 +1,3 @@
-use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::tool_router_key::ToolRouterKey;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
@@ -50,18 +49,7 @@ pub enum MessageSchemaType {
     VecFsDeleteItem,
     AvailableSharedItems,
     AvailableSharedItemsResponse,
-    CreateShareableFolder,
-    UpdateShareableFolder,
-    UnshareFolder,
-    GetMySubscribers,
     ConvertFilesAndSaveToFolder,
-    SubscribeToSharedFolder,
-    UnsubscribeToSharedFolder,
-    SubscribeToSharedFolderResponse,
-    UnsubscribeToSharedFolderResponse,
-    MySubscriptions,
-    SubscriptionRequiresTreeUpdate,
-    SubscriptionRequiresTreeUpdateResponse,
     UpdateLocalProcessingPreference,
     GetProcessingPreference,
     APIRemoveToolkit,
@@ -127,18 +115,7 @@ impl MessageSchemaType {
             "VecFsDeleteItem" => Some(Self::VecFsDeleteItem),
             "AvailableSharedItems" => Some(Self::AvailableSharedItems),
             "AvailableSharedItemsResponse" => Some(Self::AvailableSharedItemsResponse),
-            "CreateShareableFolder" => Some(Self::CreateShareableFolder),
-            "UpdateShareableFolder" => Some(Self::UpdateShareableFolder),
-            "UnshareFolder" => Some(Self::UnshareFolder),
-            "GetMySubscribers" => Some(Self::GetMySubscribers),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
-            "SubscribeToSharedFolder" => Some(Self::SubscribeToSharedFolder),
-            "UnsubscribeToSharedFolder" => Some(Self::UnsubscribeToSharedFolder),
-            "SubscribeToSharedFolderResponse" => Some(Self::SubscribeToSharedFolderResponse),
-            "UnsubscribeToSharedFolderResponse" => Some(Self::UnsubscribeToSharedFolderResponse),
-            "MySubscriptions" => Some(Self::MySubscriptions),
-            "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
-            "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
             "UpdateLocalProcessingPreference" => Some(Self::UpdateLocalProcessingPreference),
             "GetProcessingPreference" => Some(Self::GetProcessingPreference),
             "APIRemoveToolkit" => Some(Self::APIRemoveToolkit),
@@ -204,18 +181,7 @@ impl MessageSchemaType {
             Self::VecFsDeleteItem => "VecFsDeleteItem",
             Self::AvailableSharedItems => "AvailableSharedItems",
             Self::AvailableSharedItemsResponse => "AvailableSharedItemsResponse",
-            Self::CreateShareableFolder => "CreateShareableFolder",
-            Self::UpdateShareableFolder => "UpdateShareableFolder",
-            Self::UnshareFolder => "UnshareFolder",
-            Self::GetMySubscribers => "GetMySubscribers",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
-            Self::SubscribeToSharedFolder => "SubscribeToSharedFolder",
-            Self::UnsubscribeToSharedFolder => "UnsubscribeToSharedFolder",
-            Self::SubscribeToSharedFolderResponse => "SubscribeToSharedFolderResponse",
-            Self::UnsubscribeToSharedFolderResponse => "UnsubscribeToSharedFolderResponse",
-            Self::MySubscriptions => "MySubscriptions",
-            Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
-            Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
             Self::UpdateLocalProcessingPreference => "UpdateLocalProcessingPreference",
             Self::GetProcessingPreference => "GetProcessingPreference",
             Self::APIRemoveToolkit => "APIRemoveToolkit",
@@ -332,82 +298,7 @@ pub struct ToolPlaygroundAction {
     pub code: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
-pub enum FileDestinationSourceType {
-    S3,
-    R2,
-}
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
-pub struct FileDestinationCredentials {
-    pub source: FileDestinationSourceType,
-    pub access_key_id: String,
-    pub secret_access_key: String,
-    pub endpoint_uri: String,
-    pub bucket: String,
-}
-
-impl FileDestinationCredentials {
-    #[allow(dead_code)]
-    pub fn new(
-        source: String,
-        access_key_id: String,
-        secret_access_key: String,
-        endpoint_uri: String,
-        bucket: String,
-    ) -> Self {
-        let source_type = match source.as_str() {
-            "S3" => FileDestinationSourceType::S3,
-            "R2" => FileDestinationSourceType::R2,
-            _ => panic!("Unsupported source type"),
-        };
-        FileDestinationCredentials {
-            source: source_type,
-            access_key_id,
-            secret_access_key,
-            endpoint_uri,
-            bucket,
-        }
-    }
-}
-
-/// Represents the response for a subscription request, providing details
-/// about the subscription status and any errors encountered.
-/// Note(Nico): I know things will be much simpler if we added SubscriptionId
-/// here but can't trust other nodes, we need to generate those on your side.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SubscriptionGenericResponse {
-    // Explanation of what is taking place with this generic response
-    pub subscription_details: String,
-    /// The overall status of the subscription request.
-    pub shared_folder: String,
-    /// The overall status of the subscription request.
-    pub status: SubscriptionResponseStatus,
-    /// Detailed error information, if any errors occurred during the process.
-    pub error: Option<SubscriptionError>,
-    /// Additional metadata related to the subscription, for extensibility.
-    pub metadata: Option<HashMap<String, String>>,
-}
-
-/// Represents the status of a subscription request.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum SubscriptionResponseStatus {
-    Success,
-    Failure,
-    Pending,
-    Request,
-}
-
-/// Provides structured error information for subscription requests.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SubscriptionError {
-    /// A code representing the type of error encountered.
-    pub code: String,
-    /// A human-readable message describing the error.
-    pub message: String,
-    /// Additional details or metadata about the error.
-    pub details: Option<HashMap<String, String>>,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMessagesFromInboxRequest {
@@ -529,48 +420,8 @@ pub struct APIAvailableSharedItems {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APISubscribeToSharedFolder {
-    pub path: String,
-    pub streamer_node_name: String,
-    pub streamer_profile_name: String,
-    pub payment: SubscriptionPayment,
-    pub base_folder: Option<String>,
-    pub http_preferred: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIUnsubscribeToSharedFolder {
-    pub path: String,
-    pub streamer_node_name: String,
-    pub streamer_profile_name: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APICreateShareableFolder {
-    pub path: String,
-    pub subscription_req: FolderSubscription,
-    pub credentials: Option<FileDestinationCredentials>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIUpdateShareableFolder {
-    pub path: String,
-    pub subscription: FolderSubscription,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIUnshareFolder {
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIAddOllamaModels {
     pub models: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIGetMySubscribers {
-    pub path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]

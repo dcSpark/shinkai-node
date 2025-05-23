@@ -8,7 +8,7 @@ mod tests {
 
     use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
 
-    use super::*;
+    
 
     // Helper function to convert a vector of ChatCompletionRequestMessage to a
     // single string

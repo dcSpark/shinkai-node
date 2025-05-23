@@ -55,7 +55,7 @@ async def run(c: CONFIG, p: INPUTS) -> OUTPUT:
     let runner = NonRustCodeRunnerFactory::new("parse_pdf", code, vec![file_path.clone()])
         .with_runtime(NonRustRuntime::Python)
         .create_runner(json!({}));
-    runner.run::<_, Output>(Input { file_path }).await
+    runner.run::<_, Output>(Input { file_path }, None).await
 }
 
 #[cfg(test)]

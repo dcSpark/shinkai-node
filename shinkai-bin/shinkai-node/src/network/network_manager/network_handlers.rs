@@ -411,7 +411,6 @@ pub async fn handle_network_message_cases(
         schema_result,
         Ok(MessageSchemaType::TextContent)
             | Ok(MessageSchemaType::JobMessageSchema)
-            | Ok(MessageSchemaType::SubscribeToSharedFolderResponse)
     ) || matches!(
         schema_result,
         Err(ShinkaiMessageError::InvalidMessageSchemaType(err)) if err == "Message data is encrypted"

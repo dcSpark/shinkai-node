@@ -6,12 +6,9 @@ use crate::llm_provider::providers::shared::openai_api;
 use crate::managers::model_capabilities_manager::{PromptResult, PromptResultEnum};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::LLMProviderInterface;
 use shinkai_message_primitives::schemas::prompts::Prompt;
-use uuid::Uuid;
 
-// Re-export OpenAI API types for DeepSeek
-pub use openai_api::{
-    MessageContent, OpenAIResponse,
-};
+// DeepSeek is compatible with the OpenAI API, so we reuse its message
+// preparation and response handling logic.
 
 /// Prepare messages for DeepSeek API using the OpenAI format
 /// DeepSeek API is compatible with OpenAI API, so we can reuse the OpenAI message preparation
@@ -77,8 +74,9 @@ pub fn deepseek_prepare_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{DeepSeek, SerializedLLMProvider};
+    use uuid::Uuid;
+    
+    use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::DeepSeek;
     use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
     #[test]

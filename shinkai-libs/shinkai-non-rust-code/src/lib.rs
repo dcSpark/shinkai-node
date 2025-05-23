@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{collections::HashMap, env, path::PathBuf, time::Duration};
 
 use serde_json::Value;
 use shinkai_tools_runner::tools::{
@@ -60,7 +60,7 @@ fn get_python_runner(
     function_name: &str,
     code: String,
     configurations: Value,
-    mount_files: Vec<PathBuf>,
+    mount_files: Vec<PathBuf>
 ) -> PythonRunner {
     PythonRunner::new(
         CodeFiles {
@@ -101,11 +101,12 @@ impl std::fmt::Display for RunError {
     }
 }
 
+
 pub struct NonRustCodeRunnerFactory {
     function_name: String,
     code: String,
     mount_files: Vec<PathBuf>,
-    runtime: NonRustRuntime,
+    runtime: NonRustRuntime
 }
 
 impl NonRustCodeRunnerFactory {
@@ -149,7 +150,7 @@ impl<C> NonRustCodeRunner<C>
 where
     C: serde::Serialize,
 {
-    pub async fn run<P, T>(&self, params: P) -> Result<T, RunError>
+    pub async fn run<P, T>(&self, params: P, timeout: Option<Duration>) -> Result<T, RunError>
     where
         P: serde::Serialize,
         T: serde::de::DeserializeOwned,
@@ -166,7 +167,7 @@ where
                     self.mount_files.clone(),
                 );
                 deno_runner
-                    .run(None, params_value, None)
+                    .run(None, params_value, timeout)
                     .await
                     .map_err(|e| RunError::CodeExecutionError(e.to_string()))?
             }
@@ -178,7 +179,7 @@ where
                     self.mount_files.clone(),
                 );
                 python_runner
-                    .run(None, params_value, None)
+                    .run(None, params_value, timeout)
                     .await
                     .map_err(|e| RunError::CodeExecutionError(e.to_string()))?
             }
@@ -215,7 +216,7 @@ mod tests {
         let result = runner
             .run::<_, TestOutput>(json!({
                 "name": "World"
-            }))
+            }), None)
             .await
             .unwrap();
 
