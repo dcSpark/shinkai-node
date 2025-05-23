@@ -33,6 +33,7 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 anyhow = { workspace = true }
 rmcp = { version = "0.1", features = ["server", "macros"] }
+tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 
 [dependencies.serde]
 workspace = true
