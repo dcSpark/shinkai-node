@@ -151,7 +151,13 @@ fn get_model_context_size(llm_provider: String, db: Arc<SqliteManager>, node_nam
         Some(llm_provider) => llm_provider,
         None => return Err(ToolError::ExecutionError("Failed to get llm provider".to_string())),
     };
-    Ok(ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model).min(25000))
+    let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
+    let window_size = if max_tokens > 60000 {
+        max_tokens
+    } else {
+        max_tokens.min(25000)
+    };
+    Ok(window_size)
 }
 
 fn get_context_size_for_fragment(data: String) -> usize {
