@@ -172,9 +172,11 @@ impl JobManager {
         // Determine the vector search mode configured in the job scope.
         let max_tokens_in_prompt = if scope.vector_search_mode == VectorSearchMode::FillUpTo25k {
             if max_tokens_in_prompt > 60000 {
-                max_tokens_in_prompt
+                60000
+            } else if max_tokens_in_prompt > 25000 {
+                25000
             } else {
-                max_tokens_in_prompt.min(25000)
+                max_tokens_in_prompt
             }
         } else {
             max_tokens_in_prompt
