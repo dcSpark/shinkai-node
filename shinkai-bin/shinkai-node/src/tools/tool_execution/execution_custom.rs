@@ -37,6 +37,9 @@ pub async fn try_to_execute_rust_tool(
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
 
+    // Note(Important): if you update the # of tools, you need to update the # of tools in fn has_rust_tools(&self) ->
+    // Result<bool, SqliteManagerError> { ... } in shinkai_sqlite/src/shinkai_tool_manager.rs
+
     let result = match tool_router_key {
         // TODO Keep in sync with definitions_custom.rs
         s if s == "local:::__official_shinkai:::shinkai_llm_map_reduce_processor" => {

@@ -44,7 +44,7 @@ fn test_tool_execution_with_config_override() {
     std::env::set_var("WELCOME_MESSAGE", "false");
     let api_key_bearer = std::env::var("API_V2_KEY").unwrap_or_else(|_| "my_api_v2_key".to_string());
     std::env::set_var("API_V2_KEY", api_key_bearer.clone());
-    std::env::set_var("NODE_API_PORT", "9550");
+    std::env::set_var("NODE_API_PORT", "9570");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
     std::env::set_var("IS_TESTING", "1");
     let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&unsafe_deterministic_signature_keypair(0).1));
@@ -147,10 +147,10 @@ fn test_tool_execution_with_config_override() {
         .await;
 
         // Create node1 and node2
-        assert!(port_is_available(9550), "Port 9550 is not available");
+        assert!(port_is_available(9570), "Port 9570 is not available");
         assert!(port_is_available(9560), "Port 9560 is not available");
         // Setup API Server task
-        let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9550);
+        let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9570);
         let api_https_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9560);
 
         let node1_commands_sender_clone = node1_commands_sender.clone();

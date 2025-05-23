@@ -2011,18 +2011,26 @@ impl Node {
         }
 
         // Get the internal_comms preference from the database
-        match db.get_preference::<ShinkaiInternalComms>("internal_comms") {
-            Ok(Some(internal_comms)) => {
-                let _ = res.send(Ok(internal_comms.internal_has_sync_default_tools)).await;
-            }
-            Ok(None) => {
-                let _ = res.send(Ok(false)).await;
-            }
+        let internal_comms_synced = match db.get_preference::<ShinkaiInternalComms>("internal_comms") {
+            Ok(Some(internal_comms)) => internal_comms.internal_has_sync_default_tools,
+            Ok(None) => false,
             Err(e) => {
                 eprintln!("Error getting internal_comms preference: {}", e);
-                let _ = res.send(Ok(false)).await;
+                false
             }
-        }
+        };
+
+        // Check if Rust tools are installed
+        let rust_tools_installed = match db.has_rust_tools() {
+            Ok(installed) => installed,
+            Err(e) => {
+                eprintln!("Error checking Rust tools: {}", e);
+                false
+            }
+        };
+
+        // Both conditions must be true
+        let _ = res.send(Ok(internal_comms_synced && rust_tools_installed)).await;
         Ok(())
     }
 
