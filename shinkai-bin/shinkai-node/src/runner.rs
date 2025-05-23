@@ -218,7 +218,7 @@ pub async fn initialize_node() -> Result<
     let api_listen_address = node_env.clone().api_listen_address;
     let api_https_listen_address = node_env.clone().api_https_listen_address;
     let api_server = tokio::spawn(async move {
-        if let Err(e) = node_api_router::run_api(
+        match node_api_router::run_api(
             node_commands_sender,
             api_listen_address,
             api_https_listen_address,
@@ -228,12 +228,21 @@ pub async fn initialize_node() -> Result<
         )
         .await
         {
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                &format!("API server failed to start: {}", e),
-            );
-            panic!("API server failed to start: {}", e);
+            Ok(_) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    "API server started successfully",
+                );
+            }
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("API server failed to start: {}", e),
+                );
+                panic!("API server failed to start: {}", e);
+            }
         }
     });
 
