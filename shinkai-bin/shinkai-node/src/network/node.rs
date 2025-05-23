@@ -53,6 +53,7 @@ use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use tokio::time::Instant;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
@@ -569,7 +570,9 @@ impl Node {
 
         // Add 6-hour interval for periodic tasks
         let six_hours_in_secs = 6 * 60 * 60; // 6 hours in seconds
-        let mut six_hour_interval = tokio::time::interval(Duration::from_secs(six_hours_in_secs));
+        let start = Instant::now() + Duration::from_secs(six_hours_in_secs);
+        let mut six_hour_interval =
+            tokio::time::interval_at(start, Duration::from_secs(six_hours_in_secs));
 
         // TODO: implement a TCP connection here with a proxy if it's set
 
