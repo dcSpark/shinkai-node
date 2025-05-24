@@ -161,7 +161,7 @@ impl Node {
         let tunnel = active_tunnel.as_ref().map(|t| t.url().to_string());
 
         let response = NgrokStatus {
-            enabled: authtoken.is_some(),
+            enabled: tunnel.is_some(),
             tunnel: tunnel,
             authtoken: authtoken,
         };
