@@ -217,11 +217,13 @@ pub async fn initialize_node() -> Result<
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
     let api_https_listen_address = node_env.clone().api_https_listen_address;
+    let ws_listen_address = node_env.clone().ws_address.unwrap();
     let api_server = tokio::spawn(async move {
         if let Err(e) = node_api_router::run_api(
             node_commands_sender,
             api_listen_address,
             api_https_listen_address,
+            ws_listen_address,
             global_identity_name.clone().to_string(),
             node_keys.private_https_certificate.clone(),
             node_keys.public_https_certificate.clone(),

@@ -104,6 +104,7 @@ pub async fn run_api(
     node_commands_sender: Sender<NodeCommand>,
     address: SocketAddr,
     https_address: SocketAddr,
+    ws_address: SocketAddr,
     node_name: String,
     private_https_certificate: Option<String>,
     public_https_certificate: Option<String>,
@@ -156,7 +157,7 @@ pub async fn run_api(
     );
 
     let ws_routes = warp::path("ws").and(
-        api_ws::api_ws_routes::ws_routes()
+        api_ws::api_ws_routes::ws_routes(ws_address)
             .recover(handle_rejection)
             .with(log)
             .with(cors.clone()),
