@@ -19,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
+use std::net::TcpListener;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::{env, fs};
@@ -49,6 +50,14 @@ impl From<Box<dyn StdError + Send + Sync>> for NodeRunnerError {
     }
 }
 
+/// Checks if a port is available for binding
+fn port_is_available(port: u16) -> bool {
+    match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
 pub async fn initialize_node() -> Result<
     (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, Weak<Mutex<Node>>),
     Box<dyn std::error::Error + Send + Sync>,
@@ -60,6 +69,42 @@ pub async fn initialize_node() -> Result<
     // Fetch Env vars/args
     let args = parse_args();
     let node_env = fetch_node_environment();
+
+    // Check if required ports are available
+    let api_port = node_env.api_listen_address.port();
+    let node_port = node_env.listen_address.port();
+    let ws_port = node_env.ws_address.map(|addr| addr.port());
+    let https_port = node_env.api_https_listen_address.port();
+
+    if !port_is_available(api_port) {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("API port {} is already in use", api_port),
+        )));
+    }
+
+    if !port_is_available(node_port) {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("Node port {} is already in use", node_port),
+        )));
+    }
+
+    if let Some(port) = ws_port {
+        if !port_is_available(port) {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::AddrInUse,
+                format!("WebSocket port {} is already in use", port),
+            )));
+        }
+    }
+
+    if !port_is_available(https_port) {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("HTTPS port {} is already in use", https_port),
+        )));
+    }
 
     // TODO:
     // Read file encryption key from ENV variable and decrypt the secrets file
@@ -218,7 +263,7 @@ pub async fn initialize_node() -> Result<
     let api_listen_address = node_env.clone().api_listen_address;
     let api_https_listen_address = node_env.clone().api_https_listen_address;
     let api_server = tokio::spawn(async move {
-        if let Err(e) = node_api_router::run_api(
+        match node_api_router::run_api(
             node_commands_sender,
             api_listen_address,
             api_https_listen_address,
@@ -228,12 +273,21 @@ pub async fn initialize_node() -> Result<
         )
         .await
         {
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                &format!("API server failed to start: {}", e),
-            );
-            panic!("API server failed to start: {}", e);
+            Ok(_) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    "API server started successfully",
+                );
+            }
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("API server failed to start: {}", e),
+                );
+                panic!("API server failed to start: {}", e);
+            }
         }
     });
 
