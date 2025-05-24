@@ -2504,6 +2504,31 @@ impl Node {
                     let _ = Node::v2_api_get_last_used_agents_and_llms(db_clone, bearer, last, res).await;
                 });
             }
+            NodeCommand::V2ApiSetNgrokAuthToken { bearer, auth_token, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_ngrok_auth_token(db_clone, bearer, auth_token, res).await;
+                });
+            }
+            NodeCommand::V2ApiClearNgrokAuthToken { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_clear_ngrok_auth_token(db_clone, bearer, res).await;
+                });
+            }
+            NodeCommand::V2ApiSetNgrokEnabled { bearer, enabled, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_env = fetch_node_environment();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_ngrok_enabled(db_clone, bearer, enabled, node_env.api_listen_address, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetNgrokStatus { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_ngrok_status(db_clone, bearer, res).await;
+                });
+            }
             _ => (),
         }
     }
