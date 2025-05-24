@@ -169,7 +169,7 @@ pub async fn set_ngrok_enabled_handler(
 }
 
 #[utoipa::path(
-    post,
+    get,
     path = "/v2/get_ngrok_status",
     responses(
         (status = 200, description = "Successfully got ngrok status", body = Value),
