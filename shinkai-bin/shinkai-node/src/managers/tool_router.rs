@@ -428,8 +428,7 @@ impl ToolRouter {
                             }?;
 
                             if !do_install {
-                                tools_skipped += 1;
-                                return Ok::<(), ToolError>(());
+                                return Ok::<_, ToolError>(("skipped", tool_name.clone()));
                             }
 
                             let val: Value = Node::v2_api_import_tool_url_internal(
@@ -446,12 +445,12 @@ impl ToolRouter {
                             // We stored the tool under val["tool"] in the JSON response
                             match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
                                 Ok(_tool) => {
-                                    tools_added += 1;
                                     println!("Successfully imported tool {} (version: {})", tool_name, new_version);
+                                    Ok::<_, ToolError>(("added", tool_name.clone()))
                                 }
                                 Err(err) => {
-                                    tools_failed += 1;
                                     eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
+                                    Ok::<_, ToolError>(("failed", tool_name.clone()))
                                 }
                             }
                         } else if r#type == "Agent" {
@@ -465,8 +464,7 @@ impl ToolRouter {
                                 Err(e) => Err(ToolError::DatabaseError(e.to_string())),
                             }?;
                             if !do_install {
-                                tools_skipped += 1;
-                                return Ok::<(), ToolError>(());
+                                return Ok::<_, ToolError>(("skipped", tool_name.clone()));
                             }
 
                             let val: Value = Node::v2_api_import_agent_url_internal(
@@ -482,19 +480,35 @@ impl ToolRouter {
 
                             match serde_json::from_value::<Agent>(val["agent"].clone()) {
                                 Ok(agent) => {
-                                    tools_added += 1;
                                     println!("Successfully imported agent {}", agent.name);
+                                    Ok::<_, ToolError>(("added", tool_name.clone()))
                                 }
                                 Err(err) => {
-                                    tools_failed += 1;
                                     eprintln!("Couldn't parse 'agent' field as Agent: {}", err);
+                                    Ok::<_, ToolError>(("failed", tool_name.clone()))
                                 }
                             }
+                        } else {
+                            Ok::<_, ToolError>(("skipped", tool_name.clone()))
                         }
-                        Ok::<(), ToolError>(())
                     }
                 });
-            futures::future::join_all(futures).await;
+
+            let results = futures::future::join_all(futures).await;
+            for result in results {
+                match result {
+                    Ok((status, _)) => match status {
+                        "added" => tools_added += 1,
+                        "skipped" => tools_skipped += 1,
+                        "failed" => tools_failed += 1,
+                        _ => {}
+                    },
+                    Err(e) => {
+                        eprintln!("Error processing tool: {}", e);
+                        tools_failed += 1;
+                    }
+                }
+            }
         }
 
         let duration = start_time.elapsed();
