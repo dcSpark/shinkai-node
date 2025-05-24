@@ -155,12 +155,15 @@ impl Node {
             return Ok(());
         }
 
-        let status = db.read_ngrok_auth_token().unwrap();
+        let authtoken = db.read_ngrok_auth_token().unwrap();
+
+        let active_tunnel = ACTIVE_NGROK_TUNNEL.lock().await;
+        let tunnel = active_tunnel.as_ref().map(|t| t.url().to_string());
 
         let response = NgrokStatus {
-            enabled: status.is_some(),
-            tunnel: None,
-            authtoken: status,
+            enabled: authtoken.is_some(),
+            tunnel: tunnel,
+            authtoken: authtoken,
         };
 
         let _ = res.send(Ok(serde_json::to_value(response).unwrap())).await;
