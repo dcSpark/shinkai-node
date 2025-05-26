@@ -545,8 +545,28 @@ impl Node {
         }
         eprintln!(">> Node start set variables successfully");
 
-        let listen_future = self.listen_and_reconnect(self.proxy_connection_info.clone()).fuse();
-        pin_mut!(listen_future);
+        {
+            let listen_address = self.listen_address;
+            let proxy_connection_info = self.proxy_connection_info.clone();
+            let network_job_manager = self.network_job_manager.clone();
+            let conn_limiter = self.conn_limiter.clone();
+            let node_name = self.node_name.clone();
+            let identity_secret_key = self.identity_secret_key.clone();
+            let identity_manager = self.identity_manager.clone();
+
+            tokio::spawn(async move {
+                Node::listen_and_reconnect(
+                    listen_address,
+                    proxy_connection_info,
+                    network_job_manager,
+                    conn_limiter,
+                    node_name,
+                    identity_secret_key,
+                    identity_manager,
+                )
+                .await;
+            });
+        }
 
         let retry_interval_secs = 2;
         let mut retry_interval = tokio::time::interval(Duration::from_secs(retry_interval_secs));
@@ -624,7 +644,6 @@ impl Node {
                             ).await;
                         });
                     },
-                    _listen = listen_future => unreachable!(),
                     _ping = ping_future => {
                         // Clone the necessary variables for `ping_all`
                         let node_name_clone = self.node_name.clone();
@@ -712,22 +731,28 @@ impl Node {
     }
 
     // A function that listens for incoming connections and tries to reconnect if a connection is lost.
-    async fn listen_and_reconnect(&self, proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>) {
+    async fn listen_and_reconnect(
+        listen_address: SocketAddr,
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        network_job_manager: Arc<Mutex<NetworkJobManager>>,
+        conn_limiter: Arc<ConnectionLimiter>,
+        node_name: ShinkaiName,
+        identity_secret_key: SigningKey,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+    ) {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("{} > TCP: Starting listen and reconnect loop.", self.listen_address),
+            &format!("{} > TCP: Starting listen and reconnect loop.", listen_address),
         );
 
         let mut retry_count = 0;
 
         loop {
-            // let listen_address = self.listen_address;
-            let identity_manager = self.identity_manager.clone();
-            let network_job_manager = self.network_job_manager.clone();
-            // let conn_limiter = self.conn_limiter.clone();
-            let node_name = self.node_name.clone();
-            let identity_secret_key = self.identity_secret_key.clone();
+            let identity_manager = identity_manager.clone();
+            let network_job_manager = network_job_manager.clone();
+            let node_name = node_name.clone();
+            let identity_secret_key = identity_secret_key.clone();
 
             let proxy_info = {
                 let proxy_info_lock = proxy_connection_info.lock().await;
@@ -735,13 +760,33 @@ impl Node {
             };
 
             if let Some(proxy_info) = proxy_info {
-                let connection_result = Node::establish_proxy_connection(
-                    identity_manager.clone(),
-                    &proxy_info,
-                    node_name,
-                    identity_secret_key,
-                )
-                .await;
+                // Spawn the proxy connection establishment on a new Tokio task
+                let identity_manager_spawn = identity_manager.clone();
+                let proxy_info_spawn = proxy_info.clone();
+                let node_name_spawn = node_name;
+                let identity_secret_key_spawn = identity_secret_key;
+
+                let handle = tokio::spawn(async move {
+                    Node::establish_proxy_connection(
+                        identity_manager_spawn,
+                        &proxy_info_spawn,
+                        node_name_spawn,
+                        identity_secret_key_spawn,
+                    )
+                    .await
+                });
+
+                let connection_result = match handle.await {
+                    Ok(res) => res,
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Task join error while establishing proxy connection: {:?}", e),
+                        );
+                        Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
+                    }
+                };
 
                 match connection_result {
                     Ok(Some((reader, writer))) => {
@@ -775,16 +820,16 @@ impl Node {
 
         // Execute direct listening if no proxy was ever connected
         let result = Self::handle_listen_connection(
-            self.listen_address,
-            self.network_job_manager.clone(),
-            self.conn_limiter.clone(),
-            self.node_name.clone(),
+            listen_address,
+            network_job_manager.clone(),
+            conn_limiter,
+            node_name.clone(),
         )
         .await;
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Error,
-            &format!("{} > TCP: Listening error {:?}", self.listen_address, result),
+            &format!("{} > TCP: Listening error {:?}", listen_address, result),
         );
     }
 
