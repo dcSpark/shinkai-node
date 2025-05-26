@@ -735,13 +735,33 @@ impl Node {
             };
 
             if let Some(proxy_info) = proxy_info {
-                let connection_result = Node::establish_proxy_connection(
-                    identity_manager.clone(),
-                    &proxy_info,
-                    node_name,
-                    identity_secret_key,
-                )
-                .await;
+                // Spawn the proxy connection establishment on a new Tokio task
+                let identity_manager_spawn = identity_manager.clone();
+                let proxy_info_spawn = proxy_info.clone();
+                let node_name_spawn = node_name;
+                let identity_secret_key_spawn = identity_secret_key;
+
+                let handle = tokio::spawn(async move {
+                    Node::establish_proxy_connection(
+                        identity_manager_spawn,
+                        &proxy_info_spawn,
+                        node_name_spawn,
+                        identity_secret_key_spawn,
+                    )
+                    .await
+                });
+
+                let connection_result = match handle.await {
+                    Ok(res) => res,
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("Task join error while establishing proxy connection: {:?}", e),
+                        );
+                        Err(io::Error::new(io::ErrorKind::Other, e.to_string()))
+                    }
+                };
 
                 match connection_result {
                     Ok(Some((reader, writer))) => {
