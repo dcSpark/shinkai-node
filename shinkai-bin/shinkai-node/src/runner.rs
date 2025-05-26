@@ -242,22 +242,8 @@ pub async fn initialize_node() -> Result<
     let start_node = Arc::clone(&node);
     let node_copy = Arc::downgrade(&start_node.clone());
 
-    // Node task
-    let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
-
     // Copy of node commands center
     let node_commands_sender_copy = node_commands_sender.clone();
-
-    // Check if the node is ready
-    if !node.lock().await.is_node_ready().await {
-        println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
-    }
-    print_node_info(
-        &node_env,
-        &encryption_public_key_string,
-        &identity_public_key_string,
-        &main_db_path,
-    );
 
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
@@ -290,6 +276,15 @@ pub async fn initialize_node() -> Result<
             }
         }
     });
+
+    // Node task
+    let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
+    print_node_info(
+        &node_env,
+        &encryption_public_key_string,
+        &identity_public_key_string,
+        &main_db_path,
+    );
 
     // Return the node_commands_sender_copy and the tasks
     Ok((node_commands_sender_copy, api_server, node_task, node_copy))

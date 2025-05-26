@@ -20,7 +20,6 @@ pub struct IdentityManager {
     pub local_identities: Vec<Identity>,
     pub db: Weak<SqliteManager>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
-    pub is_ready: bool,
 }
 
 // Note this makes testing much easier
@@ -77,17 +76,11 @@ impl IdentityManager {
 
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new().await));
 
-        // Logic to check if the node is ready
-        let current_ready_status = identities.iter().any(|identity| {
-            matches!(identity, Identity::Standard(standard_identity) if standard_identity.identity_type == StandardIdentityType::Profile)
-        });
-
         Ok(Self {
             local_node_name: local_node_name.extract_node(),
             local_identities: identities,
             db,
             external_identity_manager,
-            is_ready: current_ready_status,
         })
     }
 
@@ -110,17 +103,7 @@ impl IdentityManager {
             ShinkaiLogLevel::Info,
             format!("add_profile_subidentity > identity: {}", identity).as_str(),
         );
-        let previously_had_profile_identity = self.has_profile_identity();
         self.local_identities.push(Identity::Standard(identity.clone()));
-
-        if !previously_had_profile_identity && self.has_profile_identity() {
-            shinkai_log(
-                ShinkaiLogOption::Identity,
-                ShinkaiLogLevel::Debug,
-                format!("YAY! first profile added! identity: {}", identity).as_str(),
-            );
-            self.is_ready = true;
-        }
         Ok(())
     }
 
