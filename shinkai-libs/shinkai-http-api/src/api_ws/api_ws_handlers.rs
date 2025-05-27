@@ -1,17 +1,17 @@
 use std::sync::Arc;
 use warp::filters::ws::{Message, WebSocket};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use std::env;
 use tokio::sync::Mutex;
 use futures::{StreamExt, SinkExt};
 use tokio_tungstenite::tungstenite::Message as TungsteniteMessage;
 use bytes::Bytes;
 
 pub async fn ws_handler(
-    ws: WebSocket,
-    ws_address: std::net::SocketAddr,
+    ws: WebSocket
 ) {
     // Get the target WebSocket server URL
-    let target_url = format!("ws://{}:{}/ws", ws_address.ip(), ws_address.port());
+    let target_url = format!("ws://localhost:{}/ws", env::var("NODE_WS_PORT").unwrap_or_else(|_| "9551".to_string()));
     
     // Connect to the target WebSocket server
     match tokio_tungstenite::connect_async(target_url).await {

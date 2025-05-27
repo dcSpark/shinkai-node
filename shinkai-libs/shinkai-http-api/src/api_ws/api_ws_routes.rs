@@ -25,14 +25,14 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
 }
 
 /// Create the Warp routes for WebSocket endpoints
-pub fn ws_routes(ws_address: std::net::SocketAddr) -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
+pub fn ws_routes() -> impl Filter<Extract = impl warp::Reply, Error = Rejection> + Clone {
     tracing::info!("Setting up WebSocket routes");
 
     let root_ws = warp::path::end()
         .and(warp::ws())
         .map(move |ws| {
             let ws: warp::ws::Ws = ws;
-            ws.on_upgrade(move |socket| ws_handler(socket, ws_address))
+            ws.on_upgrade(move |socket| ws_handler(socket))
         });
 
     root_ws

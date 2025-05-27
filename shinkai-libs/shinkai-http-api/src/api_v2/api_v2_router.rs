@@ -10,7 +10,6 @@ use super::api_v2_handlers_swagger_ui::swagger_ui_routes;
 use super::api_v2_handlers_tools::tool_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
 use super::api_v2_handlers_wallets::wallet_routes;
-use super::api_v2_handlers_ngrok::ngrok_routes;
 use async_channel::Sender;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -31,7 +30,6 @@ pub fn v2_routes(
     let tool_routes = tool_routes(node_commands_sender.clone());
     let cron_routes = cron_routes(node_commands_sender.clone(), node_name.clone());
     let oauth_routes = oauth_routes(node_commands_sender.clone());
-    let ngrok_routes = ngrok_routes(node_commands_sender.clone());
 
     general_routes
         .or(vecfs_routes)
@@ -43,7 +41,6 @@ pub fn v2_routes(
         .or(tool_routes)
         .or(cron_routes)
         .or(oauth_routes)
-        .or(ngrok_routes)
 }
 
 pub fn with_sender(
