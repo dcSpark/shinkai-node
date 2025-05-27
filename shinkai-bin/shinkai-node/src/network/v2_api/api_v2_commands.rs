@@ -772,11 +772,6 @@ impl Node {
                 return Ok(());
             }
         };
-        let docker_status = match shinkai_tools_runner::tools::container_utils::is_docker_available() {
-            shinkai_tools_runner::tools::container_utils::DockerStatus::NotInstalled => "not-installed",
-            shinkai_tools_runner::tools::container_utils::DockerStatus::NotRunning => "not-running",
-            shinkai_tools_runner::tools::container_utils::DockerStatus::Running => "running",
-        };
 
         let _ = res
             .send(Ok(serde_json::json!({
@@ -784,7 +779,7 @@ impl Node {
                 "public_https_certificate": public_https_certificate,
                 "version": version,
                 "update_requires_reset": needs_global_reset,
-                "docker_status": docker_status,
+                "docker_status": "not-installed",
             })))
             .await;
         Ok(())
