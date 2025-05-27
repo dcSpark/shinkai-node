@@ -235,13 +235,27 @@ impl Node {
         ));
 
         // Initialize ProxyConnectionInfo if proxy_identity is provided
-        let proxy_connection_info = Arc::new(Mutex::new(proxy_identity.map(|proxy_identity| {
-            let proxy_identity = ShinkaiName::new(proxy_identity).expect("Invalid proxy identity name");
-            ProxyConnectionInfo {
-                proxy_identity,
-                tcp_connection: None,
-            }
-        })));
+        let proxy_connection_info: Option<ProxyConnectionInfo> = proxy_identity.and_then(|proxy_identity| {
+            ShinkaiName::new(proxy_identity.clone())
+                .inspect_err(|_| {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        format!("Invalid proxy identity name: {}", proxy_identity).as_str(),
+                    );
+                })
+                .map_or_else(
+                    |_| None,
+                    |proxy_identity| {
+                        Some(ProxyConnectionInfo {
+                            proxy_identity,
+                            tcp_connection: None,
+                        })
+                    },
+                )
+        });
+        let proxy_connection_info = Arc::new(Mutex::new(proxy_connection_info));
+
         let proxy_connection_info_weak = Arc::downgrade(&proxy_connection_info);
 
         let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>> = {
