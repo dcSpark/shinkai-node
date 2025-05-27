@@ -4,7 +4,7 @@ use shinkai_message_primitives::{
     schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo}, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::managers::identity_manager::IdentityManagerTrait;
 

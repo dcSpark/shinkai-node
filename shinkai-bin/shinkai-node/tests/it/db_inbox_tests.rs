@@ -1,12 +1,9 @@
 use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use shinkai_message_primitives::schemas::identity::{StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    MessageBody, MessageData, ShinkaiMessage, ShinkaiVersion,
+    MessageBody, ShinkaiMessage,
 };
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, MessageSchemaType};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
@@ -14,7 +11,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 
 use std::path::PathBuf;

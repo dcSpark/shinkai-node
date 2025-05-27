@@ -162,10 +162,9 @@ impl SqliteManager {
                     .map(|new_entry| match new_entry {
                         ToolConfig::BasicConfig(new_basic) => {
                             let preserved_value = old_config.iter().find_map(|old_entry| {
-                                if let ToolConfig::BasicConfig(old_basic) = old_entry {
-                                    if old_basic.key_name == new_basic.key_name {
-                                        return old_basic.key_value.clone();
-                                    }
+                                let ToolConfig::BasicConfig(old_basic) = old_entry;
+                                if old_basic.key_name == new_basic.key_name {
+                                    return old_basic.key_value.clone();
                                 }
                                 None
                             });
@@ -193,10 +192,9 @@ impl SqliteManager {
                     .map(|new_entry| match new_entry {
                         ToolConfig::BasicConfig(new_basic) => {
                             let preserved_value = old_config.iter().find_map(|old_entry| {
-                                if let ToolConfig::BasicConfig(old_basic) = old_entry {
-                                    if old_basic.key_name == new_basic.key_name {
-                                        return old_basic.key_value.clone();
-                                    }
+                                let ToolConfig::BasicConfig(old_basic) = old_entry;
+                                if old_basic.key_name == new_basic.key_name {
+                                    return old_basic.key_value.clone();
                                 }
                                 None
                             });
@@ -224,10 +222,9 @@ impl SqliteManager {
                     .map(|new_entry| match new_entry {
                         ToolConfig::BasicConfig(new_basic) => {
                             let preserved_value = old_config.iter().find_map(|old_entry| {
-                                if let ToolConfig::BasicConfig(old_basic) = old_entry {
-                                    if old_basic.key_name == new_basic.key_name {
-                                        return old_basic.key_value.clone();
-                                    }
+                                let ToolConfig::BasicConfig(old_basic) = old_entry;
+                                if old_basic.key_name == new_basic.key_name {
+                                    return old_basic.key_value.clone();
                                 }
                                 None
                             });
@@ -706,7 +703,7 @@ impl SqliteManager {
                 SqliteManagerError::DatabaseError(e)
             })?;
 
-        Ok(count >= 4)
+        Ok(count >= 7)
     }
 
     // Update the FTS table when inserting or updating a tool
@@ -1020,14 +1017,13 @@ impl SqliteManager {
                     for (key_to_set, value_to_set) in &values {
                         // Iterate through the tool's config entries
                         for config_entry in &mut deno_tool.config {
-                            if let ToolConfig::BasicConfig(basic_config) = config_entry {
-                                // 2.1 Check if the key_name matches
-                                if &basic_config.key_name == key_to_set {
-                                    // 2.2 Set the key_value
-                                    basic_config.key_value = Some(value_to_set.clone());
-                                    config_updated = true;
-                                    break; // Move to the next key-value pair once matched
-                                }
+                            let ToolConfig::BasicConfig(basic_config) = config_entry;
+                            // 2.1 Check if the key_name matches
+                            if &basic_config.key_name == key_to_set {
+                                // 2.2 Set the key_value
+                                basic_config.key_value = Some(value_to_set.clone());
+                                config_updated = true;
+                                break; // Move to the next key-value pair once matched
                             }
                         }
                     }
@@ -1037,14 +1033,13 @@ impl SqliteManager {
                     for (key_to_set, value_to_set) in &values {
                         // Iterate through the tool's config entries
                         for config_entry in &mut python_tool.config {
-                            if let ToolConfig::BasicConfig(basic_config) = config_entry {
-                                // 2.1 Check if the key_name matches
-                                if &basic_config.key_name == key_to_set {
-                                    // 2.2 Set the key_value
-                                    basic_config.key_value = Some(value_to_set.clone());
-                                    config_updated = true;
-                                    break; // Move to the next key-value pair once matched
-                                }
+                            let ToolConfig::BasicConfig(basic_config) = config_entry;
+                            // 2.1 Check if the key_name matches
+                            if &basic_config.key_name == key_to_set {
+                                // 2.2 Set the key_value
+                                basic_config.key_value = Some(value_to_set.clone());
+                                config_updated = true;
+                                break; // Move to the next key-value pair once matched
                             }
                         }
                     }

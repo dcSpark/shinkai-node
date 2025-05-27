@@ -766,37 +766,6 @@ impl Node {
 
         let version = env!("CARGO_PKG_VERSION");
 
-        // Check if the version is 0.9.0
-        let lancedb_exists = {
-            // DB Path Env Vars
-            let node_storage_path: String = env::var("NODE_STORAGE_PATH").unwrap_or_else(|_| "storage".to_string());
-
-            // Try to open the folder main_db and search for lancedb
-            let main_db_path = std::path::Path::new(&node_storage_path).join("main_db");
-
-            if let Ok(entries) = std::fs::read_dir(&main_db_path) {
-                entries.filter_map(Result::ok).any(|entry| {
-                    let entry_path = entry.path();
-                    if entry_path.is_dir() {
-                        if entry_path.to_str().map_or(false, |s| s.contains("lancedb")) {
-                            return true;
-                        }
-                        // Check one more level deep
-                        if let Ok(sub_entries) = std::fs::read_dir(&entry_path) {
-                            return sub_entries.filter_map(Result::ok).any(|sub_entry| {
-                                let sub_entry_path = sub_entry.path();
-                                sub_entry_path.is_dir()
-                                    && sub_entry_path.to_str().map_or(false, |s| s.contains("lance"))
-                            });
-                        }
-                    }
-                    false
-                })
-            } else {
-                false
-            }
-        };
-
         let (_current_version, needs_global_reset) = match db.get_version() {
             Ok(version) => version,
             Err(_err) => {
@@ -810,19 +779,14 @@ impl Node {
                 return Ok(());
             }
         };
-        let docker_status = match shinkai_tools_runner::tools::container_utils::is_docker_available() {
-            shinkai_tools_runner::tools::container_utils::DockerStatus::NotInstalled => "not-installed",
-            shinkai_tools_runner::tools::container_utils::DockerStatus::NotRunning => "not-running",
-            shinkai_tools_runner::tools::container_utils::DockerStatus::Running => "running",
-        };
 
         let _ = res
             .send(Ok(serde_json::json!({
                 "is_pristine": !db.has_any_profile().unwrap_or(false),
                 "public_https_certificate": public_https_certificate,
                 "version": version,
-                "update_requires_reset": needs_global_reset || lancedb_exists,
-                "docker_status": docker_status,
+                "update_requires_reset": needs_global_reset,
+                "docker_status": "not-installed",
             })))
             .await;
         Ok(())
@@ -2018,18 +1982,26 @@ impl Node {
         }
 
         // Get the internal_comms preference from the database
-        match db.get_preference::<ShinkaiInternalComms>("internal_comms") {
-            Ok(Some(internal_comms)) => {
-                let _ = res.send(Ok(internal_comms.internal_has_sync_default_tools)).await;
-            }
-            Ok(None) => {
-                let _ = res.send(Ok(false)).await;
-            }
+        let internal_comms_synced = match db.get_preference::<ShinkaiInternalComms>("internal_comms") {
+            Ok(Some(internal_comms)) => internal_comms.internal_has_sync_default_tools,
+            Ok(None) => false,
             Err(e) => {
                 eprintln!("Error getting internal_comms preference: {}", e);
-                let _ = res.send(Ok(false)).await;
+                false
             }
-        }
+        };
+
+        // Check if Rust tools are installed
+        let rust_tools_installed = match db.has_rust_tools() {
+            Ok(installed) => installed,
+            Err(e) => {
+                eprintln!("Error checking Rust tools: {}", e);
+                false
+            }
+        };
+
+        // Both conditions must be true
+        let _ = res.send(Ok(internal_comms_synced && rust_tools_installed)).await;
         Ok(())
     }
 

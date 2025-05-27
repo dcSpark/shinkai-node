@@ -8,14 +8,12 @@ use super::wallet_mixed::Asset;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum UsageTypeInquiry {
     PerUse,
-    Downloadable,
 }
 
 impl fmt::Display for UsageTypeInquiry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UsageTypeInquiry::PerUse => write!(f, "PerUse"),
-            UsageTypeInquiry::Downloadable => write!(f, "Downloadable"),
         }
     }
 }
@@ -31,9 +29,6 @@ impl ShinkaiToolOffering {
     pub fn get_price_for_usage(&self, usage_type_inquiry: &UsageTypeInquiry) -> Option<&ToolPrice> {
         match (usage_type_inquiry, &self.usage_type) {
             (UsageTypeInquiry::PerUse, UsageType::PerUse(price)) => Some(price),
-            (UsageTypeInquiry::Downloadable, UsageType::Downloadable(price)) => Some(price),
-            (UsageTypeInquiry::PerUse, UsageType::Both { per_use_price, .. }) => Some(per_use_price),
-            (UsageTypeInquiry::Downloadable, UsageType::Both { download_price, .. }) => Some(download_price),
             _ => None,
         }
     }
@@ -56,19 +51,12 @@ impl ShinkaiToolOffering {
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum UsageType {
     PerUse(ToolPrice),
-    Downloadable(ToolPrice),
-    Both {
-        per_use_price: ToolPrice,
-        download_price: ToolPrice,
-    },
 }
 
 impl UsageType {
     pub fn per_use_usd_price(&self) -> f32 {
         match self {
             UsageType::PerUse(price) => price.to_usd_float(),
-            UsageType::Both { per_use_price, .. } => per_use_price.to_usd_float(),
-            _ => 0.0,
         }
     }
 }
@@ -127,18 +115,14 @@ mod tests {
     fn test_shinkai_tool_offering_to_json() {
         let offering = ShinkaiToolOffering {
             tool_key: "test_tool".to_string(),
-            usage_type: UsageType::Both {
-                per_use_price: ToolPrice::Free,
-                download_price: ToolPrice::DirectDelegation("1000".to_string()),
-            },
+            usage_type: UsageType::PerUse(ToolPrice::Free),
             meta_description: Some("A tool for testing".to_string()),
         };
 
         let json = serde_json::to_string(&offering).expect("Failed to convert to JSON");
         println!("{}", json);
         assert!(json.contains("\"tool_key\":\"test_tool\""));
-        assert!(json.contains("\"per_use_price\":\"Free\""));
-        assert!(json.contains("\"download_price\":{\"DirectDelegation\":\"1000\"}"));
+        assert!(json.contains("\"PerUse\":\"Free\""));
     }
 
     #[test]
@@ -147,12 +131,7 @@ mod tests {
         {
             "tool_key": "test_tool",
             "usage_type": {
-                "Both": {
-                    "per_use_price": "Free",
-                    "download_price": {
-                        "DirectDelegation": "1000"
-                    }
-                }
+                "PerUse": "Free"
             },
             "meta_description": "A tool for testing"
         }"#;
@@ -160,16 +139,7 @@ mod tests {
         let offering: ShinkaiToolOffering = serde_json::from_str(json).expect("Failed to convert from JSON");
         assert_eq!(offering.tool_key, "test_tool");
         assert_eq!(offering.meta_description, Some("A tool for testing".to_string()));
-        if let UsageType::Both {
-            per_use_price,
-            download_price,
-        } = offering.usage_type
-        {
-            assert_eq!(per_use_price, ToolPrice::Free);
-            assert_eq!(download_price, ToolPrice::DirectDelegation("1000".to_string()));
-        } else {
-            panic!("UsageType did not match expected value");
-        }
+        assert!(matches!(offering.usage_type, UsageType::PerUse(ToolPrice::Free)));
     }
 
     #[test]

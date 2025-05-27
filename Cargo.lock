@@ -2565,7 +2565,7 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "log",
- "rand 0.9.1",
+ "rand 0.8.5",
  "regex",
  "serde_json",
  "serde_urlencoded",
@@ -3006,7 +3006,7 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
 dependencies = [
- "phf_shared 0.11.3",
+ "phf_shared 0.11.2",
  "rand 0.8.5",
 ]
 
@@ -3344,10 +3344,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49df843a9161c85bb8aae55f101bc0bac8bcafd637a620d9122fd7e0b2f7422e"
 dependencies = [
  "bytes",
- "getrandom 0.3.3",
- "lru-slab",
- "rand 0.9.1",
- "ring 0.17.14",
+ "getrandom 0.2.15",
+ "rand 0.8.5",
+ "ring 0.17.8",
  "rustc-hash",
  "rustls 0.23.27",
  "rustls-pki-types",
@@ -3462,7 +3461,7 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
- "getrandom 0.2.16",
+ "getrandom 0.2.15",
 ]
 
 [[package]]
@@ -3471,7 +3470,7 @@ version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d9a13982dcf210057a8a78572b2217b667c3beacbf3a0d8b454f6f82837d38"
 dependencies = [
- "getrandom 0.3.3",
+ "getrandom 0.3.2",
 ]
 
 [[package]]
@@ -3736,7 +3735,6 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "sse-stream",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
@@ -4258,7 +4256,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "chrono",
  "dashmap",
@@ -4275,7 +4273,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_embedding"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4296,7 +4294,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "async-trait",
  "bincode",
@@ -4329,7 +4327,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -4352,6 +4350,7 @@ dependencies = [
  "tokio",
  "tokio-rustls 0.23.4",
  "tokio-stream",
+ "tokio-tungstenite 0.26.2",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
@@ -4364,7 +4363,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "chrono",
  "serde",
@@ -4377,29 +4376,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "shinkai_mcp"
-version = "1.0.4"
-dependencies = [
- "anyhow",
- "async-trait",
- "futures",
- "home",
- "log",
- "mockall",
- "once_cell",
- "regex",
- "rmcp",
- "serde",
- "serde_json",
- "strip-ansi-escapes",
- "tokio",
- "tokio-test",
- "tracing",
-]
-
-[[package]]
 name = "shinkai_message_primitives"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -4427,7 +4405,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -4495,7 +4473,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_non_rust_code"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "serde",
  "serde_json",
@@ -4506,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "bincode",
  "blake3",
@@ -4538,7 +4516,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tcp_relayer"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -4558,7 +4536,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "1.0.4"
+version = "1.0.8"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -5213,6 +5191,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-tungstenite"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a9daff607c6d2bf6c16fd681ccb7eecc83e4e2cdc1ca067ffaadfca5de7f084"
+dependencies = [
+ "futures-util",
+ "log",
+ "native-tls",
+ "tokio",
+ "tokio-native-tls",
+ "tungstenite 0.26.2",
+]
+
+[[package]]
 name = "tokio-util"
 version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5494,6 +5486,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tungstenite"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4793cb5e56680ecbb1d843515b23b6de9a75eb04b66643e256a396d43be33c13"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http 1.1.0",
+ "httparse",
+ "log",
+ "native-tls",
+ "rand 0.9.1",
+ "sha1",
+ "thiserror 2.0.12",
+ "utf-8",
+]
+
+[[package]]
 name = "typed-arena"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5665,8 +5675,8 @@ version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "458f7a779bf54acc9f347480ac654f68407d3aab21269a6e3c9f922acd9e2da9"
 dependencies = [
- "getrandom 0.3.3",
- "rand 0.9.1",
+ "getrandom 0.2.15",
+ "rand 0.8.5",
 ]
 
 [[package]]
@@ -6481,6 +6491,7 @@ dependencies = [
  "lzma-rs",
  "memchr",
  "pbkdf2",
+ "rand 0.8.5",
  "sha1",
  "thiserror 2.0.12",
  "time",

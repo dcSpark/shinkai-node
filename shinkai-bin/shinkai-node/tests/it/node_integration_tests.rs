@@ -1,5 +1,4 @@
 use async_channel::{bounded, Receiver, Sender};
-use core::panic;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;

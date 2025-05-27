@@ -418,6 +418,11 @@ impl Node {
         profile: &ShinkaiName,
         _ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), NodeError> {
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!("internal_add_llm_provider > llm_provider: {:?}", llm_provider).as_str(),
+        );
         match db.add_llm_provider(llm_provider.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = identity_manager.lock().await;
