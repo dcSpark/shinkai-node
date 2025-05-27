@@ -259,6 +259,11 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(check_default_tools_sync_handler);
 
+    let docker_status_route = warp::path("docker_status")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and_then(docker_status_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -292,6 +297,7 @@ pub fn general_routes(
         .or(set_preferences_route)
         .or(get_preferences_route)
         .or(check_default_tools_sync_route)
+        .or(docker_status_route)
 }
 
 #[derive(Deserialize)]
@@ -1543,6 +1549,30 @@ pub async fn check_default_tools_sync_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/docker_status",
+    responses(
+        (status = 200, description = "Docker status retrieved successfully", body = HashMap<String, Value>),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn docker_status_handler(sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiDockerStatus { res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1579,6 +1609,7 @@ pub async fn check_default_tools_sync_handler(
         set_preferences_handler,
         get_preferences_handler,
         check_default_tools_sync_handler,
+        docker_status_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,

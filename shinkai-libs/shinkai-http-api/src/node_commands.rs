@@ -458,6 +458,9 @@ pub enum NodeCommand {
     V2ApiHealthCheck {
         res: Sender<Result<serde_json::Value, APIError>>,
     },
+    V2ApiDockerStatus {
+        res: Sender<Result<serde_json::Value, APIError>>,
+    },
     V2ApiGetStorageLocation {
         bearer: String,
         res: Sender<Result<String, APIError>>,
@@ -1011,5 +1014,5 @@ pub enum NodeCommand {
         bearer: String,
         tool_router_key: String,
         res: Sender<Result<Value, APIError>>,
-    },
+    }
 }
