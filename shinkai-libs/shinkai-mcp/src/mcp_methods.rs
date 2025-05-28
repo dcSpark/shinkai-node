@@ -1,10 +1,10 @@
+use crate::{command::CommandWrappedInShellBuilder, utils::disect_command};
 use anyhow::Result;
 use rmcp::{
     model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool}, transport::{SseTransport, TokioChildProcess}, ServiceExt
 };
 use std::collections::HashMap;
 use tokio::process::Command;
-use crate::{command::CommandWrappedInShellBuilder, utils::disect_command};
 
 pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String, String>>) -> Result<Vec<Tool>> {
     let (env_vars, cmd_executable, cmd_args) = disect_command(cmd_str.to_string());
@@ -56,7 +56,8 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
     let _ = client.peer_info();
 
     // List tools
-    let tools_result = client.list_all_tools()
+    let tools_result = client
+        .list_all_tools()
         .await
         .inspect_err(|e| log::error!("error listing tools: {:?}", e));
 
@@ -292,7 +293,7 @@ pub mod tests_mcp_manager {
             assert!(unwrapped.iter().any(|t| t.name == tool));
         }
     }
-
+    /* TODO: Uncomment these tests when we have a way to test them, right now the credentials expire so it does not work consistently
     #[tokio::test]
     async fn test_list_tools_composio_github() {
         let result = list_tools_via_sse("https://mcp.composio.dev/partner/composio/github?customerId=51fcb8d4-16c2-4e33-8a4d-898e54e68fb6&agent=cursor", None).await;
@@ -317,4 +318,5 @@ pub mod tests_mcp_manager {
         println!("tools: {:?}", unwrapped);
         assert!(unwrapped.len() > 1);
     }
+    */
 }

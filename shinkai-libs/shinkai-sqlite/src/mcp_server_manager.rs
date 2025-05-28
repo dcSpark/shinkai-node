@@ -180,3 +180,223 @@ impl SqliteManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use tempfile::NamedTempFile;
+
+    async fn setup_test_db() -> SqliteManager {
+        let temp_file = NamedTempFile::new().unwrap();
+        let db_path = PathBuf::from(temp_file.path());
+        let api_url = String::new();
+        let model_type =
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
+
+        SqliteManager::new(db_path, api_url, model_type).unwrap()
+    }
+
+    fn create_test_mcp_server_env() -> MCPServerEnv {
+        let mut env = HashMap::new();
+        env.insert("API_KEY".to_string(), "test_key_123".to_string());
+        env.insert("BASE_URL".to_string(), "https://api.example.com".to_string());
+        env
+    }
+
+    #[tokio::test]
+    async fn test_update_mcp_server() {
+        let manager = setup_test_db().await;
+
+        // First, add a server to the database
+        let initial_env = create_test_mcp_server_env();
+        let original_server = manager
+            .add_mcp_server(
+                "Test MCP Server".to_string(),
+                MCPServerType::Command,
+                Some("http://original.example.com".to_string()),
+                Some("npx test-original".to_string()),
+                Some(initial_env.clone()),
+                true,
+            )
+            .unwrap();
+
+        let server_id = original_server.id.unwrap();
+
+        // Verify the original server was added correctly
+        assert_eq!(original_server.name, "Test MCP Server");
+        assert_eq!(original_server.r#type, MCPServerType::Command);
+        assert_eq!(original_server.url, Some("http://original.example.com".to_string()));
+        assert_eq!(original_server.command, Some("npx test-original".to_string()));
+        assert_eq!(original_server.env, Some(initial_env));
+        assert!(original_server.is_enabled);
+
+        // Now update the server with new values
+        let mut updated_env = HashMap::new();
+        updated_env.insert("API_KEY".to_string(), "updated_key_456".to_string());
+        updated_env.insert("NEW_CONFIG".to_string(), "new_value".to_string());
+
+        let updated_server = manager
+            .update_mcp_server(
+                server_id,
+                "Updated MCP Server".to_string(),
+                MCPServerType::Sse,
+                Some("https://updated.example.com".to_string()),
+                Some("npx updated-command".to_string()),
+                Some(updated_env.clone()),
+                false,
+            )
+            .unwrap();
+
+        // Verify all fields were updated correctly
+        assert_eq!(updated_server.id, Some(server_id));
+        assert_eq!(updated_server.name, "Updated MCP Server");
+        assert_eq!(updated_server.r#type, MCPServerType::Sse);
+        assert_eq!(updated_server.url, Some("https://updated.example.com".to_string()));
+        assert_eq!(updated_server.command, Some("npx updated-command".to_string()));
+        assert_eq!(updated_server.env, Some(updated_env));
+        assert!(!updated_server.is_enabled);
+
+        // Verify timestamps exist and are valid (they might be the same due to fast execution)
+        assert!(updated_server.created_at.is_some());
+        assert!(updated_server.updated_at.is_some());
+
+        // Verify the update persisted by retrieving the server again
+        let retrieved_server = manager.get_mcp_server(server_id).unwrap().unwrap();
+        assert_eq!(retrieved_server.name, "Updated MCP Server");
+        assert_eq!(retrieved_server.r#type, MCPServerType::Sse);
+        assert_eq!(retrieved_server.url, Some("https://updated.example.com".to_string()));
+        assert_eq!(retrieved_server.command, Some("npx updated-command".to_string()));
+        assert!(!retrieved_server.is_enabled);
+
+        // Verify environment variables were updated correctly
+        if let Some(env) = retrieved_server.env {
+            assert_eq!(env.get("API_KEY").unwrap(), "updated_key_456");
+            assert_eq!(env.get("NEW_CONFIG").unwrap(), "new_value");
+            assert!(!env.contains_key("BASE_URL")); // Old env var should be gone
+        } else {
+            panic!("Environment variables should not be None");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_update_mcp_server_with_none_values() {
+        let manager = setup_test_db().await;
+
+        // Add a server with some initial values
+        let initial_env = create_test_mcp_server_env();
+        let original_server = manager
+            .add_mcp_server(
+                "Test Server".to_string(),
+                MCPServerType::Command,
+                Some("http://example.com".to_string()),
+                Some("npx test".to_string()),
+                Some(initial_env),
+                true,
+            )
+            .unwrap();
+
+        let server_id = original_server.id.unwrap();
+
+        // Update with None values for url, command, and env
+        let updated_server = manager
+            .update_mcp_server(
+                server_id,
+                "Updated Server".to_string(),
+                MCPServerType::Sse,
+                None, // url becomes None
+                None, // command becomes None
+                None, // env becomes None
+                false,
+            )
+            .unwrap();
+
+        // Verify None values are handled correctly
+        assert_eq!(updated_server.name, "Updated Server");
+        assert_eq!(updated_server.r#type, MCPServerType::Sse);
+        assert_eq!(updated_server.url, Some("".to_string())); // Should be empty string due to unwrap_or
+        assert_eq!(updated_server.command, Some("".to_string())); // Should be empty string due to unwrap_or
+                                                                  // When env is None, it gets serialized as "{}" and deserialized back as empty HashMap
+        assert_eq!(updated_server.env, Some(HashMap::new()));
+        assert!(!updated_server.is_enabled);
+    }
+
+    #[tokio::test]
+    async fn test_update_nonexistent_mcp_server() {
+        let manager = setup_test_db().await;
+
+        // Try to update a server that doesn't exist
+        let result = manager.update_mcp_server(
+            999, // Non-existent ID
+            "Non-existent Server".to_string(),
+            MCPServerType::Command,
+            Some("http://example.com".to_string()),
+            Some("npx test".to_string()),
+            None,
+            true,
+        );
+
+        // Should return an error since the server doesn't exist
+        assert!(matches!(
+            result,
+            Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_update_mcp_server_env_serialization() {
+        let manager = setup_test_db().await;
+
+        // Add a server
+        let original_server = manager
+            .add_mcp_server(
+                "Test Server".to_string(),
+                MCPServerType::Command,
+                None,
+                None,
+                None,
+                true,
+            )
+            .unwrap();
+
+        let server_id = original_server.id.unwrap();
+
+        // Create a complex environment with various data types as strings
+        let mut complex_env = HashMap::new();
+        complex_env.insert("STRING_VAR".to_string(), "simple_string".to_string());
+        complex_env.insert("NUMBER_VAR".to_string(), "12345".to_string());
+        complex_env.insert("BOOL_VAR".to_string(), "true".to_string());
+        complex_env.insert("PATH_VAR".to_string(), "/path/to/something".to_string());
+        complex_env.insert("SPECIAL_CHARS".to_string(), "value with spaces & symbols!".to_string());
+
+        // Update with complex environment
+        let updated_server = manager
+            .update_mcp_server(
+                server_id,
+                "Complex Env Server".to_string(),
+                MCPServerType::Sse,
+                None,
+                None,
+                Some(complex_env.clone()),
+                true,
+            )
+            .unwrap();
+
+        // Verify environment was serialized and deserialized correctly
+        assert_eq!(updated_server.env, Some(complex_env));
+
+        // Retrieve and verify persistence
+        let retrieved_server = manager.get_mcp_server(server_id).unwrap().unwrap();
+        if let Some(env) = retrieved_server.env {
+            assert_eq!(env.get("STRING_VAR").unwrap(), "simple_string");
+            assert_eq!(env.get("NUMBER_VAR").unwrap(), "12345");
+            assert_eq!(env.get("BOOL_VAR").unwrap(), "true");
+            assert_eq!(env.get("PATH_VAR").unwrap(), "/path/to/something");
+            assert_eq!(env.get("SPECIAL_CHARS").unwrap(), "value with spaces & symbols!");
+        } else {
+            panic!("Environment should not be None");
+        }
+    }
+}
