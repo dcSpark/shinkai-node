@@ -149,9 +149,11 @@ fn test_tool_execution_with_config_override() {
         // Create node1 and node2
         assert!(port_is_available(9570), "Port 9570 is not available");
         assert!(port_is_available(9560), "Port 9560 is not available");
+        assert!(port_is_available(9580), "Port 9580 is not available");
         // Setup API Server task
         let api_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9570);
         let api_https_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9560);
+        let ws_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9580);
 
         let node1_commands_sender_clone = node1_commands_sender.clone();
         let _api_server = tokio::spawn(async move {
@@ -159,6 +161,7 @@ fn test_tool_execution_with_config_override() {
                 node1_commands_sender_clone,
                 api_listen_address,
                 api_https_listen_address,
+                ws_listen_address,
                 node1_identity_name.to_string(),
                 None,
                 None,

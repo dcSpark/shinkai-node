@@ -44,7 +44,12 @@ rmcp = { version = "0.1.5", features = [
     "transport-sse",
 ] }
 uuid = { workspace = true, features = ["v4"] }
-reqwest = { workspace = true, features = ["json", "tokio-native-tls", "multipart", "stream"] }
+reqwest = { workspace = true, features = [
+    "json",
+    "tokio-native-tls",
+    "multipart",
+    "stream",
+] }
 keyphrases = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
@@ -81,6 +86,8 @@ zip = "2.2.1"
 open = "5.3.2"
 sha2 = "0.10"
 toml = "0.8.22"
+ngrok = { version = "0.15.0", features = ["hyper"] }
+url = "2.5.0"
 
 [dev-dependencies]
 mockito = "1.0.2"

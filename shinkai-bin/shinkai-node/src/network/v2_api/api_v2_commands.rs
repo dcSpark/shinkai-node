@@ -46,6 +46,7 @@ use shinkai_tools_primitives::tools::{
     agent_tool_wrapper::AgentToolWrapper, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::{BasicConfig, ToolConfig}, tool_output_arg::ToolOutputArg, tool_types::ToolResult
 };
 use std::collections::HashMap;
+use std::process::Command;
 use std::time::Instant;
 use std::{env, sync::Arc};
 use tokio::sync::Mutex;
@@ -2817,6 +2818,21 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             }
         }
+        Ok(())
+    }
+
+    pub async fn v2_api_docker_status(res: Sender<Result<serde_json::Value, APIError>>) -> Result<(), NodeError> {
+        let docker_status = match shinkai_tools_runner::tools::container_utils::is_docker_available() {
+            shinkai_tools_runner::tools::container_utils::DockerStatus::NotInstalled => "not-installed",
+            shinkai_tools_runner::tools::container_utils::DockerStatus::NotRunning => "not-running",
+            shinkai_tools_runner::tools::container_utils::DockerStatus::Running => "running",
+        };
+
+        let _ = res
+            .send(Ok(serde_json::json!({
+                "docker_status": docker_status,
+            })))
+            .await;
         Ok(())
     }
 }

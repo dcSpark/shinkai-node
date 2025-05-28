@@ -25,7 +25,7 @@ use shinkai_tools_primitives::tools::{
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, UpdateMCPServerRequest, DeleteMCPServerResponse}, node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBody}
+    api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest}, node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBody}
 };
 
 use super::{
@@ -458,6 +458,9 @@ pub enum NodeCommand {
         res: Sender<Result<bool, APIError>>,
     },
     V2ApiHealthCheck {
+        res: Sender<Result<serde_json::Value, APIError>>,
+    },
+    V2ApiDockerStatus {
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiGetStorageLocation {
@@ -1048,5 +1051,23 @@ pub enum NodeCommand {
         mcp_server_id: i64,
         is_enabled: bool,
         res: Sender<Result<MCPServer, APIError>>,
+    },
+    V2ApiSetNgrokAuthToken {
+        bearer: String,
+        auth_token: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiClearNgrokAuthToken {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetNgrokEnabled {
+        bearer: String,
+        enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetNgrokStatus {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
     },
 }
