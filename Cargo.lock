@@ -2823,6 +2823,7 @@ dependencies = [
  "futures-rustls",
  "futures-util",
  "hostname",
+ "hyper 1.5.0",
  "hyper-http-proxy",
  "hyper-util",
  "muxado",
