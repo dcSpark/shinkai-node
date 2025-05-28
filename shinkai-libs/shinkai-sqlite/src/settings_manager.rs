@@ -58,6 +58,29 @@ impl SqliteManager {
 
         Ok(key)
     }
+
+    pub fn set_ngrok_auth_token(&self, auth_token: Option<&str>) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+
+        if let Some(auth_token) = auth_token {
+            let mut stmt = conn.prepare("INSERT OR REPLACE INTO shinkai_settings (key, value) VALUES ('ngrok_auth_token', ?)")?;
+            stmt.execute([auth_token])?;
+        } else {
+            let mut stmt = conn.prepare("DELETE FROM shinkai_settings WHERE key = 'ngrok_auth_token'")?;
+            stmt.execute([])?;
+        }
+
+        Ok(())
+    }
+
+    pub fn read_ngrok_auth_token(&self) -> Result<Option<String>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let stmt = conn.prepare("SELECT value FROM shinkai_settings WHERE key = 'ngrok_auth_token'");
+
+        let auth_token = stmt?.query_row([], |row| row.get(0)).ok();
+
+        Ok(auth_token)
+    }
 }
 
 #[cfg(test)]

@@ -73,6 +73,8 @@ env_logger = { workspace = true }
 zip = "2.2.1"
 open = "5.3.2"
 sha2 = "0.10"
+ngrok = { version = "0.15.0", features = ["hyper"] }
+url = "2.5.0"
 
 [dev-dependencies]
 mockito = "1.0.2"
