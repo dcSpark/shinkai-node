@@ -1014,5 +1014,23 @@ pub enum NodeCommand {
         bearer: String,
         tool_router_key: String,
         res: Sender<Result<Value, APIError>>,
-    }
+    },
+    V2ApiSetNgrokAuthToken {
+        bearer: String,
+        auth_token: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiClearNgrokAuthToken {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetNgrokEnabled {
+        bearer: String,
+        enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetNgrokStatus {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
 }
