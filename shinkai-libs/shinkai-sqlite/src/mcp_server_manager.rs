@@ -107,6 +107,46 @@ impl SqliteManager {
         }
     }
 
+    pub fn update_mcp_server(
+        &self,
+        id: i64,
+        name: String,
+        r#type: MCPServerType,
+        url: Option<String>,
+        command: Option<String>,
+        env: Option<MCPServerEnv>,
+        is_enabled: bool,
+    ) -> Result<MCPServer, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("UPDATE mcp_servers SET name = ?, type = ?, url = ?, command = ?, env = ?, is_enabled = ? WHERE id = ? RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled")?;
+        let mut rows = stmt.query([
+            name,
+            r#type.to_string(),
+            url.clone().unwrap_or("".to_string()),
+            command.clone().unwrap_or("".to_string()),
+            serde_json::to_string(&env).unwrap_or("{}".to_string()),
+            if is_enabled { 1.to_string() } else { 0.to_string() },
+            (id as i32).to_string(),
+        ])?;
+        match rows.next()? {
+            Some(row) => Ok(MCPServer {
+                id: row.get(0)?,
+                created_at: row.get(1)?,
+                updated_at: row.get(2)?,
+                name: row.get(3)?,
+                r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
+                url: row.get(5)?,
+                command: row.get(6)?,
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                },
+                is_enabled: row.get::<_, bool>(8)?,
+            }),
+            None => Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
+        }
+    }
+
     pub fn delete_mcp_server(&self, id: i64) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare("DELETE FROM mcp_servers WHERE id = ?")?;

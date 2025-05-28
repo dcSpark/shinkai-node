@@ -2425,6 +2425,18 @@ impl Node {
                 });
             }
 
+            NodeCommand::V2ApiUpdateMCPServer {
+                bearer,
+                mcp_server,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_mcp_server(db_clone, bearer, mcp_server, &node_name_clone, res).await;
+                });
+            }
+
             NodeCommand::V2ApiImportMCPServerFromGitHubURL {
                 bearer,
                 github_url,

@@ -19,6 +19,17 @@ pub struct AddMCPServerRequest {
 }
 
 #[derive(Deserialize, ToSchema, Debug)]
+pub struct UpdateMCPServerRequest {
+    pub id: i64,
+    pub name: Option<String>,
+    pub r#type: MCPServerType,
+    pub url: Option<String>,
+    pub command: Option<String>,
+    pub env: Option<MCPServerEnv>,
+    pub is_enabled: Option<bool>,
+}
+
+#[derive(Deserialize, ToSchema, Debug)]
 pub struct ImportMCPServerFromGitHubRequest {
     pub github_url: String,
 }
@@ -62,6 +73,13 @@ pub fn mcp_server_routes(
         .and(warp::body::json())
         .and_then(add_mcp_server_handler);
 
+    let update_mcp_server_route = warp::path("update_mcp_server")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(update_mcp_server_handler);
+
     let import_mcp_server_from_github_url_route = warp::path("import_mcp_server_from_github_url")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -96,6 +114,7 @@ pub fn mcp_server_routes(
         .or(delete_mcp_server_route)
         .or(import_mcp_server_from_github_url_route)
         .or(set_enable_mcp_server_route)
+        .or(update_mcp_server_route)
 }
 
 #[utoipa::path(
@@ -298,6 +317,40 @@ pub async fn set_enable_mcp_server_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/update_mcp_server",
+    request_body = UpdateMCPServerRequest,
+    responses(
+        (status = 200, description = "Successfully updated MCP server", body = MCPServer),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn update_mcp_server_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: UpdateMCPServerRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiUpdateMCPServer {
+            bearer,
+            mcp_server: payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -307,6 +360,7 @@ pub async fn set_enable_mcp_server_handler(
         import_mcp_server_from_github_url_handler,
         delete_mcp_server_handler,
         set_enable_mcp_server_handler,
+        update_mcp_server_handler,
     ),
     components(
         schemas(AddMCPServerRequest, MCPServer, APIError)
