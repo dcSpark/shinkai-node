@@ -39,6 +39,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::collections::HashMap;
+use std::process::Command;
 use std::time::Instant;
 use std::{env, sync::Arc};
 use tokio::sync::Mutex;
@@ -2239,6 +2240,21 @@ impl Node {
             .get_last_n_parent_agent_or_llm_provider_ids(last)
             .unwrap_or_else(|_| vec![]);
         let _ = res.send(Ok(last_used_agents_llms)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_docker_status(res: Sender<Result<serde_json::Value, APIError>>) -> Result<(), NodeError> {
+        let docker_status = match shinkai_tools_runner::tools::container_utils::is_docker_available() {
+            shinkai_tools_runner::tools::container_utils::DockerStatus::NotInstalled => "not-installed",
+            shinkai_tools_runner::tools::container_utils::DockerStatus::NotRunning => "not-running",
+            shinkai_tools_runner::tools::container_utils::DockerStatus::Running => "running",
+        };
+
+        let _ = res
+            .send(Ok(serde_json::json!({
+                "docker_status": docker_status,
+            })))
+            .await;
         Ok(())
     }
 }

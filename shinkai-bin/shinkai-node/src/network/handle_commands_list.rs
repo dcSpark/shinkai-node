@@ -2504,6 +2504,11 @@ impl Node {
                     let _ = Node::v2_api_get_last_used_agents_and_llms(db_clone, bearer, last, res).await;
                 });
             }
+            NodeCommand::V2ApiDockerStatus { res } => {
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_docker_status(res).await;
+                });
+            }
             _ => (),
         }
     }
