@@ -1,34 +1,35 @@
 use libp2p::{
     core::upgrade,
-    identity::{Keypair, ed25519},
+    identity::Keypair,
     noise,
-    request_response::{RequestResponse, RequestResponseCodec, RequestResponseEvent, ProtocolSupport, RequestResponseMessage, RequestResponseConfig},
-    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId, Transport,
+    request_response::{self, Codec, Event, ProtocolSupport, Config},
+    swarm::{NetworkBehaviour, Swarm},
+    tcp, yamux, Multiaddr, PeerId, Transport, SwarmBuilder,
 };
-use futures::{prelude::*, StreamExt};
+use futures::prelude::*;
 use async_trait::async_trait;
 use std::error::Error;
 
 #[derive(Clone)]
 pub struct ShinkaiProtocol();
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShinkaiRequest(pub Vec<u8>);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShinkaiResponse(pub Vec<u8>);
 
-impl libp2p::request_response::ProtocolName for ShinkaiProtocol {
-    fn protocol_name(&self) -> &[u8] {
-        b"/shinkai/1"
+impl AsRef<str> for ShinkaiProtocol {
+    fn as_ref(&self) -> &str {
+        "/shinkai/1"
     }
 }
 
+#[derive(Clone)]
 pub struct ShinkaiCodec;
 
 #[async_trait]
-impl RequestResponseCodec for ShinkaiCodec {
+impl Codec for ShinkaiCodec {
     type Protocol = ShinkaiProtocol;
     type Request = ShinkaiRequest;
     type Response = ShinkaiResponse;
@@ -67,18 +68,17 @@ impl RequestResponseCodec for ShinkaiCodec {
 }
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "ComposedEvent")]
 pub struct ComposedBehaviour {
-    pub req_res: RequestResponse<ShinkaiCodec>,
+    pub req_res: request_response::Behaviour<ShinkaiCodec>,
 }
 
 #[derive(Debug)]
 pub enum ComposedEvent {
-    ReqRes(RequestResponseEvent<ShinkaiRequest, ShinkaiResponse>),
+    ReqRes(Event<ShinkaiRequest, ShinkaiResponse>),
 }
 
-impl From<RequestResponseEvent<ShinkaiRequest, ShinkaiResponse>> for ComposedEvent {
-    fn from(event: RequestResponseEvent<ShinkaiRequest, ShinkaiResponse>) -> Self {
+impl From<Event<ShinkaiRequest, ShinkaiResponse>> for ComposedEvent {
+    fn from(event: Event<ShinkaiRequest, ShinkaiResponse>) -> Self {
         ComposedEvent::ReqRes(event)
     }
 }
@@ -89,22 +89,24 @@ pub struct Libp2pNetwork {
 
 impl Libp2pNetwork {
     pub async fn new(keypair: Keypair, listen: Multiaddr) -> Result<Self, Box<dyn Error>> {
-        let noise_keys = noise::Keypair::<noise::X25519Spec>::new()
-            .into_authentic(&keypair)
-            .expect("Signing libp2p noise static keypair failed");
         let transport = tcp::tokio::Transport::new(tcp::Config::default())
             .upgrade(upgrade::Version::V1)
-            .authenticate(noise::NoiseConfig::xx(noise_keys).into_authenticated())
+            .authenticate(noise::Config::new(&keypair)?)
             .multiplex(yamux::Config::default())
             .boxed();
 
-        let mut cfg = RequestResponseConfig::default();
-        cfg.set_connection_keep_alive(std::time::Duration::from_secs(10));
+        let mut cfg = Config::default();
+        cfg = cfg.with_request_timeout(std::time::Duration::from_secs(10));
         let behaviour = ComposedBehaviour {
-            req_res: RequestResponse::new(ShinkaiCodec, std::iter::once((ShinkaiProtocol(), ProtocolSupport::Full)), cfg),
+            req_res: request_response::Behaviour::with_codec(ShinkaiCodec, std::iter::once((ShinkaiProtocol(), ProtocolSupport::Full)), cfg),
         };
-        let mut swarm = Swarm::with_tokio_executor(transport, behaviour, keypair.public().to_peer_id());
-        Swarm::listen_on(&mut swarm, listen)?;
+        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+            .with_tokio()
+            .with_other_transport(|_| transport)?
+            .with_behaviour(|_| behaviour)?
+            .with_swarm_config(|c| c.with_idle_connection_timeout(std::time::Duration::from_secs(60)))
+            .build();
+        swarm.listen_on(listen)?;
         Ok(Self { swarm })
     }
 
