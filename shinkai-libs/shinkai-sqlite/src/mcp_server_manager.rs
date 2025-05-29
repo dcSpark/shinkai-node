@@ -81,7 +81,8 @@ impl SqliteManager {
             r#type.to_string(),
             url.clone().unwrap_or("".to_string()),
             command.clone().unwrap_or("".to_string()),
-            serde_json::to_string(&env).unwrap_or("{}".to_string()),
+            env.map(|e| serde_json::to_string(&e).unwrap())
+                .unwrap_or_else(|| "{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
         ])?;
 
@@ -124,7 +125,8 @@ impl SqliteManager {
             r#type.to_string(),
             url.clone().unwrap_or("".to_string()),
             command.clone().unwrap_or("".to_string()),
-            serde_json::to_string(&env).unwrap_or("{}".to_string()),
+            env.map(|e| serde_json::to_string(&e).unwrap())
+                .unwrap_or_else(|| "{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
             (id as i32).to_string(),
         ])?;

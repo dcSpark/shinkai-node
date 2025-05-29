@@ -27,8 +27,8 @@ rand = { workspace = true }
 x25519-dalek = { workspace = true }
 ed25519-dalek = { workspace = true }
 semver = "1.0"
-
 log = { workspace = true }
+
 [dependencies.serde]
 workspace = true
 features = ["derive"]
