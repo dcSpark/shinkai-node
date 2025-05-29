@@ -17,8 +17,8 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
     cmd.args(adapted_args);
 
     // Retain the TokioChildProcess so we can wait on it after cancellation
-    let mut child_process = TokioChildProcess::new(&mut cmd)?;
-    let service = ().serve(&mut child_process).await?;
+    let child_process = TokioChildProcess::new(&mut cmd)?;
+    let service = ().serve(child_process).await?;
     // 2. Initialize the MCP server
     service.peer_info();
 
@@ -33,9 +33,6 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
         .cancel()
         .await
         .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
-
-    // 5. Wait for the child process to exit to avoid orphaning
-    let _ = child_process.wait().await;
 
     Ok(tools.unwrap())
 }
