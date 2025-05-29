@@ -26,6 +26,7 @@ pub mod job_manager;
 pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
+pub mod mcp_server_manager;
 pub mod oauth_manager;
 pub mod preferences;
 pub mod prompt_manager;
@@ -201,6 +202,8 @@ impl SqliteManager {
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
         Self::initialize_embedding_model_type_table(conn)?;
+        // Initialize MCP servers table
+        Self::initialize_mcp_servers_table(conn)?;
         Ok(())
     }
 
@@ -932,6 +935,25 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS embedding_model_type (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 model_type TEXT NOT NULL UNIQUE
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // Initialize MCP servers table
+    fn initialize_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS mcp_servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND')) DEFAULT 'SSE',
+                url TEXT,
+                env TEXT,
+                command TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE
             );",
             [],
         )?;
