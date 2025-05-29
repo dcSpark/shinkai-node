@@ -194,14 +194,15 @@ pub mod tests_mcp_manager {
             Some(envs),
         );
 
-        let _child_result = Command::new(adapted_program)
+        let mut child = Command::new(adapted_program)
             .args(adapted_args)
             .envs(adapted_envs)
             .kill_on_drop(true)
             .spawn()
             .inspect_err(|e| {
                 println!("error {:?}", e);
-            });
+            })
+            .expect("failed to spawn test server");
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         let params = json!({
             "a": 1,
@@ -224,6 +225,8 @@ pub mod tests_mcp_manager {
                 assert!(false);
             }
         }
+        let _ = child.kill().await;
+        let _ = child.wait().await;
     }
 
     #[tokio::test]
@@ -261,14 +264,15 @@ pub mod tests_mcp_manager {
             Some(envs),
         );
 
-        let _child_result = Command::new(adapted_program)
+        let mut child = Command::new(adapted_program)
             .args(adapted_args)
             .envs(adapted_envs)
             .kill_on_drop(true)
             .spawn()
             .inspect_err(|e| {
                 println!("error {:?}", e);
-            });
+            })
+            .expect("failed to spawn test server");
 
         // Wait for server to be ready
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
@@ -294,6 +298,8 @@ pub mod tests_mcp_manager {
         for tool in tools {
             assert!(unwrapped.iter().any(|t| t.name == tool));
         }
+        let _ = child.kill().await;
+        let _ = child.wait().await;
     }
     /* TODO: Uncomment these tests when we have a way to test them, right now the credentials expire so it does not work consistently
     #[tokio::test]
