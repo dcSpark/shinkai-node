@@ -41,7 +41,7 @@ pub fn convert_to_shinkai_tool(
     let tool_router_key =
         MCPServerTool::create_tool_router_key(node_name.to_string(), server_id.to_string(), tool_name.to_string());
     let mcp_tool = MCPServerTool {
-        name: format!("{}_{}", server_name, tool_name),
+        name: format!("{} - {}", server_name, tool_name),
         author: node_name.to_string(),
         description: tool.description.to_string(),
         config: tools_config,
@@ -137,7 +137,7 @@ async fn process_python_mcp_project(
     };
 
     // Create server name from package name
-    let server_name = format!("{} MCP Server", package_name);
+    let server_name = format!("{}", package_name);
 
     // Create environment variables map from extracted env vars
     let mut env_map = HashMap::new();
@@ -182,7 +182,7 @@ async fn process_nodejs_mcp_project(
         .to_string();
 
     // Create server name from package name
-    let server_name = format!("{} MCP Server", package_name);
+    let server_name = format!("{}", package_name);
 
     // Create environment variables map from extracted env vars
     let mut env_map = HashMap::new();
