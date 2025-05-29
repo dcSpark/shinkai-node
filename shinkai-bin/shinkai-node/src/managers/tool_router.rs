@@ -28,6 +28,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
+use shinkai_tools_primitives::tools::tool_types::ToolResult;
 use shinkai_tools_primitives::tools::{
     error::ToolError, network_tool::NetworkTool, parameters::Parameters, rust_tools::RustTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
@@ -877,6 +879,27 @@ impl ToolRouter {
         }
 
         match shinkai_tool {
+            ShinkaiTool::MCPServer(mcp_server_tool, _is_enabled) => {
+                let mcp_server_ref = mcp_server_tool.mcp_server_ref.clone().parse::<i64>().map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!("Failed to parse MCP server reference: {}", e))
+                })?;
+                let mcp_server = self.sqlite_manager.get_mcp_server(mcp_server_ref)?;
+                if let Some(mcp_server) = mcp_server {
+                    let result = mcp_server_tool
+                        .run(mcp_server, function_args, function_config_vec)
+                        .await?;
+                    let result_str = serde_json::to_string(&result)
+                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                    Ok(ToolCallFunctionResponse {
+                        response: result_str,
+                        function_call,
+                    })
+                } else {
+                    return Err(LLMProviderError::FunctionExecutionError(
+                        "MCP server not found".to_string(),
+                    ));
+                }
+            }
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env

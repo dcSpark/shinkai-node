@@ -156,7 +156,7 @@ fn test_tool_execution_with_config_override() {
         let ws_listen_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9580);
 
         let node1_commands_sender_clone = node1_commands_sender.clone();
-        let api_server = tokio::spawn(async move {
+        let _api_server = tokio::spawn(async move {
             if let Err(e) = node_api_router::run_api(
                 node1_commands_sender_clone,
                 api_listen_address,

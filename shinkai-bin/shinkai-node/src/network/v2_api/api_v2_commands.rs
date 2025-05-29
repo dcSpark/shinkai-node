@@ -17,11 +17,16 @@ use rusqlite::params;
 use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
+use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::{
+    AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest
+};
 use shinkai_http_api::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::{
     api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
 };
+use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_sse};
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::{
     schemas::ws_types::WSUpdateHandler, schemas::{
@@ -36,8 +41,10 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
+use shinkai_tools_primitives::tools::{
+    agent_tool_wrapper::AgentToolWrapper, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::{BasicConfig, ToolConfig}, tool_output_arg::ToolOutputArg, tool_types::ToolResult
+};
 use std::collections::HashMap;
 use std::process::Command;
 use std::time::Instant;
@@ -46,6 +53,8 @@ use tokio::sync::Mutex;
 use tokio::time::Duration;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+
+use crate::network::mcp_manager;
 
 #[cfg(debug_assertions)]
 fn check_bearer_token(api_key: &str, bearer: &str) -> Result<(), ()> {
@@ -2240,6 +2249,575 @@ impl Node {
             .get_last_n_parent_agent_or_llm_provider_ids(last)
             .unwrap_or_else(|_| vec![]);
         let _ = res.send(Ok(last_used_agents_llms)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_list_mcp_servers(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Vec<MCPServer>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Retrieve MCP servers from the database
+        match db.get_all_mcp_servers() {
+            Ok(servers) => {
+                let _ = res.send(Ok(servers)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve MCP servers: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_add_mcp_server(
+        db: Arc<SqliteManager>,
+        node_name: ShinkaiName,
+        bearer: String,
+        mcp_server: AddMCPServerRequest,
+        res: Sender<Result<MCPServer, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        log::debug!("Received request to add MCP server: {:?}", mcp_server);
+
+        match mcp_server.r#type {
+            MCPServerType::Command => {
+                if let Some(cmd) = &mcp_server.command {
+                    // Log the command components for debugging, as was previously done.
+                    let mut parts = cmd.splitn(2, ' ');
+                    let command_executable = parts.next().unwrap_or("").to_string();
+                    let arguments = parts.next().unwrap_or("").to_string();
+                    log::info!(
+                        "MCP Server Type Command: executable='{}', arguments='{}'",
+                        command_executable,
+                        arguments
+                    );
+                } else {
+                    log::warn!("No command provided for MCP Server: '{}'", mcp_server.name);
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!(
+                                "No command string provided for MCP Server '{}' of type Command.",
+                                mcp_server.name
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            MCPServerType::Sse => {
+                if let Some(url) = &mcp_server.url {
+                    log::info!("MCP Server Type Sse: URL='{}'", url);
+                } else {
+                    log::warn!("No URL provided for MCP Server: '{}'", mcp_server.name);
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!("No URL provided for MCP Server '{}' of type Sse.", mcp_server.name),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            _ => {
+                log::warn!(
+                    "MCP Server type not yet fully implemented or recognized: {:?}",
+                    mcp_server.r#type
+                );
+                // For now, we allow adding other types to the DB but won't attempt to spawn them.
+                // If a type is strictly unsupported, this block could return an error.
+                // The current logic proceeds to add to DB, which is fine.
+            }
+        }
+
+        // Add the MCP server to the database
+        match db.add_mcp_server(
+            mcp_server.name.clone(), // Clone name for db insertion
+            mcp_server.r#type,
+            mcp_server.url.clone(),
+            mcp_server.command.clone(),
+            mcp_server.env.clone(),
+            mcp_server.is_enabled,
+        ) {
+            Ok(server) => {
+                log::info!(
+                    "MCP Server '{}' (ID: {:?}) added to database successfully.",
+                    server.name,
+                    server.id
+                );
+                if let Some(env) = &server.env {
+                    log::info!("MCP Server '{}' (ID: {:?}) env: {:?}", server.name, server.id, env);
+                }
+                if server.r#type == MCPServerType::Command && server.is_enabled {
+                    if let Some(command_str) = &server.command {
+                        log::info!(
+                            "Attempting to spawn MCP server '{}' (ID: {:?}) with command: '{}'",
+                            server.name,
+                            server.id,
+                            command_str
+                        );
+
+                        log::info!("Attempting to list tools for command: '{}' (Note: this runs the command separately for listing tools)", command_str);
+                        let mut tools_config: Vec<ToolConfig> = vec![];
+                        // Iterate over server config and add each key-value pair as a BasicConfig
+                        if let Some(env) = &server.env {
+                            for (key, value) in env {
+                                tools_config.push(ToolConfig::BasicConfig(BasicConfig {
+                                    key_name: key.clone(),
+                                    description: format!("Configuration for {}", key),
+                                    required: true,
+                                    type_name: Some("string".to_string()),
+                                    key_value: Some(serde_json::Value::String(value.to_string())),
+                                }));
+                            }
+                        }
+                        match list_tools_via_command(command_str, server.env.clone()).await {
+                            Ok(tools) => {
+                                for tool in tools {
+                                    // Use the new function from mcp_manager instead of inline conversion
+                                    let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
+                                    let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                                        &tool,
+                                        &server.name,
+                                        &server_id,
+                                        &node_name.to_string(),
+                                        tools_config.clone(),
+                                    );
+
+                                    if let Err(err) = db.add_tool(shinkai_tool).await {
+                                        eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                    };
+                                }
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "Failed to list tools for command '{}' via list_tools_via_command: {:?}",
+                                    command_str,
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        // This should ideally not be reached if the check at the beginning of the function is robust,
+                        // as mcp_server.command would have been validated.
+                        log::warn!(
+                            "MCP Server '{}' (ID: {:?}) is of type Command and enabled, but has no command string for spawning. This indicates an inconsistent state.",
+                            server.name,
+                            server.id
+                        );
+                    }
+                } else if server.r#type == MCPServerType::Sse && server.is_enabled {
+                    if let Some(url) = &server.url {
+                        match list_tools_via_sse(url, None).await {
+                            Ok(tools) => {
+                                for tool in tools {
+                                    // Use the new function from mcp_manager instead of inline conversion
+                                    let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
+                                    let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                                        &tool,
+                                        &server.name,
+                                        &server_id,
+                                        &node_name.to_string(),
+                                        vec![],
+                                    );
+
+                                    if let Err(err) = db.add_tool(shinkai_tool).await {
+                                        eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                    };
+                                }
+                            }
+                            Err(e) => {
+                                log::error!("Failed to list tools for sse '{}' via list_tools_via_sse: {:?}", url, e);
+                            }
+                        }
+                    } else {
+                        log::warn!("MCP Server '{}' (ID: {:?}) is of type Sse and enabled, but has no URL for spawning. This indicates an inconsistent state.", server.name, server.id);
+                    }
+                }
+
+                let _ = res.send(Ok(server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add MCP server: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_update_mcp_server(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server: UpdateMCPServerRequest,
+        node_name: &ShinkaiName,
+        res: Sender<Result<MCPServer, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        match mcp_server.r#type {
+            MCPServerType::Command => {
+                if let Some(cmd) = &mcp_server.command {
+                    let mut parts = cmd.splitn(2, ' ');
+                    let command_executable = parts.next().unwrap_or("").to_string();
+                    let arguments = parts.next().unwrap_or("").to_string();
+                    log::info!(
+                        "MCP Server Type Command: executable='{}', arguments='{}'",
+                        command_executable,
+                        arguments
+                    );
+                } else {
+                    log::warn!(
+                        "No command provided for MCP Server: '{}'",
+                        mcp_server.name.clone().unwrap_or_default()
+                    );
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!(
+                                "No command string provided for MCP Server '{}' of type Command.",
+                                mcp_server.name.clone().unwrap_or_default()
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            MCPServerType::Sse => {
+                if let Some(url) = &mcp_server.url {
+                    log::info!("MCP Server Type Sse: URL='{}'", url);
+                } else {
+                    log::warn!(
+                        "No URL provided for MCP Server: '{}'",
+                        mcp_server.name.clone().unwrap_or_default()
+                    );
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!(
+                                "No URL provided for MCP Server '{}' of type Sse.",
+                                mcp_server.name.clone().unwrap_or_default()
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            _ => {
+                log::warn!(
+                    "MCP Server type not yet fully implemented or recognized: {:?}",
+                    mcp_server.r#type
+                );
+            }
+        }
+        let mcp_server_found = db.get_mcp_server(mcp_server.id)?;
+        if mcp_server_found.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!("No MCP Server found with ID: {}", mcp_server.id),
+                }))
+                .await;
+            return Ok(());
+        }
+        let updated_mcp_server = db.update_mcp_server(
+            mcp_server.id,
+            mcp_server.name.clone().unwrap_or(mcp_server_found.unwrap().name),
+            mcp_server.r#type,
+            mcp_server.url.clone(),
+            mcp_server.command.clone(),
+            mcp_server.env.clone(),
+            mcp_server.is_enabled.unwrap_or(true),
+        );
+        match updated_mcp_server {
+            Ok(updated_mcp_server) => {
+                log::info!(
+                    "MCP Server '{}' (ID: {:?}) updated proceeding to reset tools.",
+                    updated_mcp_server.name,
+                    updated_mcp_server.id
+                );
+                let rows_deleted_result = db.delete_all_tools_from_mcp_server(mcp_server.id.to_string());
+                match rows_deleted_result {
+                    Ok(count) => {
+                        log::info!(
+                            "Deleted {} tools from MCP Server '{}' (ID: {:?})",
+                            count,
+                            updated_mcp_server.name,
+                            updated_mcp_server.id
+                        );
+                    }
+                    Err(err) => {
+                        log::error!(
+                            "Failed to delete tools from MCP Server '{}' (ID: {:?}): {}",
+                            updated_mcp_server.name,
+                            updated_mcp_server.id,
+                            err
+                        );
+                    }
+                }
+                let server_id = updated_mcp_server
+                    .id
+                    .as_ref()
+                    .expect("Server ID should exist")
+                    .to_string();
+                match updated_mcp_server.r#type {
+                    MCPServerType::Command => {
+                        if let Some(cmd) = &mcp_server.command {
+                            log::info!("Attempting to list tools for command: '{}' (Note: this runs the command separately for listing tools)", cmd);
+                            let mut tools_config: Vec<ToolConfig> = vec![];
+                            // Iterate over server config and add each key-value pair as a BasicConfig
+                            if let Some(env) = &mcp_server.env {
+                                for (key, value) in env {
+                                    tools_config.push(ToolConfig::BasicConfig(BasicConfig {
+                                        key_name: key.clone(),
+                                        description: format!("Configuration for {}", key),
+                                        required: true,
+                                        type_name: Some("string".to_string()),
+                                        key_value: Some(serde_json::Value::String(value.to_string())),
+                                    }));
+                                }
+                            }
+                            match list_tools_via_command(cmd, mcp_server.env.clone()).await {
+                                Ok(tools) => {
+                                    for tool in tools {
+                                        let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                                            &tool,
+                                            &updated_mcp_server.name,
+                                            &server_id,
+                                            &node_name.to_string(),
+                                            tools_config.clone(),
+                                        );
+                                        if let Err(err) = db.add_tool(shinkai_tool).await {
+                                            eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!(
+                                        "Failed to list tools for command '{}' via list_tools_via_command: {:?}",
+                                        cmd,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    MCPServerType::Sse => {
+                        if let Some(url) = &mcp_server.url {
+                            match list_tools_via_sse(url, None).await {
+                                Ok(tools) => {
+                                    for tool in tools {
+                                        let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                                            &tool,
+                                            &updated_mcp_server.name,
+                                            &server_id,
+                                            &node_name.to_string(),
+                                            vec![],
+                                        );
+                                        if let Err(err) = db.add_tool(shinkai_tool).await {
+                                            eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!(
+                                        "Failed to list tools for sse '{}' via list_tools_via_sse: {:?}",
+                                        url,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        log::warn!(
+                            "MCP Server type not yet fully implemented or recognized: {:?}",
+                            updated_mcp_server.r#type
+                        );
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::BAD_REQUEST.as_u16(),
+                                error: "Invalid MCP Server Configuration".to_string(),
+                                message: format!(
+                                    "MCP Server type not yet fully implemented or recognized: {:?}",
+                                    updated_mcp_server.r#type
+                                ),
+                            }))
+                            .await;
+                    }
+                }
+                let _ = res.send(Ok(updated_mcp_server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to update MCP server: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_import_mcp_server_from_github_url(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        github_url: String,
+        res: Sender<Result<AddMCPServerRequest, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = mcp_manager::import_mcp_server_from_github_url(github_url).await;
+        match mcp_server {
+            Ok(mcp_server) => {
+                let _ = res.send(Ok(mcp_server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to import MCP server from GitHub URL: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_get_all_mcp_server_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<Vec<MCPServerTool>, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!("No MCP Server found with ID: {}", mcp_server_id),
+                }))
+                .await;
+            return Ok(());
+        }
+        let tools = db.get_all_tools_from_mcp_server(mcp_server.unwrap().id.unwrap_or_default().to_string())?;
+        let _ = res.send(Ok(tools)).await;
+        Ok(())
+    }
+
+    pub async fn v2_api_delete_mcp_server(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<DeleteMCPServerResponse, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!("No MCP Server found with ID: {}", mcp_server_id),
+                }))
+                .await;
+            return Ok(());
+        }
+        let _ = db.delete_mcp_server(mcp_server_id);
+        let rows_deleted_result =
+            db.delete_all_tools_from_mcp_server(mcp_server.clone().unwrap().id.unwrap_or_default().to_string());
+
+        match rows_deleted_result {
+            Ok(count) => {
+                let response = DeleteMCPServerResponse {
+                    message: Some("MCP Server and associated tools deleted successfully".to_string()),
+                    tools_deleted: count as i64, // Cast usize to i64
+                    deleted_mcp_server: mcp_server.clone().unwrap(),
+                };
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to delete MCP server tools".to_string(),
+                    message: format!("Error deleting tools for MCP server ID {}: {}", mcp_server_id, err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn v2_api_set_enable_mcp_server(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        mcp_server_id: i64,
+        is_enabled: bool,
+        res: Sender<Result<MCPServer, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Check if the MCP server exists
+        let mcp_server = db.get_mcp_server(mcp_server_id)?;
+        if mcp_server.is_none() {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server ID".to_string(),
+                    message: format!("No MCP Server found with ID: {}", mcp_server_id),
+                }))
+                .await;
+            return Ok(());
+        }
+
+        // Update the MCP server's enabled status
+        match db.update_mcp_server_enabled_status(mcp_server_id, is_enabled) {
+            Ok(updated_server) => {
+                let _ = res.send(Ok(updated_server)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to update MCP server status".to_string(),
+                    message: format!("Error updating MCP server ID {}: {}", mcp_server_id, err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
         Ok(())
     }
 

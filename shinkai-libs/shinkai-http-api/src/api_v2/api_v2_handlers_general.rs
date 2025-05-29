@@ -28,6 +28,9 @@ use crate::{
     node_api_router::{APIError, GetPublicKeysResponse}, node_commands::NodeCommand
 };
 
+use super::api_v2_handlers_mcp_servers::{
+    add_mcp_server_handler, get_all_mcp_server_tools_handler, list_mcp_servers_handler, GetAllMCPServerToolsRequest
+};
 use super::api_v2_router::{create_success_response, with_node_name, with_sender};
 
 pub fn general_routes(
@@ -258,6 +261,25 @@ pub fn general_routes(
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
         .and_then(check_default_tools_sync_handler);
+    let list_mcp_servers_route = warp::path("list_mcp_servers")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(list_mcp_servers_handler);
+
+    let add_mcp_server_route = warp::path("add_mcp_server")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_mcp_server_handler);
+
+    let get_all_mcp_server_tools_route = warp::path("get_all_mcp_server_tools")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetAllMCPServerToolsRequest>())
+        .and_then(get_all_mcp_server_tools_handler);
 
     let docker_status_route = warp::path("docker_status")
         .and(warp::get())
@@ -297,6 +319,9 @@ pub fn general_routes(
         .or(set_preferences_route)
         .or(get_preferences_route)
         .or(check_default_tools_sync_route)
+        .or(list_mcp_servers_route)
+        .or(add_mcp_server_route)
+        .or(get_all_mcp_server_tools_route)
         .or(docker_status_route)
 }
 

@@ -1172,7 +1172,7 @@ mod tests {
         // Test exact content match
         let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "January 2024", &db).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].path, "docs/reports/2024/january.txt");
+        assert_eq!(results[0].path,  os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
         assert!(results[0].has_embeddings);
 
         // Test partial content match
@@ -1240,7 +1240,7 @@ mod tests {
         // Test exact name match
         let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "january.txt", &db).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].path, "docs/reports/2024/january.txt");
+        assert_eq!(results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
         assert!(results[0].has_embeddings);
 
         // Test partial name match
@@ -1330,25 +1330,25 @@ mod tests {
         // Test simple by-name match
         let name_results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "january.txt", &db).unwrap();
         assert_eq!(name_results.len(), 1);
-        assert_eq!(name_results[0].path, "docs/reports/2024/january.txt");
+        assert_eq!(name_results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
 
         // Test simple by-content match
         let content_results =
             ShinkaiFileManager::search_files_by_content(base_path.clone(), "monthly report", &db).unwrap();
         assert_eq!(content_results.len(), 1);
-        assert_eq!(content_results[0].path, "docs/reports/2024/january.txt");
+        assert_eq!(content_results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
 
         // Test combined search - exact match by name
         let combined_results =
             ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "january.txt", &db).unwrap();
         assert_eq!(combined_results.len(), 1);
-        assert_eq!(combined_results[0].path, "docs/reports/2024/january.txt");
+        assert_eq!(combined_results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
 
         // Test combined search - exact match by content
         let combined_results =
             ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "quarterly update", &db).unwrap();
         assert_eq!(combined_results.len(), 1);
-        assert_eq!(combined_results[0].path, "docs/reports/2024/february.txt");
+        assert_eq!(combined_results[0].path, os_path::OsPath::from("docs/reports/2024/february.txt").to_string());
 
         // Test combined search - matches both name and content
         let combined_results =
@@ -1379,7 +1379,7 @@ mod tests {
         );
 
         // Make sure we find the content-only file
-        let content_only_match = combined_results.iter().find(|info| info.path == content_match_path);
+        let content_only_match = combined_results.iter().find(|info| info.path == os_path::OsPath::from(content_match_path).to_string());
         assert!(content_only_match.is_some(), "Should find the content-only match file");
 
         // Verify file and directory metadata
