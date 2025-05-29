@@ -2,6 +2,7 @@ use log::info;
 use regex::Regex;
 use reqwest::Client;
 use std::collections::HashSet;
+use serde_yaml::Value as YamlValue;
 
 /// GitHub repository information
 pub struct GitHubRepo {
@@ -158,4 +159,71 @@ pub fn extract_mcp_env_vars_from_readme(readme_content: &str) -> HashSet<String>
     }
 
     env_vars
+}
+
+/// Extract required environment variable names from a smithery.yaml file
+pub fn extract_env_vars_from_smithery_yaml(yaml_content: &str) -> HashSet<String> {
+    let mut env_vars = HashSet::new();
+
+    if let Ok(yaml) = serde_yaml::from_str::<YamlValue>(yaml_content) {
+        // Navigate to startCommand.configSchema
+        if let Some(start_cmd) = yaml.get("startCommand") {
+            if let Some(config_schema) = start_cmd.get("configSchema") {
+                // First, try to gather required fields
+                if let Some(required) = config_schema.get("required") {
+                    if let Some(seq) = required.as_sequence() {
+                        for item in seq {
+                            if let Some(var) = item.as_str() {
+                                env_vars.insert(var.to_string());
+                            }
+                        }
+                    }
+                }
+
+                // Fallback to all property names if no required fields found
+                if env_vars.is_empty() {
+                    if let Some(props) = config_schema.get("properties") {
+                        if let Some(map) = props.as_mapping() {
+                            for (k, _) in map {
+                                if let Some(key) = k.as_str() {
+                                    env_vars.insert(key.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    env_vars
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_env_vars_from_smithery_yaml() {
+        let yaml = r#"
+version: 1
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    required: ["API_KEY", "USER_ID"]
+    properties:
+      API_KEY:
+        type: string
+      USER_ID:
+        type: string
+      OPTIONAL:
+        type: string
+"#;
+
+        let vars = extract_env_vars_from_smithery_yaml(yaml);
+        assert!(vars.contains("API_KEY"));
+        assert!(vars.contains("USER_ID"));
+        assert!(!vars.contains("OPTIONAL"));
+    }
 }
