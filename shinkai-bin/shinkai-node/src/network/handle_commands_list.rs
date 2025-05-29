@@ -2405,6 +2405,83 @@ impl Node {
                     .await;
                 });
             }
+
+            NodeCommand::V2ApiListMCPServers { bearer, res } => {
+                let db_clone: Arc<shinkai_sqlite::SqliteManager> = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_mcp_servers(db_clone, bearer, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiAddMCPServer {
+                bearer,
+                mcp_server,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_add_mcp_server(db_clone, node_name_clone, bearer, mcp_server, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiUpdateMCPServer {
+                bearer,
+                mcp_server,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_update_mcp_server(db_clone, bearer, mcp_server, &node_name_clone, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiImportMCPServerFromGitHubURL {
+                bearer,
+                github_url,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_import_mcp_server_from_github_url(db_clone, bearer, github_url, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiDeleteMCPServer {
+                bearer,
+                mcp_server_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_delete_mcp_server(db_clone, bearer, mcp_server_id, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiSetEnableMCPServer {
+                bearer,
+                mcp_server_id,
+                is_enabled,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_set_enable_mcp_server(db_clone, bearer, mcp_server_id, is_enabled, res).await;
+                });
+            }
+
+            NodeCommand::V2ApiGetAllMCPServerTools {
+                bearer,
+                mcp_server_id,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_all_mcp_server_tools(db_clone, bearer, mcp_server_id, res).await;
+                });
+            }
+
             NodeCommand::V2ApiSetToolEnabled {
                 bearer,
                 tool_router_key,

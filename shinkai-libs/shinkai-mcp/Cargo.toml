@@ -1,0 +1,29 @@
+[package]
+name = "shinkai_mcp"
+version = { workspace = true }
+edition = { workspace = true }
+description = "Methods to interact with MCP servers"
+authors = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+rmcp = { version = "0.1", features = [
+    "client",
+    "transport-child-process",
+    "transport-sse",
+] }
+regex = { workspace = true }
+once_cell = { workspace = true }
+home = { workspace = true }
+strip-ansi-escapes = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+mockall = "0.11"

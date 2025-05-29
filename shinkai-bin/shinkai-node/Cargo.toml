@@ -37,8 +37,19 @@ lazy_static = { workspace = true }
 clap = { workspace = true }
 regex = { workspace = true }
 csv = { workspace = true }
+once_cell = "1.19.0"
+rmcp = { version = "0.1.5", features = [
+    "transport-child-process",
+    "client",
+    "transport-sse",
+] }
 uuid = { workspace = true, features = ["v4"] }
-reqwest = { workspace = true, features = ["json", "tokio-native-tls", "multipart", "stream"] }
+reqwest = { workspace = true, features = [
+    "json",
+    "tokio-native-tls",
+    "multipart",
+    "stream",
+] }
 keyphrases = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
@@ -49,6 +60,7 @@ shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_embedding = { workspace = true }
 shinkai_fs = { workspace = true }
+shinkai_mcp = { workspace = true }
 # shinkai_baml = { workspace = true }
 bincode = { workspace = true }
 urlencoding = "2.1.0"
@@ -73,6 +85,7 @@ env_logger = { workspace = true }
 zip = "2.2.1"
 open = "5.3.2"
 sha2 = "0.10"
+toml = "0.8.22"
 ngrok = { version = "0.15.0", features = ["hyper"] }
 url = "2.5.0"
 
