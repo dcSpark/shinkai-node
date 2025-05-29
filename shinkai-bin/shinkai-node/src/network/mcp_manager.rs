@@ -323,7 +323,7 @@ pub mod tests_mcp_manager {
         let shinkai_tool = convert_to_shinkai_tool(tool, server_name, server_id, node_name, tools_config);
 
         if let ShinkaiTool::MCPServer(mcp_tool, enabled) = shinkai_tool {
-            assert_eq!(mcp_tool.name, "test_server_get_info");
+            assert_eq!(mcp_tool.name, "test_server - get_info");
             assert_eq!(mcp_tool.author, "test_node");
             assert_eq!(mcp_tool.description, "Retrieves information without modifying anything");
             assert_eq!(mcp_tool.mcp_server_ref, "test_server_123");
@@ -353,7 +353,7 @@ pub mod tests_mcp_manager {
         assert!(result.is_ok(), "Import failed: {:?}", result.err());
         let request = result.unwrap();
 
-        assert_eq!(request.name, "mcp_dockmaster_mcp_server_helius_mcp_server");
+        assert_eq!(request.name, "mcp_dockmaster_mcp_server_helius");
         assert_eq!(request.r#type, MCPServerType::Command);
         assert_eq!(request.url, None);
         assert_eq!(
