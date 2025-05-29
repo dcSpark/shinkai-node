@@ -140,6 +140,7 @@ pub async fn run_api(
             "x-shinkai-app-id",
             "x-shinkai-llm-provider",
             "x-shinkai-original-tool-router-key",
+            "ngrok-skip-browser-warning",
         ]);
 
     let v2_routes = warp::path("v2").and(
