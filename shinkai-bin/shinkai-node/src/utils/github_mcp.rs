@@ -1,9 +1,8 @@
 use log::info;
 use regex::Regex;
 use reqwest::Client;
-use serde_json::Value;
-use serde_yaml::Value as YamlValue;
 use std::collections::HashSet;
+use serde_yaml::Value as YamlValue;
 
 /// GitHub repository information
 pub struct GitHubRepo {
@@ -33,8 +32,16 @@ pub fn parse_github_url(url: &str) -> Result<GitHubRepo, String> {
 }
 
 /// Fetch a file from a GitHub repository
-pub async fn fetch_github_file(client: &Client, owner: &str, repo: &str, path: &str) -> Result<String, String> {
-    let url = format!("https://raw.githubusercontent.com/{}/{}/main/{}", owner, repo, path);
+pub async fn fetch_github_file(
+    client: &Client,
+    owner: &str,
+    repo: &str,
+    path: &str,
+) -> Result<String, String> {
+    let url = format!(
+        "https://raw.githubusercontent.com/{}/{}/main/{}",
+        owner, repo, path
+    );
 
     info!("Fetching file from GitHub: {}", url);
 
@@ -47,7 +54,10 @@ pub async fn fetch_github_file(client: &Client, owner: &str, repo: &str, path: &
                 }
             } else {
                 // Try with master branch if main fails
-                let master_url = format!("https://raw.githubusercontent.com/{}/{}/master/{}", owner, repo, path);
+                let master_url = format!(
+                    "https://raw.githubusercontent.com/{}/{}/master/{}",
+                    owner, repo, path
+                );
 
                 match client.get(&master_url).send().await {
                     Ok(master_response) => {
@@ -57,7 +67,10 @@ pub async fn fetch_github_file(client: &Client, owner: &str, repo: &str, path: &
                                 Err(e) => Err(format!("Failed to read response content: {}", e)),
                             }
                         } else {
-                            Err(format!("Failed to fetch file: HTTP {}", master_response.status()))
+                            Err(format!(
+                                "Failed to fetch file: HTTP {}",
+                                master_response.status()
+                            ))
                         }
                     }
                     Err(e) => Err(format!("Failed to fetch file: {}", e)),
@@ -186,48 +199,6 @@ pub fn extract_env_vars_from_smithery_yaml(yaml_content: &str) -> HashSet<String
     env_vars
 }
 
-/// Extract MCP server command from JSON configuration blocks in README content
-pub fn extract_command_from_json_config_in_readme(readme_content: &str) -> Option<String> {
-    // Regex to find JSON code blocks
-    let json_block_regex = Regex::new(r"```json\s*\n([\s\S]*?)\n```").ok()?;
-
-    for capture in json_block_regex.captures_iter(readme_content) {
-        if let Some(json_str) = capture.get(1) {
-            // Try to parse the JSON
-            if let Ok(json_value) = serde_json::from_str::<Value>(json_str.as_str()) {
-                // Check if it has mcpServers key
-                if let Some(mcp_servers) = json_value.get("mcpServers") {
-                    if let Some(servers_obj) = mcp_servers.as_object() {
-                        // Get the first server entry
-                        if let Some((_, server_config)) = servers_obj.iter().next() {
-                            // Extract command and args
-                            let command = server_config.get("command").and_then(|v| v.as_str()).unwrap_or("");
-
-                            let args = server_config
-                                .get("args")
-                                .and_then(|v| v.as_array())
-                                .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<&str>>().join(" "))
-                                .unwrap_or_default();
-
-                            // Build the complete command string
-                            let full_command = if args.is_empty() {
-                                command.to_string()
-                            } else {
-                                format!("{} {}", command, args)
-                            };
-
-                            if !full_command.trim().is_empty() {
-                                return Some(full_command);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,151 +225,5 @@ startCommand:
         assert!(vars.contains("API_KEY"));
         assert!(vars.contains("USER_ID"));
         assert!(!vars.contains("OPTIONAL"));
-    }
-
-    #[test]
-    fn test_extract_command_from_json_config_in_readme() {
-        let readme = r#"
-
-        # DuckDuckGo Search MCP Server
-
-[![smithery badge](https://smithery.ai/badge/@nickclyde/duckduckgo-mcp-server)](https://smithery.ai/server/@nickclyde/duckduckgo-mcp-server)
-
-A Model Context Protocol (MCP) server that provides web search capabilities through DuckDuckGo, with additional features for content fetching and parsing.
-
-<a href="https://glama.ai/mcp/servers/phcus2gcpn">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/phcus2gcpn/badge" alt="DuckDuckGo Server MCP server" />
-</a>
-
-## Features
-
-- **Web Search**: Search DuckDuckGo with advanced rate limiting and result formatting
-- **Content Fetching**: Retrieve and parse webpage content with intelligent text extraction
-- **Rate Limiting**: Built-in protection against rate limits for both search and content fetching
-- **Error Handling**: Comprehensive error handling and logging
-- **LLM-Friendly Output**: Results formatted specifically for large language model consumption
-
-## Installation
-
-### Installing via Smithery
-
-To install DuckDuckGo Search Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@nickclyde/duckduckgo-mcp-server):
-
-```bash
-npx -y @smithery/cli install @nickclyde/duckduckgo-mcp-server --client claude
-```
-
-### Installing via `uv`
-
-Install directly from PyPI using `uv`:
-
-```bash
-uv pip install duckduckgo-mcp-server
-```
-
-## Usage
-
-### Running with Claude Desktop
-
-1. Download [Claude Desktop](https://claude.ai/download)
-2. Create or edit your Claude Desktop configuration:
-   - On macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - On Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-Add the following configuration:
-
-```json
-{
-    "mcpServers": {
-        "ddg-search": {
-            "command": "uvx",
-            "args": ["duckduckgo-mcp-server"]
-        }
-    }
-}
-```
-
-3. Restart Claude Desktop
-
-### Development
-
-For local development, you can use the MCP CLI:
-
-```bash
-# Run with the MCP Inspector
-mcp dev server.py
-
-# Install locally for testing with Claude Desktop
-mcp install server.py
-```
-## Available Tools
-
-### 1. Search Tool
-
-```python
-async def search(query: str, max_results: int = 10) -> str
-```
-
-Performs a web search on DuckDuckGo and returns formatted results.
-
-**Parameters:**
-- `query`: Search query string
-- `max_results`: Maximum number of results to return (default: 10)
-
-**Returns:**
-Formatted string containing search results with titles, URLs, and snippets.
-
-### 2. Content Fetching Tool
-
-```python
-async def fetch_content(url: str) -> str
-```
-
-Fetches and parses content from a webpage.
-
-**Parameters:**
-- `url`: The webpage URL to fetch content from
-
-**Returns:**
-Cleaned and formatted text content from the webpage.
-
-## Features in Detail
-
-### Rate Limiting
-
-- Search: Limited to 30 requests per minute
-- Content Fetching: Limited to 20 requests per minute
-- Automatic queue management and wait times
-
-### Result Processing
-
-- Removes ads and irrelevant content
-- Cleans up DuckDuckGo redirect URLs
-- Formats results for optimal LLM consumption
-- Truncates long content appropriately
-
-### Error Handling
-
-- Comprehensive error catching and reporting
-- Detailed logging through MCP context
-- Graceful degradation on rate limits or timeouts
-
-## Contributing
-
-Issues and pull requests are welcome! Some areas for potential improvement:
-
-- Additional search parameters (region, language, etc.)
-- Enhanced content parsing options
-- Caching layer for frequently accessed content
-- Additional rate limiting strategies
-
-## License
-
-This project is licensed under the MIT License.
-}
-"#;
-
-        let command = extract_command_from_json_config_in_readme(readme);
-        assert_eq!(command, Some("uvx duckduckgo-mcp-server".to_string()));
     }
 }
