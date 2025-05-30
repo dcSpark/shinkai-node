@@ -100,10 +100,10 @@ impl LibP2PManager {
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))  // Fast heartbeat for relay scenarios
             .validation_mode(gossipsub::ValidationMode::Permissive)
-            .mesh_outbound_min(1)  // Minimum outbound connections
-            .mesh_n_low(1)         // Allow very small meshes (just relay)
-            .mesh_n(1)             // Target mesh size (just the relay)
-            .mesh_n_high(2)        // Maximum mesh size (relay + maybe 1 peer)
+            .mesh_outbound_min(1)  // Minimum outbound connections  
+            .mesh_n_low(2)         // Minimum mesh size (must be > mesh_outbound_min)
+            .mesh_n(3)             // Target mesh size (relay + peers)
+            .mesh_n_high(4)        // Maximum mesh size
             .gossip_lazy(1)        // Minimal gossip since we're going through relay
             .fanout_ttl(Duration::from_secs(60))  // TTL for fanout
             .gossip_retransimission(3)  // Retransmit important messages
