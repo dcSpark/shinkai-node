@@ -51,7 +51,7 @@ impl RelayManager {
         // Configure gossipsub
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))
-            .validation_mode(ValidationMode::Strict)
+            .validation_mode(ValidationMode::Permissive)
             .message_id_fn(|message| {
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 message.data.hash(&mut hasher);

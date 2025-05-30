@@ -101,7 +101,7 @@ impl LibP2PManager {
         // Create GossipSub behavior
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(10))
-            .validation_mode(gossipsub::ValidationMode::Strict)
+            .validation_mode(gossipsub::ValidationMode::Permissive)
             .build()
             .expect("Valid config");
 

@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configure gossipsub
     let gossipsub_config = gossipsub::ConfigBuilder::default()
         .heartbeat_interval(Duration::from_secs(1))
-        .validation_mode(ValidationMode::Strict)
+        .validation_mode(ValidationMode::Permissive)
         .build()?;
 
     let gossipsub = gossipsub::Behaviour::new(
