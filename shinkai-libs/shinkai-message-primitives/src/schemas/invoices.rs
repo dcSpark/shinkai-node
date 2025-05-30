@@ -16,7 +16,7 @@ pub fn generate_x402_nonce() -> String {
 }
 
 use super::{
-    shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, wallet_mixed::PublicAddress
+    shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, tool_router_key::ToolRouterKey, wallet_mixed::PublicAddress
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -107,11 +107,16 @@ impl InvoiceRequest {
         let author = parts[1];
         let tool_name = parts[2];
 
-        // Validate that the node name part matches our node_name
-        if node_name_part != node_name.to_string() {
-            return Err(InvoiceError::OperationFailed(
-                "Node name in tool_key_name does not match our node_name".to_string(),
-            ));
+        // Normalize both node_name_part and node_name for comparison
+        let normalized_node_name_part = ToolRouterKey::sanitize(node_name_part);
+        let normalized_node_name = ToolRouterKey::sanitize(&node_name.to_string());
+
+        // Validate that the normalized node name part matches our normalized node_name
+        if normalized_node_name_part != normalized_node_name {
+            return Err(InvoiceError::OperationFailed(format!(
+                "Node name in tool_key_name does not match our node_name (expected: {}, found: {})",
+                normalized_node_name, normalized_node_name_part
+            )));
         }
 
         // Convert the tool_key_name to the actual tool_key_name

@@ -612,6 +612,7 @@ impl ExtAgentOfferingsManager {
                     ShinkaiLogLevel::Error,
                     &format!("Failed to request invoice: {:?}", e),
                 );
+                eprintln!("Failed to request invoice: {:?}", e);
 
                 // Create an InvoiceNetworkError
                 let network_error = InvoiceRequestNetworkError {
