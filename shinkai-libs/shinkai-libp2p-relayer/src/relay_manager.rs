@@ -54,6 +54,12 @@ impl RelayManager {
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))
             .validation_mode(ValidationMode::Permissive)
+            .mesh_outbound_min(1)      // Allow smaller meshes for relay scenarios
+            .mesh_n_low(1)             // Lower minimum mesh size
+            .mesh_n(3)                 // Target mesh size  
+            .mesh_n_high(6)            // Maximum mesh size
+            .gossip_lazy(3)            // Gossip to more peers
+            .fanout_ttl(Duration::from_secs(60))
             .message_id_fn(|message| {
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 message.data.hash(&mut hasher);
@@ -62,11 +68,16 @@ impl RelayManager {
             .build()
             .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Gossipsub config error: {}", e)))?;
 
-        let gossipsub = gossipsub::Behaviour::new(
+        let mut gossipsub = gossipsub::Behaviour::new(
             MessageAuthenticity::Signed(local_key.clone()),
             gossipsub_config,
         )
         .map_err(|e| LibP2PRelayError::LibP2PError(format!("Gossipsub creation error: {}", e)))?;
+
+        // Subscribe to common topics that nodes will use
+        let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
+        gossipsub.subscribe(&shinkai_topic)
+            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to subscribe to shinkai-network: {}", e)))?;
 
         // Configure identify protocol
         let identify = identify::Behaviour::new(identify::Config::new(
@@ -259,6 +270,20 @@ impl RelayManager {
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 println!("Connection established with peer: {}", peer_id);
+                
+                // Subscribe to main shinkai network topic to help with mesh formation
+                let topic = gossipsub::IdentTopic::new("shinkai-network");
+                if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
+                    println!("Already subscribed to shinkai-network: {}", e);
+                }
+                
+                // Publish a peer announcement to help other nodes discover this peer
+                let announcement = format!("{{\"type\":\"peer_connected\",\"peer_id\":\"{}\"}}", peer_id);
+                if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, announcement.as_bytes()) {
+                    println!("Failed to announce peer connection: {:?}", e);
+                } else {
+                    println!("Announced connection of peer: {}", peer_id);
+                }
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 println!("Connection closed with peer: {} (cause: {:?})", peer_id, cause);

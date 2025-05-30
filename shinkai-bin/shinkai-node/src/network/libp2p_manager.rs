@@ -1,6 +1,6 @@
 use futures::prelude::*;
 use libp2p::{
-    dcutr, gossipsub, identify, kad, mdns, noise, ping,
+    dcutr, gossipsub, identify, kad, noise, ping,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
@@ -21,7 +21,6 @@ use tokio::sync::mpsc;
 #[derive(NetworkBehaviour)]
 pub struct ShinkaiNetworkBehaviour {
     pub gossipsub: gossipsub::Behaviour,
-    pub mdns: mdns::tokio::Behaviour,
     pub identify: identify::Behaviour,
     pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
     pub ping: ping::Behaviour,
@@ -98,14 +97,16 @@ impl LibP2PManager {
             .timeout(Duration::from_secs(20))
             .boxed();
 
-        // Create GossipSub behavior with configuration for scalable networks
+        // Create GossipSub behavior with configuration for relay networking
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))  // Match relay's heartbeat interval
             .validation_mode(gossipsub::ValidationMode::Permissive)
-            .mesh_outbound_min(2)  // Minimum outbound connections in mesh
-            .mesh_n_low(4)         // Minimum number of peers in mesh 
-            .mesh_n(6)             // Target number of peers in mesh 
-            .mesh_n_high(12)       // Maximum number of peers in mesh (allows more peers)
+            .mesh_outbound_min(1)  // Allow smaller meshes for relay scenarios
+            .mesh_n_low(1)         // Lower minimum mesh size for relay
+            .mesh_n(2)             // Target mesh size (relay + maybe 1 peer)
+            .mesh_n_high(4)        // Lower maximum for relay scenarios
+            .gossip_lazy(2)        // Reduce gossip for relay scenarios
+            .fanout_ttl(Duration::from_secs(30))  // Shorter TTL for relay
             .build()
             .expect("Valid config");
 
@@ -117,9 +118,6 @@ impl LibP2PManager {
         // Subscribe to default shinkai topic
         let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
         gossipsub.subscribe(&shinkai_topic)?;
-
-        // Create mDNS behavior
-        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)?;
 
         // Create Identify behavior with compatible protocol
         let identify = identify::Behaviour::new(identify::Config::new(
@@ -143,7 +141,6 @@ impl LibP2PManager {
         // Combine all behaviors
         let behaviour = ShinkaiNetworkBehaviour {
             gossipsub,
-            mdns,
             identify,
             kademlia,
             ping,
@@ -379,27 +376,6 @@ impl LibP2PManager {
                     ShinkaiLogLevel::Info,
                     &format!("Listening on {}", address),
                 );
-            }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
-                for (peer_id, multiaddr) in peers {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        &format!("Discovered peer {} at {}", peer_id, multiaddr),
-                    );
-                    
-                    // Add discovered peer to Kademlia
-                    self.swarm.behaviour_mut().kademlia.add_address(&peer_id, multiaddr);
-                }
-            }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Mdns(mdns::Event::Expired(peers))) => {
-                for (peer_id, multiaddr) in peers {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        &format!("Peer {} at {} expired", peer_id, multiaddr),
-                    );
-                }
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::Message {
                 propagation_source: _,
