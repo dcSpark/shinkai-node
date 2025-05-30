@@ -8,6 +8,7 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
+use shinkai_message_primitives::schemas::mcp_server::MCPServer;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
@@ -21,15 +22,16 @@ use std::sync::Arc;
 use tokio::fs;
 use zip::ZipArchive;
 use zip::{write::FileOptions, ZipWriter};
-use zip::read::ZipFile;
 
 async fn calculate_zip_dependencies(
     db: Arc<SqliteManager>,
     shinkai_name: ShinkaiName,
     tool_entry_point: Option<ShinkaiTool>,
     agent_entry_point: Option<Agent>,
+    mcp_server_entry_point: Option<MCPServer>,
     agent_dependencies: &mut HashMap<String, Agent>,
     tool_dependencies: &mut HashMap<String, ShinkaiTool>,
+    mcp_server_dependencies: &mut HashMap<String, MCPServer>,
 ) -> Result<(), APIError> {
     if let Some(tool) = tool_entry_point {
         let tool_router_key = tool.tool_router_key().to_string_with_version();
@@ -61,14 +63,38 @@ async fn calculate_zip_dependencies(
                     shinkai_name.clone(),
                     None,
                     agent,
+                    None,
                     agent_dependencies,
                     tool_dependencies,
+                    mcp_server_dependencies,
                 ))
                 .await?;
                 return Ok(());
             }
             ShinkaiTool::Network(_, _) => (),
-            ShinkaiTool::MCPServer(_, _) => (),
+            ShinkaiTool::MCPServer(mcp_server_tool, _) => {
+                let mcp_server = match db.get_mcp_server(mcp_server_tool.mcp_server_ref.parse::<i64>().unwrap()) {
+                    Ok(mcp_server) => mcp_server,
+                    Err(err) => {
+                        return Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: format!("Failed to get mcp server dependency: {}", err),
+                        });
+                    }
+                };
+                Box::pin(calculate_zip_dependencies(
+                    db.clone(),
+                    shinkai_name.clone(),
+                    None,
+                    None,
+                    mcp_server,
+                    agent_dependencies,
+                    tool_dependencies,
+                    mcp_server_dependencies,
+                ))
+                .await?;
+            }
         }
 
         // This tool might have dependendies, so let's check them.
@@ -90,8 +116,10 @@ async fn calculate_zip_dependencies(
                 shinkai_name.clone(),
                 Some(tool_dependency),
                 None,
+                None,
                 agent_dependencies,
                 tool_dependencies,
+                mcp_server_dependencies,
             ))
             .await?;
         }
@@ -132,11 +160,22 @@ async fn calculate_zip_dependencies(
                 shinkai_name.clone(),
                 Some(tool_dependency),
                 None,
+                None,
                 agent_dependencies,
                 tool_dependencies,
+                mcp_server_dependencies,
             ))
             .await?;
         }
+    }
+
+    if let Some(mcp_server) = mcp_server_entry_point {
+        let mcp_server_id = mcp_server.id.unwrap().to_string();
+        if mcp_server_dependencies.contains_key(&mcp_server_id) {
+            // Done, this path has been handled
+            return Ok(());
+        }
+        mcp_server_dependencies.insert(mcp_server_id, mcp_server);
     }
 
     return Ok(());
@@ -148,6 +187,7 @@ async fn get_dependencies_for_zip(
     node_env: NodeEnvironment,
     agent_dependencies: &HashMap<String, Agent>,
     tool_dependencies: &HashMap<String, ShinkaiTool>,
+    mcp_server_dependencies: &HashMap<String, MCPServer>,
 ) -> Result<HashMap<String, Vec<u8>>, NodeError> {
     let mut zip_files = HashMap::new();
     for (agent_id, _) in agent_dependencies {
@@ -203,6 +243,18 @@ async fn get_dependencies_for_zip(
         zip_files.insert(format!("__tools/{}.zip", tool_key.replace(':', "_")), tool_bytes);
     }
 
+    for (mcp_server_id, mcp_server) in mcp_server_dependencies {
+        let mcp_server_bytes = match Box::pin(generate_mcp_server_zip(mcp_server.clone())).await {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(NodeError::from(err)),
+        };
+
+        zip_files.insert(
+            format!("__mcp_servers/{}.zip", mcp_server_id.replace(':', "_")),
+            mcp_server_bytes,
+        );
+    }
+
     Ok(zip_files)
 }
 
@@ -247,13 +299,16 @@ pub async fn generate_agent_zip(
         // Add the dependencies to the zip file
         let mut tool_dependencies = HashMap::new();
         let mut agent_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         Box::pin(calculate_zip_dependencies(
             db.clone(),
             shinkai_name.clone(),
             None,
             Some(agent.clone()),
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         ))
         .await?;
 
@@ -275,6 +330,7 @@ pub async fn generate_agent_zip(
         println!("For agent: {}", agent_id);
         println!("Agent dependencies: {:?}", agent_dependencies);
         println!("Tool dependencies: {:?}", tool_dependencies);
+        println!("MCP server dependencies: {:?}", mcp_server_dependencies);
 
         let mut zip_files = get_dependencies_for_zip(
             db.clone(),
@@ -282,6 +338,7 @@ pub async fn generate_agent_zip(
             node_env.clone(),
             &agent_dependencies,
             &tool_dependencies,
+            &mcp_server_dependencies,
         )
         .await
         .map_err(|e| internal_error(format!("Failed to add dependencies to zip: {}", e)))?;
@@ -441,13 +498,16 @@ pub async fn generate_tool_zip(
         // Add the dependencies to the zip file
         let mut tool_dependencies = HashMap::new();
         let mut agent_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         calculate_zip_dependencies(
             db.clone(),
             shinkai_name.clone(),
             Some(tool.clone()),
             None,
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await
         .map_err(|e| NodeError {
@@ -458,6 +518,7 @@ pub async fn generate_tool_zip(
         println!("For tool: {}", tool.tool_router_key().to_string_without_version());
         println!("Agent dependencies: {:?}", agent_dependencies);
         println!("Tool dependencies: {:?}", tool_dependencies);
+        println!("MCP server dependencies: {:?}", mcp_server_dependencies);
 
         let mut zip_files = get_dependencies_for_zip(
             db.clone(),
@@ -465,6 +526,7 @@ pub async fn generate_tool_zip(
             node_env.clone(),
             &agent_dependencies,
             &tool_dependencies,
+            &mcp_server_dependencies,
         )
         .await
         .map_err(|e| NodeError {
@@ -509,6 +571,29 @@ pub async fn generate_tool_zip(
     zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
 
     println!("Zip file created successfully!");
+    let file_bytes = fs::read(&path).await?;
+    // Delete the zip file after reading it
+    fs::remove_file(&path).await?;
+    Ok(file_bytes)
+}
+
+async fn generate_mcp_server_zip(mcp_server: MCPServer) -> Result<Vec<u8>, NodeError> {
+    let mut mcp_server = mcp_server;
+    mcp_server.sanitize_env();
+
+    let mcp_server_bytes = serde_json::to_vec(&mcp_server).unwrap();
+
+    let name = format!("{}.zip", mcp_server.id.unwrap().to_string().replace(':', "_"));
+    let path = std::env::temp_dir().join(&name);
+    let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
+
+    let mut zip = ZipWriter::new(file);
+    zip.start_file::<_, ()>("__mcp_server.json", FileOptions::default())
+        .map_err(|e| NodeError::from(e.to_string()))?;
+    zip.write_all(&mcp_server_bytes)
+        .map_err(|e| NodeError::from(e.to_string()))?;
+    zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
+
     let file_bytes = fs::read(&path).await?;
     // Delete the zip file after reading it
     fs::remove_file(&path).await?;
@@ -1276,13 +1361,16 @@ mod tests {
         // Test calculate_zip_dependencies with tool A as entry point
         let mut agent_dependencies = HashMap::new();
         let mut tool_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         let result = calculate_zip_dependencies(
             db.clone(),
             profile.clone(),
             Some(ShinkaiTool::Deno(tool_a.clone(), true)),
             None,
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await;
 
@@ -1413,19 +1501,23 @@ mod tests {
 
         let mut agent_dependencies = HashMap::new();
         let mut tool_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         let result = calculate_zip_dependencies(
             db.clone(),
             profile.clone(),
             Some(ShinkaiTool::Deno(tool_a.clone(), true)),
             None,
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await;
 
         assert!(result.is_ok());
         assert!(agent_dependencies.len() == 1);
         assert!(tool_dependencies.len() == 3);
+        assert!(mcp_server_dependencies.len() == 0);
     }
 
     #[tokio::test]
@@ -1550,18 +1642,22 @@ mod tests {
         // Test calculate_zip_dependencies with agent as entry point
         let mut agent_dependencies = HashMap::new();
         let mut tool_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         let result = calculate_zip_dependencies(
             db.clone(),
             profile.clone(),
             None,
             Some(agent),
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await;
 
         assert!(result.is_ok());
         assert!(agent_dependencies.len() == 1);
         assert!(tool_dependencies.len() == 3);
+        assert!(mcp_server_dependencies.len() == 0);
     }
 }

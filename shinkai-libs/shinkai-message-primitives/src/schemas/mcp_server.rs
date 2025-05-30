@@ -16,6 +16,16 @@ pub struct MCPServer {
     pub is_enabled: bool,
 }
 
+impl MCPServer {
+    pub fn sanitize_env(&mut self) {
+        let mut sanitized_env = MCPServerEnv::new();
+        for (key, _) in self.env.clone().unwrap_or_default() {
+            sanitized_env.insert(key.clone(), "".to_string());
+        }
+        self.env = Some(sanitized_env);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum MCPServerType {
     Sse,
