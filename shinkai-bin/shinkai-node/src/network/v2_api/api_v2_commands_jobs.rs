@@ -4,6 +4,7 @@ use async_channel::Sender;
 use ed25519_dalek::SigningKey;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
+use crate::llm_provider::llm_stopper::LLMStopper;
 
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
@@ -1577,6 +1578,36 @@ impl Node {
             .send(Ok(SendResponseBody {
                 status: "success".to_string(),
                 message: "Job removed successfully".to_string(),
+                data: None,
+            }))
+            .await;
+        Ok(())
+    }
+
+    /// Kills a running job by clearing its queued messages and signalling the
+    /// LLM stopper. This does not remove the job's data from the database.
+    pub async fn v2_kill_job(
+        db: Arc<SqliteManager>,
+        job_manager: Arc<Mutex<JobManager>>,
+        llm_stopper: Arc<LLMStopper>,
+        bearer: String,
+        job_id: String,
+        res: Sender<Result<SendResponseBody, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        llm_stopper.stop(&job_id);
+        {
+            let manager = job_manager.lock().await;
+            manager.clear_job_queues(&job_id).await;
+        }
+
+        let _ = res
+            .send(Ok(SendResponseBody {
+                status: "success".to_string(),
+                message: "Job killed successfully".to_string(),
                 data: None,
             }))
             .await;
