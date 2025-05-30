@@ -106,7 +106,7 @@ impl LibP2PManager {
             .mesh_n_high(2)        // Maximum mesh size (relay + maybe 1 peer)
             .gossip_lazy(1)        // Minimal gossip since we're going through relay
             .fanout_ttl(Duration::from_secs(60))  // TTL for fanout
-            .gossip_retransmission(3)  // Retransmit important messages
+            .gossip_retransimission(3)  // Retransmit important messages
             .duplicate_cache_time(Duration::from_secs(60))  // Cache for deduplication
             .build()
             .expect("Valid config");
