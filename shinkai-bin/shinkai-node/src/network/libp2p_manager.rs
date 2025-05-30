@@ -98,14 +98,14 @@ impl LibP2PManager {
             .timeout(Duration::from_secs(20))
             .boxed();
 
-        // Create GossipSub behavior with configuration optimized for small networks
+        // Create GossipSub behavior with configuration for scalable networks
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))  // Match relay's heartbeat interval
             .validation_mode(gossipsub::ValidationMode::Permissive)
-            .mesh_outbound_min(1)  // Minimum outbound connections in mesh
-            .mesh_n_low(2)         // Minimum number of peers in mesh (must be >= mesh_outbound_min)
-            .mesh_n(3)             // Target number of peers in mesh 
-            .mesh_n_high(4)        // Maximum number of peers in mesh
+            .mesh_outbound_min(2)  // Minimum outbound connections in mesh
+            .mesh_n_low(4)         // Minimum number of peers in mesh 
+            .mesh_n(6)             // Target number of peers in mesh 
+            .mesh_n_high(12)       // Maximum number of peers in mesh (allows more peers)
             .build()
             .expect("Valid config");
 
@@ -278,21 +278,44 @@ impl LibP2PManager {
             &format!("Force discovery: found {} connected peers", known_peers.len()),
         );
         
-        // Try to add known peers to the gossipsub mesh for the main topic
+        // For each connected peer, try to make them gossipsub-aware
         for peer_id in &known_peers {
-            // This helps build the mesh by ensuring we're aware of connected peers
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Debug,
                 &format!("Adding peer {} to mesh consideration", peer_id),
+            );
+            
+            // Force gossipsub to consider this peer for mesh
+            // We'll try to send a subscribe message to make the peer aware of our topics
+            let topic = gossipsub::IdentTopic::new("shinkai-network");
+            if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Already subscribed to topic: {}", e),
+                );
+            }
+        }
+        
+        // Also publish a discovery message to announce our presence
+        let discovery_message = format!("{{\"type\":\"discovery\",\"peer_id\":\"{}\"}}",
+            self.swarm.local_peer_id());
+        let topic = gossipsub::IdentTopic::new("shinkai-network");
+        
+        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, discovery_message.as_bytes()) {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Failed to publish discovery message: {}", e),
             );
         }
     }
 
     /// Main event loop for processing libp2p events
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Set up a timer for periodic peer discovery
-        let mut discovery_interval = tokio::time::interval(Duration::from_secs(30));
+        // Set up a timer for frequent peer discovery (every 10 seconds)
+        let mut discovery_interval = tokio::time::interval(Duration::from_secs(10));
         
         loop {
             tokio::select! {
@@ -385,17 +408,45 @@ impl LibP2PManager {
             })) => {
                 // Handle incoming GossipSub messages
                 if let Ok(message_str) = String::from_utf8(message.data) {
+                    // Check if it's a discovery message
+                    if message_str.contains("\"type\":\"discovery\"") || message_str.contains("\"type\":\"peer_joined\"") {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            &format!("Received discovery message from peer {}", 
+                                message.source.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())),
+                        );
+                        
+                        // If we have a source peer, make sure they're in our Kademlia table
+                        if let Some(source_peer) = message.source {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Debug,
+                                &format!("Processing discovery from peer: {}", source_peer),
+                            );
+                        }
+                        return Ok(()); // Don't process discovery messages as regular Shinkai messages
+                    }
+                    
+                    // Try to parse as a regular Shinkai message
                     if let Ok(shinkai_message) = serde_json::from_str::<ShinkaiMessage>(&message_str) {
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Info,
-                            &format!("Received message from peer {}", message.source.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())),
+                            &format!("Received Shinkai message from peer {}", 
+                                message.source.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())),
                         );
                         
                         // Handle the message using the message handler
                         if let Some(source) = message.source {
                             self.message_handler.handle_message(source, shinkai_message).await;
                         }
+                    } else {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Debug,
+                            &format!("Received non-Shinkai message: {}", message_str),
+                        );
                     }
                 }
             }
@@ -438,6 +489,28 @@ impl LibP2PManager {
                     ShinkaiLogLevel::Info,
                     &format!("Connected to peer {}", peer_id),
                 );
+                
+                // When a new peer connects, try to add them to gossipsub
+                let topic = gossipsub::IdentTopic::new("shinkai-network");
+                if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Already subscribed to topic: {}", e),
+                    );
+                }
+                
+                // Announce our presence to the new peer
+                let discovery_message = format!("{{\"type\":\"peer_joined\",\"peer_id\":\"{}\"}}",
+                    self.swarm.local_peer_id());
+                
+                if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, discovery_message.as_bytes()) {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Failed to announce presence: {}", e),
+                    );
+                }
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 shinkai_log(

@@ -2,6 +2,7 @@ use libp2p::{
     futures::StreamExt,
     gossipsub::{self, Event as GossipsubEvent, MessageAuthenticity, ValidationMode, MessageId},
     identify::{self, Event as IdentifyEvent},
+    kad,
     noise, ping,
     relay::{self, Event as RelayEvent},
     swarm::{NetworkBehaviour, SwarmEvent, Config},
@@ -22,6 +23,7 @@ pub struct RelayBehaviour {
     pub identify: identify::Behaviour,
     pub ping: ping::Behaviour,
     pub relay: relay::Behaviour,
+    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
 }
 
 pub struct RelayManager {
@@ -78,12 +80,20 @@ impl RelayManager {
         // Configure relay protocol
         let relay = relay::Behaviour::new(local_peer_id, Default::default());
 
+        // Configure Kademlia DHT
+        let mut kademlia = kad::Behaviour::new(
+            local_peer_id,
+            kad::store::MemoryStore::new(local_peer_id),
+        );
+        kademlia.set_mode(Some(kad::Mode::Server));
+
         // Create the behaviour
         let behaviour = RelayBehaviour {
             gossipsub,
             identify,
             ping,
             relay,
+            kademlia,
         };
 
         // Create swarm with proper configuration
@@ -143,22 +153,39 @@ impl RelayManager {
     }
 
     pub async fn run(&mut self) -> Result<(), LibP2PRelayError> {
+        println!("Starting relay manager...");
+        
+        // Set up a timer for periodic Kademlia bootstrap (every 30 seconds)
+        let mut bootstrap_interval = tokio::time::interval(Duration::from_secs(30));
+        
         loop {
             tokio::select! {
                 // Handle swarm events
                 event = self.swarm.select_next_some() => {
-                    if let Err(e) = self.handle_swarm_event(event).await {
-                        eprintln!("Error handling swarm event: {}", e);
+                    self.handle_swarm_event(event).await?;
+                }
+                
+                // Handle outgoing messages
+                message = self.message_receiver.recv() => {
+                    match message {
+                        Some(msg) => {
+                            self.handle_outgoing_message(msg).await?;
+                        }
+                        None => break, // Channel closed
                     }
                 }
-                // Handle outgoing messages
-                Some(message) = self.message_receiver.recv() => {
-                    if let Err(e) = self.handle_outgoing_message(message).await {
-                        eprintln!("Error handling outgoing message: {}", e);
+                
+                // Periodic Kademlia bootstrap
+                _ = bootstrap_interval.tick() => {
+                    if let Err(e) = self.swarm.behaviour_mut().kademlia.bootstrap() {
+                        println!("Kademlia bootstrap failed: {:?}", e);
+                    } else {
+                        println!("Initiated Kademlia bootstrap");
                     }
                 }
             }
         }
+        Ok(())
     }
 
     async fn handle_swarm_event(
@@ -182,6 +209,10 @@ impl RelayManager {
                 ..
             })) => {
                 println!("Identified peer: {} with protocol version: {}", peer_id, info.protocol_version);
+                // Add peer addresses to Kademlia
+                for addr in info.listen_addrs {
+                    self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+                }
                 // We could use this to auto-register peers based on their identify info
             }
             SwarmEvent::Behaviour(RelayBehaviourEvent::Relay(RelayEvent::ReservationReqAccepted {
@@ -189,6 +220,42 @@ impl RelayManager {
                 ..
             })) => {
                 println!("Accepted relay reservation from: {}", src_peer_id);
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Kademlia(kad::Event::OutboundQueryProgressed {
+                id: _,
+                result,
+                ..
+            })) => {
+                match result {
+                    kad::QueryResult::Bootstrap(Ok(kad::BootstrapOk {
+                        peer,
+                        num_remaining,
+                    })) => {
+                        println!("Kademlia bootstrap progress: peer={}, remaining={}", peer, num_remaining);
+                    }
+                    kad::QueryResult::Bootstrap(Err(e)) => {
+                        println!("Kademlia bootstrap error: {:?}", e);
+                    }
+                    kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders { providers, .. })) => {
+                        println!("Found {} providers", providers.len());
+                    }
+                    kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. })) => {
+                        println!("Provider search finished with no additional records");
+                    }
+                    kad::QueryResult::GetProviders(Err(e)) => {
+                        println!("Get providers error: {:?}", e);
+                    }
+                    _ => {}
+                }
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Kademlia(kad::Event::RoutingUpdated {
+                peer,
+                is_new_peer,
+                addresses,
+                ..
+            })) => {
+                println!("Kademlia routing updated: peer={}, new={}, addresses={:?}", 
+                    peer, is_new_peer, addresses);
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 println!("Connection established with peer: {}", peer_id);
