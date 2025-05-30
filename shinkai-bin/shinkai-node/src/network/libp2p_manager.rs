@@ -102,9 +102,10 @@ impl LibP2PManager {
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))  // Match relay's heartbeat interval
             .validation_mode(gossipsub::ValidationMode::Permissive)
-            .mesh_n_low(1)  // Minimum number of peers in mesh (lowered for small networks)
-            .mesh_n(2)      // Target number of peers in mesh (lowered for small networks)
-            .mesh_n_high(3) // Maximum number of peers in mesh (lowered for small networks)
+            .mesh_outbound_min(1)  // Minimum outbound connections in mesh
+            .mesh_n_low(2)         // Minimum number of peers in mesh (must be >= mesh_outbound_min)
+            .mesh_n(3)             // Target number of peers in mesh 
+            .mesh_n_high(4)        // Maximum number of peers in mesh
             .build()
             .expect("Valid config");
 
