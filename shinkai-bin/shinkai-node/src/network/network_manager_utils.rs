@@ -99,6 +99,7 @@ pub async fn send_message_to_peer(
         None,
         false,
         None,
+        None,
     );
 
     Ok(())

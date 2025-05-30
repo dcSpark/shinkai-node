@@ -3224,6 +3224,7 @@ impl Node {
             ws_manager.clone(),
             true,
             None,
+            None, // TODO: Pass libp2p_event_sender when available
         );
 
         {
