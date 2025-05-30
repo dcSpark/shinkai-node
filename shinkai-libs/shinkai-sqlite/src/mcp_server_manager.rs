@@ -70,42 +70,80 @@ impl SqliteManager {
         is_enabled: bool,
     ) -> Result<MCPServer, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare(
-            "INSERT INTO mcp_servers (name, type, url, command, env, is_enabled) 
-             VALUES (?, ?, ?, ?, ?, ?) 
-             RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
-        )?;
 
-        let mut rows = stmt.query([
-            name.clone(),
-            r#type.to_string(),
-            url.clone().unwrap_or("".to_string()),
-            command.clone().unwrap_or("".to_string()),
-            env.map(|e| serde_json::to_string(&e).unwrap())
-                .unwrap_or_else(|| "{}".to_string()),
-            if is_enabled { 1.to_string() } else { 0.to_string() },
-        ])?;
+        // Generate Unix timestamp in milliseconds as ID with collision handling
+        let mut timestamp_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| {
+                SqliteManagerError::DatabaseError(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(1),
+                    Some(format!("Failed to generate timestamp: {}", e)),
+                ))
+            })?
+            .as_millis() as i64;
 
-        match rows.next()? {
-            Some(row) => Ok(MCPServer {
-                id: row.get(0)?,
-                created_at: row.get(1)?,
-                updated_at: row.get(2)?,
-                name: row.get(3)?,
-                r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
-                url: row.get(5)?,
-                command: row.get(6)?,
-                env: {
-                    let env_str: Option<String> = row.get(7)?;
-                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+        // Retry up to 10 times if we hit a collision
+        for attempt in 0..10 {
+            let mut stmt = conn.prepare(
+                "INSERT INTO mcp_servers (id, name, type, url, command, env, is_enabled) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?) 
+                 RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
+            )?;
+
+            let query_result = stmt.query([
+                timestamp_id.to_string(),
+                name.clone(),
+                r#type.to_string(),
+                url.clone().unwrap_or("".to_string()),
+                command.clone().unwrap_or("".to_string()),
+                env.as_ref()
+                    .map(|e| serde_json::to_string(&e).unwrap())
+                    .unwrap_or_else(|| "{}".to_string()),
+                if is_enabled { 1.to_string() } else { 0.to_string() },
+            ]);
+
+            match query_result {
+                Ok(mut rows) => match rows.next()? {
+                    Some(row) => {
+                        return Ok(MCPServer {
+                            id: row.get(0)?,
+                            created_at: row.get(1)?,
+                            updated_at: row.get(2)?,
+                            name: row.get(3)?,
+                            r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
+                            url: row.get(5)?,
+                            command: row.get(6)?,
+                            env: {
+                                let env_str: Option<String> = row.get(7)?;
+                                env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                            },
+                            is_enabled: row.get::<_, bool>(8)?,
+                        });
+                    }
+                    None => {
+                        log::error!("Insert query returned no rows");
+                        return Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows));
+                    }
                 },
-                is_enabled: row.get::<_, bool>(8)?,
-            }),
-            None => {
-                log::error!("Insert query returned no rows");
-                Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows))
+                Err(rusqlite::Error::SqliteFailure(ffi_err, _))
+                    if ffi_err.code == rusqlite::ErrorCode::ConstraintViolation =>
+                {
+                    // ID collision detected, increment and retry
+                    timestamp_id += 1;
+                    if attempt == 9 {
+                        return Err(SqliteManagerError::DatabaseError(rusqlite::Error::SqliteFailure(
+                            rusqlite::ffi::Error::new(1),
+                            Some("Failed to generate unique ID after 10 attempts".to_string()),
+                        )));
+                    }
+                    continue;
+                }
+                Err(e) => return Err(SqliteManagerError::DatabaseError(e)),
             }
         }
+
+        // This should never be reached due to the return statements above
+        unreachable!()
     }
 
     pub fn update_mcp_server(
@@ -128,7 +166,7 @@ impl SqliteManager {
             env.map(|e| serde_json::to_string(&e).unwrap())
                 .unwrap_or_else(|| "{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
-            (id as i32).to_string(),
+            id.to_string(),
         ])?;
         match rows.next()? {
             Some(row) => Ok(MCPServer {
@@ -161,7 +199,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare(
             "UPDATE mcp_servers SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled"
         )?;
-        let mut rows = stmt.query([is_enabled as i32, id as i32])?;
+        let mut rows = stmt.query([if is_enabled { 1.to_string() } else { 0.to_string() }, id.to_string()])?;
 
         match rows.next()? {
             Some(row) => Ok(MCPServer {
@@ -179,6 +217,58 @@ impl SqliteManager {
                 is_enabled: row.get::<_, bool>(8)?,
             }),
             None => Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
+        }
+    }
+
+    pub fn add_mcp_server_with_id(
+        &self,
+        id: i64,
+        name: String,
+        r#type: MCPServerType,
+        url: Option<String>,
+        command: Option<String>,
+        env: Option<MCPServerEnv>,
+        is_enabled: bool,
+    ) -> Result<MCPServer, SqliteManagerError> {
+        let conn = self.get_connection()?;
+
+        let mut stmt = conn.prepare(
+            "INSERT INTO mcp_servers (id, name, type, url, command, env, is_enabled) 
+             VALUES (?, ?, ?, ?, ?, ?, ?) 
+             RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
+        )?;
+
+        let mut rows = stmt.query([
+            id.to_string(),
+            name.clone(),
+            r#type.to_string(),
+            url.clone().unwrap_or("".to_string()),
+            command.clone().unwrap_or("".to_string()),
+            env.as_ref()
+                .map(|e| serde_json::to_string(&e).unwrap())
+                .unwrap_or_else(|| "{}".to_string()),
+            if is_enabled { 1.to_string() } else { 0.to_string() },
+        ])?;
+
+        match rows.next()? {
+            Some(row) => Ok(MCPServer {
+                id: row.get(0)?,
+                created_at: row.get(1)?,
+                updated_at: row.get(2)?,
+                name: row.get(3)?,
+                r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
+                url: row.get(5)?,
+                command: row.get(6)?,
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                },
+                is_enabled: row.get::<_, bool>(8)?,
+            }),
+            None => {
+                log::error!("Insert query returned no rows");
+                Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows))
+            }
         }
     }
 }
@@ -399,6 +489,85 @@ mod tests {
             assert_eq!(env.get("SPECIAL_CHARS").unwrap(), "value with spaces & symbols!");
         } else {
             panic!("Environment should not be None");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unix_timestamp_ids_for_import_export() {
+        let manager = setup_test_db().await;
+
+        // Test 1: Add a server and verify it gets a Unix timestamp ID
+        let server1 = manager
+            .add_mcp_server(
+                "Server 1".to_string(),
+                MCPServerType::Command,
+                Some("http://server1.example.com".to_string()),
+                Some("npx server1".to_string()),
+                None,
+                true,
+            )
+            .unwrap();
+
+        // Verify the ID is a Unix timestamp (should be a large number)
+        let id1 = server1.id.unwrap();
+        assert!(id1 > 1_000_000_000_000); // Should be > year 2001 in milliseconds
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        // Test 2: Add another server and verify it gets a different timestamp
+        let server2 = manager
+            .add_mcp_server(
+                "Server 2".to_string(),
+                MCPServerType::Sse,
+                Some("http://server2.example.com".to_string()),
+                None,
+                None,
+                true,
+            )
+            .unwrap();
+
+        let id2 = server2.id.unwrap();
+        assert!(id2 > id1); // Second server should have a later timestamp
+        assert!(id2 - id1 < 1000); // But should be within a reasonable time difference
+
+        // Test 3: Test import scenario - add a server with a specific ID (simulating import)
+        let import_id = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
+            + 100000; // Larger offset to avoid conflicts with other tests
+        let imported_server = manager
+            .add_mcp_server_with_id(
+                import_id,
+                "Imported Server".to_string(),
+                MCPServerType::Command,
+                Some("http://imported.example.com".to_string()),
+                Some("npx imported".to_string()),
+                None,
+                true,
+            )
+            .unwrap();
+
+        assert_eq!(imported_server.id.unwrap(), import_id);
+
+        // Test 4: Verify all servers can be retrieved and updated
+        let all_servers = manager.get_all_mcp_servers().unwrap();
+        assert_eq!(all_servers.len(), 3);
+
+        // Test updating each server works correctly
+        for server in all_servers {
+            let updated = manager
+                .update_mcp_server(
+                    server.id.unwrap(),
+                    format!("Updated {}", server.name),
+                    server.r#type,
+                    server.url,
+                    server.command,
+                    server.env,
+                    !server.is_enabled, // Toggle enabled status
+                )
+                .unwrap();
+
+            assert!(updated.name.starts_with("Updated"));
+            assert_eq!(updated.is_enabled, !server.is_enabled);
         }
     }
 }
