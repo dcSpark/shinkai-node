@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::utils::github_mcp::{
-    extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme,
-    fetch_github_file, parse_github_url, GitHubRepo,
+    extract_command_from_json_config_in_readme, extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url, GitHubRepo
 };
 use reqwest::Client;
 use rmcp::model::Tool;
@@ -106,6 +105,7 @@ async fn process_python_mcp_project(
     pyproject_toml_content: String,
     _repo_info: &GitHubRepo,
     env_vars: HashSet<String>,
+    readme_content: Option<String>,
 ) -> Result<AddMCPServerRequest, String> {
     // Parse pyproject.toml
     let pyproject_toml: Table = pyproject_toml_content
@@ -148,12 +148,27 @@ async fn process_python_mcp_project(
         env_map.insert(var_name.clone(), "".to_string());
     }
 
-    // Create configuration based on entry point
-    let command: String = if let Some(script) = entry_point {
-        format!("uvx run {}", script)
+    // First try to extract command from README JSON config
+    let command: String = if let Some(ref readme) = readme_content {
+        if let Some(extracted_command) = extract_command_from_json_config_in_readme(readme) {
+            extracted_command
+        } else {
+            // Fallback to original logic
+            if let Some(script) = entry_point {
+                format!("uvx run {}", script)
+            } else {
+                // Fallback to python -m if no script found
+                format!("python -m {}", package_name.replace("-", "_"))
+            }
+        }
     } else {
-        // Fallback to python -m if no script found
-        format!("python -m {}", package_name.replace("-", "_"))
+        // No README available, use original logic
+        if let Some(script) = entry_point {
+            format!("uvx run {}", script)
+        } else {
+            // Fallback to python -m if no script found
+            format!("python -m {}", package_name.replace("-", "_"))
+        }
     };
 
     let request = AddMCPServerRequest {
@@ -172,6 +187,7 @@ async fn process_nodejs_mcp_project(
     package_json_content: String,
     _repo_info: &GitHubRepo,
     env_vars: HashSet<String>,
+    readme_content: Option<String>,
 ) -> Result<AddMCPServerRequest, String> {
     // Parse package.json
     let package_json: Value =
@@ -193,8 +209,18 @@ async fn process_nodejs_mcp_project(
         env_map.insert(var_name.clone(), "".to_string());
     }
 
-    // Create configuration
-    let command = format!("npx -y {}", package_name);
+    // First try to extract command from README JSON config
+    let command: String = if let Some(ref readme) = readme_content {
+        if let Some(extracted_command) = extract_command_from_json_config_in_readme(readme) {
+            extracted_command
+        } else {
+            // Fallback to original logic
+            format!("npx -y {}", package_name)
+        }
+    } else {
+        // No README available, use original logic
+        format!("npx -y {}", package_name)
+    };
 
     // Create registration request
     let request = AddMCPServerRequest {
@@ -216,37 +242,35 @@ pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<Add
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+    // Fetch README.md content (used for both env vars fallback and command extraction)
+    let readme_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
+    let readme_content = readme_result.ok();
+
     // Try to fetch smithery.yaml first for environment variables
     let mut env_vars = HashSet::new();
-    let smithery_result =
-        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "smithery.yaml").await;
+    let smithery_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "smithery.yaml").await;
 
     if let Ok(smithery_content) = smithery_result {
         env_vars = extract_env_vars_from_smithery_yaml(&smithery_content);
+    } else if let Some(ref readme) = readme_content {
+        // Fallback to README.md regex extraction for environment variables
+        env_vars = extract_mcp_env_vars_from_readme(readme);
     } else {
-        // Fallback to README.md regex extraction
-        let readme_result =
-            fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
-
-        if let Ok(readme_content) = readme_result {
-            env_vars = extract_mcp_env_vars_from_readme(&readme_content);
-        } else {
-            log::info!("README.md not found or could not be parsed");
-        }
+        log::info!("Neither smithery.yaml nor README.md found for environment variable extraction");
     }
 
     // Try to fetch package.json first (Node.js project)
     let package_json_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
 
     if let Ok(package_json_content) = package_json_result {
-        return process_nodejs_mcp_project(package_json_content, &repo_info, env_vars).await;
+        return process_nodejs_mcp_project(package_json_content, &repo_info, env_vars, readme_content).await;
     }
 
     // If package.json not found, try pyproject.toml (Python project)
     let pyproject_toml_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "pyproject.toml").await;
 
     if let Ok(pyproject_toml_content) = pyproject_toml_result {
-        return process_python_mcp_project(pyproject_toml_content, &repo_info, env_vars).await;
+        return process_python_mcp_project(pyproject_toml_content, &repo_info, env_vars, readme_content).await;
     }
 
     // If neither found, return error
