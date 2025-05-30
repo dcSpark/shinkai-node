@@ -54,11 +54,11 @@ impl RelayManager {
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))
             .validation_mode(ValidationMode::Permissive)
-            .mesh_outbound_min(1)      // Minimum outbound connections
-            .mesh_n_low(2)             // Allow 2+ nodes in mesh
-            .mesh_n(6)                 // Target mesh size for multiple nodes
-            .mesh_n_high(12)           // Maximum mesh size
-            .gossip_lazy(3)            // Gossip to more peers for better propagation
+            .mesh_outbound_min(0)      // Allow zero outbound connections
+            .mesh_n_low(1)             // Allow single node mesh
+            .mesh_n(8)                 // Higher target for relay (hub for multiple nodes)
+            .mesh_n_high(16)           // High maximum to handle many nodes
+            .gossip_lazy(6)            // More gossip for better propagation as hub
             .fanout_ttl(Duration::from_secs(60))
             .gossip_retransimission(3)  // Retransmit messages for reliability
             .duplicate_cache_time(Duration::from_secs(120))  // Longer dedup cache
