@@ -1,8 +1,8 @@
 use log::info;
 use regex::Regex;
 use reqwest::Client;
-use std::collections::HashSet;
 use serde_yaml::Value as YamlValue;
+use std::collections::HashSet;
 
 /// GitHub repository information
 pub struct GitHubRepo {
@@ -205,10 +205,7 @@ pub fn extract_start_command_from_smithery_yaml(yaml_content: &str) -> Option<St
         if let Some(start_cmd) = yaml.get("startCommand") {
             if let Some(cmd_fn) = start_cmd.get("commandFunction") {
                 if let Some(fn_str) = cmd_fn.as_str() {
-                    let re = Regex::new(
-                        r"command:\s*['\"](?P<cmd>[^'\"]+)['\"].*?args:\s*\[(?P<args>[^\]]*)\]",
-                    )
-                    .ok()?;
+                    let re = Regex::new(r#"command:\s*['"](?P<cmd>[^'"]+)['"].*?args:\s*\[(?P<args>[^\]]*)\]"#).ok()?;
 
                     if let Some(caps) = re.captures(fn_str) {
                         let cmd = caps.name("cmd")?.as_str();
