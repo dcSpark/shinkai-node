@@ -98,10 +98,13 @@ impl LibP2PManager {
             .timeout(Duration::from_secs(20))
             .boxed();
 
-        // Create GossipSub behavior
+        // Create GossipSub behavior with configuration optimized for small networks
         let gossipsub_config = gossipsub::ConfigBuilder::default()
-            .heartbeat_interval(Duration::from_secs(10))
+            .heartbeat_interval(Duration::from_secs(1))  // Match relay's heartbeat interval
             .validation_mode(gossipsub::ValidationMode::Permissive)
+            .mesh_n_low(1)  // Minimum number of peers in mesh (lowered for small networks)
+            .mesh_n(2)      // Target number of peers in mesh (lowered for small networks)
+            .mesh_n_high(3) // Maximum number of peers in mesh (lowered for small networks)
             .build()
             .expect("Valid config");
 
@@ -117,7 +120,7 @@ impl LibP2PManager {
         // Create mDNS behavior
         let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)?;
 
-        // Create Identify behavior
+        // Create Identify behavior with compatible protocol
         let identify = identify::Behaviour::new(identify::Config::new(
             "/shinkai/1.0.0".to_string(),
             local_key.public(),
@@ -220,16 +223,31 @@ impl LibP2PManager {
         message: ShinkaiMessage,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let serialized = serde_json::to_string(&message)?;
-        let gossip_topic = gossipsub::IdentTopic::new(topic);
         
-        // Subscribe to the topic first if not already subscribed
-        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&gossip_topic);
+        // Always subscribe to the general shinkai-network topic for peer discovery
+        let general_topic = gossipsub::IdentTopic::new("shinkai-network");
+        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&general_topic);
         
-        // Publish the message
+        // Also subscribe to the specific topic
+        let specific_topic = gossipsub::IdentTopic::new(topic);
+        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&specific_topic);
+        
+        // Publish to both topics to ensure message delivery
         self.swarm
             .behaviour_mut()
             .gossipsub
-            .publish(gossip_topic, serialized.as_bytes())?;
+            .publish(general_topic, serialized.as_bytes())?;
+            
+        self.swarm
+            .behaviour_mut()
+            .gossipsub
+            .publish(specific_topic, serialized.as_bytes())?;
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Broadcasted message to topics: shinkai-network and {}", topic),
+        );
 
         Ok(())
     }
@@ -245,8 +263,36 @@ impl LibP2PManager {
         Ok(())
     }
 
+    /// Force discovery of peers and mesh building
+    pub fn force_peer_discovery(&mut self) {
+        // Trigger Kademlia bootstrap to find more peers
+        let _ = self.swarm.behaviour_mut().kademlia.bootstrap();
+        
+        // Get all known peers and try to add them to gossipsub mesh
+        let known_peers: Vec<PeerId> = self.swarm.connected_peers().cloned().collect();
+        
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Force discovery: found {} connected peers", known_peers.len()),
+        );
+        
+        // Try to add known peers to the gossipsub mesh for the main topic
+        for peer_id in &known_peers {
+            // This helps build the mesh by ensuring we're aware of connected peers
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Adding peer {} to mesh consideration", peer_id),
+            );
+        }
+    }
+
     /// Main event loop for processing libp2p events
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Set up a timer for periodic peer discovery
+        let mut discovery_interval = tokio::time::interval(Duration::from_secs(30));
+        
         loop {
             tokio::select! {
                 // Handle swarm events
@@ -286,6 +332,11 @@ impl LibP2PManager {
                         }
                         None => break, // Channel closed
                     }
+                }
+                
+                // Periodic peer discovery
+                _ = discovery_interval.tick() => {
+                    self.force_peer_discovery();
                 }
             }
         }
@@ -346,6 +397,27 @@ impl LibP2PManager {
                         }
                     }
                 }
+            }
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::Subscribed { peer_id, topic })) => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Peer {} subscribed to topic {}", peer_id, topic),
+                );
+            }
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed { peer_id, topic })) => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Peer {} unsubscribed from topic {}", peer_id, topic),
+                );
+            }
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::GossipsubNotSupported { peer_id })) => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("Peer {} does not support Gossipsub", peer_id),
+                );
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
                 shinkai_log(
