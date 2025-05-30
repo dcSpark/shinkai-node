@@ -54,12 +54,15 @@ impl RelayManager {
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_secs(1))
             .validation_mode(ValidationMode::Permissive)
-            .mesh_outbound_min(1)      // Allow smaller meshes for relay scenarios
-            .mesh_n_low(1)             // Lower minimum mesh size
-            .mesh_n(3)                 // Target mesh size  
-            .mesh_n_high(6)            // Maximum mesh size
-            .gossip_lazy(3)            // Gossip to more peers
+            .mesh_outbound_min(1)      // Minimum outbound connections
+            .mesh_n_low(2)             // Allow 2+ nodes in mesh
+            .mesh_n(6)                 // Target mesh size for multiple nodes
+            .mesh_n_high(12)           // Maximum mesh size
+            .gossip_lazy(3)            // Gossip to more peers for better propagation
             .fanout_ttl(Duration::from_secs(60))
+            .gossip_retransimission(3)  // Retransmit messages for reliability
+            .duplicate_cache_time(Duration::from_secs(120))  // Longer dedup cache
+            .max_transmit_size(262144) // 256KB max message size
             .message_id_fn(|message| {
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 message.data.hash(&mut hasher);
@@ -299,12 +302,28 @@ impl RelayManager {
         _propagation_source: PeerId,
         data: Vec<u8>,
     ) -> Result<(), LibP2PRelayError> {
+        // First try to parse as a simple discovery message
+        if let Ok(message_str) = String::from_utf8(data.clone()) {
+            // Check if it's a discovery message
+            if message_str.contains("\"type\":\"discovery\"") || 
+               message_str.contains("\"type\":\"peer_joined\"") || 
+               message_str.contains("\"type\":\"peer_connected\"") {
+                println!("Received discovery message: {}", message_str);
+                // Discovery messages are handled automatically by gossipsub propagation
+                return Ok(());
+            }
+        }
+        
+        // If not a discovery message, try to parse as RelayMessage
         match RelayMessage::from_bytes(&data) {
             Ok(relay_message) => {
+                println!("Received relay message from: {}", relay_message.identity);
                 self.route_message(relay_message).await?;
             }
             Err(e) => {
-                eprintln!("Failed to parse relay message: {}", e);
+                // Log but don't fail - could be other types of messages
+                println!("Received non-relay message ({}): {:?}", e, 
+                    String::from_utf8_lossy(&data[..std::cmp::min(100, data.len())]));
             }
         }
         Ok(())

@@ -1,6 +1,6 @@
 use futures::prelude::*;
 use libp2p::{
-    dcutr, gossipsub, identify, kad, noise, ping,
+    dcutr, gossipsub, identify, noise, ping,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
@@ -22,7 +22,6 @@ use tokio::sync::mpsc;
 pub struct ShinkaiNetworkBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub identify: identify::Behaviour,
-    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
     pub ping: ping::Behaviour,
     pub dcutr: dcutr::Behaviour,
 }
@@ -99,14 +98,16 @@ impl LibP2PManager {
 
         // Create GossipSub behavior with configuration for relay networking
         let gossipsub_config = gossipsub::ConfigBuilder::default()
-            .heartbeat_interval(Duration::from_secs(1))  // Match relay's heartbeat interval
+            .heartbeat_interval(Duration::from_secs(1))  // Fast heartbeat for relay scenarios
             .validation_mode(gossipsub::ValidationMode::Permissive)
-            .mesh_outbound_min(1)  // Allow smaller meshes for relay scenarios
-            .mesh_n_low(1)         // Lower minimum mesh size for relay
-            .mesh_n(2)             // Target mesh size (relay + maybe 1 peer)
-            .mesh_n_high(4)        // Lower maximum for relay scenarios
-            .gossip_lazy(2)        // Reduce gossip for relay scenarios
-            .fanout_ttl(Duration::from_secs(30))  // Shorter TTL for relay
+            .mesh_outbound_min(1)  // Minimum outbound connections
+            .mesh_n_low(1)         // Allow very small meshes (just relay)
+            .mesh_n(1)             // Target mesh size (just the relay)
+            .mesh_n_high(2)        // Maximum mesh size (relay + maybe 1 peer)
+            .gossip_lazy(1)        // Minimal gossip since we're going through relay
+            .fanout_ttl(Duration::from_secs(60))  // TTL for fanout
+            .gossip_retransmission(3)  // Retransmit important messages
+            .duplicate_cache_time(Duration::from_secs(60))  // Cache for deduplication
             .build()
             .expect("Valid config");
 
@@ -125,13 +126,6 @@ impl LibP2PManager {
             local_key.public(),
         ));
 
-        // Create Kademlia behavior
-        let mut kademlia = kad::Behaviour::new(
-            local_peer_id,
-            kad::store::MemoryStore::new(local_peer_id),
-        );
-        kademlia.set_mode(Some(kad::Mode::Server));
-
         // Create ping behavior
         let ping = ping::Behaviour::new(ping::Config::new());
 
@@ -142,7 +136,6 @@ impl LibP2PManager {
         let behaviour = ShinkaiNetworkBehaviour {
             gossipsub,
             identify,
-            kademlia,
             ping,
             dcutr,
         };
@@ -151,17 +144,37 @@ impl LibP2PManager {
         let swarm_config = libp2p::swarm::Config::with_tokio_executor();
         let mut swarm = Swarm::new(transport, behaviour, local_peer_id, swarm_config);
 
-        // Configure listening
-        let listen_addr = if let Some(port) = listen_port {
-            format!("/ip4/0.0.0.0/tcp/{}", port)
+        // For relay scenarios, DO NOT listen on any local port to prevent direct connections
+        // All communication should go through the relay
+        if relay_address.is_none() {
+            // Only listen if we're not using a relay (fallback mode)
+            let listen_addr = if let Some(port) = listen_port {
+                format!("/ip4/0.0.0.0/tcp/{}", port)
+            } else {
+                "/ip4/0.0.0.0/tcp/0".to_string()
+            };
+            swarm.listen_on(listen_addr.parse()?)?;
+            
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("Listening on {} (no relay configured)", listen_addr),
+            );
         } else {
-            "/ip4/0.0.0.0/tcp/0".to_string()
-        };
-
-        swarm.listen_on(listen_addr.parse()?)?;
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                "Relay configured - NOT listening on local port to prevent direct connections",
+            );
+        }
 
         // Connect to relay if provided
         if let Some(relay_addr) = relay_address {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("Connecting to relay at: {}", relay_addr),
+            );
             swarm.dial(relay_addr)?;
         }
 
@@ -252,21 +265,21 @@ impl LibP2PManager {
 
     /// Add a peer to connect to
     pub fn add_peer(&mut self, peer_id: PeerId, address: Multiaddr) -> Result<(), Box<dyn std::error::Error>> {
-        // Add to Kademlia routing table
-        self.swarm.behaviour_mut().kademlia.add_address(&peer_id, address.clone());
-        
-        // Dial the peer
-        self.swarm.dial(address)?;
-        
+        // For relay scenarios, we don't use direct peer connections
+        // All peer discovery happens through the relay via gossipsub
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("Skipping direct connection to peer {} at {} (relay mode)", peer_id, address),
+        );
         Ok(())
     }
 
     /// Force discovery of peers and mesh building
     pub fn force_peer_discovery(&mut self) {
-        // Trigger Kademlia bootstrap to find more peers
-        let _ = self.swarm.behaviour_mut().kademlia.bootstrap();
+        // For relay scenarios, we rely on gossipsub discovery through the relay
+        // instead of Kademlia DHT to avoid direct connection attempts
         
-        // Get all known peers and try to add them to gossipsub mesh
         let known_peers: Vec<PeerId> = self.swarm.connected_peers().cloned().collect();
         
         shinkai_log(
@@ -275,7 +288,7 @@ impl LibP2PManager {
             &format!("Force discovery: found {} connected peers", known_peers.len()),
         );
         
-        // For each connected peer, try to make them gossipsub-aware
+        // For each connected peer, ensure they're part of gossipsub
         for peer_id in &known_peers {
             shinkai_log(
                 ShinkaiLogOption::Network,
@@ -283,8 +296,7 @@ impl LibP2PManager {
                 &format!("Adding peer {} to mesh consideration", peer_id),
             );
             
-            // Force gossipsub to consider this peer for mesh
-            // We'll try to send a subscribe message to make the peer aware of our topics
+            // Ensure we're subscribed to the main topic
             let topic = gossipsub::IdentTopic::new("shinkai-network");
             if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
                 shinkai_log(
@@ -295,7 +307,7 @@ impl LibP2PManager {
             }
         }
         
-        // Also publish a discovery message to announce our presence
+        // Publish a discovery message to announce our presence
         let discovery_message = format!("{{\"type\":\"discovery\",\"peer_id\":\"{}\"}}",
             self.swarm.local_peer_id());
         let topic = gossipsub::IdentTopic::new("shinkai-network");
@@ -454,10 +466,8 @@ impl LibP2PManager {
                     &format!("Identified peer {} with protocol version {}", peer_id, info.protocol_version),
                 );
                 
-                // Add peer addresses to Kademlia
-                for addr in info.listen_addrs {
-                    self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
-                }
+                // For relay scenarios, we don't add peers to Kademlia since it causes direct connections
+                // All peer discovery should happen through gossipsub via the relay
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 shinkai_log(
