@@ -1,5 +1,7 @@
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
+use super::libp2p_manager::{LibP2PManager, NetworkEvent};
+use super::libp2p_message_handler::ShinkaiMessageHandler;
 use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
@@ -21,6 +23,7 @@ use core::panic;
 use dashmap::DashMap;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
+use libp2p::{Multiaddr, PeerId};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use reqwest::StatusCode;
@@ -142,6 +145,12 @@ pub struct Node {
     pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
     // LLM Stopper
     pub llm_stopper: Arc<LLMStopper>,
+    // LibP2P Manager for peer-to-peer networking
+    pub libp2p_manager: Option<Arc<Mutex<LibP2PManager>>>,
+    // LibP2P event sender for sending network events
+    pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    // LibP2P task handle
+    pub libp2p_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Node {
@@ -425,6 +434,9 @@ impl Node {
             my_agent_payments_manager,
             ext_agent_payments_manager,
             llm_stopper,
+            libp2p_manager: None,
+            libp2p_event_sender: None,
+            libp2p_task: None,
         }))
     }
 
@@ -533,6 +545,80 @@ impl Node {
             });
         }
         eprintln!(">> Node start set variables successfully");
+
+        // Initialize LibP2P networking
+        {
+            let message_handler = ShinkaiMessageHandler::new(
+                self.network_job_manager.clone(),
+                self.listen_address,
+            );
+
+            // Extract port from listen_address for libp2p
+            let listen_port = Some(self.listen_address.port());
+            
+            // Get relay address from proxy connection if available
+            let relay_address = {
+                let proxy_info = self.proxy_connection_info.lock().await;
+                if let Some(proxy) = proxy_info.as_ref() {
+                    // Try to resolve proxy identity to address
+                    match Node::get_address_from_identity(
+                        self.identity_manager.clone(),
+                        &proxy.proxy_identity.get_node_name_string(),
+                    ).await {
+                        Ok(addr) => {
+                            let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
+                            multiaddr_str.parse::<Multiaddr>().ok()
+                        }
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                }
+            };
+
+            match LibP2PManager::new(
+                self.node_name.to_string(),
+                listen_port,
+                message_handler,
+                relay_address,
+            ).await {
+                Ok(libp2p_manager) => {
+                    let event_sender = libp2p_manager.event_sender();
+                    let libp2p_manager_arc = Arc::new(Mutex::new(libp2p_manager));
+                    
+                    // Spawn the libp2p task
+                    let manager_clone = libp2p_manager_arc.clone();
+                    let libp2p_task = tokio::spawn(async move {
+                        let mut manager = manager_clone.lock().await;
+                        if let Err(e) = manager.run().await {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("LibP2P manager error: {}", e),
+                            );
+                        }
+                    });
+
+                    self.libp2p_manager = Some(libp2p_manager_arc);
+                    self.libp2p_event_sender = Some(event_sender);
+                    self.libp2p_task = Some(libp2p_task);
+
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "LibP2P networking initialized successfully",
+                    );
+                }
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to initialize LibP2P: {}", e),
+                    );
+                    // Continue without libp2p - fallback to TCP networking
+                }
+            }
+        }
 
         let listen_future = self.listen_and_reconnect(self.proxy_connection_info.clone()).fuse();
         pin_mut!(listen_future);
@@ -1118,13 +1204,7 @@ impl Node {
         Ok(())
     }
 
-    // TODO: Add a new send that schedules messages to be sent at a later time.
-    // It may be more complex than what it sounds because there could be a big backlog of messages to send which were
-    // already generated and the time associated with the message may be too old to be recognized by the other node.
-    // so most likely we need a way to update the messages (they are signed by this node after all) so it can update the
-    // time to the current time
-
-    // Send a message to a peer.
+    // Send a message to a peer using libp2p or TCP as fallback
     #[allow(clippy::too_many_arguments)]
     pub fn send(
         message: ShinkaiMessage,
@@ -1145,77 +1225,149 @@ impl Node {
                 message.external_metadata, peer
             ),
         );
+
+        tokio::spawn(async move {
+            // First try to send via libp2p
+            // Note: In a real implementation, you'd want to maintain a mapping of 
+            // profile names to PeerIds, for now we'll fallback to TCP
+            
+            // Fallback to TCP implementation
+            Node::send_via_tcp(
+                message,
+                my_encryption_sk,
+                peer,
+                proxy_connection_info,
+                db,
+                maybe_identity_manager,
+                ws_manager,
+                save_to_db_flag,
+                retry,
+            ).await;
+        });
+    }
+
+    // Send a message via libp2p
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_via_libp2p(
+        message: ShinkaiMessage,
+        libp2p_event_sender: &tokio::sync::mpsc::UnboundedSender<NetworkEvent>,
+        peer_id: PeerId,
+        save_to_db_flag: bool,
+        my_encryption_sk: Arc<EncryptionStaticKey>,
+        db: Arc<SqliteManager>,
+        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Send the message via libp2p
+        let network_event = NetworkEvent::SendMessage {
+            peer_id,
+            message: message.clone(),
+        };
+
+        if let Err(e) = libp2p_event_sender.send(network_event) {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to send via libp2p: {}", e),
+            )));
+        }
+
+        // Save to database if requested
+        if save_to_db_flag {
+            Node::save_to_db(
+                true,
+                &message,
+                my_encryption_sk.as_ref().clone(),
+                db,
+                maybe_identity_manager,
+                ws_manager,
+            ).await?;
+        }
+
+        Ok(())
+    }
+
+    // Send a message via TCP (original implementation)
+    #[allow(clippy::too_many_arguments)]
+    async fn send_via_tcp(
+        message: ShinkaiMessage,
+        my_encryption_sk: Arc<EncryptionStaticKey>,
+        peer: (SocketAddr, ProfileName),
+        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
+        db: Arc<SqliteManager>,
+        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        save_to_db_flag: bool,
+        retry: Option<u32>,
+    ) {
+        let start_time = Utc::now();
         let address = peer.0;
         let message = Arc::new(message);
 
-        tokio::spawn(async move {
-            let start_time = Utc::now();
-            let writer_start_time = Utc::now();
-            let writer = Node::get_writer(address, proxy_connection_info).await;
-            let writer_end_time = Utc::now(); // End time for get_writer
-            let writer_duration = writer_end_time - writer_start_time;
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                &format!("Time taken to get_writer: {:?}", writer_duration),
-            );
+        let writer_start_time = Utc::now();
+        let writer = Node::get_writer(address, proxy_connection_info).await;
+        let writer_end_time = Utc::now();
+        let writer_duration = writer_end_time - writer_start_time;
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("Time taken to get_writer: {:?}", writer_duration),
+        );
 
-            if let Some(writer) = writer {
-                let encoded_msg = message.encode_message().unwrap();
-                let identity = &message.external_metadata.recipient;
-                let identity_bytes = identity.as_bytes();
-                let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+        if let Some(writer) = writer {
+            let encoded_msg = message.encode_message().unwrap();
+            let identity = &message.external_metadata.recipient;
+            let identity_bytes = identity.as_bytes();
+            let identity_length = (identity_bytes.len() as u32).to_be_bytes();
 
-                // Prepare the message with a length prefix and identity length
-                let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
+            // Prepare the message with a length prefix and identity length
+            let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
 
-                let mut data_to_send = Vec::new();
-                let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
-                data_to_send.extend_from_slice(&total_length);
-                data_to_send.extend_from_slice(&identity_length);
-                data_to_send.extend(identity_bytes);
-                data_to_send.extend(header_data_to_send);
-                data_to_send.extend_from_slice(&encoded_msg);
+            let mut data_to_send = Vec::new();
+            let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
+            data_to_send.extend_from_slice(&total_length);
+            data_to_send.extend_from_slice(&identity_length);
+            data_to_send.extend(identity_bytes);
+            data_to_send.extend(header_data_to_send);
+            data_to_send.extend_from_slice(&encoded_msg);
 
-                {
-                    let mut writer = writer.lock().await;
-                    let _ = writer.write_all(&data_to_send).await;
-                    let _ = writer.flush().await;
-                }
-
-                if save_to_db_flag {
-                    let _ = Node::save_to_db(
-                        true,
-                        &message,
-                        Arc::clone(&my_encryption_sk).as_ref().clone(),
-                        db.clone(),
-                        maybe_identity_manager.clone(),
-                        ws_manager,
-                    )
-                    .await;
-                }
-            } else {
-                // If retry is enabled, add the message to retry list on failure
-                let retry_count = retry.unwrap_or(0) + 1;
-                let retry_message = RetryMessage {
-                    retry_count,
-                    message: message.as_ref().clone(),
-                    peer: peer.clone(),
-                    save_to_db_flag,
-                };
-                // Calculate the delay for the next retry
-                let delay_seconds = 4_u64.pow(retry_count - 1);
-                let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
-                db.add_message_to_retry(&retry_message, retry_time).unwrap();
+            {
+                let mut writer = writer.lock().await;
+                let _ = writer.write_all(&data_to_send).await;
+                let _ = writer.flush().await;
             }
-            let end_time = Utc::now();
-            let duration = end_time - start_time;
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                &format!("Finished sending message to {:?} in {:?}", address, duration),
-            );
-        });
+
+            if save_to_db_flag {
+                let _ = Node::save_to_db(
+                    true,
+                    &message,
+                    Arc::clone(&my_encryption_sk).as_ref().clone(),
+                    db.clone(),
+                    maybe_identity_manager.clone(),
+                    ws_manager,
+                )
+                .await;
+            }
+        } else {
+            // If retry is enabled, add the message to retry list on failure
+            let retry_count = retry.unwrap_or(0) + 1;
+            let retry_message = RetryMessage {
+                retry_count,
+                message: message.as_ref().clone(),
+                peer: peer.clone(),
+                save_to_db_flag,
+            };
+            // Calculate the delay for the next retry
+            let delay_seconds = 4_u64.pow(retry_count - 1);
+            let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
+            db.add_message_to_retry(&retry_message, retry_time).unwrap();
+        }
+        let end_time = Utc::now();
+        let duration = end_time - start_time;
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("Finished sending message to {:?} in {:?}", address, duration),
+        );
     }
 
     /// Function to get the writer, either directly or through a proxy
@@ -1591,6 +1743,9 @@ impl Node {
 impl Drop for Node {
     fn drop(&mut self) {
         if let Some(handle) = self.ws_server.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.libp2p_task.take() {
             handle.abort();
         }
     }

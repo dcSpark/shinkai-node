@@ -19,6 +19,22 @@ console = ["console-subscriber"]
 doctest = false
 
 [dependencies]
+# libp2p dependencies for peer-to-peer networking
+libp2p = { version = "0.53", features = [
+    "gossipsub",
+    "mdns",
+    "noise",
+    "yamux",
+    "tcp",
+    "kad",
+    "relay",
+    "dcutr",
+    "identify",
+    "ping",
+    "tokio",
+    "macros"
+] }
+
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 log = { workspace = true }
