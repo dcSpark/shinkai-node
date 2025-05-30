@@ -5984,6 +5984,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "shinkai_libp2p_relayer"
+version = "1.0.10"
+dependencies = [
+ "chrono",
+ "clap 3.2.25",
+ "derivative",
+ "dotenv",
+ "ed25519-dalek",
+ "hex",
+ "libp2p",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "shinkai_crypto_identities",
+ "shinkai_message_primitives",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "uuid",
+ "x25519-dalek",
+]
+
+[[package]]
 name = "shinkai_mcp"
 version = "1.0.10"
 dependencies = [
@@ -6084,10 +6107,10 @@ dependencies = [
  "shinkai_fs",
  "shinkai_http_api",
  "shinkai_job_queue_manager",
+ "shinkai_libp2p_relayer",
  "shinkai_mcp",
  "shinkai_message_primitives",
  "shinkai_sqlite",
- "shinkai_tcp_relayer",
  "shinkai_tools_primitives",
  "shinkai_tools_runner",
  "tempfile",
@@ -6145,26 +6168,6 @@ dependencies = [
  "tokio",
  "x25519-dalek",
  "zerocopy",
-]
-
-[[package]]
-name = "shinkai_tcp_relayer"
-version = "1.0.10"
-dependencies = [
- "chrono",
- "clap 3.2.25",
- "derivative",
- "dotenv",
- "ed25519-dalek",
- "hex",
- "rand 0.8.5",
- "serde_json",
- "shinkai_crypto_identities",
- "shinkai_message_primitives",
- "tempfile",
- "tokio",
- "uuid",
- "x25519-dalek",
 ]
 
 [[package]]

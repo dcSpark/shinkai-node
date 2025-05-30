@@ -31,9 +31,7 @@ use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider, ShinkaiBackend
-};
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
 use shinkai_message_primitives::schemas::retry::RetryMessage;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
@@ -47,7 +45,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tcp_relayer::NetworkMessage;
+use shinkai_libp2p_relayer::RelayMessage;
 use std::convert::TryInto;
 use std::fs;
 use std::path::Path;
@@ -909,12 +907,8 @@ impl Node {
                 let writer = Arc::new(Mutex::new(writer));
 
                 // Send the initial connection message
-                let identity_msg = NetworkMessage {
-                    identity: node_name.to_string(),
-                    message_type: NetworkMessageType::ProxyMessage,
-                    payload: Vec::new(),
-                };
-                Self::send_network_message(writer.clone(), &identity_msg).await;
+                let identity_msg = RelayMessage::new_proxy_message(node_name.to_string());
+                Self::send_relay_message(writer.clone(), &identity_msg).await;
 
                 // Authenticate identity or localhost
                 Self::authenticate_identity_or_localhost(reader.clone(), writer.clone(), &signing_sk).await;
@@ -1512,8 +1506,8 @@ impl Node {
         Ok(())
     }
 
-    async fn send_network_message(writer: Arc<Mutex<WriteHalf<TcpStream>>>, msg: &NetworkMessage) {
-        eprintln!("send_network_message> Sending message: {:?}", msg);
+    async fn send_relay_message(writer: Arc<Mutex<WriteHalf<TcpStream>>>, msg: &RelayMessage) {
+        eprintln!("send_relay_message> Sending message: {:?}", msg);
         let encoded_msg = msg.payload.clone();
         let identity = &msg.identity;
         let identity_bytes = identity.as_bytes();

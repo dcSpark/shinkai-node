@@ -71,7 +71,7 @@ shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
 shinkai_job_queue_manager = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
-shinkai_tcp_relayer = { workspace = true }
+shinkai_libp2p_relayer = { workspace = true }
 shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_embedding = { workspace = true }
