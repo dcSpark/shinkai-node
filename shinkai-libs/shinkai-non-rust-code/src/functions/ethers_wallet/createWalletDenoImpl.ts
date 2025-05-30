@@ -7,6 +7,7 @@ type Output = {
     privateKey: string;
     publicKey: string;
     address: string;
+    mnemonic?: string;
   };
 };
 
@@ -20,6 +21,7 @@ export async function run(
       privateKey: wallet.privateKey,
       publicKey: wallet.publicKey,
       address: wallet.address,
+      mnemonic: wallet.mnemonic?.phrase,
     },
   };
 }

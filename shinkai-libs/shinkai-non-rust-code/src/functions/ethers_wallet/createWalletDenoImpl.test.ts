@@ -14,4 +14,6 @@ Deno.test("createWalletDenoImpl should create a valid wallet", async () => {
   assertEquals(typeof wallet.privateKey, "string");
   assertEquals(wallet.privateKey.startsWith("0x"), true);
   assertEquals(wallet.privateKey.length, 66);
+
+  assertEquals(typeof wallet.mnemonic, "string");
 });

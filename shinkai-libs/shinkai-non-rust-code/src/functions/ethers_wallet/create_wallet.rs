@@ -9,16 +9,17 @@ pub struct Input {}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Wallet {
+pub struct CreatedWallet {
     pub private_key: String,
     pub public_key: String,
     pub address: String,
+    pub mnemonic: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Output {
-    pub wallet: Wallet,
+    pub wallet: CreatedWallet,
 }
 
 pub async fn create_wallet(input: Input) -> Result<Output, RunError> {
@@ -54,5 +55,9 @@ mod tests {
         // Check that private key starts with "0x" and has correct length (66 chars = 0x + 64 hex chars)
         assert!(result.wallet.private_key.starts_with("0x"));
         assert_eq!(result.wallet.private_key.len(), 66);
+
+        // Check that mnemonic is present and is a string
+        assert!(result.wallet.mnemonic.is_some());
+        assert!(!result.wallet.mnemonic.unwrap().is_empty());
     }
 }
