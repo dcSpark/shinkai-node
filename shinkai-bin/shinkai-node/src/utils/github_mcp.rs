@@ -199,6 +199,57 @@ pub fn extract_env_vars_from_smithery_yaml(yaml_content: &str) -> HashSet<String
     env_vars
 }
 
+/// Extract the start command from a smithery.yaml file if available
+pub fn extract_start_command_from_smithery_yaml(yaml_content: &str) -> Option<String> {
+    if let Ok(yaml) = serde_yaml::from_str::<YamlValue>(yaml_content) {
+        if let Some(start_cmd) = yaml.get("startCommand") {
+            if let Some(cmd_fn) = start_cmd.get("commandFunction") {
+                if let Some(fn_str) = cmd_fn.as_str() {
+                    let re = Regex::new(
+                        r"command:\s*['\"](?P<cmd>[^'\"]+)['\"].*?args:\s*\[(?P<args>[^\]]*)\]",
+                    )
+                    .ok()?;
+
+                    if let Some(caps) = re.captures(fn_str) {
+                        let cmd = caps.name("cmd")?.as_str();
+                        let args_str = caps.name("args").map(|m| m.as_str()).unwrap_or("");
+                        let args: Vec<String> = args_str
+                            .split(',')
+                            .map(|a| a.trim().trim_matches('"').trim_matches('\''))
+                            .filter(|a| !a.is_empty())
+                            .map(|s| s.to_string())
+                            .collect();
+                        let full_cmd = if args.is_empty() {
+                            cmd.to_string()
+                        } else {
+                            format!("{} {}", cmd, args.join(" "))
+                        };
+                        return Some(full_cmd);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Attempt to extract a Python package name from README instructions
+pub fn extract_python_package_from_readme(readme_content: &str) -> Option<String> {
+    let re_uv = Regex::new(r"uv\s+pip\s+install\s+([\w\-]+)").ok();
+    if let Some(re) = re_uv {
+        if let Some(caps) = re.captures(readme_content) {
+            return Some(caps.get(1)?.as_str().to_string());
+        }
+    }
+
+    let re_pip = Regex::new(r"pip\s+install\s+([\w\-]+)").ok()?;
+    if let Some(caps) = re_pip.captures(readme_content) {
+        return Some(caps.get(1)?.as_str().to_string());
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,5 +276,26 @@ startCommand:
         assert!(vars.contains("API_KEY"));
         assert!(vars.contains("USER_ID"));
         assert!(!vars.contains("OPTIONAL"));
+    }
+
+    #[test]
+    fn test_extract_start_command_from_smithery_yaml() {
+        let yaml = r#"
+version: 1
+startCommand:
+  type: stdio
+  commandFunction: |
+    (config) => ({ command: 'python', args: ['-m', 'example.server'] })
+"#;
+
+        let cmd = extract_start_command_from_smithery_yaml(yaml).unwrap();
+        assert_eq!(cmd, "python -m example.server");
+    }
+
+    #[test]
+    fn test_extract_python_package_from_readme() {
+        let readme = "Install via:\n```bash\nuv pip install sample-package\n```";
+        let pkg = extract_python_package_from_readme(readme).unwrap();
+        assert_eq!(pkg, "sample-package");
     }
 }
