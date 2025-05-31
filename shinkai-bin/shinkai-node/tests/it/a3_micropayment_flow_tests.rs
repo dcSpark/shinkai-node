@@ -122,6 +122,8 @@ fn micropayment_flow_test() {
     std::env::set_var("ONLY_TESTING_JS_TOOLS", "true");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
     std::env::set_var("IS_TESTING", "1");
+    std::env::set_var("ADD_TESTING_NETWORK_ECHO", "true");
+    std::env::set_var("ADD_TESTING_EXTERNAL_NETWORK_ECHO", "true");
 
     setup();
     let rt = Runtime::new().unwrap();
