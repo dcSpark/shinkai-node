@@ -712,6 +712,7 @@ pub async fn send_ack(
         ws_manager,
         false,
         None,
+        None,
     );
     Ok(())
 }
@@ -753,6 +754,7 @@ pub async fn ping_pong(
         maybe_identity_manager,
         ws_manager,
         false,
+        None,
         None,
     );
     Ok(())
