@@ -37,7 +37,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
@@ -243,14 +243,7 @@ impl Node {
                         format!("Invalid proxy identity name: {}", proxy_identity).as_str(),
                     );
                 })
-                .map_or_else(
-                    |_| None,
-                    |proxy_identity| {
-                        Some(ProxyConnectionInfo {
-                            proxy_identity,
-                        })
-                    },
-                )
+                .map_or_else(|_| None, |proxy_identity| Some(ProxyConnectionInfo { proxy_identity }))
         });
         let proxy_connection_info = Arc::new(Mutex::new(proxy_connection_info));
 
@@ -535,14 +528,11 @@ impl Node {
 
         // Initialize LibP2P networking
         {
-            let message_handler = ShinkaiMessageHandler::new(
-                self.network_job_manager.clone(),
-                self.listen_address,
-            );
+            let message_handler = ShinkaiMessageHandler::new(self.network_job_manager.clone(), self.listen_address);
 
             // Extract port from listen_address for libp2p
             let listen_port = Some(self.listen_address.port());
-            
+
             // Get relay address from proxy connection if available
             let relay_address = {
                 let proxy_info = self.proxy_connection_info.lock().await;
@@ -551,7 +541,9 @@ impl Node {
                     match Node::get_address_from_identity(
                         self.identity_manager.clone(),
                         &proxy.proxy_identity.get_node_name_string(),
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(addr) => {
                             let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
                             shinkai_log(
@@ -575,16 +567,11 @@ impl Node {
                 }
             };
 
-            match LibP2PManager::new(
-                self.node_name.to_string(),
-                listen_port,
-                message_handler,
-                relay_address,
-            ).await {
+            match LibP2PManager::new(self.node_name.to_string(), listen_port, message_handler, relay_address).await {
                 Ok(libp2p_manager) => {
                     let event_sender = libp2p_manager.event_sender();
                     let libp2p_manager_arc = Arc::new(Mutex::new(libp2p_manager));
-                    
+
                     // Spawn the libp2p task
                     let manager_clone = libp2p_manager_arc.clone();
                     let libp2p_task = tokio::spawn(async move {
@@ -805,24 +792,16 @@ impl Node {
                 ShinkaiLogLevel::Info,
                 &format!("Proxy configured: {} - using LibP2P relay", proxy_info.proxy_identity),
             );
-            // With LibP2P proxy, all networking is handled by the LibP2P layer
-            // We don't need direct TCP listening - the LibP2P layer handles peer connections
-            
-            // Keep the task running to maintain the networking loop
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Debug,
-                    "LibP2P networking is active",
-                );
-            }
         } else {
             shinkai_log(
                 ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                "No proxy configured - LibP2P relay networking requires a proxy identity",
+                ShinkaiLogLevel::Info,
+                "No proxy configured - running without LibP2P relay networking",
             );
+        }
+
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         }
     }
 
@@ -930,7 +909,7 @@ impl Node {
                     ShinkaiLogLevel::Info,
                     "Using LibP2P for message sending (proxy configured)",
                 );
-                
+
                 let profile_name = &peer.1;
                 if let Some(sender) = libp2p_event_sender {
                     match Node::send_via_libp2p(
@@ -942,7 +921,9 @@ impl Node {
                         db.clone(),
                         maybe_identity_manager.clone(),
                         ws_manager.clone(),
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(_) => {
                             shinkai_log(
                                 ShinkaiLogOption::Node,
@@ -961,7 +942,7 @@ impl Node {
                     }
                 }
             }
-            
+
             // Fallback to TCP implementation
             Node::send_via_tcp(
                 message,
@@ -973,7 +954,8 @@ impl Node {
                 ws_manager,
                 save_to_db_flag,
                 retry,
-            ).await;
+            )
+            .await;
         });
     }
 
@@ -991,7 +973,7 @@ impl Node {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // For LibP2P, we broadcast to a topic based on the target profile
         let topic = format!("shinkai-{}", profile_name);
-        
+
         let network_event = NetworkEvent::BroadcastMessage {
             topic,
             message: message.clone(),
@@ -1013,7 +995,8 @@ impl Node {
                 db,
                 maybe_identity_manager,
                 ws_manager,
-            ).await?;
+            )
+            .await?;
         }
 
         shinkai_log(
@@ -1054,7 +1037,7 @@ impl Node {
                 ShinkaiLogLevel::Info,
                 "LibP2P proxy configured - TCP fallback not needed",
             );
-            
+
             if save_to_db_flag {
                 let _ = Node::save_to_db(
                     true,
@@ -1073,7 +1056,7 @@ impl Node {
                 ShinkaiLogLevel::Error,
                 "No proxy configured - LibP2P networking requires a proxy identity",
             );
-            
+
             // Add to retry queue
             let retry_count = retry.unwrap_or(0) + 1;
             let retry_message = RetryMessage {
