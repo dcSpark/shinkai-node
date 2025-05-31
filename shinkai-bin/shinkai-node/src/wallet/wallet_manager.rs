@@ -96,6 +96,8 @@ impl WalletManager {
         println!("Sending transaction to address: {:?}", invoice.address);
         println!("Sending transaction with asset: {:?}", asset_payment.asset);
 
+        println!("\n\n asset_payment: {:?}", asset_payment);
+
         let transaction_encoded = self
             .payment_wallet
             .create_payment_request(asset_payment.clone())

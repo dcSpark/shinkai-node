@@ -229,8 +229,14 @@ impl CommonActions for LocalEthersWallet {
             let result = get_balance::get_balance(input)
                 .await
                 .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
+
+            println!(
+                "balance for {:?} with token {:?} is {:?}",
+                public_address, asset, result
+            );
+
             Ok(Balance {
-                amount: result.formatted_balance,
+                amount: result.balance,
                 decimals: Some(result.token_info.decimals as u32),
                 asset,
             })

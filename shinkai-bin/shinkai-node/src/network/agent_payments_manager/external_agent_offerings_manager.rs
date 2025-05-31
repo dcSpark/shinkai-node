@@ -22,6 +22,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_non_rust_code::functions::x402;
+use shinkai_non_rust_code::functions::x402::settle_payment::settle_payment;
+use shinkai_non_rust_code::functions::x402::settle_payment::Input as SettleInput;
 use shinkai_non_rust_code::functions::x402::verify_payment::verify_payment;
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashSet;
@@ -32,7 +34,9 @@ use std::sync::Weak;
 use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
-use shinkai_message_primitives::schemas::x402_types::{FacilitatorConfig, Network, Price};
+use shinkai_message_primitives::schemas::x402_types::{
+    ERC20Asset, ERC20TokenAmount, FacilitatorConfig, Network, Price, EIP712
+};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 #[derive(Debug, Clone)]
@@ -767,18 +771,58 @@ impl ExtAgentOfferingsManager {
             }
         };
 
-        let input = x402::verify_payment::Input {
-            price: Price::Money(payment_requirements.max_amount_required.parse::<f64>().unwrap_or(0.0)),
-            network: payment_requirements.network.clone(),
-            pay_to: payment_requirements.pay_to.clone(),
-            payment: transaction_signed,
-            x402_version: 1, // or your version
-            facilitator: FacilitatorConfig::default(),
+        // TODO: needs refactor
+        let input = {
+            // If the asset is USDC, use ERC20TokenAmount, otherwise use Money
+            if payment_requirements.asset == "USDC"
+                || payment_requirements.asset.to_lowercase() == "usdc"
+                || payment_requirements.asset == "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+                || payment_requirements.asset == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            {
+                // Determine address and decimals based on network
+                let (address, decimals) = match payment_requirements.network {
+                    Network::BaseSepolia => ("0x036CbD53842c5426634e7929541eC2318f3dCF7e", 6),
+                    Network::Base => ("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6),
+                    _ => (payment_requirements.asset.as_str(), 6), // fallback
+                };
+                let erc20_asset = ERC20Asset {
+                    address: address.to_string(),
+                    decimals,
+                    eip712: EIP712 {
+                        name: "USDC".to_string(),
+                        version: "2".to_string(),
+                    },
+                };
+                x402::verify_payment::Input {
+                    price: Price::ERC20TokenAmount(ERC20TokenAmount {
+                        amount: payment_requirements.max_amount_required.clone(),
+                        asset: erc20_asset,
+                    }),
+                    network: payment_requirements.network.clone(),
+                    pay_to: payment_requirements.pay_to.clone(),
+                    payment: transaction_signed,
+                    x402_version: 1, // or your version
+                    facilitator: FacilitatorConfig::default(),
+                }
+            } else {
+                x402::verify_payment::Input {
+                    price: Price::Money(payment_requirements.max_amount_required.parse::<f64>().unwrap_or(0.0)),
+                    network: payment_requirements.network.clone(),
+                    pay_to: payment_requirements.pay_to.clone(),
+                    payment: transaction_signed,
+                    x402_version: 1, // or your version
+                    facilitator: FacilitatorConfig::default(),
+                }
+            }
         };
+
+        println!("\n\ninput for payment verification: {:?}", input);
 
         let output = verify_payment(input)
             .await
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Payment verification failed: {:?}", e)))?;
+
+        println!("\noutput of payment verification: {:?}", output);
 
         if output.valid.is_none() {
             return Err(AgentOfferingManagerError::OperationFailed(
@@ -823,6 +867,40 @@ impl ExtAgentOfferingsManager {
 
         // Step 4: if we got a successful result, we settle the payment
         // For testing maybe we can add a flag to avoid this step
+        // let is_testing = std::env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
+        // if !is_testing {
+        // Extract decoded_payment for settlement
+        let decoded_payment = output.valid.as_ref().unwrap().decoded_payment.clone();
+
+        let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
+            UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.clone(),
+            _ => {
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Unsupported usage type for settlement".to_string(),
+                ))
+            }
+        };
+        let settle_input = SettleInput {
+            payment: decoded_payment,
+            accepts: payment_requirements,
+            facilitator: FacilitatorConfig::default(),
+        };
+        let settle_result = settle_payment(settle_input)
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Payment settlement failed: {:?}", e)))?;
+        if settle_result.valid.is_none() {
+            local_invoice.status = InvoiceStatusEnum::Failed;
+            db.set_invoice(&local_invoice).map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!(
+                    "Failed to set invoice after failed settlement: {:?}",
+                    e
+                ))
+            })?;
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Payment settlement failed".to_string(),
+            ));
+        }
+        // }
 
         // Old stuff below
 

@@ -300,9 +300,11 @@ impl MyAgentOfferingsManager {
         })?;
         println!("required_amount: {:?}", required_amount);
 
-        let available_amount = balance.amount.split('.').next().unwrap().parse::<u128>().map_err(|e| {
+        let available_amount = balance.amount.parse::<u128>().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e))
         })?;
+
+        println!("available_amount: {:?}", available_amount);
 
         if available_amount < required_amount {
             return Err(AgentOfferingManagerError::OperationFailed(
@@ -850,26 +852,4 @@ mod tests {
 
     //     Ok(())
     // }
-
-    #[tokio::test]
-    async fn test_parse_available_amount() {
-        struct MockBalance {
-            amount: String,
-        }
-
-        let balance = MockBalance {
-            amount: "4999000.000".to_string(),
-        };
-
-        let available_amount = balance
-            .amount
-            .split('.')
-            .next()
-            .unwrap()
-            .parse::<u128>()
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e)))
-            .unwrap();
-
-        assert_eq!(available_amount, 4999000);
-    }
 }

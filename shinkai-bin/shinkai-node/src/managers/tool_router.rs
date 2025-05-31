@@ -601,7 +601,7 @@ impl ToolRouter {
                     );
                     params
                 },
-                output_arg: ToolOutputArg { json: "".to_string() },
+                output_arg: ToolOutputArg { json: "{}".to_string() },
                 embedding: None,
                 restrictions: None,
             };

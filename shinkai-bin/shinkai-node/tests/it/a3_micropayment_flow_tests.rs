@@ -1,4 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
+use serde_json::Value;
+use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::invoices::{Invoice, InvoiceStatusEnum};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -77,7 +79,7 @@ fn get_new_deno_tool_json_string() -> String {
                     "windows"
                 ],
                 "output_arg": {
-                    "json": ""
+                    "json": "{}"
                 },
                 "result": {
                     "properties": {
@@ -413,10 +415,10 @@ fn micropayment_flow_test() {
                     scheme: "exact".to_string(),
                     description: "Echo tool payment".to_string(),
                     network: Network::BaseSepolia,
-                    max_amount_required: "1".to_string(), // TODO: does this include decimals?
+                    max_amount_required: "1".to_string(), // This does "include decimals"
                     resource: "https://shinkai.com".to_string(),
                     mime_type: "application/json".to_string(),
-                    pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                    pay_to: "0xd68b44BcAB515C326226392922fC08c3C4913746".to_string(),
                     max_timeout_seconds: 300,
                     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
                     output_schema: Some(serde_json::json!({})),
@@ -854,6 +856,7 @@ fn micropayment_flow_test() {
                 eprintln!("Waiting for invoice to be processed and have a result on node2");
 
                 let mut found_processed_invoice = false;
+                let mut resp: Result<Value, APIError> = Ok(serde_json::json!({}));
                 for _ in 0..20 {
                     let (sender, receiver) = async_channel::bounded(1);
                     node2_commands_sender
@@ -863,10 +866,9 @@ fn micropayment_flow_test() {
                         })
                         .await
                         .unwrap();
-                    let resp = receiver.recv().await.unwrap();
-                    eprintln!("resp list invoices on node2: {:?}", resp);
+                    resp = receiver.recv().await.unwrap();
 
-                    if let Ok(invoices) = resp {
+                    if let Ok(invoices) = resp.clone() {
                         if let Some(invoices_array) = invoices.as_array() {
                             for inv in invoices_array {
                                 if let Ok(invoice) = serde_json::from_value::<Invoice>(inv.clone()) {
@@ -883,6 +885,7 @@ fn micropayment_flow_test() {
                         }
                     }
                     if found_processed_invoice {
+                        eprintln!("resp list invoices on node2: {:?}", resp);
                         break;
                     }
 
@@ -890,6 +893,7 @@ fn micropayment_flow_test() {
                 }
 
                 if !found_processed_invoice {
+                    eprintln!("resp list invoices on node2: {:?}", resp);
                     assert!(false, "Processed invoice with result not found after waiting");
                 }
             }

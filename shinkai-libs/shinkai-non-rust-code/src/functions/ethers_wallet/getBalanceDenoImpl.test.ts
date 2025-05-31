@@ -4,10 +4,10 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { run } from "./getBalanceDenoImpl.ts";
 
-Deno.test("get balance - USDC on Ethereum mainnet", async () => {
+Deno.test("get balance - USDC on Base Sepolia", async () => {
   const parameters = {
-    tokenAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // Real USDC contract on Ethereum mainnet
-    walletAddress: "0x84310102F55C513EdB2795A5384bC674521AD6f3", // Binance wallet (known to have USDC)
+    tokenAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e", // Real USDC contract on Base Sepolia
+    walletAddress: "0x82e2b407E93F63D103C162e36519cC05CeCB979E", // Binance wallet (known to have USDC)
     rpcUrl: "https://sepolia.base.org",
   };
 
