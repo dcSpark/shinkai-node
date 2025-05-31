@@ -9,7 +9,7 @@ impl SqliteManager {
     pub fn set_invoice(&self, invoice: &Invoice) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "INSERT INTO invoices (
+            "INSERT OR REPLACE INTO invoices (
                 invoice_id,
                 provider_name,
                 requester_name,

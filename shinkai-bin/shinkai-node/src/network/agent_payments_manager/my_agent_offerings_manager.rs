@@ -421,6 +421,7 @@ impl MyAgentOfferingsManager {
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
         db.set_invoice(&updated_invoice).map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
         })?;

@@ -183,13 +183,13 @@ pub enum PaymentStatusEnum {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Payment {
     /// The transaction hash of the payment.
-    transaction_signed: String,
+    pub transaction_signed: String,
     /// The unique ID of the invoice associated with the payment.
-    invoice_id: String,
+    pub invoice_id: String,
     /// The date the payment was made (ISO8601 format).
-    date_paid: Option<String>,
+    pub date_paid: Option<String>,
     /// The status of the payment.
-    status: PaymentStatusEnum,
+    pub status: PaymentStatusEnum,
 }
 
 impl Payment {

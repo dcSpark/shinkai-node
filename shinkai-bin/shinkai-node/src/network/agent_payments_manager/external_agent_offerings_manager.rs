@@ -13,12 +13,16 @@ use shinkai_message_primitives::schemas::invoices::{
     Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{
+    ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_non_rust_code::functions::x402;
+use shinkai_non_rust_code::functions::x402::verify_payment::verify_payment;
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashSet;
 use std::pin::Pin;
@@ -28,6 +32,7 @@ use std::sync::Weak;
 use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
+use shinkai_message_primitives::schemas::x402_types::{FacilitatorConfig, Network, Price};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 #[derive(Debug, Clone)]
@@ -739,12 +744,47 @@ impl ExtAgentOfferingsManager {
             .get_invoice(&invoice.invoice_id)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
 
-        // Step 2: verify that the invoice is actually paid
-        // For that we grab the tx_hash and we check that it was paid
-        // We also need to check that a previous tx_hash wasn't reused (!)
-        // Also check matching amounts
+        println!("local_invoice: {:?}", local_invoice);
+        println!("received invoice: {:?}", invoice);
 
-        // TODO: ^
+        // Step 2: verify that the invoice is actually paid
+        let payment_payload = invoice
+            .payment
+            .as_ref()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("No payment found in invoice".to_string()))?;
+        let transaction_signed = Some(payment_payload.transaction_signed.clone());
+
+        // Extract payment requirements from local_invoice
+        let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
+            // Note: we are only supporting one payment requirement for now
+            UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.get(0).ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed("No payment requirements found".to_string())
+            })?,
+            _ => {
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Unsupported usage type".to_string(),
+                ))
+            }
+        };
+
+        let input = x402::verify_payment::Input {
+            price: Price::Money(payment_requirements.max_amount_required.parse::<f64>().unwrap_or(0.0)),
+            network: payment_requirements.network.clone(),
+            pay_to: payment_requirements.pay_to.clone(),
+            payment: transaction_signed,
+            x402_version: 1, // or your version
+            facilitator: FacilitatorConfig::default(),
+        };
+
+        let output = verify_payment(input)
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Payment verification failed: {:?}", e)))?;
+
+        if output.valid.is_none() {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Payment verification failed".to_string(),
+            ));
+        }
 
         // Step 3: we extract the data_payload and then we call the tool with it
         let data_payload = invoice
@@ -780,6 +820,11 @@ impl ExtAgentOfferingsManager {
             db.set_invoice(&local_invoice)
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
         }
+
+        // Step 4: if we got a successful result, we settle the payment
+        // For testing maybe we can add a flag to avoid this step
+
+        // Old stuff below
 
         // TODO: we need the transaction_id and then call the crypto service to verify the payment
         // Note: how do we know that this identity actually was the one that paid for it? -> prehash validation
@@ -944,153 +989,4 @@ mod tests {
     fn node_name() -> ShinkaiName {
         ShinkaiName::new("@@localhost.sep-shinkai".to_string()).unwrap()
     }
-
-    // async fn setup_default_vector_fs() -> VectorFS {
-    //     let generator = RemoteEmbeddingGenerator::new_default();
-    //     let fs_db_path = format!("db_tests/{}", "vector_fs");
-    //     let profile_list = vec![default_test_profile()];
-    //     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-    //         OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-    //     )];
-
-    //     VectorFS::new(
-    //         generator,
-    //         supported_embedding_models,
-    //         profile_list,
-    //         &fs_db_path,
-    //         node_name(),
-    //     )
-    //     .await
-    //     .unwrap()
-    // }
-
-    // #[test]
-    // fn test_unique_id() {
-    //     let invoice_request = InternalInvoiceRequest::new(
-    //         ShinkaiName::new("@@nico.shinkai".to_string()).unwrap(),
-    //         "test_tool".to_string(),
-    //         UsageTypeInquiry::PerUse,
-    //     );
-
-    //     println!("Generated unique_id: {}", invoice_request.unique_id);
-
-    //     // Assert that the unique_id is not empty
-    //     assert!(!invoice_request.unique_id.is_empty());
-    // }
-
-    // TODO: Fix it
-    // #[tokio::test]
-    // async fn test_agent_offerings_manager() -> Result<(), SqliteManagerError> {
-    //     setup();
-
-    //     let generator = RemoteEmbeddingGenerator::new_default();
-    //     let embedding_model = generator.model_type().clone();
-
-    //     // Initialize ShinkaiDB
-    //     let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
-    //         Ok(db) => Arc::new(db),
-    //         Err(e) => return
-    // Err(SqliteManagerError::DatabaseError(rusqlite::Error::InvalidParameterName(e.to_string()))),     };
-
-    //     let sqlite_manager = SqliteManager::new("sqlite_tests".to_string(), "".to_string(),
-    // embedding_model).unwrap();
-
-    //     let tools = built_in_tools::get_tools();
-
-    //     // Generate crypto keys
-    //     let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
-    //     let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
-
-    //     // Create ToolRouter
-    //     let tool_router = Arc::new(ToolRouter::new(sqlite_manager));
-
-    //     // Create AgentOfferingsManager
-    //     let node_name = node_name();
-    //     let identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
-    //         Arc::new(Mutex::new(MockIdentityManager::new()));
-    //     let proxy_connection_info = Arc::new(Mutex::new(None));
-    //     let vector_fs = Arc::new(setup_default_vector_fs().await);
-
-    //     // Wallet Manager
-    //     let wallet_manager = Arc::new(Mutex::new(None));
-
-    //     let mut agent_offerings_manager = ExtAgentOfferingsManager::new(
-    //         Arc::downgrade(&shinkai_db),
-    //         Arc::downgrade(&vector_fs),
-    //         Arc::downgrade(&identity_manager),
-    //         node_name.clone(),
-    //         my_signature_secret_key.clone(),
-    //         my_encryption_secret_key.clone(),
-    //         Arc::downgrade(&proxy_connection_info),
-    //         Arc::downgrade(&tool_router),
-    //         Arc::downgrade(&wallet_manager),
-    //     )
-    //     .await;
-
-    //     // Add tools to the database
-    //     for (name, definition) in tools {
-    //         let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-    //         for tool in toolkit.tools {
-    //             let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
-    //             eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
-    //             let embedding = generator
-    //                 .generate_embedding_default(&shinkai_tool.format_embedding_string())
-    //                 .await
-    //                 .unwrap();
-    //             shinkai_tool.set_embedding(embedding);
-
-    // --- merge conflict of commented code ---
-    // // Add tools to the database
-    // for (name, definition) in tools {
-    //     let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-    //     for tool in toolkit.tools {
-    //         let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-    //         eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
-    //         let embedding = generator
-    //             .generate_embedding_default(&shinkai_tool.format_embedding_string())
-    //             .await
-    //             .unwrap();
-    //         shinkai_tool.set_embedding(embedding);
-    // ---
-
-    //             lance_db
-    //                 .write()
-    //                 .await
-    //                 .set_tool(&shinkai_tool)
-    //                 .await
-    //                 .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-
-    //             // Check if the tool is "shinkai__weather_by_city" and make it shareable
-    //             if shinkai_tool.name() == "shinkai__weather_by_city" {
-    //                 let shinkai_offering = ShinkaiToolOffering {
-    //                     tool_key: shinkai_tool.tool_router_key(),
-    //                     usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
-    //                         asset: Asset {
-    //                             network_id: NetworkIdentifier::Anvil,
-    //                             asset_id: "ETH".to_string(),
-    //                             decimals: Some(18),
-    //                             contract_address: None,
-    //                         },
-    //                         amount: "0.01".to_string(),
-    //                     }])),
-    //                     meta_description: None,
-    //                 };
-
-    //                 agent_offerings_manager
-    //                     .make_tool_shareable(shinkai_offering)
-    //                     .await
-    //                     .unwrap();
-    //             }
-    //         }
-    //     }
-
-    //     // Check available tools
-    //     let available_tools = agent_offerings_manager.available_tools().await.unwrap();
-    //     eprintln!("available_tools: {:?}", available_tools);
-    //     assert!(
-    //         available_tools.contains(&"local:::shinkai-tool-weather-by-city:::shinkai__weather_by_city".to_string())
-    //     );
-
-    //     Ok(())
-    // }
 }
