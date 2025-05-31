@@ -10,9 +10,12 @@ default-run = "shinkai_node"
 [build-dependencies]
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 
+# Features
 [features]
 default = []
 console = ["console-subscriber"]
+# Enable ngrok support when the `ngrok` feature is selected
+ngrok = ["dep:ngrok"]
 # static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]
@@ -86,7 +89,7 @@ zip = "2.2.1"
 open = "5.3.2"
 sha2 = "0.10"
 toml = "0.8.22"
-ngrok = { version = "0.15.0", features = ["hyper"] }
+ngrok = { version = "0.15.0", features = ["hyper"], optional = true }
 url = "2.5.0"
 serde_yaml = { workspace = true }
 
