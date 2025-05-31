@@ -3,13 +3,13 @@ use std::sync::Arc;
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, invoices::{Invoice, Payment, PaymentStatusEnum}, shinkai_name::ShinkaiName, shinkai_tool_offering::ToolPrice, wallet_mixed::{Asset, Balance, PublicAddress}, x402_types::Network
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, invoices::{Invoice, Payment, PaymentStatusEnum}, shinkai_name::ShinkaiName, shinkai_tool_offering::ToolPrice, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Asset, Balance, PublicAddress}, x402_types::Network
 };
 use shinkai_sqlite::SqliteManager;
 use uuid::Uuid;
 
 use super::{
-    coinbase_mpc_wallet::CoinbaseMPCWallet, wallet_error::WalletError, wallet_traits::{PaymentWallet, ReceivingWallet}
+    coinbase_mpc_wallet::CoinbaseMPCWallet, local_ether_wallet::LocalEthersWallet, wallet_error::WalletError, wallet_traits::{PaymentWallet, ReceivingWallet}
 };
 
 /// Enum to represent different wallet types.
@@ -17,6 +17,7 @@ use super::{
 #[serde(tag = "type", content = "data")]
 pub enum WalletEnum {
     CoinbaseMPCWallet(CoinbaseMPCWallet),
+    LocalEthersWallet(LocalEthersWallet),
 }
 
 pub struct WalletManager {
@@ -53,9 +54,11 @@ impl<'de> Deserialize<'de> for WalletManager {
         Ok(WalletManager {
             payment_wallet: match helper.payment_wallet {
                 WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
             },
             receiving_wallet: match helper.receiving_wallet {
                 WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
             },
         })
     }
@@ -93,30 +96,16 @@ impl WalletManager {
         println!("Sending transaction to address: {:?}", invoice.address);
         println!("Sending transaction with asset: {:?}", asset_payment.asset);
 
-        // Construct a proper Asset struct
-        let asset = Asset {
-            network_id: asset_payment.network.clone(),
-            asset_id: asset_payment.asset.clone(),
-            decimals: None, // We don't have decimals info in PaymentRequirements
-            contract_address: Some(asset_payment.asset.clone()),
-        };
-
-        let transaction_hash = self
+        let transaction_encoded = self
             .payment_wallet
-            .send_transaction(
-                invoice.address,
-                Some(asset),
-                asset_payment.max_amount_required.clone(),
-                invoice.invoice_id.clone(),
-                node_name.clone(),
-            )
+            .create_payment_request(asset_payment.clone())
             .await?;
 
         Ok(Payment::new(
-            transaction_hash,
+            transaction_encoded.payment,
             invoice.invoice_id.clone(),
             Some(Self::get_current_date()),
-            PaymentStatusEnum::Confirmed,
+            PaymentStatusEnum::Signed,
         ))
     }
 
@@ -194,6 +183,39 @@ impl WalletManager {
                 .await?,
         );
 
+        Ok(WalletManager {
+            payment_wallet,
+            receiving_wallet,
+        })
+    }
+
+    pub async fn create_local_ethers_wallet_manager(
+        network: Network,
+        _db: Arc<SqliteManager>,
+        _role: WalletRole,
+    ) -> Result<WalletManager, WalletError> {
+        // Create a single wallet instance and use it for both payment and receiving
+        let wallet = LocalEthersWallet::create_wallet_async(network).await?;
+
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(wallet.clone());
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(wallet);
+        Ok(WalletManager {
+            payment_wallet,
+            receiving_wallet,
+        })
+    }
+
+    pub async fn recover_local_ethers_wallet_manager(
+        network: Network,
+        _db: Arc<SqliteManager>,
+        source: WalletSource,
+        _role: WalletRole,
+    ) -> Result<WalletManager, WalletError> {
+        // Recover a single wallet instance and use it for both payment and receiving
+        let wallet = LocalEthersWallet::recover_wallet(network, source).await?;
+
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(wallet.clone());
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(wallet);
         Ok(WalletManager {
             payment_wallet,
             receiving_wallet,

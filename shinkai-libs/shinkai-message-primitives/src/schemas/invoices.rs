@@ -175,7 +175,7 @@ impl InternalInvoiceRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub enum PaymentStatusEnum {
     Pending,
-    Confirmed,
+    Signed,
     Failed,
 }
 
@@ -183,7 +183,7 @@ pub enum PaymentStatusEnum {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct Payment {
     /// The transaction hash of the payment.
-    transaction_hash: String,
+    transaction_signed: String,
     /// The unique ID of the invoice associated with the payment.
     invoice_id: String,
     /// The date the payment was made (ISO8601 format).
@@ -201,7 +201,7 @@ impl Payment {
         status: PaymentStatusEnum,
     ) -> Self {
         Payment {
-            transaction_hash,
+            transaction_signed: transaction_hash,
             invoice_id,
             date_paid,
             status,

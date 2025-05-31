@@ -277,6 +277,7 @@ impl MyAgentOfferingsManager {
             decimals: None, // TODO: this should be retrieved from the asset
             contract_address: None,
         };
+        println!("asset: {:?}", asset);
 
         // Check the balance before attempting to pay
         let balance = match wallet

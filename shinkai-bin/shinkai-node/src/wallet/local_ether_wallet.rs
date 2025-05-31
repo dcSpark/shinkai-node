@@ -5,6 +5,7 @@ use shinkai_message_primitives::schemas::wallet_mixed::{
     Address, AddressBalanceList, Asset, Balance, PublicAddress, Transaction
 };
 use shinkai_message_primitives::schemas::x402_types::{Network, PaymentRequirements};
+use shinkai_non_rust_code::functions::x402;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -120,7 +121,7 @@ impl LocalEthersWallet {
     // TODO: move this to a config file or merge it to Network struct
     fn rpc_url_for_network(network: &Network) -> String {
         match network {
-            Network::BaseSepolia => "https://base-sepolia.blockpi.network/v1/rpc/public".to_string(),
+            Network::BaseSepolia => "https://sepolia.base.org".to_string(),
             Network::Base => "https://mainnet.base.org".to_string(),
             Network::AvalancheFuji => "https://api.avax-test.network/ext/bc/C/rpc".to_string(),
             Network::Avalanche => "https://api.avax.network/ext/bc/C/rpc".to_string(),
@@ -132,13 +133,13 @@ impl IsWallet for LocalEthersWallet {}
 
 impl PaymentWallet for LocalEthersWallet {
     fn to_wallet_enum(&self) -> WalletEnum {
-        unimplemented!()
+        WalletEnum::LocalEthersWallet(self.clone())
     }
 }
 
 impl ReceivingWallet for LocalEthersWallet {
     fn to_wallet_enum(&self) -> WalletEnum {
-        unimplemented!()
+        WalletEnum::LocalEthersWallet(self.clone())
     }
 }
 
@@ -163,17 +164,18 @@ impl SendActions for LocalEthersWallet {
 
     fn create_payment_request(
         &self,
-        input: Input,
-    ) -> Pin<Box<dyn Future<Output = Result<PaymentRequirements, WalletError>> + Send>> {
+        payment_requirements: PaymentRequirements,
+    ) -> Pin<Box<dyn Future<Output = Result<x402::create_payment::Output, WalletError>> + Send>> {
+        let input = Input {
+            accepts: vec![payment_requirements],
+            x402_version: 1,
+            private_key: self.private_key.clone(),
+        };
+
         Box::pin(async move {
             let input_cloned = input.clone();
             match create_payment::create_payment(input_cloned).await {
-                Ok(_output) => {
-                    // Return the first PaymentRequirements from the input (if any)
-                    input.accepts.into_iter().next().ok_or_else(|| {
-                        WalletError::InvalidPayment("No PaymentRequirements provided in input.accepts".to_string())
-                    })
-                }
+                Ok(output) => Ok(output),
                 Err(e) => Err(WalletError::FunctionExecutionError(e.to_string())),
             }
         })
@@ -218,7 +220,7 @@ impl CommonActions for LocalEthersWallet {
     ) -> Pin<Box<dyn Future<Output = Result<Balance, WalletError>> + Send + 'static>> {
         Box::pin(async move {
             let rpc_url = Self::rpc_url_for_network(&asset.network_id);
-            let token_address = asset.contract_address.clone().unwrap_or_else(|| "".to_string());
+            let token_address = asset.contract_address.clone().unwrap_or_else(|| asset.asset_id.clone());
             let input = get_balance::Input {
                 token_address,
                 wallet_address: public_address.address_id.clone(),

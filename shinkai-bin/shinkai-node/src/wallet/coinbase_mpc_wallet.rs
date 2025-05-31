@@ -5,7 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletConfig;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_non_rust_code::functions::x402::create_payment::Input;
+use shinkai_non_rust_code::functions::x402;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
@@ -426,8 +426,7 @@ impl CommonActions for CoinbaseMPCWallet {
         node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
-        let network_id = self.network.clone();
-        let network = self.network.clone();
+
         let sqlite_manager = match self.sqlite_manager.clone() {
             Some(manager) => manager,
             None => {
@@ -673,8 +672,8 @@ impl SendActions for CoinbaseMPCWallet {
 
     fn create_payment_request(
         &self,
-        _input: Input,
-    ) -> Pin<Box<dyn Future<Output = Result<PaymentRequirements, WalletError>> + Send>> {
+        _payment_requirements: PaymentRequirements,
+    ) -> Pin<Box<dyn Future<Output = Result<x402::create_payment::Output, WalletError>> + Send>> {
         unimplemented!()
     }
 }

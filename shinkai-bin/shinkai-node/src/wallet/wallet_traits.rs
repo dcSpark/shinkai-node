@@ -7,7 +7,7 @@ use downcast_rs::{impl_downcast, Downcast};
 use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName, wallet_mixed::{Address, AddressBalanceList, Asset, Balance, PublicAddress, Transaction}, x402_types::{Network, PaymentRequirements}
 };
-use shinkai_non_rust_code::functions::x402::create_payment::Input;
+use shinkai_non_rust_code::functions::x402;
 
 pub trait IsWallet {}
 
@@ -38,8 +38,8 @@ pub trait SendActions {
 
     fn create_payment_request(
         &self,
-        input: Input,
-    ) -> Pin<Box<dyn Future<Output = Result<PaymentRequirements, WalletError>> + Send>>;
+        payment_requirements: PaymentRequirements,
+    ) -> Pin<Box<dyn Future<Output = Result<x402::create_payment::Output, WalletError>> + Send>>;
 }
 
 /// Trait for common actions.
