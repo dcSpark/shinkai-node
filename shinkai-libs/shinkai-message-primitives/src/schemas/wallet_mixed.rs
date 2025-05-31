@@ -159,136 +159,136 @@ pub struct ModelError {
     message: String,
 }
 
-/// Represents a blockchain network.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct Network {
-    /// The ID of the blockchain network.
-    pub id: NetworkIdentifier,
-    /// The human-readable name of the blockchain network.
-    pub display_name: String,
-    /// The chain ID of the blockchain network.
-    pub chain_id: u32,
-    /// The protocol family of the blockchain network.
-    pub protocol_family: NetworkProtocolFamilyEnum,
-    /// Whether the network is a testnet or not.
-    pub is_testnet: bool,
-    /// The native asset of the blockchain network.
-    pub native_asset: Asset,
-    // /// The feature set of the blockchain network.
-    // feature_set: FeatureSet,
-}
+// /// Represents a blockchain network.
+// #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+// pub struct Network {
+//     /// The ID of the blockchain network.
+//     pub id: NetworkIdentifier,
+//     /// The human-readable name of the blockchain network.
+//     pub display_name: String,
+//     /// The chain ID of the blockchain network.
+//     pub chain_id: u32,
+//     /// The protocol family of the blockchain network.
+//     pub protocol_family: NetworkProtocolFamilyEnum,
+//     /// Whether the network is a testnet or not.
+//     pub is_testnet: bool,
+//     /// The native asset of the blockchain network.
+//     pub native_asset: Asset,
+//     // /// The feature set of the blockchain network.
+//     // feature_set: FeatureSet,
+// }
 
-impl Network {
-    pub fn new(id: NetworkIdentifier) -> Self {
-        let (display_name, chain_id, protocol_family, is_testnet, native_asset) = match id {
-            NetworkIdentifier::BaseSepolia => (
-                "Base Sepolia".to_string(),
-                84532,
-                NetworkProtocolFamilyEnum::Evm,
-                true,
-                Asset {
-                    network_id: x402_types::Network::BaseSepolia,
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-            ),
-            NetworkIdentifier::BaseMainnet => (
-                "Base Mainnet".to_string(),
-                1,
-                NetworkProtocolFamilyEnum::Evm,
-                false,
-                Asset {
-                    network_id: x402_types::Network::Base,
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-            ),
-            NetworkIdentifier::EthereumSepolia => (
-                "Ethereum Sepolia".to_string(),
-                11155111,
-                NetworkProtocolFamilyEnum::Evm,
-                true,
-                Asset {
-                    network_id: x402_types::Network::BaseSepolia, // TODO: Add Ethereum networks to x402_types::Network
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-            ),
-            NetworkIdentifier::EthereumMainnet => (
-                "Ethereum Mainnet".to_string(),
-                1,
-                NetworkProtocolFamilyEnum::Evm,
-                false,
-                Asset {
-                    network_id: x402_types::Network::Base, // TODO: Add Ethereum networks to x402_types::Network
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-            ),
-            NetworkIdentifier::ArbitrumSepolia => (
-                "Arbitrum Sepolia".to_string(),
-                421611,
-                NetworkProtocolFamilyEnum::Evm,
-                true,
-                Asset {
-                    network_id: x402_types::Network::BaseSepolia, // TODO: Add Arbitrum networks to x402_types::Network
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-            ),
-            NetworkIdentifier::ArbitrumMainnet => (
-                "Arbitrum Mainnet".to_string(),
-                42161,
-                NetworkProtocolFamilyEnum::Evm,
-                false,
-                Asset {
-                    network_id: x402_types::Network::Base, // TODO: Add Arbitrum networks to x402_types::Network
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-            ),
-            NetworkIdentifier::Anvil => (
-                "Anvil".to_string(),
-                31337,
-                NetworkProtocolFamilyEnum::Evm,
-                true,
-                Asset {
-                    network_id: x402_types::Network::BaseSepolia, // TODO: Add Anvil network to x402_types::Network
-                    asset_id: "ETH".to_string(),
-                    decimals: Some(18),
-                    contract_address: None,
-                },
-            ),
-        };
+// impl Network {
+//     pub fn new(id: NetworkIdentifier) -> Self {
+//         let (display_name, chain_id, protocol_family, is_testnet, native_asset) = match id {
+//             NetworkIdentifier::BaseSepolia => (
+//                 "Base Sepolia".to_string(),
+//                 84532,
+//                 NetworkProtocolFamilyEnum::Evm,
+//                 true,
+//                 Asset {
+//                     network_id: x402_types::Network::BaseSepolia,
+//                     asset_id: "ETH".to_string(),
+//                     decimals: Some(18),
+//                     contract_address: None,
+//                 },
+//             ),
+//             NetworkIdentifier::BaseMainnet => (
+//                 "Base Mainnet".to_string(),
+//                 1,
+//                 NetworkProtocolFamilyEnum::Evm,
+//                 false,
+//                 Asset {
+//                     network_id: x402_types::Network::Base,
+//                     asset_id: "ETH".to_string(),
+//                     decimals: Some(18),
+//                     contract_address: None,
+//                 },
+//             ),
+//             NetworkIdentifier::EthereumSepolia => (
+//                 "Ethereum Sepolia".to_string(),
+//                 11155111,
+//                 NetworkProtocolFamilyEnum::Evm,
+//                 true,
+//                 Asset {
+//                     network_id: x402_types::Network::BaseSepolia, // TODO: Add Ethereum networks to
+// x402_types::Network                     asset_id: "ETH".to_string(),
+//                     decimals: Some(18),
+//                     contract_address: None,
+//                 },
+//             ),
+//             NetworkIdentifier::EthereumMainnet => (
+//                 "Ethereum Mainnet".to_string(),
+//                 1,
+//                 NetworkProtocolFamilyEnum::Evm,
+//                 false,
+//                 Asset {
+//                     network_id: x402_types::Network::Base, // TODO: Add Ethereum networks to x402_types::Network
+//                     asset_id: "ETH".to_string(),
+//                     decimals: Some(18),
+//                     contract_address: None,
+//                 },
+//             ),
+//             NetworkIdentifier::ArbitrumSepolia => (
+//                 "Arbitrum Sepolia".to_string(),
+//                 421611,
+//                 NetworkProtocolFamilyEnum::Evm,
+//                 true,
+//                 Asset {
+//                     network_id: x402_types::Network::BaseSepolia, // TODO: Add Arbitrum networks to
+// x402_types::Network                     asset_id: "ETH".to_string(),
+//                     decimals: Some(18),
+//                     contract_address: None,
+//                 },
+//             ),
+//             NetworkIdentifier::ArbitrumMainnet => (
+//                 "Arbitrum Mainnet".to_string(),
+//                 42161,
+//                 NetworkProtocolFamilyEnum::Evm,
+//                 false,
+//                 Asset {
+//                     network_id: x402_types::Network::Base, // TODO: Add Arbitrum networks to x402_types::Network
+//                     asset_id: "ETH".to_string(),
+//                     decimals: Some(18),
+//                     contract_address: None,
+//                 },
+//             ),
+//             NetworkIdentifier::Anvil => (
+//                 "Anvil".to_string(),
+//                 31337,
+//                 NetworkProtocolFamilyEnum::Evm,
+//                 true,
+//                 Asset {
+//                     network_id: x402_types::Network::BaseSepolia, // TODO: Add Anvil network to x402_types::Network
+//                     asset_id: "ETH".to_string(),
+//                     decimals: Some(18),
+//                     contract_address: None,
+//                 },
+//             ),
+//         };
 
-        Network {
-            id,
-            display_name,
-            chain_id,
-            protocol_family,
-            is_testnet,
-            native_asset,
-        }
-    }
+//         Network {
+//             id,
+//             display_name,
+//             chain_id,
+//             protocol_family,
+//             is_testnet,
+//             native_asset,
+//         }
+//     }
 
-    pub fn default_rpc(&self) -> &str {
-        match self.id {
-            NetworkIdentifier::BaseSepolia => "https://base-sepolia.blockpi.network/v1/rpc/public",
-            NetworkIdentifier::BaseMainnet => "https://base-mainnet.rpc.url",
-            NetworkIdentifier::EthereumSepolia => "https://ethereum-sepolia.rpc.url",
-            NetworkIdentifier::EthereumMainnet => "https://ethereum-mainnet.rpc.url",
-            NetworkIdentifier::ArbitrumSepolia => "https://arbitrum-sepolia.rpc.url",
-            NetworkIdentifier::ArbitrumMainnet => "https://arbitrum-mainnet.rpc.url",
-            NetworkIdentifier::Anvil => "http://localhost:62582",
-        }
-    }
-}
+//     pub fn default_rpc(&self) -> &str {
+//         match self.id {
+//             NetworkIdentifier::BaseSepolia => "https://base-sepolia.blockpi.network/v1/rpc/public",
+//             NetworkIdentifier::BaseMainnet => "https://base-mainnet.rpc.url",
+//             NetworkIdentifier::EthereumSepolia => "https://ethereum-sepolia.rpc.url",
+//             NetworkIdentifier::EthereumMainnet => "https://ethereum-mainnet.rpc.url",
+//             NetworkIdentifier::ArbitrumSepolia => "https://arbitrum-sepolia.rpc.url",
+//             NetworkIdentifier::ArbitrumMainnet => "https://arbitrum-mainnet.rpc.url",
+//             NetworkIdentifier::Anvil => "http://localhost:62582",
+//         }
+//     }
+// }
 
 /// Enum representing the protocol family of the blockchain network.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

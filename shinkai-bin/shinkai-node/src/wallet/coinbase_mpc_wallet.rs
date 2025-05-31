@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletConfig;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_non_rust_code::functions::x402::create_payment::Input;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
@@ -21,7 +22,7 @@ use crate::wallet::wallet_error::WalletError;
 use shinkai_message_primitives::schemas::wallet_mixed::{
     Address, AddressBalanceList, Asset, AssetType, Balance, PublicAddress
 };
-use shinkai_message_primitives::schemas::x402_types::Network;
+use shinkai_message_primitives::schemas::x402_types::{Network, PaymentRequirements};
 
 #[derive(Debug, Clone)]
 pub struct CoinbaseMPCWallet {
@@ -668,6 +669,13 @@ impl SendActions for CoinbaseMPCWallet {
         };
 
         Box::pin(fut)
+    }
+
+    fn create_payment_request(
+        &self,
+        _input: Input,
+    ) -> Pin<Box<dyn Future<Output = Result<PaymentRequirements, WalletError>> + Send>> {
+        unimplemented!()
     }
 }
 

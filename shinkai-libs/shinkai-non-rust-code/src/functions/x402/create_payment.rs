@@ -4,7 +4,7 @@ use shinkai_message_primitives::schemas::x402_types::PaymentRequirements;
 
 use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Input {
     pub accepts: Vec<PaymentRequirements>,
