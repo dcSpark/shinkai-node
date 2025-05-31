@@ -18,6 +18,7 @@ pub struct MCPServerTool {
     pub name: String,
     pub author: String,
     pub mcp_server_ref: String,
+    pub mcp_server_command_hash: String,
     pub description: String,
     pub mcp_server_url: String,
     pub mcp_server_tool: String,
@@ -39,11 +40,11 @@ pub struct MCPServerTool {
 }
 
 impl MCPServerTool {
-    pub fn create_tool_router_key(node_name: String, server_id: String, tool_name: String) -> ToolRouterKey {
+    pub fn create_tool_router_key(server_command_hash: String, tool_name: String) -> ToolRouterKey {
         ToolRouterKey::new(
             "local".to_string(),
-            node_name.to_string(),
-            format!("mcp_{}_{}", server_id, tool_name),
+            "__shinkai_mcp_server_import".to_string(),
+            format!("{}_{}", server_command_hash, tool_name),
             None,
         )
     }

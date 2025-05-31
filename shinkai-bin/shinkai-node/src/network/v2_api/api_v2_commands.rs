@@ -2364,6 +2364,7 @@ impl Node {
                 if let Some(env) = &server.env {
                     log::info!("MCP Server '{}' (ID: {:?}) env: {:?}", server.name, server.id, env);
                 }
+                let server_command_hash = server.get_command_hash();
                 if server.r#type == MCPServerType::Command && server.is_enabled {
                     if let Some(command_str) = &server.command {
                         log::info!(
@@ -2396,6 +2397,7 @@ impl Node {
                                         &tool,
                                         &server.name,
                                         &server_id,
+                                        &server_command_hash,
                                         &node_name.to_string(),
                                         tools_config.clone(),
                                     );
@@ -2433,6 +2435,7 @@ impl Node {
                                         &tool,
                                         &server.name,
                                         &server_id,
+                                        &server_command_hash,
                                         &node_name.to_string(),
                                         vec![],
                                     );
@@ -2583,6 +2586,7 @@ impl Node {
                     .as_ref()
                     .expect("Server ID should exist")
                     .to_string();
+                let server_command_hash = updated_mcp_server.get_command_hash();
                 match updated_mcp_server.r#type {
                     MCPServerType::Command => {
                         if let Some(cmd) = &mcp_server.command {
@@ -2607,6 +2611,7 @@ impl Node {
                                             &tool,
                                             &updated_mcp_server.name,
                                             &server_id,
+                                            &server_command_hash,
                                             &node_name.to_string(),
                                             tools_config.clone(),
                                         );
@@ -2634,6 +2639,7 @@ impl Node {
                                             &tool,
                                             &updated_mcp_server.name,
                                             &server_id,
+                                            &server_command_hash,
                                             &node_name.to_string(),
                                             vec![],
                                         );

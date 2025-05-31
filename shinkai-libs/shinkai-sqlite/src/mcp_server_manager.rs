@@ -71,79 +71,43 @@ impl SqliteManager {
     ) -> Result<MCPServer, SqliteManagerError> {
         let conn = self.get_connection()?;
 
-        // Generate Unix timestamp in milliseconds as ID with collision handling
-        let mut timestamp_id = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| {
-                SqliteManagerError::DatabaseError(rusqlite::Error::SqliteFailure(
-                    rusqlite::ffi::Error::new(1),
-                    Some(format!("Failed to generate timestamp: {}", e)),
-                ))
-            })?
-            .as_millis() as i64;
+        let mut stmt = conn.prepare(
+            "INSERT INTO mcp_servers (name, type, url, command, env, is_enabled) 
+             VALUES (?, ?, ?, ?, ?, ?) 
+             RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
+        )?;
 
-        // Retry up to 10 times if we hit a collision
-        for attempt in 0..10 {
-            let mut stmt = conn.prepare(
-                "INSERT INTO mcp_servers (id, name, type, url, command, env, is_enabled) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?) 
-                 RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
-            )?;
+        let mut rows = stmt.query([
+            name.clone(),
+            r#type.to_string(),
+            url.clone().unwrap_or("".to_string()),
+            command.clone().unwrap_or("".to_string()),
+            env.as_ref()
+                .map(|e| serde_json::to_string(&e).unwrap())
+                .unwrap_or_else(|| "{}".to_string()),
+            if is_enabled { 1.to_string() } else { 0.to_string() },
+        ])?;
 
-            let query_result = stmt.query([
-                timestamp_id.to_string(),
-                name.clone(),
-                r#type.to_string(),
-                url.clone().unwrap_or("".to_string()),
-                command.clone().unwrap_or("".to_string()),
-                env.as_ref()
-                    .map(|e| serde_json::to_string(&e).unwrap())
-                    .unwrap_or_else(|| "{}".to_string()),
-                if is_enabled { 1.to_string() } else { 0.to_string() },
-            ]);
-
-            match query_result {
-                Ok(mut rows) => match rows.next()? {
-                    Some(row) => {
-                        return Ok(MCPServer {
-                            id: row.get(0)?,
-                            created_at: row.get(1)?,
-                            updated_at: row.get(2)?,
-                            name: row.get(3)?,
-                            r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
-                            url: row.get(5)?,
-                            command: row.get(6)?,
-                            env: {
-                                let env_str: Option<String> = row.get(7)?;
-                                env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
-                            },
-                            is_enabled: row.get::<_, bool>(8)?,
-                        });
-                    }
-                    None => {
-                        log::error!("Insert query returned no rows");
-                        return Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows));
-                    }
+        match rows.next()? {
+            Some(row) => Ok(MCPServer {
+                id: row.get(0)?,
+                created_at: row.get(1)?,
+                updated_at: row.get(2)?,
+                name: row.get(3)?,
+                r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
+                url: row.get(5)?,
+                command: row.get(6)?,
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
                 },
-                Err(rusqlite::Error::SqliteFailure(ffi_err, _))
-                    if ffi_err.code == rusqlite::ErrorCode::ConstraintViolation =>
-                {
-                    // ID collision detected, increment and retry
-                    timestamp_id += 1;
-                    if attempt == 9 {
-                        return Err(SqliteManagerError::DatabaseError(rusqlite::Error::SqliteFailure(
-                            rusqlite::ffi::Error::new(1),
-                            Some("Failed to generate unique ID after 10 attempts".to_string()),
-                        )));
-                    }
-                    continue;
-                }
-                Err(e) => return Err(SqliteManagerError::DatabaseError(e)),
+                is_enabled: row.get::<_, bool>(8)?,
+            }),
+            None => {
+                log::error!("Insert query returned no rows");
+                Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows))
             }
         }
-
-        // This should never be reached due to the return statements above
-        unreachable!()
     }
 
     pub fn update_mcp_server(
@@ -166,7 +130,7 @@ impl SqliteManager {
             env.map(|e| serde_json::to_string(&e).unwrap())
                 .unwrap_or_else(|| "{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
-            id.to_string(),
+            (id as i64).to_string(),
         ])?;
         match rows.next()? {
             Some(row) => Ok(MCPServer {
@@ -200,7 +164,6 @@ impl SqliteManager {
             "UPDATE mcp_servers SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled"
         )?;
         let mut rows = stmt.query([if is_enabled { 1.to_string() } else { 0.to_string() }, id.to_string()])?;
-
         match rows.next()? {
             Some(row) => Ok(MCPServer {
                 id: row.get(0)?,
@@ -493,81 +456,92 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_unix_timestamp_ids_for_import_export() {
+    async fn test_add_update_and_disable_mcp_server_lifecycle() {
         let manager = setup_test_db().await;
 
-        // Test 1: Add a server and verify it gets a Unix timestamp ID
-        let server1 = manager
+        // Step 1: Add an MCP server
+        let initial_env = create_test_mcp_server_env();
+        let added_server = manager
             .add_mcp_server(
-                "Server 1".to_string(),
+                "Lifecycle Test Server".to_string(),
                 MCPServerType::Command,
-                Some("http://server1.example.com".to_string()),
-                Some("npx server1".to_string()),
-                None,
-                true,
+                Some("http://initial.example.com".to_string()),
+                Some("npx initial-command".to_string()),
+                Some(initial_env.clone()),
+                true, // Initially enabled
             )
             .unwrap();
 
-        // Verify the ID is a Unix timestamp (should be a large number)
-        let id1 = server1.id.unwrap();
-        assert!(id1 > 1_000_000_000_000); // Should be > year 2001 in milliseconds
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        // Test 2: Add another server and verify it gets a different timestamp
-        let server2 = manager
-            .add_mcp_server(
-                "Server 2".to_string(),
+        let server_id = added_server.id.unwrap();
+
+        // Verify the server was added correctly
+        assert_eq!(added_server.name, "Lifecycle Test Server");
+        assert_eq!(added_server.r#type, MCPServerType::Command);
+        assert_eq!(added_server.url, Some("http://initial.example.com".to_string()));
+        assert_eq!(added_server.command, Some("npx initial-command".to_string()));
+        assert_eq!(added_server.env, Some(initial_env));
+        assert!(added_server.is_enabled);
+
+        // Step 2: Update the server with new values
+        let mut updated_env = HashMap::new();
+        updated_env.insert("API_KEY".to_string(), "updated_lifecycle_key".to_string());
+        updated_env.insert("ENVIRONMENT".to_string(), "production".to_string());
+
+        let updated_server = manager
+            .update_mcp_server(
+                server_id,
+                "Updated Lifecycle Server".to_string(),
                 MCPServerType::Sse,
-                Some("http://server2.example.com".to_string()),
-                None,
-                None,
-                true,
+                Some("https://updated.lifecycle.com".to_string()),
+                Some("npx updated-lifecycle-command".to_string()),
+                Some(updated_env.clone()),
+                true, // Keep enabled during update
             )
             .unwrap();
 
-        let id2 = server2.id.unwrap();
-        assert!(id2 > id1); // Second server should have a later timestamp
-        assert!(id2 - id1 < 1000); // But should be within a reasonable time difference
+        // Verify the server was updated correctly
+        assert_eq!(updated_server.id, Some(server_id));
+        assert_eq!(updated_server.name, "Updated Lifecycle Server");
+        assert_eq!(updated_server.r#type, MCPServerType::Sse);
+        assert_eq!(updated_server.url, Some("https://updated.lifecycle.com".to_string()));
+        assert_eq!(
+            updated_server.command,
+            Some("npx updated-lifecycle-command".to_string())
+        );
+        assert_eq!(updated_server.env, Some(updated_env));
+        assert!(updated_server.is_enabled);
 
-        // Test 3: Test import scenario - add a server with a specific ID (simulating import)
-        let import_id = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64
-            + 100000; // Larger offset to avoid conflicts with other tests
-        let imported_server = manager
-            .add_mcp_server_with_id(
-                import_id,
-                "Imported Server".to_string(),
-                MCPServerType::Command,
-                Some("http://imported.example.com".to_string()),
-                Some("npx imported".to_string()),
-                None,
-                true,
-            )
-            .unwrap();
+        // Step 3: Disable the server using the enabled status update method
+        let disabled_server = manager.update_mcp_server_enabled_status(server_id, false).unwrap();
 
-        assert_eq!(imported_server.id.unwrap(), import_id);
+        // Verify the server was disabled correctly
+        assert_eq!(disabled_server.id, Some(server_id));
+        assert_eq!(disabled_server.name, "Updated Lifecycle Server"); // Name should remain the same
+        assert_eq!(disabled_server.r#type, MCPServerType::Sse); // Type should remain the same
+        assert_eq!(disabled_server.url, Some("https://updated.lifecycle.com".to_string())); // URL should remain the same
+        assert_eq!(
+            disabled_server.command,
+            Some("npx updated-lifecycle-command".to_string())
+        ); // Command should remain the same
+        assert!(!disabled_server.is_enabled); // Should now be disabled
 
-        // Test 4: Verify all servers can be retrieved and updated
-        let all_servers = manager.get_all_mcp_servers().unwrap();
-        assert_eq!(all_servers.len(), 3);
-
-        // Test updating each server works correctly
-        for server in all_servers {
-            let updated = manager
-                .update_mcp_server(
-                    server.id.unwrap(),
-                    format!("Updated {}", server.name),
-                    server.r#type,
-                    server.url,
-                    server.command,
-                    server.env,
-                    !server.is_enabled, // Toggle enabled status
-                )
-                .unwrap();
-
-            assert!(updated.name.starts_with("Updated"));
-            assert_eq!(updated.is_enabled, !server.is_enabled);
+        // Verify environment was preserved during disable operation
+        if let Some(env) = disabled_server.env {
+            assert_eq!(env.get("API_KEY").unwrap(), "updated_lifecycle_key");
+            assert_eq!(env.get("ENVIRONMENT").unwrap(), "production");
+        } else {
+            panic!("Environment should be preserved during disable operation");
         }
+
+        // Final verification: Retrieve the server from database to ensure persistence
+        let final_server = manager.get_mcp_server(server_id).unwrap().unwrap();
+        assert_eq!(final_server.name, "Updated Lifecycle Server");
+        assert_eq!(final_server.r#type, MCPServerType::Sse);
+        assert!(!final_server.is_enabled);
+
+        // Bonus: Test re-enabling the server
+        let re_enabled_server = manager.update_mcp_server_enabled_status(server_id, true).unwrap();
+        assert!(re_enabled_server.is_enabled);
+        assert_eq!(re_enabled_server.name, "Updated Lifecycle Server"); // All other properties should remain unchanged
     }
 }

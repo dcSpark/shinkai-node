@@ -16,6 +16,7 @@ pub fn convert_to_shinkai_tool(
     tool: &Tool,
     server_name: &str,
     server_id: &str,
+    server_command_hash: &str,
     node_name: &str,
     tools_config: Vec<ToolConfig>,
 ) -> ShinkaiTool {
@@ -38,8 +39,7 @@ pub fn convert_to_shinkai_tool(
         .name
         .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
-    let tool_router_key =
-        MCPServerTool::create_tool_router_key(node_name.to_string(), server_id.to_string(), tool_name.to_string());
+    let tool_router_key = MCPServerTool::create_tool_router_key(server_command_hash.to_string(), tool_name.to_string());
     let mcp_tool = MCPServerTool {
         name: format!("{} - {}", server_name, tool_name),
         author: node_name.to_string(),
@@ -62,6 +62,7 @@ pub fn convert_to_shinkai_tool(
         embedding: None,
         mcp_enabled: Some(false),
         mcp_server_ref: server_id.to_string(),
+        mcp_server_command_hash: server_command_hash.to_string(),
         mcp_server_tool: tool.name.to_string(),
         mcp_server_url: "".to_string(),
         output_arg: ToolOutputArg::empty(),
@@ -311,6 +312,7 @@ pub mod tests_mcp_manager {
         let tool = mock_tools_vec.first().unwrap();
         let server_name = "test_server";
         let server_id = "test_server_123";
+        let server_command_hash = "abcdef012345";
         let node_name = "test_node";
         let tools_config = vec![ToolConfig::BasicConfig(BasicConfig {
             key_name: "api_key".to_string(),
@@ -320,7 +322,14 @@ pub mod tests_mcp_manager {
             key_value: Some(serde_json::Value::String("test_key".to_string())),
         })];
 
-        let shinkai_tool = convert_to_shinkai_tool(tool, server_name, server_id, node_name, tools_config);
+        let shinkai_tool = convert_to_shinkai_tool(
+            tool,
+            server_name,
+            server_id,
+            server_command_hash,
+            node_name,
+            tools_config,
+        );
 
         if let ShinkaiTool::MCPServer(mcp_tool, enabled) = shinkai_tool {
             assert_eq!(mcp_tool.name, "test_server - get_info");

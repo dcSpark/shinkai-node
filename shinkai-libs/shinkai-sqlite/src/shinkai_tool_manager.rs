@@ -3046,6 +3046,7 @@ mod tests {
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             tool_set: None,
             mcp_server_ref: mcp_server_id,
+            mcp_server_command_hash: "abcdef012345".to_string(),
         };
         ShinkaiTool::MCPServer(mcp_tool_data, true)
     }
