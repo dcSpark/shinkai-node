@@ -27,7 +27,7 @@ pub async fn create_wallet(input: Input) -> Result<Output, RunError> {
     let runner = NonRustCodeRunnerFactory::new("create_wallet", code, vec![])
         .with_runtime(NonRustRuntime::Deno)
         .create_runner(json!({}));
-    runner.run::<_, Output>(input).await
+    runner.run::<_, Output>(input, None).await
 }
 
 #[cfg(test)]

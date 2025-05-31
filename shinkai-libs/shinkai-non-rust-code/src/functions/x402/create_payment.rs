@@ -23,7 +23,7 @@ pub async fn create_payment(input: Input) -> Result<Output, RunError> {
     let runner = NonRustCodeRunnerFactory::new("create_payment", code, vec![])
         .with_runtime(NonRustRuntime::Deno)
         .create_runner(json!({}));
-    runner.run::<_, Output>(input).await
+    runner.run::<_, Output>(input, None).await
 }
 
 #[cfg(test)]

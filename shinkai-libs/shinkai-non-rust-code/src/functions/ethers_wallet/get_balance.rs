@@ -32,7 +32,7 @@ pub async fn get_balance(input: Input) -> Result<Output, RunError> {
     let runner = NonRustCodeRunnerFactory::new("get_balance", code, vec![])
         .with_runtime(NonRustRuntime::Deno)
         .create_runner(json!({}));
-    runner.run::<_, Output>(input).await
+    runner.run::<_, Output>(input, None).await
 }
 
 #[cfg(test)]

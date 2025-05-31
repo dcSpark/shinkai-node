@@ -867,40 +867,40 @@ impl ExtAgentOfferingsManager {
 
         // Step 4: if we got a successful result, we settle the payment
         // For testing maybe we can add a flag to avoid this step
-        // let is_testing = std::env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
-        // if !is_testing {
-        // Extract decoded_payment for settlement
-        let decoded_payment = output.valid.as_ref().unwrap().decoded_payment.clone();
+        let is_testing = std::env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
+        if !is_testing {
+            // Extract decoded_payment for settlement
+            let decoded_payment = output.valid.as_ref().unwrap().decoded_payment.clone();
 
-        let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
-            UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.clone(),
-            _ => {
-                return Err(AgentOfferingManagerError::OperationFailed(
-                    "Unsupported usage type for settlement".to_string(),
-                ))
-            }
-        };
-        let settle_input = SettleInput {
-            payment: decoded_payment,
-            accepts: payment_requirements,
-            facilitator: FacilitatorConfig::default(),
-        };
-        let settle_result = settle_payment(settle_input)
-            .await
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Payment settlement failed: {:?}", e)))?;
-        if settle_result.valid.is_none() {
-            local_invoice.status = InvoiceStatusEnum::Failed;
-            db.set_invoice(&local_invoice).map_err(|e| {
-                AgentOfferingManagerError::OperationFailed(format!(
-                    "Failed to set invoice after failed settlement: {:?}",
-                    e
-                ))
+            let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
+                UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.clone(),
+                _ => {
+                    return Err(AgentOfferingManagerError::OperationFailed(
+                        "Unsupported usage type for settlement".to_string(),
+                    ))
+                }
+            };
+            let settle_input = SettleInput {
+                payment: decoded_payment,
+                accepts: payment_requirements,
+                facilitator: FacilitatorConfig::default(),
+            };
+            let settle_result = settle_payment(settle_input).await.map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!("Payment settlement failed: {:?}", e))
             })?;
-            return Err(AgentOfferingManagerError::OperationFailed(
-                "Payment settlement failed".to_string(),
-            ));
+            if settle_result.valid.is_none() {
+                local_invoice.status = InvoiceStatusEnum::Failed;
+                db.set_invoice(&local_invoice).map_err(|e| {
+                    AgentOfferingManagerError::OperationFailed(format!(
+                        "Failed to set invoice after failed settlement: {:?}",
+                        e
+                    ))
+                })?;
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Payment settlement failed".to_string(),
+                ));
+            }
         }
-        // }
 
         // Old stuff below
 

@@ -19,7 +19,7 @@ pub async fn get_payment_requirements(input: PaymentRequirementsInput) -> Result
     let runner = NonRustCodeRunnerFactory::new("payment_requirements", code, vec![])
         .with_runtime(NonRustRuntime::Deno)
         .create_runner(json!({}));
-    runner.run::<_, PaymentRequirementsOutput>(input).await
+    runner.run::<_, PaymentRequirementsOutput>(input, None).await
 }
 
 #[cfg(test)]
