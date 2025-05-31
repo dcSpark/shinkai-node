@@ -4,6 +4,8 @@ use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
+use shinkai_message_primitives::schemas::mcp_server::MCPServer;
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
 use std::collections::{HashMap, HashSet};
@@ -160,10 +162,9 @@ impl SqliteManager {
                     .map(|new_entry| match new_entry {
                         ToolConfig::BasicConfig(new_basic) => {
                             let preserved_value = old_config.iter().find_map(|old_entry| {
-                                if let ToolConfig::BasicConfig(old_basic) = old_entry {
-                                    if old_basic.key_name == new_basic.key_name {
-                                        return old_basic.key_value.clone();
-                                    }
+                                let ToolConfig::BasicConfig(old_basic) = old_entry;
+                                if old_basic.key_name == new_basic.key_name {
+                                    return old_basic.key_value.clone();
                                 }
                                 None
                             });
@@ -191,10 +192,9 @@ impl SqliteManager {
                     .map(|new_entry| match new_entry {
                         ToolConfig::BasicConfig(new_basic) => {
                             let preserved_value = old_config.iter().find_map(|old_entry| {
-                                if let ToolConfig::BasicConfig(old_basic) = old_entry {
-                                    if old_basic.key_name == new_basic.key_name {
-                                        return old_basic.key_value.clone();
-                                    }
+                                let ToolConfig::BasicConfig(old_basic) = old_entry;
+                                if old_basic.key_name == new_basic.key_name {
+                                    return old_basic.key_value.clone();
                                 }
                                 None
                             });
@@ -222,10 +222,9 @@ impl SqliteManager {
                     .map(|new_entry| match new_entry {
                         ToolConfig::BasicConfig(new_basic) => {
                             let preserved_value = old_config.iter().find_map(|old_entry| {
-                                if let ToolConfig::BasicConfig(old_basic) = old_entry {
-                                    if old_basic.key_name == new_basic.key_name {
-                                        return old_basic.key_value.clone();
-                                    }
+                                let ToolConfig::BasicConfig(old_basic) = old_entry;
+                                if old_basic.key_name == new_basic.key_name {
+                                    return old_basic.key_value.clone();
                                 }
                                 None
                             });
@@ -704,7 +703,7 @@ impl SqliteManager {
                 SqliteManagerError::DatabaseError(e)
             })?;
 
-        Ok(count >= 4)
+        Ok(count >= 7)
     }
 
     // Update the FTS table when inserting or updating a tool
@@ -1018,14 +1017,13 @@ impl SqliteManager {
                     for (key_to_set, value_to_set) in &values {
                         // Iterate through the tool's config entries
                         for config_entry in &mut deno_tool.config {
-                            if let ToolConfig::BasicConfig(basic_config) = config_entry {
-                                // 2.1 Check if the key_name matches
-                                if &basic_config.key_name == key_to_set {
-                                    // 2.2 Set the key_value
-                                    basic_config.key_value = Some(value_to_set.clone());
-                                    config_updated = true;
-                                    break; // Move to the next key-value pair once matched
-                                }
+                            let ToolConfig::BasicConfig(basic_config) = config_entry;
+                            // 2.1 Check if the key_name matches
+                            if &basic_config.key_name == key_to_set {
+                                // 2.2 Set the key_value
+                                basic_config.key_value = Some(value_to_set.clone());
+                                config_updated = true;
+                                break; // Move to the next key-value pair once matched
                             }
                         }
                     }
@@ -1035,14 +1033,13 @@ impl SqliteManager {
                     for (key_to_set, value_to_set) in &values {
                         // Iterate through the tool's config entries
                         for config_entry in &mut python_tool.config {
-                            if let ToolConfig::BasicConfig(basic_config) = config_entry {
-                                // 2.1 Check if the key_name matches
-                                if &basic_config.key_name == key_to_set {
-                                    // 2.2 Set the key_value
-                                    basic_config.key_value = Some(value_to_set.clone());
-                                    config_updated = true;
-                                    break; // Move to the next key-value pair once matched
-                                }
+                            let ToolConfig::BasicConfig(basic_config) = config_entry;
+                            // 2.1 Check if the key_name matches
+                            if &basic_config.key_name == key_to_set {
+                                // 2.2 Set the key_value
+                                basic_config.key_value = Some(value_to_set.clone());
+                                config_updated = true;
+                                break; // Move to the next key-value pair once matched
                             }
                         }
                     }
@@ -1069,6 +1066,34 @@ impl SqliteManager {
         }
         Ok(updated_tool_keys)
     }
+
+    pub fn get_all_tools_from_mcp_server(
+        &self,
+        mcp_server_id: String,
+    ) -> Result<Vec<MCPServerTool>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT tool_data FROM shinkai_tools WHERE tool_type = 'MCPServer' AND (json(tool_data) -> '$.content[0].mcp_server_ref') = '\"' || ? || '\"'")?;
+        let mut rows = stmt.query([mcp_server_id])?;
+        let mut tools = Vec::new();
+        while let Some(row) = rows.next()? {
+            let tool_data: Vec<u8> = row.get(0)?;
+            let tool: ShinkaiTool = serde_json::from_slice(&tool_data).map_err(|e| {
+                eprintln!("Deserialization error: {}", e);
+                SqliteManagerError::SerializationError(e.to_string())
+            })?;
+            if let ShinkaiTool::MCPServer(mcp_tool, _) = tool {
+                tools.push(mcp_tool);
+            }
+        }
+        Ok(tools)
+    }
+
+    pub fn delete_all_tools_from_mcp_server(&self, mcp_server_id: String) -> Result<usize, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("DELETE FROM shinkai_tools WHERE tool_type = 'MCPServer' AND (json(tool_data) -> '$.content[0].mcp_server_ref') = '\"' || ? || '\"'")?;
+        let rows_deleted = stmt.execute([mcp_server_id])?;
+        Ok(rows_deleted)
+    }
 }
 
 #[cfg(test)]
@@ -1089,8 +1114,7 @@ mod tests {
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
     use shinkai_tools_primitives::tools::python_tools::PythonTool;
-    use shinkai_tools_primitives::tools::tool_config::BasicConfig;
-    use shinkai_tools_primitives::tools::tool_config::ToolConfig;
+    use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
     use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
     use shinkai_tools_primitives::tools::tool_types::OperatingSystem;
     use shinkai_tools_primitives::tools::tool_types::RunnerType;
@@ -1098,6 +1122,13 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
+
+    // Imports for placeholder enums and MCPServer tests
+    use chrono::Utc;
+    use serde::{Deserialize, Serialize};
+
+    // Test-specific imports for the new tests
+    use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 
     async fn setup_test_db() -> SqliteManager {
         let temp_file = NamedTempFile::new().unwrap();
@@ -2995,6 +3026,323 @@ mod tests {
             matches!(duplicate_result, Err(SqliteManagerError::ToolAlreadyExists(_))),
             "Expected ToolAlreadyExists error, but got: {:?}",
             duplicate_result
+        );
+    }
+
+    // Helper function to create an MCPServerTool wrapped in ShinkaiTool
+    fn create_mcp_shinkai_tool(name: &str, mcp_server_id: String, profile_name: &str, version: &str) -> ShinkaiTool {
+        let mcp_tool_data = MCPServerTool {
+            name: name.to_string(),
+            mcp_server_tool: name.to_string(),
+            mcp_server_url: "http://mcp.example.com".to_string(),
+            author: "Test MCP Author".to_string(),
+            tool_router_key: Some(ToolRouterKey::new(
+                "local".to_string(),
+                "Test MCP Author".to_string(),
+                name.to_string(),
+                None,
+            )),
+            version: version.to_string(),
+            mcp_enabled: Some(true),
+            config: vec![],
+            description: format!("A test MCP tool: {}", name),
+            keywords: vec!["mcp".to_string(), "test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            tool_set: None,
+            mcp_server_ref: mcp_server_id,
+        };
+        ShinkaiTool::MCPServer(mcp_tool_data, true)
+    }
+
+    // Helper for Deno tool
+    fn create_deno_shinkai_tool(name: &str, author: &str, version: &str) -> ShinkaiTool {
+        let tool_router_key = ToolRouterKey::new(
+            "local_profile".to_string(),
+            author.to_string(),
+            name.to_string(),
+            Some(version.to_string()),
+        );
+        let deno_tool_data = DenoTool {
+            name: name.to_string(),
+            tool_router_key: Some(tool_router_key),
+            homepage: None,
+            author: author.to_string(),
+            version: version.to_string(),
+            mcp_enabled: Some(false),
+            js_code: format!("console.log('Hello from {}');", name),
+            tools: vec![],
+            config: vec![],
+            oauth: None,
+            description: format!("A Deno tool for testing: {}", name),
+            keywords: vec!["deno".to_string(), "test".to_string()],
+            input_args: Parameters::new(),
+            output_arg: ToolOutputArg::empty(),
+            activated: true,
+            embedding: Some(SqliteManager::generate_vector_for_testing(0.0)),
+            result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+            sql_tables: None,
+            sql_queries: None,
+            file_inbox: None,
+            assets: None,
+            runner: RunnerType::OnlyHost,
+            operating_system: vec![OperatingSystem::Windows],
+            tool_set: None,
+        };
+        ShinkaiTool::Deno(deno_tool_data, true)
+    }
+
+    #[tokio::test]
+    async fn test_get_all_tools_from_mcp_server() {
+        let manager = setup_test_db().await;
+
+        let mcp_server_uuid1 = "server1".to_string(); // Keep Uuid for tool creation
+        let mcp_server1 = MCPServer {
+            id: Some(1i64),
+            name: "MCP Server One".to_string(),
+            url: Some("http://mcp1.example.com".to_string()),
+            created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: Some(Utc::now().to_rfc3339()),
+            r#type: MCPServerType::Sse,
+            env: None,
+            command: Some("run_server_one.sh".to_string()),
+            is_enabled: true,
+        };
+
+        let mcp_server_uuid2 = "server2".to_string(); // Keep Uuid for tool creation
+        let mcp_server2 = MCPServer {
+            id: Some(2i64),
+            name: "MCP Server Two".to_string(),
+            url: Some("http://mcp2.example.com".to_string()),
+            created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: Some(Utc::now().to_rfc3339()),
+            r#type: MCPServerType::Sse,
+            env: None,
+            command: None,
+            is_enabled: true,
+        };
+
+        let mcp_server3_no_tools = MCPServer {
+            id: Some(3i64),
+            name: "MCP Server Three (No Tools)".to_string(),
+            url: Some("http://mcp3.example.com".to_string()),
+            created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: Some(Utc::now().to_rfc3339()),
+            r#type: MCPServerType::Sse,
+            env: None,
+            command: None,
+            is_enabled: false,
+        };
+
+        // Tools are still created with Uuid for mcp_server_ref via create_mcp_shinkai_tool
+        let tool1_s1 = create_mcp_shinkai_tool(
+            "Tool1S1",
+            mcp_server1.id.unwrap_or_default().to_string(),
+            "profile1",
+            "1.0",
+        );
+        let tool2_s1 = create_mcp_shinkai_tool(
+            "Tool2S1",
+            mcp_server1.id.unwrap_or_default().to_string(),
+            "profile1",
+            "1.0",
+        );
+        let tool1_s2 = create_mcp_shinkai_tool(
+            "Tool1S2",
+            mcp_server2.id.unwrap_or_default().to_string(),
+            "profile2",
+            "1.0",
+        );
+        let deno_tool = create_deno_shinkai_tool("MyDenoTool", "DenoAuthor", "1.0");
+
+        manager.add_tool(tool1_s1.clone()).await.unwrap();
+        manager.add_tool(tool2_s1.clone()).await.unwrap();
+        manager.add_tool(tool1_s2.clone()).await.unwrap();
+        manager.add_tool(deno_tool.clone()).await.unwrap();
+
+        // Test for mcp_server1
+        let s1_tools = manager
+            .get_all_tools_from_mcp_server(mcp_server1.id.unwrap_or_default().to_string())
+            .unwrap();
+        assert_eq!(s1_tools.len(), 2, "MCP Server 1 should have 2 tools");
+        assert!(s1_tools.iter().any(|t| t.name == "Tool1S1"));
+        assert!(s1_tools.iter().any(|t| t.name == "Tool2S1"));
+        assert!(
+            !s1_tools.iter().any(|t| t.name == "Tool1S2"),
+            "Should not contain tool from server 2"
+        );
+
+        // Test for mcp_server2
+        let s2_tools = manager
+            .get_all_tools_from_mcp_server(mcp_server2.id.unwrap_or_default().to_string())
+            .unwrap();
+        assert_eq!(s2_tools.len(), 1, "MCP Server 2 should have 1 tool");
+        assert_eq!(s2_tools[0].name, "Tool1S2");
+
+        // Test for mcp_server3 (no tools)
+        let s3_tools = manager
+            .get_all_tools_from_mcp_server(mcp_server3_no_tools.id.unwrap_or_default().to_string())
+            .unwrap();
+        assert_eq!(s3_tools.len(), 0, "MCP Server 3 should have 0 tools");
+    }
+
+    #[tokio::test]
+    async fn test_delete_all_tools_from_mcp_server() {
+        let manager = setup_test_db().await;
+
+        let mcp_server_uuid_del = "server_del".to_string(); // Keep Uuid for tool creation
+        let mcp_server_del = MCPServer {
+            id: Some(10i64),
+            name: "MCP Server To Delete Tools From".to_string(),
+            url: Some("http://mcpdel.example.com".to_string()),
+            created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: Some(Utc::now().to_rfc3339()),
+            r#type: MCPServerType::Sse,
+            env: None,
+            command: Some("delete_me_server.sh".to_string()),
+            is_enabled: true,
+        };
+
+        let mcp_server_uuid_keep = "server_keep".to_string(); // Keep Uuid for tool creation
+        let mcp_server_keep = MCPServer {
+            id: Some(11i64),
+            name: "MCP Server To Keep Tools For".to_string(),
+            url: Some("http://mcpkeep.example.com".to_string()),
+            created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: Some(Utc::now().to_rfc3339()),
+            r#type: MCPServerType::Sse,
+            env: None,
+            command: None,
+            is_enabled: true,
+        };
+
+        // Tools are still created with Uuid for mcp_server_ref
+        let tool1_del = create_mcp_shinkai_tool(
+            "MCPTool1ToDel",
+            mcp_server_del.id.unwrap_or_default().to_string(),
+            "profile_del",
+            "1.0",
+        );
+        let tool1_del_key = tool1_del.tool_router_key().to_string_without_version();
+        let tool2_del = create_mcp_shinkai_tool(
+            "MCPTool2ToDel",
+            mcp_server_del.id.unwrap_or_default().to_string(),
+            "profile_del",
+            "1.0",
+        );
+        let tool2_del_key = tool2_del.tool_router_key().to_string_without_version();
+
+        let tool_keep_mcp = create_mcp_shinkai_tool(
+            "MCPToolToKeep",
+            mcp_server_keep.id.unwrap_or_default().to_string(),
+            "profile_keep",
+            "1.0",
+        );
+        let tool_keep_mcp_key = tool_keep_mcp.tool_router_key().to_string_without_version();
+
+        let deno_tool_keep = create_deno_shinkai_tool("DenoToolToKeep", "DenoAuthor", "1.0");
+        let deno_tool_keep_key = deno_tool_keep.tool_router_key().to_string_without_version();
+
+        manager.add_tool(tool1_del.clone()).await.unwrap();
+        manager.add_tool(tool2_del.clone()).await.unwrap();
+        manager.add_tool(tool_keep_mcp.clone()).await.unwrap();
+        manager.add_tool(deno_tool_keep.clone()).await.unwrap();
+
+        assert!(manager.get_tool_by_key(&tool1_del_key).is_ok());
+        assert!(manager.get_tool_by_key(&tool2_del_key).is_ok());
+        assert_eq!(
+            manager
+                .get_all_tools_from_mcp_server(mcp_server_del.id.unwrap_or_default().to_string())
+                .unwrap()
+                .len(),
+            2
+        );
+
+        let deleted_count = manager
+            .delete_all_tools_from_mcp_server(mcp_server_del.id.unwrap_or_default().to_string())
+            .unwrap();
+        assert_eq!(deleted_count, 2, "Should delete 2 tools for the specified MCP server");
+
+        assert!(
+            manager.get_tool_by_key(&tool1_del_key).is_err(),
+            "Tool1 for deletion should be gone"
+        );
+        assert!(
+            manager.get_tool_by_key(&tool2_del_key).is_err(),
+            "Tool2 for deletion should be gone"
+        );
+        assert_eq!(
+            manager
+                .get_all_tools_from_mcp_server(mcp_server_del.id.unwrap_or_default().to_string())
+                .unwrap()
+                .len(),
+            0,
+            "No tools should remain for mcp_server_del"
+        );
+
+        assert!(
+            manager.get_tool_by_key(&tool_keep_mcp_key).is_ok(),
+            "MCPToolToKeep should still exist"
+        );
+        let kept_mcp_tools = manager
+            .get_all_tools_from_mcp_server(mcp_server_keep.id.unwrap_or_default().to_string())
+            .unwrap();
+        assert_eq!(kept_mcp_tools.len(), 1, "Should be 1 tool for mcp_server_keep");
+        assert_eq!(kept_mcp_tools[0].name, "MCPToolToKeep");
+
+        assert!(
+            manager.get_tool_by_key(&deno_tool_keep_key).is_ok(),
+            "DenoToolToKeep should still exist"
+        );
+
+        let mcp_server_id_no_tools = "server_no_tools".to_string();
+        let mcp_server_no_tools = MCPServer {
+            id: Some(12i64),
+            name: "MCP Server With No Tools Initially".to_string(),
+            url: Some("http://mcpnotools.example.com".to_string()),
+            created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: Some(Utc::now().to_rfc3339()),
+            r#type: MCPServerType::Sse,
+            env: None,
+            command: None,
+            is_enabled: true,
+        };
+        let deleted_count_none = manager
+            .delete_all_tools_from_mcp_server(mcp_server_no_tools.id.unwrap_or_default().to_string())
+            .unwrap();
+        assert_eq!(
+            deleted_count_none, 0,
+            "Deleting from server with no tools should return 0"
+        );
+
+        let mcp_server_nil_id = MCPServer {
+            id: None, // ID is None
+            name: "MCP Server Nil ID".to_string(),
+            url: Some("http://mcpnil.example.com".to_string()),
+            created_at: Some(Utc::now().to_rfc3339()),
+            updated_at: Some(Utc::now().to_rfc3339()),
+            r#type: MCPServerType::Sse,
+            env: None,
+            command: None,
+            is_enabled: false,
+        };
+        let deleted_count_nil = manager
+            .delete_all_tools_from_mcp_server(mcp_server_nil_id.id.unwrap_or_default().to_string())
+            .unwrap();
+        assert_eq!(
+            deleted_count_nil, 0,
+            "Deleting for nil UUID should likely be 0 unless such tools exist"
+        );
+        assert!(
+            manager.get_tool_by_key(&tool_keep_mcp_key).is_ok(),
+            "MCPToolToKeep should still exist after nil ID delete attempt"
+        );
+        assert!(
+            manager.get_tool_by_key(&deno_tool_keep_key).is_ok(),
+            "DenoToolToKeep should still exist after nil ID delete attempt"
         );
     }
 }

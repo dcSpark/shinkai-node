@@ -1,5 +1,6 @@
 use crate::api_sse;
 use crate::api_v2;
+use crate::api_ws;
 
 use super::node_commands::NodeCommand;
 use async_channel::Sender;
@@ -103,6 +104,7 @@ pub async fn run_api(
     node_commands_sender: Sender<NodeCommand>,
     address: SocketAddr,
     https_address: SocketAddr,
+    ws_address: SocketAddr,
     node_name: String,
     private_https_certificate: Option<String>,
     public_https_certificate: Option<String>,
@@ -138,6 +140,7 @@ pub async fn run_api(
             "x-shinkai-app-id",
             "x-shinkai-llm-provider",
             "x-shinkai-original-tool-router-key",
+            "ngrok-skip-browser-warning",
         ]);
 
     let v2_routes = warp::path("v2").and(
@@ -154,8 +157,15 @@ pub async fn run_api(
             .with(cors.clone()),
     );
 
+    let ws_routes = warp::path("ws").and(
+        api_ws::api_ws_routes::ws_routes(ws_address)
+            .recover(handle_rejection)
+            .with(log)
+            .with(cors.clone()),
+    );
+
     // Combine all routes
-    let routes = v2_routes.or(mcp_routes).with(log).with(cors);
+    let routes = v2_routes.or(mcp_routes).or(ws_routes).with(log).with(cors);
 
     // Wrap the HTTP server in an async block that returns a Result
     let http_server = async {

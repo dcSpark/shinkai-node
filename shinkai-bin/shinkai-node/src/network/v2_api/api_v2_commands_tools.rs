@@ -21,6 +21,7 @@ use shinkai_message_primitives::{
     }
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
+use rusqlite::Error as RusqliteError;
 use shinkai_tools_primitives::tools::{
     deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::ShinkaiToolHeader, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
@@ -130,7 +131,7 @@ impl Node {
         let vector_start_time = Instant::now();
 
         // Use different search method based on whether we have allowed_tools
-        let vector_search_result = if let Some(tools) = allowed_tools {
+        let vector_search_res = if let Some(tools) = allowed_tools {
             // First generate the embedding from the query
             let embedding = db
                 .generate_embeddings(&sanitized_query)
@@ -152,9 +153,23 @@ impl Node {
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = db.search_tools_fts(&sanitized_query);
+        let fts_search_res = db.search_tools_fts(&sanitized_query);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
+
+        let vector_search_result = match vector_search_res {
+            Ok(v) => Ok(v),
+            Err(SqliteManagerError::ToolNotFound(_))
+            | Err(SqliteManagerError::DatabaseError(RusqliteError::QueryReturnedNoRows)) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        };
+
+        let fts_search_result = match fts_search_res {
+            Ok(v) => Ok(v),
+            Err(SqliteManagerError::ToolNotFound(_))
+            | Err(SqliteManagerError::DatabaseError(RusqliteError::QueryReturnedNoRows)) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        };
 
         match (vector_search_result, fts_search_result) {
             (Ok(vector_tools), Ok(fts_tools)) => {

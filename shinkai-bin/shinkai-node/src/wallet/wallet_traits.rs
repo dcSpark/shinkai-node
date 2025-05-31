@@ -16,6 +16,7 @@ impl IsWallet for Wallet {}
 pub type TransactionHash = String;
 
 /// Represents a wallet.
+#[allow(dead_code)]
 pub struct Wallet {
     /// The assigned ID for the wallet.
     pub id: String,
@@ -81,6 +82,7 @@ pub trait PaymentWallet: SendActions + CommonActions + IsWallet + Send + Sync + 
 impl_downcast!(PaymentWallet);
 
 /// Trait that combines `CommonActions` and `IsWallet`.
+#[allow(dead_code)]
 pub trait CommonIsWallet: CommonActions + IsWallet + Send + Sync {}
 impl<T> CommonIsWallet for T where T: CommonActions + IsWallet + Send + Sync {}
 

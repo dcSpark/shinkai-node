@@ -6,7 +6,25 @@ use ed25519_dalek::VerifyingKey;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        coinbase_mpc_config::CoinbaseMPCWalletConfig, crontab::{CronTask, CronTaskAction}, custom_prompt::CustomPrompt, identity::{Identity, StandardIdentity}, job_config::JobConfig, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider, shinkai_backend::QuotaResponse}, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry}, shinkai_tools::{CodeLanguage, DynamicToolType}, smart_inbox::V2SmartInbox, tool_router_key::ToolRouterKey, wallet_complementary::{WalletRole, WalletSource}, x402_types::Network
+        coinbase_mpc_config::CoinbaseMPCWalletConfig,
+        crontab::{CronTask, CronTaskAction},
+        custom_prompt::CustomPrompt,
+        identity::{Identity, StandardIdentity},
+        job_config::JobConfig,
+        llm_providers::{
+            agent::Agent,
+            serialized_llm_provider::SerializedLLMProvider,
+            shinkai_backend::QuotaResponse,
+        },
+        mcp_server::MCPServer,
+        shinkai_name::ShinkaiName,
+        shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+        smart_inbox::{SmartInbox, V2SmartInbox},
+        tool_router_key::ToolRouterKey,
+        wallet_complementary::{WalletRole, WalletSource},
+        wallet_mixed::NetworkIdentifier,
+        x402_types::Network
     }, shinkai_message::{
         shinkai_message::ShinkaiMessage, shinkai_message_schemas::{
             APIAddOllamaModels, APIChangeJobAgentRequest, APIVecFsCopyFolder, APIVecFsCopyItem, APIVecFsCreateFolder, APIVecFsDeleteFolder, APIVecFsDeleteItem, APIVecFsMoveFolder, APIVecFsMoveItem, APIVecFsRetrievePathSimplifiedJson, APIVecFsRetrieveSourceFile, APIVecFsSearchItems, ExportInboxMessagesFormat, IdentityPermissions, JobCreationInfo, JobMessage, RegistrationCodeType, V2ChatMessage
@@ -15,7 +33,7 @@ use shinkai_message_primitives::{
 };
 
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}
+    mcp_server_tool::MCPServerTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets}, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}
 };
 // use crate::{
 //     prompts::custom_prompt::CustomPrompt, tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, wallet::{
@@ -24,7 +42,9 @@ use shinkai_tools_primitives::tools::{
 // };
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
-use crate::node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBody};
+use crate::{
+    api_v2::api_v2_handlers_mcp_servers::{AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest}, node_api_router::{APIUseRegistrationCodeSuccessResponse, SendResponseBody}
+};
 
 use super::{
     api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse, SendResponseBodyData}
@@ -456,6 +476,9 @@ pub enum NodeCommand {
         res: Sender<Result<bool, APIError>>,
     },
     V2ApiHealthCheck {
+        res: Sender<Result<serde_json::Value, APIError>>,
+    },
+    V2ApiDockerStatus {
         res: Sender<Result<serde_json::Value, APIError>>,
     },
     V2ApiGetStorageLocation {
@@ -973,6 +996,35 @@ pub enum NodeCommand {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiListMCPServers {
+        bearer: String,
+        res: Sender<Result<Vec<MCPServer>, APIError>>,
+    },
+    V2ApiAddMCPServer {
+        bearer: String,
+        mcp_server: AddMCPServerRequest,
+        res: Sender<Result<MCPServer, APIError>>,
+    },
+    V2ApiUpdateMCPServer {
+        bearer: String,
+        mcp_server: UpdateMCPServerRequest,
+        res: Sender<Result<MCPServer, APIError>>,
+    },
+    V2ApiImportMCPServerFromGitHubURL {
+        bearer: String,
+        github_url: String,
+        res: Sender<Result<AddMCPServerRequest, APIError>>,
+    },
+    V2ApiDeleteMCPServer {
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<DeleteMCPServerResponse, APIError>>,
+    },
+    V2ApiGetAllMCPServerTools {
+        bearer: String,
+        mcp_server_id: i64,
+        res: Sender<Result<Vec<MCPServerTool>, APIError>>,
+    },
     V2ApiSetToolEnabled {
         bearer: String,
         tool_router_key: String,
@@ -1010,6 +1062,30 @@ pub enum NodeCommand {
     V2ApiGetShinkaiToolMetadata {
         bearer: String,
         tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetEnableMCPServer {
+        bearer: String,
+        mcp_server_id: i64,
+        is_enabled: bool,
+        res: Sender<Result<MCPServer, APIError>>,
+    },
+    V2ApiSetNgrokAuthToken {
+        bearer: String,
+        auth_token: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiClearNgrokAuthToken {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiSetNgrokEnabled {
+        bearer: String,
+        enabled: bool,
+        res: Sender<Result<Value, APIError>>,
+    },
+    V2ApiGetNgrokStatus {
+        bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
 }
