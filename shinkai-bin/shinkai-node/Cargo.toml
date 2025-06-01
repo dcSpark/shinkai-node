@@ -96,7 +96,7 @@ serde_yaml = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.0.2"
-tokio-tungstenite = "0.15.0"
+tokio-tungstenite = { workspace = true }
 tempfile = { workspace = true }
 fs_extra = "1.2.0"
 utoipa = { workspace = true, features = ["yaml"] }
