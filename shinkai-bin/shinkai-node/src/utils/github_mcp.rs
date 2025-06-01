@@ -1,8 +1,27 @@
 use log::info;
 use regex::Regex;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use std::collections::HashSet;
 use serde_yaml::Value as YamlValue;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum GitHubMcpError {
+    #[error("Invalid GitHub URL: {0}")]
+    InvalidGitHubUrl(String),
+    #[error("HTTP request error: {0}")]
+    RequestError(#[from] reqwest::Error),
+    #[error("Failed to fetch file {path}: HTTP {status}")]
+    HttpStatusError { path: String, status: StatusCode },
+    #[error("TOML parse error: {0}")]
+    TomlError(#[from] toml::de::Error),
+    #[error("JSON parse error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("Missing field: {0}")]
+    MissingField(String),
+    #[error("{0}")]
+    Other(String),
+}
 
 /// GitHub repository information
 pub struct GitHubRepo {
@@ -12,7 +31,7 @@ pub struct GitHubRepo {
 }
 
 /// Parse a GitHub URL to extract owner and repository name
-pub fn parse_github_url(url: &str) -> Result<GitHubRepo, String> {
+pub fn parse_github_url(url: &str) -> Result<GitHubRepo, GitHubMcpError> {
     // Handle different GitHub URL formats
     let url = url.trim_end_matches('/');
 
@@ -28,7 +47,7 @@ pub fn parse_github_url(url: &str) -> Result<GitHubRepo, String> {
         }
     }
 
-    Err(format!("Invalid GitHub URL: {}", url))
+    Err(GitHubMcpError::InvalidGitHubUrl(url.to_string()))
 }
 
 /// Fetch a file from a GitHub repository
@@ -37,7 +56,7 @@ pub async fn fetch_github_file(
     owner: &str,
     repo: &str,
     path: &str,
-) -> Result<String, String> {
+) -> Result<String, GitHubMcpError> {
     let url = format!(
         "https://raw.githubusercontent.com/{}/{}/main/{}",
         owner, repo, path
@@ -45,40 +64,35 @@ pub async fn fetch_github_file(
 
     info!("Fetching file from GitHub: {}", url);
 
-    match client.get(&url).send().await {
-        Ok(response) => {
-            if response.status().is_success() {
-                match response.text().await {
-                    Ok(content) => Ok(content),
-                    Err(e) => Err(format!("Failed to read response content: {}", e)),
-                }
-            } else {
-                // Try with master branch if main fails
-                let master_url = format!(
-                    "https://raw.githubusercontent.com/{}/{}/master/{}",
-                    owner, repo, path
-                );
-
-                match client.get(&master_url).send().await {
-                    Ok(master_response) => {
-                        if master_response.status().is_success() {
-                            match master_response.text().await {
-                                Ok(content) => Ok(content),
-                                Err(e) => Err(format!("Failed to read response content: {}", e)),
-                            }
-                        } else {
-                            Err(format!(
-                                "Failed to fetch file: HTTP {}",
-                                master_response.status()
-                            ))
-                        }
-                    }
-                    Err(e) => Err(format!("Failed to fetch file: {}", e)),
-                }
-            }
-        }
-        Err(e) => Err(format!("Failed to fetch file: {}", e)),
+    let response = client.get(&url).send().await.map_err(GitHubMcpError::RequestError)?;
+    if response.status().is_success() {
+        return response
+            .text()
+            .await
+            .map_err(GitHubMcpError::RequestError);
     }
+
+    // Try with master branch if main fails
+    let master_url = format!(
+        "https://raw.githubusercontent.com/{}/{}/master/{}",
+        owner, repo, path
+    );
+    let master_response = client
+        .get(&master_url)
+        .send()
+        .await
+        .map_err(GitHubMcpError::RequestError)?;
+    if master_response.status().is_success() {
+        return master_response
+            .text()
+            .await
+            .map_err(GitHubMcpError::RequestError);
+    }
+
+    Err(GitHubMcpError::HttpStatusError {
+        path: master_url,
+        status: master_response.status(),
+    })
 }
 
 /// Extract environment variables from README.md content
@@ -159,6 +173,45 @@ pub fn extract_mcp_env_vars_from_readme(readme_content: &str) -> HashSet<String>
     }
 
     env_vars
+}
+
+/// Extract command string from smithery.yaml if present
+pub fn extract_command_from_smithery_yaml(yaml_content: &str) -> Option<String> {
+    if let Ok(yaml) = serde_yaml::from_str::<YamlValue>(yaml_content) {
+        if let Some(start_cmd) = yaml.get("startCommand") {
+            if let Some(cmd) = start_cmd.get("command").and_then(|c| c.as_str()) {
+                let mut command = cmd.to_string();
+                if let Some(args) = start_cmd.get("args").and_then(|a| a.as_sequence()) {
+                    for arg in args {
+                        if let Some(arg_str) = arg.as_str() {
+                            command.push(' ');
+                            command.push_str(arg_str);
+                        }
+                    }
+                }
+                return Some(command);
+            }
+            if let Some(func) = start_cmd.get("commandFunction").and_then(|f| f.as_str()) {
+                let cmd_regex = Regex::new(r"command:\s*['\"]([^'\"]+)['\"]").ok()?;
+                let args_regex = Regex::new(r"args:\s*\[(.*?)\]").ok()?;
+                if let Some(cmd_cap) = cmd_regex.captures(func) {
+                    let mut command = cmd_cap.get(1).unwrap().as_str().to_string();
+                    if let Some(arg_cap) = args_regex.captures(func) {
+                        let args_content = arg_cap.get(1).unwrap().as_str();
+                        for arg in args_content.split(',') {
+                            let trimmed = arg.trim().trim_matches(|c| c == '\'' || c == '"');
+                            if !trimmed.is_empty() {
+                                command.push(' ');
+                                command.push_str(trimmed);
+                            }
+                        }
+                    }
+                    return Some(command);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Extract required environment variable names from a smithery.yaml file

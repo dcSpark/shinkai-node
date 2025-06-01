@@ -4890,6 +4890,7 @@ dependencies = [
  "shinkai_tools_primitives",
  "shinkai_tools_runner",
  "tempfile",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-tungstenite 0.15.0",
  "tokio-util",
