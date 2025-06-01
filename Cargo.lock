@@ -4885,6 +4885,7 @@ dependencies = [
  "shinkai_job_queue_manager",
  "shinkai_mcp",
  "shinkai_message_primitives",
+ "shinkai_non_rust_code",
  "shinkai_sqlite",
  "shinkai_tcp_relayer",
  "shinkai_tools_primitives",
@@ -4910,6 +4911,7 @@ version = "1.0.10"
 dependencies = [
  "serde",
  "serde_json",
+ "shinkai_message_primitives",
  "shinkai_tools_runner",
  "tempfile",
  "tokio",

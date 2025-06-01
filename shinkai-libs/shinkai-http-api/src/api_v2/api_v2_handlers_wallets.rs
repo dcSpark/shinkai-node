@@ -2,9 +2,7 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig,
-    wallet_complementary::{WalletRole, WalletSource},
-    wallet_mixed::{Address, Asset, Network, NetworkIdentifier, NetworkProtocolFamilyEnum},
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Address, Asset, NetworkProtocolFamilyEnum}, x402_types::Network
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
@@ -59,7 +57,7 @@ pub fn wallet_routes(
 
 #[derive(Deserialize, ToSchema)]
 pub struct RestoreLocalWalletRequest {
-    pub network: NetworkIdentifier,
+    pub network: Network,
     pub source: WalletSource,
     pub role: WalletRole,
 }
@@ -101,7 +99,7 @@ pub async fn restore_local_wallet_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateLocalWalletRequest {
-    pub network: NetworkIdentifier,
+    pub network: Network,
     pub role: WalletRole,
 }
 
@@ -181,7 +179,7 @@ pub async fn pay_invoice_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct RestoreCoinbaseMPCWalletRequest {
-    pub network: NetworkIdentifier,
+    pub network: Network,
     pub config: Option<CoinbaseMPCWalletConfig>,
     pub wallet_id: String,
     pub role: WalletRole,
@@ -263,7 +261,7 @@ pub async fn list_wallets_handler(
     ),
     components(
         schemas(APIError, CreateLocalWalletRequest, PayInvoiceRequest, RestoreCoinbaseMPCWalletRequest, RestoreLocalWalletRequest,
-            Network, NetworkIdentifier, NetworkProtocolFamilyEnum, WalletRole, WalletSource, CoinbaseMPCWalletConfig, Address, Asset)
+            NetworkProtocolFamilyEnum, WalletRole, WalletSource, CoinbaseMPCWalletConfig, Address, Asset)
     ),
     tags(
         (name = "wallet", description = "Wallet API endpoints")

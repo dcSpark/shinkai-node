@@ -16,9 +16,8 @@ impl SqliteManager {
                 requester_name,
                 tool_key_name,
                 usage_type_inquiry,
-                date_time,
-                secret_prehash
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                date_time
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )?;
 
         stmt.execute(params![
@@ -30,7 +29,6 @@ impl SqliteManager {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?,
             internal_invoice_request.date_time.to_rfc3339(),
-            internal_invoice_request.secret_prehash,
         ])?;
 
         Ok(())
@@ -44,8 +42,7 @@ impl SqliteManager {
                 requester_name,
                 tool_key_name,
                 usage_type_inquiry,
-                date_time,
-                secret_prehash
+                date_time
             FROM invoice_requests
             WHERE unique_id = ?1",
         )?;
@@ -73,7 +70,6 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?,
-            secret_prehash: row.get(5)?,
         })
     }
 
@@ -86,8 +82,7 @@ impl SqliteManager {
                 requester_name,
                 tool_key_name,
                 usage_type_inquiry,
-                date_time,
-                secret_prehash
+                date_time
             FROM invoice_requests",
         )?;
 
@@ -121,7 +116,6 @@ impl SqliteManager {
                             e.to_string(),
                         )))
                     })?,
-                secret_prehash: row.get(6)?,
             });
         }
 
@@ -167,7 +161,6 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
-            secret_prehash: "secret_prehash".to_string(),
         };
 
         db.set_internal_invoice_request(&invoice_request).unwrap();
@@ -188,7 +181,6 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
-            secret_prehash: "secret_prehash".to_string(),
         };
 
         let invoice_request2 = InternalInvoiceRequest {
@@ -198,7 +190,6 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
-            secret_prehash: "secret_prehash".to_string(),
         };
 
         db.set_internal_invoice_request(&invoice_request1).unwrap();
@@ -222,7 +213,6 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
-            secret_prehash: "secret_prehash".to_string(),
         };
 
         db.set_internal_invoice_request(&invoice_request).unwrap();

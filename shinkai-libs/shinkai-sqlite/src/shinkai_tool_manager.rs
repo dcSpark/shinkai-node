@@ -1103,12 +1103,13 @@ mod tests {
     use shinkai_embedding::model_type::EmbeddingModelType;
     use shinkai_embedding::model_type::OllamaTextEmbeddingsInference;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::schemas::shinkai_tool_offering::AssetPayment;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_message_primitives::schemas::wallet_mixed::Asset;
     use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
+    use shinkai_message_primitives::schemas::x402_types::Network;
+    use shinkai_message_primitives::schemas::x402_types::PaymentRequirements;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
     use shinkai_tools_primitives::tools::network_tool::NetworkTool;
     use shinkai_tools_primitives::tools::parameters::Parameters;
@@ -1118,7 +1119,7 @@ mod tests {
     use shinkai_tools_primitives::tools::tool_types::OperatingSystem;
     use shinkai_tools_primitives::tools::tool_types::RunnerType;
     use shinkai_tools_primitives::tools::tool_types::ToolResult;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -1939,14 +1940,21 @@ mod tests {
             tool_set: None,
         };
 
-        let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-            asset: Asset {
-                network_id: NetworkIdentifier::BaseSepolia,
-                asset_id: "USDC".to_string(),
-                decimals: Some(6),
-                contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-            },
-            amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+        let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+            scheme: "exact".to_string(),
+            description: "Payment for service".to_string(),
+            network: Network::BaseSepolia,
+            max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            resource: "https://shinkai.com".to_string(),
+            mime_type: "application/json".to_string(),
+            pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+            max_timeout_seconds: 300,
+            asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+            output_schema: Some(serde_json::json!({})),
+            extra: Some(serde_json::json!({
+                "decimals": 6,
+                "asset_id": "USDC"
+            })),
         }]));
 
         let input_args = Parameters::with_single_property(

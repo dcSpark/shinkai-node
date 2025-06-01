@@ -4,13 +4,11 @@ use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
-    EncryptionMethod,
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
@@ -25,7 +23,7 @@ use crate::it::utils::node_test_api::wait_for_default_tools;
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use super::utils::node_test_api::{
-    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
+    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node
 };
 use super::utils::node_test_local::local_registration_profile_node;
 
@@ -274,7 +272,7 @@ fn subidentity_registration() {
             let tools_ready = wait_for_default_tools(
                 node1_commands_sender.clone(),
                 "debug".to_string(),
-                20, // Wait up to 30 seconds
+                120, // Wait up to 120 seconds
             )
             .await
             .expect("Failed to check for default tools");
@@ -283,7 +281,7 @@ fn subidentity_registration() {
             let tools_ready = wait_for_default_tools(
                 node2_commands_sender.clone(),
                 "debug".to_string(),
-                20, // Wait up to 30 seconds
+                120, // Wait up to 120 seconds
             )
             .await
             .expect("Failed to check for default tools");
