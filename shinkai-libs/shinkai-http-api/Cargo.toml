@@ -32,7 +32,7 @@ uuid = { workspace = true, features = ["v4"] }
 tracing = { workspace = true }
 tracing-subscriber = "0.3.18"
 anyhow = { workspace = true }
-rmcp = { version = "0.1", features = ["server", "macros"] }
+rmcp = { workspace = true, features = ["server", "macros"] }
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 
 [dependencies.serde]

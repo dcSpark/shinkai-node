@@ -38,7 +38,7 @@ clap = { workspace = true }
 regex = { workspace = true }
 csv = { workspace = true }
 once_cell = "1.19.0"
-rmcp = { version = "0.1.5", features = [
+rmcp = { workspace = true, features = [
     "transport-child-process",
     "client",
     "transport-sse",
