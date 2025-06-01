@@ -28,6 +28,7 @@ jobs:
       group: Shinkai Runners
       labels: self-hosted
     if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
+    environment: FROM_WALLET_PRIVATE_KEY
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -43,6 +44,8 @@ jobs:
         run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${{ github.sha }}
 
       - name: Run tests main cargo tests
+        env:
+          X402_PAY_TO: ${{ secrets.X402_PAY_TO }}
         run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${{ github.sha }}
 
       - name: Remove image
