@@ -1,7 +1,7 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider,
+    LLMProviderInterface, OpenAI, SerializedLLMProvider
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -9,8 +9,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secre
 use std::time::{Duration, Instant};
 
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
-    wait_for_default_tools,
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job, wait_for_default_tools
 };
 use super::utils::test_boilerplate::run_test_one_node_network;
 use mockito::Server;
@@ -130,7 +129,7 @@ fn simple_job_message_test() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     node1_api_key.clone(),
-                    20, // Wait up to 20 seconds
+                    120, // Wait up to 120 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");

@@ -3,13 +3,8 @@ use std::sync::Arc;
 use rusqlite::params;
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        job::{ForkedJob, Job, JobLike},
-        job_config::JobConfig,
-        ws_types::WSUpdateHandler,
-    },
-    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::AssociatedUI},
-    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
+        inbox_name::InboxName, job::{ForkedJob, Job, JobLike}, job_config::JobConfig, ws_types::WSUpdateHandler
+    }, shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::AssociatedUI}, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
 };
 use tokio::sync::Mutex;
 
@@ -478,13 +473,9 @@ mod tests {
     use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_message_primitives::{
-        schemas::identity::StandardIdentityType,
-        shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType},
-        shinkai_utils::{
-            encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod},
-            shinkai_message_builder::ShinkaiMessageBuilder,
-            signatures::unsafe_deterministic_signature_keypair,
-        },
+        schemas::identity::StandardIdentityType, shinkai_message::shinkai_message_schemas::{IdentityPermissions, JobMessage, MessageSchemaType}, shinkai_utils::{
+            encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair
+        }
     };
     use std::{collections::HashSet, path::PathBuf, time::Duration};
     use tempfile::NamedTempFile;
@@ -778,6 +769,8 @@ mod tests {
             let result = db
                 .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone(), None)
                 .await;
+            // add 50ms delay
+            sleep(Duration::from_millis(50)).await;
             eprintln!("result {:?}", result);
 
             // Update the parent message according to the tree structure

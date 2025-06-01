@@ -6,7 +6,7 @@ authors = { workspace = true }
 
 [dependencies]
 utoipa = { workspace = true }
-utoipa-swagger-ui = "7.1.0"
+utoipa-swagger-ui = { version = "7.1.0", optional = true, features = ["vendored"] }
 chrono = { workspace = true }
 bytes = "1.10.1"
 async-trait = { workspace = true }
@@ -32,9 +32,13 @@ uuid = { workspace = true, features = ["v4"] }
 tracing = { workspace = true }
 tracing-subscriber = "0.3.18"
 anyhow = { workspace = true }
-rmcp = { version = "0.1", features = ["server", "macros"] }
+rmcp = { workspace = true, features = ["server", "macros"] }
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
 
 [dependencies.serde]
 workspace = true
 features = ["derive"]
+
+[features]
+default = []
+swagger-ui = ["utoipa-swagger-ui"]
