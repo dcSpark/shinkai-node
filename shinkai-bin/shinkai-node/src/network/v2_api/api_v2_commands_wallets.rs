@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::WalletRole, wallet_mixed::{Network, NetworkIdentifier}
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::WalletRole, wallet_complementary::WalletSource, x402_types::Network
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -16,11 +16,66 @@ use crate::{
 };
 
 impl Node {
+    /// Helper to update the wallet manager in-place based on role
+    fn update_wallet_manager_by_role(
+        wallet_manager_lock: &mut Option<WalletManager>,
+        new_wallet_manager: WalletManager,
+        role: WalletRole,
+    ) {
+        match wallet_manager_lock {
+            Some(existing_wallet_manager) => match role {
+                WalletRole::Payment => {
+                    existing_wallet_manager.update_payment_wallet(new_wallet_manager.payment_wallet);
+                }
+                WalletRole::Receiving => {
+                    existing_wallet_manager.update_receiving_wallet(new_wallet_manager.receiving_wallet);
+                }
+                WalletRole::Both => {
+                    *existing_wallet_manager = new_wallet_manager;
+                }
+            },
+            None => {
+                *wallet_manager_lock = Some(new_wallet_manager);
+            }
+        }
+    }
+
+    /// Helper to serialize and save the wallet manager to the DB, sending errors via the channel
+    async fn save_wallet_manager_to_db(
+        db: &SqliteManager,
+        wallet_manager: &WalletManager,
+        res: &Sender<Result<Value, APIError>>,
+    ) -> Result<(), ()> {
+        match serde_json::to_value(wallet_manager) {
+            Ok(wallet_manager_value) => {
+                if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to save wallet manager: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Err(());
+                }
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to serialize wallet manager: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Err(());
+            }
+        }
+        Ok(())
+    }
+
     pub async fn v2_api_restore_coinbase_mpc_wallet(
         db: Arc<SqliteManager>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
-        network_identifier: NetworkIdentifier,
+        network: Network,
         config: Option<CoinbaseMPCWalletConfig>,
         wallet_id: String,
         role: WalletRole,
@@ -45,55 +100,20 @@ impl Node {
         let mut wallet_manager_lock = wallet_manager.lock().await;
 
         // Logic to restore Coinbase MPC wallet
-        let network = Network::new(network_identifier);
         let restored_wallet_manager =
             WalletManager::recover_coinbase_mpc_wallet_manager(network, db.clone(), config, wallet_id, node_name).await;
 
         match restored_wallet_manager {
             Ok(new_wallet_manager) => {
-                match &mut *wallet_manager_lock {
-                    Some(existing_wallet_manager) => {
-                        // Update existing wallet manager based on role
-                        match role {
-                            WalletRole::Payment => {
-                                existing_wallet_manager.update_payment_wallet(new_wallet_manager.payment_wallet);
-                            }
-                            WalletRole::Receiving => {
-                                existing_wallet_manager.update_receiving_wallet(new_wallet_manager.receiving_wallet);
-                            }
-                            WalletRole::Both => {
-                                *existing_wallet_manager = new_wallet_manager;
-                            }
-                        }
-                    }
-                    None => {
-                        *wallet_manager_lock = Some(new_wallet_manager);
-                    }
-                }
+                Self::update_wallet_manager_by_role(&mut wallet_manager_lock, new_wallet_manager, role);
 
                 // Save the updated WalletManager to the database
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
-                    match serde_json::to_value(wallet_manager) {
-                        Ok(wallet_manager_value) => {
-                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
-                                let api_error = APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("Failed to save wallet manager: {}", e),
-                                };
-                                let _ = res.send(Err(api_error)).await;
-                                return Ok(());
-                            }
-                        }
-                        Err(e) => {
-                            let api_error = APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Internal Server Error".to_string(),
-                                message: format!("Failed to serialize wallet manager: {}", e),
-                            };
-                            let _ = res.send(Err(api_error)).await;
-                            return Ok(());
-                        }
+                    if Self::save_wallet_manager_to_db(&db, wallet_manager, &res)
+                        .await
+                        .is_err()
+                    {
+                        return Ok(());
                     }
                 }
 
@@ -119,7 +139,7 @@ impl Node {
         db: Arc<SqliteManager>,
         wallet_manager: Arc<Mutex<Option<WalletManager>>>,
         bearer: String,
-        network_identifier: NetworkIdentifier,
+        network: Network,
         config: Option<CoinbaseMPCWalletConfig>,
         role: WalletRole,
         node_name: ShinkaiName,
@@ -133,55 +153,20 @@ impl Node {
         let mut wallet_manager_lock = wallet_manager.lock().await;
 
         // Logic to create Coinbase MPC wallet
-        let network = Network::new(network_identifier);
         let created_wallet_manager =
             WalletManager::create_coinbase_mpc_wallet_manager(network, db.clone(), config, node_name).await;
 
         match created_wallet_manager {
             Ok(new_wallet_manager) => {
-                match &mut *wallet_manager_lock {
-                    Some(existing_wallet_manager) => {
-                        // Update existing wallet manager based on role
-                        match role {
-                            WalletRole::Payment => {
-                                existing_wallet_manager.update_payment_wallet(new_wallet_manager.payment_wallet);
-                            }
-                            WalletRole::Receiving => {
-                                existing_wallet_manager.update_receiving_wallet(new_wallet_manager.receiving_wallet);
-                            }
-                            WalletRole::Both => {
-                                *existing_wallet_manager = new_wallet_manager;
-                            }
-                        }
-                    }
-                    None => {
-                        *wallet_manager_lock = Some(new_wallet_manager);
-                    }
-                }
+                Self::update_wallet_manager_by_role(&mut wallet_manager_lock, new_wallet_manager, role);
 
                 // Save the updated WalletManager to the database
                 if let Some(ref wallet_manager) = *wallet_manager_lock {
-                    match serde_json::to_value(wallet_manager) {
-                        Ok(wallet_manager_value) => {
-                            if let Err(e) = db.save_wallet_manager(&wallet_manager_value) {
-                                let api_error = APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("Failed to save wallet manager: {}", e),
-                                };
-                                let _ = res.send(Err(api_error)).await;
-                                return Ok(());
-                            }
-                        }
-                        Err(e) => {
-                            let api_error = APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Internal Server Error".to_string(),
-                                message: format!("Failed to serialize wallet manager: {}", e),
-                            };
-                            let _ = res.send(Err(api_error)).await;
-                            return Ok(());
-                        }
+                    if Self::save_wallet_manager_to_db(&db, wallet_manager, &res)
+                        .await
+                        .is_err()
+                    {
+                        return Ok(());
                     }
                 }
 
@@ -244,5 +229,93 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn v2_api_create_local_ethers_wallet(
+        db: Arc<SqliteManager>,
+        wallet_manager: Arc<tokio::sync::Mutex<Option<WalletManager>>>,
+        bearer: String,
+        network: Network,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mut wallet_manager_lock = wallet_manager.lock().await;
+        let created_wallet_manager =
+            WalletManager::create_local_ethers_wallet_manager(network, db.clone(), role.clone()).await;
+
+        match created_wallet_manager {
+            Ok(new_wallet_manager) => {
+                Self::update_wallet_manager_by_role(&mut wallet_manager_lock, new_wallet_manager, role.clone());
+                if let Some(ref wallet_manager) = *wallet_manager_lock {
+                    if Self::save_wallet_manager_to_db(&db, wallet_manager, &res)
+                        .await
+                        .is_err()
+                    {
+                        return Ok(());
+                    }
+                }
+                let _ = res
+                    .send(Ok(serde_json::json!({"status": "success"})))
+                    .await
+                    .map_err(|_| ());
+                Ok(())
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create wallet: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_restore_local_ethers_wallet(
+        db: Arc<SqliteManager>,
+        wallet_manager: Arc<tokio::sync::Mutex<Option<WalletManager>>>,
+        bearer: String,
+        network: Network,
+        source: WalletSource,
+        role: WalletRole,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+        let mut wallet_manager_lock = wallet_manager.lock().await;
+        let restored_wallet_manager =
+            WalletManager::recover_local_ethers_wallet_manager(network, db.clone(), source.clone(), role.clone()).await;
+        match restored_wallet_manager {
+            Ok(new_wallet_manager) => {
+                Self::update_wallet_manager_by_role(&mut wallet_manager_lock, new_wallet_manager, role.clone());
+                if let Some(ref wallet_manager) = *wallet_manager_lock {
+                    if Self::save_wallet_manager_to_db(&db, wallet_manager, &res)
+                        .await
+                        .is_err()
+                    {
+                        return Ok(());
+                    }
+                }
+                let _ = res
+                    .send(Ok(serde_json::json!({"status": "success"})))
+                    .await
+                    .map_err(|_| ());
+                Ok(())
+            }
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to restore wallet: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
     }
 }

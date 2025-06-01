@@ -1339,6 +1339,48 @@ impl Node {
                     let _ = Node::v2_api_get_all_tool_offering(db_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiCreateLocalEthersWallet {
+                bearer,
+                network,
+                role,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let wallet_manager_clone = self.wallet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_create_local_ethers_wallet(
+                        db_clone,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        role,
+                        res,
+                    )
+                    .await;
+                });
+            }
+            NodeCommand::V2ApiRestoreLocalEthersWallet {
+                bearer,
+                network,
+                source,
+                role,
+                res,
+            } => {
+                let db_clone = Arc::clone(&self.db);
+                let wallet_manager_clone = self.wallet_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_restore_local_ethers_wallet(
+                        db_clone,
+                        wallet_manager_clone,
+                        bearer,
+                        network,
+                        source,
+                        role,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiSetToolOffering {
                 bearer,
                 tool_offering,

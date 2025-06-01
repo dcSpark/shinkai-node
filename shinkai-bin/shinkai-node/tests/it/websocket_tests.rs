@@ -297,7 +297,7 @@ async fn test_websocket() {
 
     // Send the message directly without using ShinkaiMessage
     ws_stream
-        .send(tungstenite::Message::Text(authenticated_ws_message_json))
+        .send(tungstenite::Message::Text(authenticated_ws_message_json.into()))
         .await
         .expect("Failed to send message");
 
@@ -426,7 +426,7 @@ async fn test_websocket() {
 
         // Send directly
         ws_stream
-            .send(tungstenite::Message::Text(authenticated_ws_message_json))
+            .send(tungstenite::Message::Text(authenticated_ws_message_json.into()))
             .await
             .expect("Failed to send message");
 
@@ -577,7 +577,7 @@ async fn test_websocket_smart_inbox() {
 
     // Send directly
     ws_stream
-        .send(tungstenite::Message::Text(authenticated_ws_message_json))
+        .send(tungstenite::Message::Text(authenticated_ws_message_json.into()))
         .await
         .expect("Failed to send message");
 

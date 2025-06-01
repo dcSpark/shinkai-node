@@ -5,6 +5,6 @@ pub struct ToolOutputArg {
 
 impl ToolOutputArg {
     pub fn empty() -> Self {
-        Self { json: "".to_string() }
+        Self { json: "{}".to_string() }
     }
 }
