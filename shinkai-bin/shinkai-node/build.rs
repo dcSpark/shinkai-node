@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 
 fn main() {
+    // Ensure the build script only runs when asset directories change
+    println!("cargo:rerun-if-changed=shinkai-tools-runner-resources");
+    println!("cargo:rerun-if-changed=../../pre-install");
+
     shinkai_tools_runner::copy_assets::copy_assets(
         Some(PathBuf::from("./")),
         Some(PathBuf::from("../../target").join(std::env::var("PROFILE").unwrap())),
