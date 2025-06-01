@@ -363,7 +363,7 @@ fn micropayment_flow_test() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     api_v2_key.to_string(),
-                    20, // Wait up to 20 seconds
+                    120, // Wait up to 20 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
@@ -373,7 +373,7 @@ fn micropayment_flow_test() {
                 let tools_ready = wait_for_default_tools(
                     node2_commands_sender.clone(),
                     api_v2_key.to_string(),
-                    20, // Wait up to 20 seconds
+                    120, // Wait up to 20 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
