@@ -46,6 +46,7 @@ jobs:
       - name: Run tests main cargo tests
         env:
           X402_PAY_TO: ${{ secrets.X402_PAY_TO }}
+          X402_PRIVATE_KEY: ${{ secrets.X402_PRIVATE_KEY }}
         run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${{ github.sha }}
 
       - name: Remove image
