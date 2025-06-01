@@ -5,7 +5,6 @@
 To build this project on Windows, you will need the following:
 
 - Rust
-- Protobuf
 - OpenSSL development libraries
 
 ## Installing Dependencies
@@ -26,20 +25,7 @@ Verify installation:
 rustc --version
 ```
 
-### 2. Install Protobuf
-
-1. Download the [Protobuf release for Windows](https://github.com/protocolbuffers/protobuf/releases).
-2. Extract the downloaded files and add the `bin` directory to your system's `PATH`.
-
-   For example, add `C:\path\to\protobuf\bin` to the `PATH` environment variable.
-
-Verify installation:
-
-```powershell
-protoc --version
-```
-
-### 3. Install OpenSSL Development Libraries
+### 2. Install OpenSSL Development Libraries
 
 On Windows, the easiest way to get OpenSSL is through [vcpkg](https://github.com/microsoft/vcpkg). Follow these steps:
 
@@ -62,7 +48,7 @@ On Windows, the easiest way to get OpenSSL is through [vcpkg](https://github.com
    $env:PKG_CONFIG_PATH = "$env:OPENSSL_DIR\lib\pkgconfig"
    ```
 
-### 4. Build the Project
+### 3. Build the Project
 
 Once all dependencies are installed, build the project with:
 
