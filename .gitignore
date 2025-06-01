@@ -115,4 +115,5 @@ shinkai-libs/shinkai-crypto-identities/internal_tools_storage
 shinkai-bin/shinkai-node/internal_tools_storage
 shinkai-libs/shinkai-tcp-relayer/internal_tools_storage
 pre-install/
+shinkai-libs/shinkai-non-rust-code/internal_tools_storage
 shinkai-bin/shinkai-node/storage_test_node

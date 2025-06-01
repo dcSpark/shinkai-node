@@ -55,6 +55,13 @@ The result will be placed in the folder `docs/openapi`.
 http://{NODE_IP}:{NODE_API_PORT}/v2/swagger-ui/
 ```
 
+The Swagger UI assets are not built by default to avoid network downloads during
+tests. If you want to include them, compile with the `swagger-ui` feature:
+
+```
+cargo build --features shinkai_node/swagger-ui
+```
+
 ## Tests
 
 Note: You must run these tests from the root directory of this repo.
