@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::utils::github_mcp::{extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url, GitHubRepo};
+use crate::utils::github_mcp::{
+    extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme,
+    fetch_github_file, parse_github_url, GitHubRepo,
+};
 use reqwest::Client;
 use rmcp::model::Tool;
 use serde_json::Value;
@@ -213,14 +216,23 @@ pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<Add
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-    // Try to fetch README.md to extract environment variables
+    // Try to fetch smithery.yaml first for environment variables
     let mut env_vars = HashSet::new();
-    let readme_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
+    let smithery_result =
+        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "smithery.yaml").await;
 
-    if let Ok(readme_content) = readme_result {
-        env_vars = extract_mcp_env_vars_from_readme(&readme_content);
+    if let Ok(smithery_content) = smithery_result {
+        env_vars = extract_env_vars_from_smithery_yaml(&smithery_content);
     } else {
-        log::info!("README.md not found or could not be parsed");
+        // Fallback to README.md regex extraction
+        let readme_result =
+            fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
+
+        if let Ok(readme_content) = readme_result {
+            env_vars = extract_mcp_env_vars_from_readme(&readme_content);
+        } else {
+            log::info!("README.md not found or could not be parsed");
+        }
     }
 
     // Try to fetch package.json first (Node.js project)
