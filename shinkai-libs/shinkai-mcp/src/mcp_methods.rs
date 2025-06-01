@@ -154,8 +154,66 @@ pub async fn run_tool_via_sse(
 pub mod tests_mcp_manager {
     use super::*;
     use serde_json::json;
+    use serial_test::serial;
+    use std::process::Stdio;
+    use tokio::process::{Child, Command};
+    use std::sync::atomic::{AtomicU16, Ordering};
+
+    static PORT_COUNTER: AtomicU16 = AtomicU16::new(8000);
+
+    fn get_test_port() -> u16 {
+        PORT_COUNTER.fetch_add(1, Ordering::SeqCst)
+    }
+
+    struct TestMCPServer {
+        child: Child,
+        port: u16,
+    }
+
+    impl TestMCPServer {
+        async fn start(port: u16) -> Self {
+            let mut envs = HashMap::new();
+            envs.insert("PORT".to_string(), port.to_string());
+            let (adapted_program, adapted_args, adapted_envs) =
+                CommandWrappedInShellBuilder::wrap_in_shell_as_values(
+                    "npx".to_string(),
+                    Some(vec![
+                        "-y".to_string(),
+                        "@modelcontextprotocol/server-everything".to_string(),
+                        "sse".to_string(),
+                    ]) as Option<Vec<String>>,
+                    Some(envs),
+                );
+
+            let child = Command::new(adapted_program)
+                .args(adapted_args)
+                .envs(adapted_envs)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .kill_on_drop(true)
+                .spawn()
+                .expect("Failed to spawn SSE server");
+
+            // Give the server some time to start
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+            Self { child, port }
+        }
+
+        fn url(&self) -> String {
+            format!("http://localhost:{}/sse", self.port)
+        }
+    }
+
+    impl Drop for TestMCPServer {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = futures::executor::block_on(self.child.wait());
+        }
+    }
 
     #[tokio::test]
+    #[serial(mcp_tests)]
     async fn test_run_tool_via_command() {
         let params = json!({
             "a": 1,
@@ -181,35 +239,16 @@ pub mod tests_mcp_manager {
     }
 
     #[tokio::test]
+    #[serial(mcp_tests)]
     async fn test_run_tool_via_sse() {
-        let mut envs = HashMap::new();
-        envs.insert("PORT".to_string(), "8000".to_string());
-        let (adapted_program, adapted_args, adapted_envs) = CommandWrappedInShellBuilder::wrap_in_shell_as_values(
-            "npx".to_string(),
-            Some(vec![
-                "-y".to_string(),
-                "@modelcontextprotocol/server-everything".to_string(),
-                "sse".to_string(),
-            ]) as Option<Vec<String>>,
-            Some(envs),
-        );
-
-        let _child_result = Command::new(adapted_program)
-            .args(adapted_args)
-            .envs(adapted_envs)
-            .kill_on_drop(true)
-            .spawn()
-            .inspect_err(|e| {
-                println!("error {:?}", e);
-            });
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let server = TestMCPServer::start(get_test_port()).await;
         let params = json!({
             "a": 1,
             "b": 2,
         });
         let params_map = params.as_object().unwrap().clone();
 
-        let result = run_tool_via_sse("http://localhost:8000/sse".to_string(), "add".to_string(), params_map)
+        let result = run_tool_via_sse(server.url(), "add".to_string(), params_map)
             .await
             .inspect_err(|e| {
                 println!("error {:?}", e);
@@ -227,6 +266,7 @@ pub mod tests_mcp_manager {
     }
 
     #[tokio::test]
+    #[serial(mcp_tests)]
     async fn test_list_tools_via_command() {
         let result = list_tools_via_command("npx -y @modelcontextprotocol/server-everything", None).await;
         assert!(result.is_ok());
@@ -248,32 +288,11 @@ pub mod tests_mcp_manager {
     }
 
     #[tokio::test]
+    #[serial(mcp_tests)]
     async fn test_list_tools_via_sse() {
-        let mut envs = HashMap::new();
-        envs.insert("PORT".to_string(), "8001".to_string());
-        let (adapted_program, adapted_args, adapted_envs) = CommandWrappedInShellBuilder::wrap_in_shell_as_values(
-            "npx".to_string(),
-            Some(vec![
-                "-y".to_string(),
-                "@modelcontextprotocol/server-everything".to_string(),
-                "sse".to_string(),
-            ]) as Option<Vec<String>>,
-            Some(envs),
-        );
+        let server = TestMCPServer::start(get_test_port()).await;
 
-        let _child_result = Command::new(adapted_program)
-            .args(adapted_args)
-            .envs(adapted_envs)
-            .kill_on_drop(true)
-            .spawn()
-            .inspect_err(|e| {
-                println!("error {:?}", e);
-            });
-
-        // Wait for server to be ready
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-        let result = list_tools_via_sse("http://localhost:8001/sse", None)
+        let result = list_tools_via_sse(&server.url(), None)
             .await
             .inspect_err(|e| {
                 println!("error {:?}", e);

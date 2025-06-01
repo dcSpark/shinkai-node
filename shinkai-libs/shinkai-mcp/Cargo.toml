@@ -27,3 +27,4 @@ strip-ansi-escapes = { workspace = true }
 [dev-dependencies]
 tokio-test = "0.4"
 mockall = "0.11"
+serial_test = "0.5"

@@ -4798,6 +4798,7 @@ dependencies = [
  "rmcp",
  "serde",
  "serde_json",
+ "serial_test",
  "strip-ansi-escapes",
  "tokio",
  "tokio-test",
