@@ -168,6 +168,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
+            LLMProviderInterface::LMStudio(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
             LLMProviderInterface::LocalRegex(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
@@ -228,6 +229,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
+            LLMProviderInterface::LMStudio(_) => ModelCost::Free,
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
                 "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-latest" => ModelCost::Cheap,
                 "claude-sonnet-4-20250514" | "claude-sonnet-4-latest" => ModelCost::Cheap,
@@ -264,6 +266,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Gemini(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::Exo(_) => ModelPrivacy::Local,
             LLMProviderInterface::OpenRouter(_) => ModelPrivacy::Local,
+            LLMProviderInterface::LMStudio(_) => ModelPrivacy::Local,
             LLMProviderInterface::Claude(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::DeepSeek(_) => ModelPrivacy::RemoteGreedy,
             LLMProviderInterface::LocalRegex(_) => ModelPrivacy::Local,
@@ -346,6 +349,18 @@ impl ModelCapabilitiesManager {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llama_prepare_messages(model, openrouter.clone().model_type, prompt, total_tokens)?;
+                    Ok(messages_string)
+                }
+            }
+            LLMProviderInterface::LMStudio(lmstudio) => {
+                if Self::get_shared_capabilities(lmstudio.model_type.as_str()).is_empty() {
+                    Err(ModelCapabilitiesManagerError::NotImplemented(
+                        lmstudio.model_type.clone(),
+                    ))
+                } else {
+                    let total_tokens = Self::get_max_tokens(model);
+                    let messages_string =
+                        llama_prepare_messages(model, lmstudio.clone().model_type, prompt, total_tokens)?;
                     Ok(messages_string)
                 }
             }
@@ -435,6 +450,7 @@ impl ModelCapabilitiesManager {
                 std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000)
             }
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
+            LLMProviderInterface::LMStudio(lmstudio) => Self::get_max_tokens_for_model_type(&lmstudio.model_type),
             LLMProviderInterface::Claude(_) => 200_000,
             LLMProviderInterface::DeepSeek(_) => 64_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
@@ -584,6 +600,13 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::OpenRouter(_) => {
                 // Fill in the appropriate logic for OpenRouter
+                if Self::get_max_tokens(model) <= 8000 {
+                    2800
+                } else {
+                    4096
+                }
+            }
+            LLMProviderInterface::LMStudio(_) => {
                 if Self::get_max_tokens(model) <= 8000 {
                     2800
                 } else {
@@ -750,6 +773,16 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama-3.3-70b-versatile")
             }
             LLMProviderInterface::OpenRouter(model) => {
+                model.model_type.starts_with("llama-3.2")
+                    || model.model_type.starts_with("llama3.2")
+                    || model.model_type.starts_with("llama-3.1")
+                    || model.model_type.starts_with("llama3.1")
+                    || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small")
+                    || model.model_type.starts_with("mistral-large")
+                    || model.model_type.starts_with("mistral-pixtral")
+            }
+            LLMProviderInterface::LMStudio(model) => {
                 model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")

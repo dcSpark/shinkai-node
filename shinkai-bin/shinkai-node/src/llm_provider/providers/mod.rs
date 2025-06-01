@@ -24,6 +24,7 @@ pub mod ollama;
 pub mod openai;
 pub mod openai_tests;
 pub mod openrouter;
+pub mod lm_studio;
 pub mod shared;
 pub mod shinkai_backend;
 pub mod togetherai;
