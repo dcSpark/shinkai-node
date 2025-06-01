@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::utils::github_mcp::{
     extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme,
-    fetch_github_file, parse_github_url, GitHubRepo,
+    fetch_github_file, parse_github_url, GitHubRepo, GitHubMcpError,
 };
 use reqwest::Client;
 use rmcp::model::Tool;
@@ -106,24 +106,24 @@ async fn process_python_mcp_project(
     pyproject_toml_content: String,
     _repo_info: &GitHubRepo,
     env_vars: HashSet<String>,
-) -> Result<AddMCPServerRequest, String> {
+) -> Result<AddMCPServerRequest, GitHubMcpError> {
     // Parse pyproject.toml
     let pyproject_toml: Table = pyproject_toml_content
         .parse::<Table>()
-        .map_err(|e| format!("Failed to parse pyproject.toml: {}", e))?;
+        .map_err(GitHubMcpError::TomlError)?;
 
     // Extract package name
     let project = pyproject_toml
         .get("project")
-        .ok_or_else(|| "Missing 'project' section in pyproject.toml".to_string())?
+        .ok_or_else(|| GitHubMcpError::MissingField("project".to_string()))?
         .as_table()
-        .ok_or_else(|| "Invalid 'project' section in pyproject.toml".to_string())?;
+        .ok_or_else(|| GitHubMcpError::Other("Invalid 'project' section in pyproject.toml".to_string()))?;
 
     let package_name = project
         .get("name")
-        .ok_or_else(|| "Missing 'name' field in pyproject.toml".to_string())?
+        .ok_or_else(|| GitHubMcpError::MissingField("name".to_string()))?
         .as_str()
-        .ok_or_else(|| "Invalid 'name' field in pyproject.toml".to_string())?
+        .ok_or_else(|| GitHubMcpError::Other("Invalid 'name' field in pyproject.toml".to_string()))?
         .to_string();
 
     // Check for project.scripts section to determine entry point
@@ -172,16 +172,16 @@ async fn process_nodejs_mcp_project(
     package_json_content: String,
     _repo_info: &GitHubRepo,
     env_vars: HashSet<String>,
-) -> Result<AddMCPServerRequest, String> {
+) -> Result<AddMCPServerRequest, GitHubMcpError> {
     // Parse package.json
     let package_json: Value =
-        serde_json::from_str(&package_json_content).map_err(|e| format!("Failed to parse package.json: {}", e))?;
+        serde_json::from_str(&package_json_content).map_err(GitHubMcpError::JsonError)?;
 
     // Extract package name
     let package_name = package_json
         .get("name")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing 'name' field in package.json".to_string())?
+        .ok_or_else(|| GitHubMcpError::MissingField("name".to_string()))?
         .to_string();
 
     // Create server name from package name
@@ -209,12 +209,12 @@ async fn process_nodejs_mcp_project(
     Ok(request)
 }
 
-pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<AddMCPServerRequest, String> {
+pub async fn import_mcp_server_from_github_url(
+    github_url: String,
+) -> Result<AddMCPServerRequest, GitHubMcpError> {
     let repo_info = parse_github_url(&github_url)?;
 
-    let client = Client::builder()
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let client = Client::builder().build().map_err(GitHubMcpError::RequestError)?;
 
     // Try to fetch smithery.yaml first for environment variables
     let mut env_vars = HashSet::new();
@@ -236,7 +236,8 @@ pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<Add
     }
 
     // Try to fetch package.json first (Node.js project)
-    let package_json_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
+    let package_json_result =
+        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
 
     if let Ok(package_json_content) = package_json_result {
         return process_nodejs_mcp_project(package_json_content, &repo_info, env_vars).await;
@@ -250,10 +251,10 @@ pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<Add
     }
 
     // If neither found, return error
-    Err(format!(
+    Err(GitHubMcpError::Other(format!(
         "Could not find package.json or pyproject.toml in repository {}/{}",
         repo_info.owner, repo_info.repo
-    ))
+    )))
 }
 
 #[cfg(test)]
