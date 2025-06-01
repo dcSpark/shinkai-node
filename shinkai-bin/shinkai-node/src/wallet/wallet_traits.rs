@@ -5,9 +5,9 @@ use super::{wallet_error::WalletError, wallet_manager::WalletEnum};
 
 use downcast_rs::{impl_downcast, Downcast};
 use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName,
-    wallet_mixed::{Address, AddressBalanceList, Asset, Balance, Network, PublicAddress, Transaction},
+    shinkai_name::ShinkaiName, wallet_mixed::{Address, AddressBalanceList, Asset, Balance, PublicAddress, Transaction}, x402_types::{Network, PaymentRequirements}
 };
+use shinkai_non_rust_code::functions::x402;
 
 pub trait IsWallet {}
 
@@ -36,6 +36,11 @@ pub trait SendActions {
     ) -> Pin<Box<dyn Future<Output = Result<TransactionHash, WalletError>> + Send>>;
 
     fn sign_transaction(&self, tx: Transaction) -> Pin<Box<dyn Future<Output = Result<String, WalletError>> + Send>>;
+
+    fn create_payment_request(
+        &self,
+        payment_requirements: PaymentRequirements,
+    ) -> Pin<Box<dyn Future<Output = Result<x402::create_payment::Output, WalletError>> + Send>>;
 }
 
 /// Trait for common actions.
