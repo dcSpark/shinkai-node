@@ -95,6 +95,7 @@ toml = "0.8.22"
 ngrok = { version = "0.15.0", features = ["hyper"], optional = true }
 url = "2.5.0"
 serde_yaml = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.0.2"
