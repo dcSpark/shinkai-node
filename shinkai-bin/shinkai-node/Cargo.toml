@@ -16,6 +16,8 @@ default = []
 console = ["console-subscriber"]
 # Enable ngrok support when the `ngrok` feature is selected
 ngrok = ["dep:ngrok"]
+# Enable swagger-ui when this feature is selected
+swagger-ui = ["shinkai_http_api/swagger-ui"]
 # static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]

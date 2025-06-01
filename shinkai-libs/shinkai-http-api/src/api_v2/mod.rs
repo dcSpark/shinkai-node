@@ -6,6 +6,7 @@ pub mod api_v2_handlers_mcp_servers;
 pub mod api_v2_handlers_my_agent_offers;
 pub mod api_v2_handlers_oauth;
 pub mod api_v2_handlers_prompts;
+#[cfg(feature = "swagger-ui")]
 pub mod api_v2_handlers_swagger_ui;
 pub mod api_v2_handlers_tools;
 pub mod api_v2_handlers_vecfs;
