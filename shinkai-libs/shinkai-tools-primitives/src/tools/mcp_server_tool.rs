@@ -118,7 +118,7 @@ impl MCPServerTool {
         tool: String,
         env: HashMap<String, String>,
         parameters: serde_json::Map<String, serde_json::Value>,
-    ) -> anyhow::Result<CallToolResult> {
+    ) -> Result<CallToolResult, shinkai_mcp::error::McpError> {
         match mcp_server.r#type {
             MCPServerType::Command => {
                 run_tool_via_command(mcp_server.command.unwrap_or_default(), tool, env, parameters).await

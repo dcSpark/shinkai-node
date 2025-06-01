@@ -11,7 +11,6 @@ regex = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 # shinkai_vector_resources = { workspace = true }
 reqwest = { workspace = true, features = ["json", "tokio-native-tls"] }
-anyhow = { workspace = true }
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 serde = { workspace = true, features = ["derive"] }
 base64 = { workspace = true }

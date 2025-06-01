@@ -4750,7 +4750,6 @@ dependencies = [
 name = "shinkai_mcp"
 version = "1.0.10"
 dependencies = [
- "anyhow",
  "async-trait",
  "futures",
  "home",
@@ -4762,6 +4761,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strip-ansi-escapes",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-test",
  "tracing",
@@ -4936,7 +4936,6 @@ dependencies = [
 name = "shinkai_tools_primitives"
 version = "1.0.10"
 dependencies = [
- "anyhow",
  "base64 0.22.1",
  "log",
  "once_cell",
@@ -6104,8 +6103,15 @@ dependencies = [
  "serde_json",
  "url",
  "utoipa",
+ "utoipa-swagger-ui-vendored",
  "zip 1.1.4",
 ]
+
+[[package]]
+name = "utoipa-swagger-ui-vendored"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2eebbbfe4093922c2b6734d7c679ebfebd704a0d7e56dfcb0d05818ce28977d"
 
 [[package]]
 name = "uuid"
