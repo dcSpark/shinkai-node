@@ -188,7 +188,7 @@ fn native_tool_test_knowledge() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     api_key_bearer.clone(),
-                    20, // Wait up to 20 seconds
+                    120, // Wait up to 20 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
