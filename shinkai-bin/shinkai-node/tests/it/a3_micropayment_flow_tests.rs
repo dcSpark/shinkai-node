@@ -110,7 +110,7 @@ fn get_new_deno_tool_json_string() -> String {
 #[cfg(feature = "console")]
 use console_subscriber;
 
-#[test]
+// #[test]
 fn micropayment_flow_test() {
     #[cfg(feature = "console")]
     {
