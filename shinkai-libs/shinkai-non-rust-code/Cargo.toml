@@ -10,3 +10,4 @@ serde_json = { workspace = true }
 tokio = { workspace = true }
 shinkai_tools_runner = { workspace = true }
 tempfile = { workspace = true }
+shinkai_message_primitives = { workspace = true }

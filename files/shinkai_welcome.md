@@ -16,6 +16,10 @@ At its core, an AI agent in Shinkai starts with a base AI model (like those from
 2.  **Give Instructions:** Write a "System Prompt" detailing how you want your agent to act, what knowledge it should focus on, or the persona it should adopt.
 3.  **Equip with Tools:** Grant your agent specific skills by enabling "Tools" (you can build your own with our specialized AI, download from the AI Store or manually create them).
 
+┌──────────────────┐  ┌────────────────────────┐  ┌──────────────────┐
+│ 1. Pick a Model  │→ │ 2. Prompt + Add Tools  │→ │ 3. Launch Agent  │
+└──────────────────┘  └────────────────────────┘  └──────────────────┘
+
 ## Tools: Supercharging Your Agents
 
 **What are Tools?**

@@ -1,21 +1,12 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::{tool_router::ToolRouter, IdentityManager},
-    network::{
-        node_error::NodeError,
-        node_shareable_logic::{download_zip_from_url, ZipFileContents},
-        zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool},
-        Node,
-    },
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{
+        node_error::NodeError, node_shareable_logic::{download_zip_from_url, ZipFileContents}, zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool}, Node
+    }, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 use async_channel::Sender;
+use base64::Engine;
 use chrono::Utc;
 use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use reqwest::StatusCode;
@@ -24,48 +15,23 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        indexable_version::IndexableVersion,
-        job::JobLike,
-        job_config::JobConfig,
-        shinkai_name::ShinkaiName,
-        shinkai_name::ShinkaiSubidentityType,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-        tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType},
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiName, shinkai_name::ShinkaiSubidentityType, shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType}, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
+    }
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use rusqlite::Error as RusqliteError;
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    parameters::Parameters,
-    python_tools::PythonTool,
-    shinkai_tool::ShinkaiToolHeader,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::ShinkaiToolHeader, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 use std::{
-    collections::HashMap,
-    env,
-    io::Read,
-    path::{absolute, PathBuf},
-    sync::Arc,
-    time::Instant,
+    collections::HashMap, env, io::Read, path::{absolute, PathBuf}, sync::Arc, time::Instant
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use base64::Engine;
 
 // Helper function to serialize Vec<ToolConfig> into the specific object format
 fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> Value {
@@ -764,7 +730,7 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to add tool to LanceShinkaiDb: {}", err),
+                    message: format!("Failed to add tool to SqliteManager: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
@@ -3974,11 +3940,7 @@ LANGUAGE={env_language}
         let result = match db.set_common_toolset_config(&tool_set_key, values).await {
             Ok(updated_keys) => Ok(updated_keys),
             Err(e) => {
-                eprintln!(
-                    "Error setting common config for toolset '{}': {}",
-                    tool_set_key,
-                    e
-                );
+                eprintln!("Error setting common config for toolset '{}': {}", tool_set_key, e);
                 Err(APIError {
                     code: 500,
                     error: "Failed to set common config".to_string(),
@@ -4258,7 +4220,7 @@ LANGUAGE={env_language}
         }
 
         let tool = db.get_tool_by_key(&tool_router_key);
-        
+
         match tool {
             Ok(tool) => {
                 let metadata_struct = tool.get_metadata();
@@ -4270,11 +4232,15 @@ LANGUAGE={env_language}
                     }
                     Err(e) => {
                         eprintln!("Failed to serialize metadata: {}", e);
-                        if res.send(Err(APIError {
-                            code: 500,
-                            error: "Serialization Error".to_string(),
-                            message: format!("Failed to serialize tool metadata: {}", e),
-                        })).await.is_err() {
+                        if res
+                            .send(Err(APIError {
+                                code: 500,
+                                error: "Serialization Error".to_string(),
+                                message: format!("Failed to serialize tool metadata: {}", e),
+                            }))
+                            .await
+                            .is_err()
+                        {
                             eprintln!("Failed to send serialization error response");
                         }
                     }
