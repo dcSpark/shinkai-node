@@ -5,7 +5,6 @@
 To build this project on macOS, you will need the following:
 
 - Rust
-- Protobuf
 - OpenSSL development libraries
 
 ## Installing Dependencies
@@ -30,21 +29,7 @@ Verify installation:
 rustc --version
 ```
 
-### 2. Install Protobuf
-
-To install Protobuf, use [Homebrew](https://brew.sh/):
-
-```bash
-brew install protobuf
-```
-
-Verify the installation:
-
-```bash
-protoc --version
-```
-
-### 3. Install OpenSSL Development Libraries
+### 2. Install OpenSSL Development Libraries
 
 To install OpenSSL, use Homebrew:
 
@@ -59,7 +44,7 @@ export OPENSSL_DIR=$(brew --prefix openssl)
 export PKG_CONFIG_PATH=$OPENSSL_DIR/lib/pkgconfig
 ```
 
-### 4. Build the Project
+### 3. Build the Project
 
 Once all dependencies are installed, build the project with:
 
