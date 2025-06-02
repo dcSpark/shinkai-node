@@ -16,6 +16,8 @@ default = []
 console = ["console-subscriber"]
 # Enable ngrok support when the `ngrok` feature is selected
 ngrok = ["dep:ngrok"]
+# Enable swagger-ui when this feature is selected
+swagger-ui = ["shinkai_http_api/swagger-ui"]
 # static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]
@@ -109,6 +111,7 @@ toml = "0.8.22"
 ngrok = { version = "0.15.0", features = ["hyper"], optional = true }
 url = "2.5.0"
 serde_yaml = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 mockito = "1.0.2"

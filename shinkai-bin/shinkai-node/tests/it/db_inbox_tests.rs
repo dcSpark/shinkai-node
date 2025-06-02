@@ -765,10 +765,11 @@ async fn test_insert_messages_with_tree_structure() {
 async fn db_inbox() {
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let (_, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, _node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let (_, _node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
     let (_, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
     let message = generate_message_with_text(
