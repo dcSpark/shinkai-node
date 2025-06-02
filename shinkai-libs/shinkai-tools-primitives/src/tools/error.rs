@@ -95,9 +95,9 @@ impl From<SerdeError> for ToolError {
     }
 }
 
-impl From<anyhow::Error> for ToolError {
-    fn from(err: anyhow::Error) -> ToolError {
-        ToolError::ParseError(err.to_string())
+impl From<shinkai_mcp::error::McpError> for ToolError {
+    fn from(err: shinkai_mcp::error::McpError) -> ToolError {
+        ToolError::ParseError(err.message)
     }
 }
 

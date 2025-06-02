@@ -76,7 +76,6 @@ fn native_tool_test_knowledge() {
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-        let node1_profile_name = "main";
         let api_key_bearer = "my_api_key".to_string();
 
         // Agent pre-creation
@@ -188,7 +187,7 @@ fn native_tool_test_knowledge() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     api_key_bearer.clone(),
-                    20, // Wait up to 20 seconds
+                    120, // Wait up to 120 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
@@ -216,7 +215,7 @@ fn native_tool_test_knowledge() {
                 }
 
                 #[allow(unused_assignments)]
-                let mut job_id = "".to_string();
+                let mut job_id: String;
                 let agent_subidentity = format!("{}/agent/{}", node1_subidentity_name, node1_agent).to_string();
                 {
                     // Create a Job

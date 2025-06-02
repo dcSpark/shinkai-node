@@ -67,7 +67,7 @@ fn node_retrying_test() {
         let node2_identity_name = "@@node2_test.sep-shinkai";
         let _node2_profile_name = "main_profile_node2";
 
-        let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (node2_identity_sk, _node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         // eprintln!("node2_identity_pk: {:?}", signature_public_key_to_string(node2_identity_pk.clone()));
         // eprintln!("node2_encryption_pk: {:?}", encryption_public_key_to_string(node2_encryption_pk.clone()));

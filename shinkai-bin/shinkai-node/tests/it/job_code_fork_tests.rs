@@ -137,7 +137,7 @@ fn test_job_code_fork() {
                 .await;
             }
 
-            let mut job_id = "".to_string();
+            let mut job_id: String;
             let agent_subidentity =
                 format!("{}/agent/{}", node1_profile_name.clone(), node1_llm_provider.clone()).to_string();
             {

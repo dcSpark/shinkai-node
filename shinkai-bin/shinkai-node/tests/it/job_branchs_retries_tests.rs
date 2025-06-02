@@ -173,7 +173,7 @@ fn job_branchs_retries_tests() {
                     └── 4
             */
 
-            let mut job_id = "".to_string();
+            let mut job_id: String;
             let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
             {
                 // Create a Job
@@ -264,8 +264,8 @@ fn job_branchs_retries_tests() {
                     └── 3 (done)
                         └── 4 (done)
             */
-            let mut message2_hash: Option<String> = None;
-            let mut inbox_name: Option<String> = None;
+            let mut message2_hash: Option<String>;
+            let mut inbox_name: Option<String>;
             {
                 // Confirm that we receive 1, 2, 3, 4
                 let start = Instant::now();
@@ -327,7 +327,7 @@ fn job_branchs_retries_tests() {
                     └── 3 (done)
                         └── 4 (done)
             */
-            let mut node1_last_messages = Vec::new();
+            let mut node1_last_messages;
             {
                 // Confirm that we receive 1, 2, 5, 6
                 let start = Instant::now();
