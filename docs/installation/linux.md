@@ -5,7 +5,6 @@
 To build this project, you will need the following:
 
 - Rust
-- Protobuf
 - OpenSSL development libraries
 
 ## Installing Dependencies
@@ -30,25 +29,7 @@ Verify installation:
 rustc --version
 ```
 
-### 2. Install Protobuf
-
-#### Ubuntu/Debian
-```bash
-sudo apt update
-sudo apt install protobuf-compiler
-```
-
-#### Fedora
-```bash
-sudo dnf install protobuf-compiler
-```
-
-#### Arch Linux
-```bash
-sudo pacman -S protobuf
-```
-
-### 3. Install OpenSSL Development Libraries
+### 2. Install OpenSSL Development Libraries
 
 #### Ubuntu/Debian
 ```bash
@@ -66,7 +47,7 @@ sudo dnf install pkg-config openssl-devel
 sudo pacman -S openssl
 ```
 
-### 4. Manually Set Environment Variables (if needed)
+### 3. Manually Set Environment Variables (if needed)
 
 If OpenSSL is not detected during the build, manually set the environment variables:
 
@@ -75,7 +56,7 @@ export OPENSSL_DIR=/usr/lib/ssl  # Adjust based on your system
 export PKG_CONFIG_PATH=$OPENSSL_DIR/lib/pkgconfig
 ```
 
-### 5. Build the Project
+### 4. Build the Project
 
 Once all dependencies are installed, build the project with:
 
