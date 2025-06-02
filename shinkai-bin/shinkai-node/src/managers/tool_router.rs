@@ -20,8 +20,9 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::x402_types::Network;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, wallet_mixed::{Asset, NetworkIdentifier}, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}
+    indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}, x402_types::PaymentRequirements
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -620,14 +621,22 @@ impl ToolRouter {
     async fn add_testing_network_tools(&self) -> Result<(), ToolError> {
         // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_EXTERNAL_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                asset: Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
-                    asset_id: "USDC".to_string(),
-                    decimals: Some(6),
-                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                },
-                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            println!("Adding testing external network echo tool");
+            let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
             }]));
 
             // Manually create NetworkTool
@@ -636,7 +645,7 @@ impl ToolRouter {
                 description: "Echoes the input message".to_string(),
                 version: "0.1".to_string(),
                 mcp_enabled: Some(false),
-                provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
+                provider: ShinkaiName::new("@@node1_test.sep-shinkai".to_string()).unwrap(),
                 author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
@@ -652,7 +661,7 @@ impl ToolRouter {
                     );
                     params
                 },
-                output_arg: ToolOutputArg { json: "".to_string() },
+                output_arg: ToolOutputArg { json: "{}".to_string() },
                 embedding: None,
                 restrictions: None,
             };
@@ -663,84 +672,6 @@ impl ToolRouter {
                     .add_tool(shinkai_tool)
                     .await
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-            }
-
-            // Manually create another NetworkTool
-            let youtube_tool = NetworkTool {
-                name: "youtube_transcript_with_timestamps".to_string(),
-                description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
-                version: "0.1".to_string(),
-                mcp_enabled: Some(false),
-                provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
-                author: "@@official.shinkai".to_string(),
-                usage_type: usage_type.clone(),
-                activated: true,
-                config: vec![],
-                input_args: {
-                    let mut params = Parameters::new();
-                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true, None);
-                    params
-                },
-                output_arg: ToolOutputArg { json: "".to_string() },
-                embedding: None,
-                restrictions: None,
-            };
-
-            {
-                let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
-                self.sqlite_manager
-                    .add_tool(shinkai_tool)
-                    .await
-                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-            }
-        }
-
-        // Check if ADD_TESTING_NETWORK_ECHO is set
-        if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            match self
-                .sqlite_manager
-                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
-            {
-                Ok(shinkai_tool) => {
-                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        js_tool.name = "network__echo".to_string();
-                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
-                            .add_tool(modified_tool)
-                            .await
-                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                    }
-                }
-                Err(SqliteManagerError::ToolNotFound(_)) => {
-                    eprintln!("Tool not found: local:::shinkai-tool-echo:::shinkai__echo");
-                    // Handle the case where the tool is not found, if necessary
-                }
-                Err(e) => {
-                    return Err(ToolError::DatabaseError(e.to_string()));
-                }
-            }
-
-            match self
-                .sqlite_manager
-                .get_tool_by_key("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
-            {
-                Ok(shinkai_tool) => {
-                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        js_tool.name = "youtube_transcript_with_timestamps".to_string();
-                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
-                            .add_tool(modified_tool)
-                            .await
-                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                    }
-                }
-                Err(SqliteManagerError::ToolNotFound(_)) => {
-                    eprintln!("Tool not found: local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript");
-                    // Handle the case where the tool is not found, if necessary
-                }
-                Err(e) => {
-                    return Err(ToolError::DatabaseError(e.to_string()));
-                }
             }
         }
 
