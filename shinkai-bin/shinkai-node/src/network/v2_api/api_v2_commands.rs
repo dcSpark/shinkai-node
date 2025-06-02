@@ -2346,6 +2346,32 @@ impl Node {
             }
         }
 
+        let exists = db.check_if_server_exists(
+            &mcp_server.r#type,
+            mcp_server.command.clone().unwrap_or_default().to_string(),
+            mcp_server.url.clone().unwrap_or_default().to_string(),
+        )?;
+        if exists {
+            let message = match mcp_server.r#type {
+                MCPServerType::Command => format!(
+                    "MCP Server with command '{}' already exists.",
+                    mcp_server.command.clone().unwrap_or_default().to_string()
+                ),
+                MCPServerType::Sse => format!(
+                    "MCP Server with url '{}' already exists.",
+                    mcp_server.url.clone().unwrap_or_default().to_string()
+                ),
+            };
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "MCP Server Exists".to_string(),
+                    message,
+                }))
+                .await;
+            return Ok(());
+        }
+
         // Add the MCP server to the database
         match db.add_mcp_server(
             mcp_server.name.clone(), // Clone name for db insertion

@@ -241,11 +241,11 @@ impl SqliteManager {
     pub fn check_if_server_exists(
         &self,
         r#type: &MCPServerType,
-        command_hash: &String,
-        url: &Option<String>,
+        command: String,
+        url: String,
     ) -> Result<bool, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT id, name, type, url, created_at, updated_at, command FROM mcp_servers")?;
+        let mut stmt = conn.prepare("SELECT id, name, type, url, command FROM mcp_servers")?;
         let mut rows = stmt.query([])?;
         let mut result: bool = false;
         while let Some(row) = rows.next()? {
@@ -255,22 +255,28 @@ impl SqliteManager {
                 r#type: MCPServerType::from_str(&row.get::<_, String>(2)?).unwrap(),
                 url: row.get(3)?,
                 command: row.get(4)?,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
+                created_at: None,
+                updated_at: None,
                 env: None,
                 is_enabled: true,
             };
             match r#type {
                 MCPServerType::Command => {
-                    if server.get_command_hash() == *command_hash {
-                        result = true;
-                        break;
+                    let server_command = server.command;
+                    if let Some(server_command) = server_command {
+                        if server_command.trim() == command.trim() {
+                            result = true;
+                            break;
+                        }
                     }
                 }
                 MCPServerType::Sse => {
-                    if server.url == *url {
-                        result = true;
-                        break;
+                    let server_url = server.url;
+                    if let Some(server_url) = server_url {
+                        if server_url.trim() == url.trim() {
+                            result = true;
+                            break;
+                        }
                     }
                 }
             }

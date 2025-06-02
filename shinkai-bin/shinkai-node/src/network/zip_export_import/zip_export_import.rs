@@ -906,7 +906,11 @@ pub async fn import_dependencies_tools(
 pub async fn import_mcp_server(db: Arc<SqliteManager>, mcp_server: MCPServer) -> Result<(), APIError> {
     println!("[IMPORTING MCP SERVER]: {}", mcp_server.name);
     let exists = db
-        .check_if_server_exists(&mcp_server.r#type, &mcp_server.get_command_hash(), &mcp_server.url)
+        .check_if_server_exists(
+            &mcp_server.r#type,
+            mcp_server.command.clone().unwrap_or_default().to_string(),
+            mcp_server.url.clone().unwrap_or_default().to_string(),
+        )
         .map_err(|e| APIError {
             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
             error: "Database Error".to_string(),
