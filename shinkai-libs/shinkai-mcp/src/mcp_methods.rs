@@ -1,5 +1,6 @@
-use crate::{command::CommandWrappedInShellBuilder, utils::disect_command};
-use anyhow::Result;
+use crate::{command::CommandWrappedInShellBuilder, utils::disect_command, error::McpError};
+
+type Result<T> = std::result::Result<T, McpError>;
 use rmcp::{
     model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool}, transport::{SseTransport, TokioChildProcess}, ServiceExt
 };
@@ -52,7 +53,7 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
     let client = client_info
         .serve(transport)
         .await
-        .map_err(|e| anyhow::anyhow!("SSE client connection error: {:?}", e))?;
+        .map_err(|e| McpError::from(format!("SSE client connection error: {:?}", e)))?;
 
     // Initialize and log server info (optional, but good for debugging)
     let _ = client.peer_info();
@@ -77,7 +78,7 @@ pub async fn run_tool_via_command(
     tool: String,
     env_vars: HashMap<String, String>,
     parameters: serde_json::Map<String, serde_json::Value>,
-) -> anyhow::Result<CallToolResult> {
+) -> Result<CallToolResult> {
     let (_, cmd_executable, cmd_args) = disect_command(command);
 
     println!("cmd_executable: {}", cmd_executable);
@@ -115,7 +116,7 @@ pub async fn run_tool_via_sse(
     url: String,
     tool: String,
     parameters: serde_json::Map<String, serde_json::Value>,
-) -> anyhow::Result<CallToolResult> {
+) -> Result<CallToolResult> {
     let transport = SseTransport::start(url)
         .await
         .inspect_err(|e| log::error!("error starting sse transport: {:?}", e))?;
