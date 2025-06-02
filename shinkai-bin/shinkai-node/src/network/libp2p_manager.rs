@@ -96,18 +96,19 @@ impl LibP2PManager {
             .timeout(Duration::from_secs(20))
             .boxed();
 
-        // Create GossipSub behavior with configuration for relay networking
+        // Create GossipSub behavior with simple default configuration
         let gossipsub_config = gossipsub::ConfigBuilder::default()
-            .heartbeat_interval(Duration::from_secs(1))  // Fast heartbeat for relay scenarios
+            .heartbeat_interval(Duration::from_secs(1))  // Fast heartbeat
             .validation_mode(gossipsub::ValidationMode::Permissive)
-            .mesh_outbound_min(0)  // Allow zero outbound connections (relay scenario)
-            .mesh_n_low(1)         // Allow single node mesh (just the relay)
-            .mesh_n(1)             // Target mesh size (just the relay)  
-            .mesh_n_high(2)        // Maximum mesh size (relay + maybe 1 peer)
-            .gossip_lazy(1)        // Minimal gossip since we're going through relay
+            .mesh_outbound_min(0)  // Allow zero outbound connections during startup
+            .mesh_n_low(1)         // Minimum peers in mesh
+            .mesh_n(3)             // Target mesh size
+            .mesh_n_high(5)        // Higher maximum for mesh
+            .gossip_lazy(3)        // Gossip settings
             .fanout_ttl(Duration::from_secs(60))  // TTL for fanout
             .gossip_retransimission(3)  // Retransmit important messages
             .duplicate_cache_time(Duration::from_secs(60))  // Cache for deduplication
+            .max_transmit_size(262144) // 256KB max message size
             .build()
             .expect("Valid config");
 
@@ -119,6 +120,26 @@ impl LibP2PManager {
         // Subscribe to default shinkai topic
         let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
         gossipsub.subscribe(&shinkai_topic)?;
+        eprintln!(">> DEBUG: LibP2P {} subscribed to topic: 'shinkai-network'", node_name);
+
+        // Also subscribe to node-specific topics to receive messages addressed to this node
+        let node_topic = gossipsub::IdentTopic::new(format!("shinkai-{}", node_name));
+        gossipsub.subscribe(&node_topic)?;
+        eprintln!(">> DEBUG: LibP2P {} subscribed to topic: 'shinkai-{}'", node_name, node_name);
+        
+        // Subscribe to the base node name (without subidentity) for broader message reception
+        if let Ok(parsed_name) = shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(node_name.clone()) {
+            let base_node_name = parsed_name.get_node_name_string();
+            let base_topic = gossipsub::IdentTopic::new(format!("shinkai-{}", base_node_name));
+            gossipsub.subscribe(&base_topic)?;
+            eprintln!(">> DEBUG: LibP2P {} subscribed to base topic: 'shinkai-{}'", node_name, base_node_name);
+        }
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Subscribed to topics: shinkai-network, shinkai-{}", node_name),
+        );
 
         // Create Identify behavior with compatible protocol
         let identify = identify::Behaviour::new(identify::Config::new(
@@ -144,27 +165,25 @@ impl LibP2PManager {
         let swarm_config = libp2p::swarm::Config::with_tokio_executor();
         let mut swarm = Swarm::new(transport, behaviour, local_peer_id, swarm_config);
 
-        // For relay scenarios, DO NOT listen on any local port to prevent direct connections
-        // All communication should go through the relay
-        if relay_address.is_none() {
-            // Only listen if we're not using a relay (fallback mode)
-            let listen_addr = if let Some(port) = listen_port {
-                format!("/ip4/0.0.0.0/tcp/{}", port)
-            } else {
-                "/ip4/0.0.0.0/tcp/0".to_string()
-            };
-            swarm.listen_on(listen_addr.parse()?)?;
-            
+        // Always listen on local port - relay networking still requires listening to connect to/from relay
+        let listen_addr = if let Some(port) = listen_port {
+            format!("/ip4/0.0.0.0/tcp/{}", port)
+        } else {
+            "/ip4/0.0.0.0/tcp/0".to_string()
+        };
+        swarm.listen_on(listen_addr.parse()?)?;
+        
+        if relay_address.is_some() {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
-                &format!("Listening on {} (no relay configured)", listen_addr),
+                &format!("Listening on {} (relay mode - for relay connections)", listen_addr),
             );
         } else {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
-                "Relay configured - NOT listening on local port to prevent direct connections",
+                &format!("Listening on {} (direct mode)", listen_addr),
             );
         }
 
@@ -265,13 +284,43 @@ impl LibP2PManager {
 
     /// Add a peer to connect to
     pub fn add_peer(&mut self, peer_id: PeerId, address: Multiaddr) -> Result<(), Box<dyn std::error::Error>> {
-        // For relay scenarios, we don't use direct peer connections
-        // All peer discovery happens through the relay via gossipsub
+        // For direct networking without relay, attempt to connect to the peer
         shinkai_log(
             ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Debug,
-            &format!("Skipping direct connection to peer {} at {} (relay mode)", peer_id, address),
+            ShinkaiLogLevel::Info,
+            &format!("Attempting to connect to peer {} at {}", peer_id, address),
         );
+        
+        // Dial the peer directly
+        if let Err(e) = self.swarm.dial(address.clone()) {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Error,
+                &format!("Failed to dial peer {} at {}: {}", peer_id, address, e),
+            );
+            return Err(Box::new(e));
+        }
+        
+        Ok(())
+    }
+
+    /// Dial a peer directly by address
+    pub fn dial_peer(&mut self, address: Multiaddr) -> Result<(), Box<dyn std::error::Error>> {
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Dialing peer at {}", address),
+        );
+        
+        if let Err(e) = self.swarm.dial(address.clone()) {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Error,
+                &format!("Failed to dial peer at {}: {}", address, e),
+            );
+            return Err(Box::new(e));
+        }
+        
         Ok(())
     }
 

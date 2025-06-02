@@ -276,6 +276,7 @@ impl Node {
         initial_llm_providers: Vec<SerializedLLMProvider>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<crate::network::libp2p_manager::NetworkEvent>>,
     ) {
         let registration_code = RegistrationCode {
             code: "".to_string(),
@@ -303,6 +304,7 @@ impl Node {
             ws_manager,
             supported_embedding_models,
             public_https_certificate,
+            libp2p_event_sender,
             res.clone(),
         )
         .await
