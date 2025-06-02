@@ -70,14 +70,18 @@ impl SqliteManager {
         is_enabled: bool,
     ) -> Result<MCPServer, SqliteManagerError> {
         let conn = self.get_connection()?;
-
+        let id: i64 = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
         let mut stmt = conn.prepare(
-            "INSERT INTO mcp_servers (name, type, url, command, env, is_enabled) 
-             VALUES (?, ?, ?, ?, ?, ?) 
+            "INSERT INTO mcp_servers (id, name, type, url, command, env, is_enabled) 
+             VALUES (?, ?, ?, ?, ?, ?, ?) 
              RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
         )?;
 
         let mut rows = stmt.query([
+            id.to_string(),
             name.clone(),
             r#type.to_string(),
             url.clone().unwrap_or("".to_string()),
