@@ -29,6 +29,9 @@ ed25519-dalek = { workspace = true }
 semver = "1.0"
 log = { workspace = true }
 
+[features]
+bundled-sqlite = ["rusqlite/bundled"]
+
 [dependencies.serde]
 workspace = true
 features = ["derive"]

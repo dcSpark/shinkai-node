@@ -67,7 +67,7 @@ dashmap = "5.5.3"
 clap = "3.0.0-beta.5"
 r2d2 = "0.8.10"
 r2d2_sqlite = "0.25"
-rusqlite = { version = "0.32.1", features = ["bundled"] }
+rusqlite = { version = "0.32.1" }
 os_path = "0.8.0"
 utoipa = "4.2.3"
 warp = "0.3.7"
@@ -76,3 +76,4 @@ home = "0.5"
 strip-ansi-escapes = "0.2"
 tracing = "0.1.40"
 serde_yaml = "0.9.34+deprecated"
+

@@ -36,6 +36,22 @@ if you want to restart the node, you can delete the folder `storage` and run the
 cargo build
 ```
 Note: You must run this command from the root directory of this repo and make sure that you have set the required ENV variables.
+By default the build uses your system SQLite library. If you need the bundled
+version instead, build with the `bundled-sqlite` feature:
+
+```sh
+cargo build -p shinkai_node --features bundled-sqlite
+```
+
+### Speeding up Builds
+
+To cache compiler outputs you can enable [`sccache`](https://github.com/mozilla/sccache):
+
+```sh
+export RUSTC_WRAPPER=$(which sccache)
+```
+
+You can also reuse a shared target directory by setting `CARGO_TARGET_DIR` to a location outside the repository. Both options help reduce rebuild times, especially across clean checkouts.
 
 ## OpenAPI
 

@@ -16,6 +16,8 @@ default = []
 console = ["console-subscriber"]
 # Enable ngrok support when the `ngrok` feature is selected
 ngrok = ["dep:ngrok"]
+# Enable bundled SQLite builds when necessary
+bundled-sqlite = ["shinkai_sqlite/bundled-sqlite"]
 # static-pdf-parser = ["shinkai_vector_resources/static-pdf-parser"]
 
 [lib]
