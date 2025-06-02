@@ -72,10 +72,13 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
     Ok(tools_result.unwrap())
 }
 
+const NODE_STDOUT_EPIPE_HANDLER: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/node_exit_on_epipe.js");
+
 pub async fn run_tool_via_command(
     command: String,
     tool: String,
-    env_vars: HashMap<String, String>,
+    mut env_vars: HashMap<String, String>,
     parameters: serde_json::Map<String, serde_json::Value>,
 ) -> anyhow::Result<CallToolResult> {
     let (_, cmd_executable, cmd_args) = disect_command(command);
@@ -83,6 +86,12 @@ pub async fn run_tool_via_command(
     println!("cmd_executable: {}", cmd_executable);
     println!("env_vars: {:?}", env_vars);
     println!("cmd_args: {:?}", cmd_args);
+
+    let node_options_entry = env_vars
+        .remove("NODE_OPTIONS")
+        .map(|val| format!("{val} --require {NODE_STDOUT_EPIPE_HANDLER}"))
+        .unwrap_or_else(|| format!("--require {NODE_STDOUT_EPIPE_HANDLER}"));
+    env_vars.insert("NODE_OPTIONS".to_string(), node_options_entry);
 
     // Use the wrap_in_shell_as_values function to prepare the command
     let (adapted_program, adapted_args, adapted_envs) =
