@@ -41,13 +41,13 @@ jobs:
         run: docker build -t testing_image:${{ github.sha }} --build-arg COMMIT_SHA=${{ github.sha }} -f .github/Dockerfile .
 
       - name: Run tests primitives cargo tests
-        run: docker run --rm --name shinkai_node_tests_${{ github.sha }} --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${{ github.sha }}
+        run: docker run --rm --name shinkai_node_tests_prim_${{ github.sha }}_${{ github.run_number }} --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${{ github.sha }}
 
       - name: Run tests main cargo tests
         env:
           X402_PAY_TO: ${{ secrets.X402_PAY_TO }}
           X402_PRIVATE_KEY: ${{ secrets.X402_PRIVATE_KEY }}
-        run: docker run --rm --name shinkai_node_tests_${{ github.sha }} --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${{ github.sha }}
+        run: docker run --rm --name shinkai_node_tests_main_${{ github.sha }}_${{ github.run_number }} --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${{ github.sha }}
 
       - name: Remove image
         if: always()
