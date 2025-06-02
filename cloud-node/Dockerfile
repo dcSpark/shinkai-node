@@ -1,7 +1,7 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
 ARG BUILD_TYPE
-RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld protobuf-compiler
+RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld
 
 # Create a new directory for your app
 WORKDIR /app

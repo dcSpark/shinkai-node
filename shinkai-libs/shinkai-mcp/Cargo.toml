@@ -6,7 +6,7 @@ description = "Methods to interact with MCP servers"
 authors = { workspace = true }
 
 [dependencies]
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
