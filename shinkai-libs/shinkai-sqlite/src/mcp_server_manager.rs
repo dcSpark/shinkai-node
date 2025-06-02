@@ -234,6 +234,45 @@ impl SqliteManager {
             }
         }
     }
+    pub fn check_if_server_exists(
+        &self,
+        r#type: &MCPServerType,
+        command_hash: &String,
+        url: &Option<String>,
+    ) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT id, name, type, url, created_at, updated_at, command FROM mcp_servers")?;
+        let mut rows = stmt.query([])?;
+        let mut result: bool = false;
+        while let Some(row) = rows.next()? {
+            let server: MCPServer = MCPServer {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                r#type: MCPServerType::from_str(&row.get::<_, String>(2)?).unwrap(),
+                url: row.get(3)?,
+                command: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                env: None,
+                is_enabled: true,
+            };
+            match r#type {
+                MCPServerType::Command => {
+                    if server.get_command_hash() == *command_hash {
+                        result = true;
+                        break;
+                    }
+                }
+                MCPServerType::Sse => {
+                    if server.url == *url {
+                        result = true;
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(result)
+    }
 }
 
 #[cfg(test)]

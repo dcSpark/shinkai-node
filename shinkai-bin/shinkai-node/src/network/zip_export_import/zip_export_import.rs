@@ -22,6 +22,21 @@ use std::sync::Arc;
 use tokio::fs;
 use zip::ZipArchive;
 use zip::{write::FileOptions, ZipWriter};
+pub enum ZipDependencyFileName {
+    Tool,
+    Agent,
+    MCPServer,
+}
+
+impl ZipDependencyFileName {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ZipDependencyFileName::Tool => "__tool.json",
+            ZipDependencyFileName::Agent => "__agent.json",
+            ZipDependencyFileName::MCPServer => "__mcp_server.json",
+        }
+    }
+}
 
 async fn calculate_zip_dependencies(
     db: Arc<SqliteManager>,
@@ -619,6 +634,7 @@ async fn import_tool_assets(
             || file.starts_with("__tools/")
             || file.starts_with("__knowledge/")
             || file.starts_with("__knowledge_embeddings/")
+            || file.starts_with("__mcp_servers/")
         {
             continue;
         }
@@ -802,7 +818,13 @@ pub async fn import_dependencies_tools(
     println!("Files:\n{}", file_list.join("\n"));
     for file_name_str in file_list {
         if file_name_str.starts_with("__tools/") && file_name_str != "__tools/" {
-            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file_name_str.to_string(), true).await {
+            let tool_zip = match bytes_to_zip_tool(
+                zip_contents.clone(),
+                file_name_str.to_string(),
+                ZipDependencyFileName::Tool,
+            )
+            .await
+            {
                 Ok(tool_zip) => tool_zip,
                 Err(err) => {
                     let api_error = APIError {
@@ -833,7 +855,13 @@ pub async fn import_dependencies_tools(
             }
         }
         if file_name_str.starts_with("__agents/") && file_name_str != "__agents/" {
-            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file_name_str.to_string(), false).await {
+            let agent_zip = match bytes_to_zip_tool(
+                zip_contents.clone(),
+                file_name_str.to_string(),
+                ZipDependencyFileName::Agent,
+            )
+            .await
+            {
                 Ok(agent_zip) => agent_zip,
                 Err(err) => return Err(err),
             };
@@ -852,7 +880,54 @@ pub async fn import_dependencies_tools(
                 println!("Successfully imported agent.");
             }
         }
+        if file_name_str.starts_with("__mcp_servers/") && file_name_str != "__mcp_servers/" {
+            let mcp_server_zip = match bytes_to_zip_tool(
+                zip_contents.clone(),
+                file_name_str.to_string(),
+                ZipDependencyFileName::MCPServer,
+            )
+            .await
+            {
+                Ok(mcp_server_zip) => mcp_server_zip,
+                Err(err) => return Err(err),
+            };
+            let mcp_server = get_mcp_server_from_zip(mcp_server_zip.archive).unwrap();
+            let import_mcp_server_result = import_mcp_server(db.clone(), mcp_server).await;
+            if let Err(err) = import_mcp_server_result {
+                println!("Error importing MCP server: {:?}", err);
+            } else {
+                println!("Successfully imported MCP server.");
+            }
+        }
     }
+    Ok(())
+}
+
+pub async fn import_mcp_server(db: Arc<SqliteManager>, mcp_server: MCPServer) -> Result<(), APIError> {
+    println!("[IMPORTING MCP SERVER]: {}", mcp_server.name);
+    let exists = db
+        .check_if_server_exists(&mcp_server.r#type, &mcp_server.get_command_hash(), &mcp_server.url)
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Database Error".to_string(),
+            message: format!("Failed to check if MCP server exists: {}", e),
+        })?;
+    if exists {
+        return Ok(());
+    }
+    db.add_mcp_server(
+        mcp_server.name,
+        mcp_server.r#type,
+        mcp_server.url,
+        mcp_server.command.clone(),
+        mcp_server.env.clone(),
+        mcp_server.is_enabled.clone(),
+    )
+    .map_err(|e| APIError {
+        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        error: "Database Error".to_string(),
+        message: format!("Failed to save MCP server to database: {}", e),
+    })?;
     Ok(())
 }
 
@@ -1131,10 +1206,43 @@ pub fn get_agent_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> 
     Ok(agent)
 }
 
+pub fn get_mcp_server_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> Result<MCPServer, APIError> {
+    // Extract and parse tool.json
+    let mut buffer = Vec::new();
+    {
+        let mut file = match archive.by_name("__mcp_server.json") {
+            Ok(file) => file,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server Zip".to_string(),
+                    message: "Archive does not contain __mcp_server.json".to_string(),
+                };
+                return Err(api_error);
+            }
+        };
+
+        if let Err(err) = file.read_to_end(&mut buffer) {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read mcp_server.json: {}", err),
+            };
+            return Err(api_error);
+        }
+    }
+    let mcp_server: MCPServer = serde_json::from_slice(&buffer).map_err(|e| APIError {
+        code: StatusCode::BAD_REQUEST.as_u16(),
+        error: "Invalid MCP Server JSON".to_string(),
+        message: format!("Failed to parse mcp_server.json: {}", e),
+    })?;
+    Ok(mcp_server)
+}
+
 async fn bytes_to_zip_tool(
     mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>,
     file_name: String,
-    is_tool: bool, // if not is agent
+    zip_dependency_file_name: ZipDependencyFileName,
 ) -> Result<ZipFileContents, APIError> {
     // Extract and parse file
     let mut zip_buffer = Vec::new();
@@ -1166,13 +1274,14 @@ async fn bytes_to_zip_tool(
 
     let mut tool_agent_buffer: Vec<u8> = Vec::new();
     {
-        let mut file = match return_archive.by_name(if is_tool { "__tool.json" } else { "__agent.json" }) {
+        let expected_file_name = zip_dependency_file_name.as_str();
+        let mut file = match return_archive.by_name(expected_file_name) {
             Ok(file) => file,
             Err(_) => {
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Invalid Zip File".to_string(),
-                    message: "Archive does not contain __tool.json".to_string(),
+                    message: format!("Archive does not contain {}", expected_file_name),
                 });
             }
         };

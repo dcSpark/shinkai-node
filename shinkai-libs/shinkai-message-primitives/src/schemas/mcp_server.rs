@@ -28,9 +28,9 @@ impl MCPServer {
     }
     pub fn get_command_hash(&self) -> String {
         // Create a string to hash based on the command and related fields
-        let command_string = match &self.command {
-            Some(cmd) => cmd.trim().to_string(),
-            None => String::new(),
+        let command_string = match self.r#type {
+            MCPServerType::Command => self.command.clone().unwrap_or_default().trim().to_string(),
+            MCPServerType::Sse => self.url.clone().unwrap_or_default().trim().to_string(),
         };
 
         // Create a hasher and hash the command string
