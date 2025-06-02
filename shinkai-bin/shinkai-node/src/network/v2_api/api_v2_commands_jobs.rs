@@ -1748,7 +1748,17 @@ impl Node {
 
                 for messages in v2_chat_messages {
                     for message in messages {
-                        result_messages.push_str(&format!("{}\n\n", message.job_message.content));
+                        let role = if message
+                            .sender_subidentity
+                            .to_lowercase()
+                            .contains("/agent/")
+                        {
+                            "assistant"
+                        } else {
+                            "user"
+                        };
+
+                        result_messages.push_str(&format!("{}: {}\n\n", role, message.job_message.content));
 
                         for file in &message.job_message.fs_files_paths {
                             result_messages.push_str(&format!("Attached file: {}\n\n", file));
