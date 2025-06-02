@@ -55,8 +55,6 @@ fn change_nodes_name_test() {
         let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
-
         assert!(port_is_available(8080), "Port 8080 is not available");
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -166,8 +164,6 @@ fn change_nodes_name_test() {
             bounded(100);
 
         let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
-
         assert!(port_is_available(8080), "Port 8080 is not available");
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);

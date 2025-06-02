@@ -26,23 +26,19 @@ mod tests {
         std::env::set_var("IS_TESTING", "1");
         let e = rt.block_on(async {
             let node1_identity_name = "@@node1_test.sep-shinkai";
-            let node1_subidentity_name = "main";
-            let node1_device_name = "node1_device";
-
             let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-            let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+            let (node1_encryption_sk, _node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
             let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
                 bounded(100);
 
-            let (node1_profile_identity_sk, _) = unsafe_deterministic_signature_keypair(100);
-            let (node1_profile_encryption_sk, _) = unsafe_deterministic_encryption_keypair(100);
+            let (_node1_profile_identity_sk, _) = unsafe_deterministic_signature_keypair(100);
+            let (_node1_profile_encryption_sk, _) = unsafe_deterministic_encryption_keypair(100);
 
-            let (node1_device_identity_sk, _) = unsafe_deterministic_signature_keypair(200);
-            let (node1_device_encryption_sk, _) = unsafe_deterministic_encryption_keypair(200);
+            let (_node1_device_identity_sk, _) = unsafe_deterministic_signature_keypair(200);
+            let (_node1_device_encryption_sk, _) = unsafe_deterministic_encryption_keypair(200);
 
             let node1_db_path = "tests/db_for_testing/test".to_string();
-            let node1_vector_fs_path = "tests/vector_fs_db_for_testing/test".to_string();
 
             fn port_is_available(port: u16) -> bool {
                 match TcpListener::bind(("127.0.0.1", port)) {
