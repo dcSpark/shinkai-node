@@ -1106,8 +1106,6 @@ mod tests {
     use shinkai_message_primitives::schemas::shinkai_tool_offering::ToolPrice;
     use shinkai_message_primitives::schemas::shinkai_tool_offering::UsageType;
     use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
-    use shinkai_message_primitives::schemas::wallet_mixed::Asset;
-    use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
     use shinkai_message_primitives::schemas::x402_types::Network;
     use shinkai_message_primitives::schemas::x402_types::PaymentRequirements;
     use shinkai_tools_primitives::tools::deno_tools::DenoTool;
@@ -1125,7 +1123,6 @@ mod tests {
 
     // Imports for placeholder enums and MCPServer tests
     use chrono::Utc;
-    use serde::{Deserialize, Serialize};
 
     // Test-specific imports for the new tests
     use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
@@ -3054,7 +3051,7 @@ mod tests {
             result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
             tool_set: None,
             mcp_server_ref: mcp_server_id,
-            mcp_server_command_hash: "abcdef012345".to_string(),
+            mcp_server_command_hash: Some("abcdef012345".to_string()),
         };
         ShinkaiTool::MCPServer(mcp_tool_data, true)
     }
