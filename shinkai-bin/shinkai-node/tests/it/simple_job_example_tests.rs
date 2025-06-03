@@ -16,7 +16,7 @@ async fn simple_job_message_test(ctx: TestContext) {
     std::env::set_var("WELCOME_MESSAGE", "false");
     std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
     std::env::set_var("IS_TESTING", "1");
-    let mut server = Server::new();
+    let mut server = Server::new_async().await;
 
     {
         eprintln!("\n\nSetting up mock OpenAI server");
@@ -45,7 +45,8 @@ async fn simple_job_message_test(ctx: TestContext) {
                             }
                         }"#,
             )
-            .create();
+            .create_async()
+            .await;
     }
 
     ctx.register_device().await.unwrap();
