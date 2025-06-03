@@ -19,6 +19,7 @@ use tokio_rustls::rustls::{self, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 use utoipa::ToSchema;
 use warp::Filter;
+use warp::compression::{gzip, brotli};
 
 #[derive(serde::Serialize, ToSchema, Debug, Clone)]
 pub struct SendResponseBodyData {
@@ -164,8 +165,14 @@ pub async fn run_api(
             .with(cors.clone()),
     );
 
-    // Combine all routes
-    let routes = v2_routes.or(mcp_routes).or(ws_routes).with(log).with(cors);
+    // Combine all routes and enable gzip and brotli compression
+    let routes = v2_routes
+        .or(mcp_routes)
+        .or(ws_routes)
+        .with(log)
+        .with(cors)
+        .with(gzip())
+        .with(brotli());
 
     // Wrap the HTTP server in an async block that returns a Result
     let http_server = async {

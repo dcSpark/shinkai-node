@@ -33,7 +33,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 base64 = { workspace = true }
 async-trait = { workspace = true }
-warp = { workspace = true, features = ["compression-gzip"] }
+warp = { workspace = true, features = ["compression", "compression-gzip", "compression-brotli"] }
 x25519-dalek = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }
