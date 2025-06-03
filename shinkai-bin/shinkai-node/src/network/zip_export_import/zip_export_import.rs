@@ -14,6 +14,7 @@ use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
+use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use std::collections::HashMap;
@@ -818,6 +819,12 @@ pub async fn import_dependencies_tools(
     let archive_clone = zip_contents.clone();
     let file_list: Vec<&str> = archive_clone.file_names().collect();
     println!("Files:\n{}", file_list.join("\n"));
+    // Check if the zip already contains tool archives. If it doesn't,
+    // we'll fetch the tools from the MCP server directly when importing
+    // the server.
+    let tools_included = file_list
+        .iter()
+        .any(|f| f.starts_with("__tools/") && *f != "__tools/");
     for file_name_str in file_list {
         if file_name_str.starts_with("__tools/") && file_name_str != "__tools/" {
             let tool_zip = match bytes_to_zip_tool(
@@ -898,7 +905,7 @@ pub async fn import_dependencies_tools(
                 db.clone(),
                 mcp_server,
                 full_identity.get_node_name_string().to_string(),
-                false,
+                !tools_included,
             )
             .await;
             if let Err(err) = import_mcp_server_result {
@@ -929,23 +936,45 @@ pub async fn import_mcp_server(
             error: "Database Error".to_string(),
             message: format!("Failed to check if MCP server exists: {}", e),
         })?;
-    if exists {
-        return Ok(());
-    }
-    let mcp_server = db
-        .add_mcp_server(
-            mcp_server.name,
-            mcp_server.r#type,
-            mcp_server.url,
-            mcp_server.command.clone(),
-            mcp_server.env.clone(),
-            mcp_server.is_enabled.clone(),
-        )
-        .map_err(|e| APIError {
-            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            error: "Database Error".to_string(),
-            message: format!("Failed to save MCP server to database: {}", e),
-        })?;
+
+    // Retrieve existing server if present, otherwise insert a new one
+    let mcp_server = if exists {
+        let servers = db
+            .get_all_mcp_servers()
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to list MCP servers: {}", e),
+            })?;
+        servers
+            .into_iter()
+            .find(|s| match mcp_server.r#type {
+                MCPServerType::Command => {
+                    s.command.clone().unwrap_or_default().trim()
+                        == mcp_server.command.clone().unwrap_or_default().trim()
+                }
+                MCPServerType::Sse => {
+                    s.url.clone().unwrap_or_default().trim()
+                        == mcp_server.url.clone().unwrap_or_default().trim()
+                }
+            })
+            .unwrap()
+    } else {
+        db
+            .add_mcp_server(
+                mcp_server.name,
+                mcp_server.r#type,
+                mcp_server.url,
+                mcp_server.command.clone(),
+                mcp_server.env.clone(),
+                mcp_server.is_enabled.clone(),
+            )
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save MCP server to database: {}", e),
+            })?
+    };
     println!("[IMPORTING MCP SERVER]: {}", mcp_server.name);
     if import_tools {
         let tools = match mcp_server.r#type {
@@ -979,11 +1008,21 @@ pub async fn import_mcp_server(
                     &node_name.to_string(),
                     vec![],
                 );
-                db.add_tool(shinkai_tool).await.map_err(|e| APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Database Error".to_string(),
-                    message: format!("Failed to save tool to database: {}", e),
-                })?;
+                if let Err(e) = db.add_tool(shinkai_tool).await {
+                    match e {
+                        SqliteManagerError::ToolAlreadyExists(_) => {
+                            // Ignore if the tool already exists
+                            continue;
+                        }
+                        _ => {
+                            return Err(APIError {
+                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                error: "Database Error".to_string(),
+                                message: format!("Failed to save tool to database: {}", e),
+                            });
+                        }
+                    }
+                }
             }
         }
     }
