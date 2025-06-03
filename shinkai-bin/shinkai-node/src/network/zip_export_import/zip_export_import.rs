@@ -14,10 +14,9 @@ use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
-use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_tools_primitives::tools::agent_tool_wrapper::AgentToolWrapper;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
-use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
+use std::collections::HashSet;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -197,6 +196,7 @@ async fn calculate_zip_dependencies(
         mcp_server_dependencies.insert(mcp_server_id, mcp_server);
     }
 
+
     return Ok(());
 }
 
@@ -205,8 +205,6 @@ fn filter_full_mcp_tools(
     tool_dependencies: &mut HashMap<String, ShinkaiTool>,
     mcp_server_dependencies: &HashMap<String, MCPServer>,
 ) -> Result<(), NodeError> {
-    use std::collections::HashSet;
-
     for (server_id, _) in mcp_server_dependencies {
         let all_tools = db
             .get_all_tools_from_mcp_server(server_id.clone())
@@ -254,7 +252,6 @@ async fn get_dependencies_for_zip(
     mcp_server_dependencies: &HashMap<String, MCPServer>,
 ) -> Result<HashMap<String, Vec<u8>>, NodeError> {
     filter_full_mcp_tools(db.clone(), tool_dependencies, mcp_server_dependencies)?;
-
     let mut zip_files = HashMap::new();
     for (agent_id, _) in agent_dependencies {
         let agent_bytes = match Box::pin(generate_agent_zip(
@@ -867,74 +864,37 @@ pub async fn import_dependencies_tools(
     let archive_clone = zip_contents.clone();
     let file_list: Vec<&str> = archive_clone.file_names().collect();
     println!("Files:\n{}", file_list.join("\n"));
-
-    // Determine if tool archives are included
-    let tools_included = file_list
-        .iter()
-        .any(|f| f.starts_with("__tools/") && *f != "__tools/");
-
-    // First import MCP servers and build a map from command hash to new id
-    let mut server_map: HashMap<String, i64> = HashMap::new();
-    for file_name_str in &file_list {
-        if file_name_str.starts_with("__mcp_servers/") && *file_name_str != "__mcp_servers/" {
-            let mcp_server_zip = bytes_to_zip_tool(
-                zip_contents.clone(),
-                file_name_str.to_string(),
-                ZipDependencyFileName::MCPServer,
-            )
-            .await?;
-            let mcp_server = get_mcp_server_from_zip(mcp_server_zip.archive).unwrap();
-            let command_hash = mcp_server.get_command_hash();
-            match import_mcp_server(
-                db.clone(),
-                mcp_server,
-                full_identity.get_node_name_string().to_string(),
-                !tools_included,
-            )
-            .await
-            {
-                Ok(saved) => {
-                    if let Some(id) = saved.id {
-                        server_map.insert(command_hash, id);
-                    }
-                }
-                Err(err) => {
-                    println!("Error importing MCP server: {:?}", err);
-                }
-            }
-        }
-    }
-
-    // Import tools now and update their MCP server references
-    for file_name_str in &file_list {
-        if file_name_str.starts_with("__tools/") && *file_name_str != "__tools/" {
-            let tool_zip = bytes_to_zip_tool(
+    for file_name_str in file_list {
+        if file_name_str.starts_with("__tools/") && file_name_str != "__tools/" {
+            let tool_zip = match bytes_to_zip_tool(
                 zip_contents.clone(),
                 file_name_str.to_string(),
                 ZipDependencyFileName::Tool,
             )
-            .await?;
-
-            let mut tool: ShinkaiTool = serde_json::from_slice(&tool_zip.buffer).map_err(|e| APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Invalid Tool JSON".to_string(),
-                message: format!("Failed to parse tool.json: {}", e),
-            })?;
-
-            if let ShinkaiTool::MCPServer(ref mut mcp_tool, enabled) = tool {
-                if let Some(hash) = mcp_tool.mcp_server_command_hash.clone() {
-                    if let Some(id) = server_map.get(&hash) {
-                        mcp_tool.mcp_server_ref = id.to_string();
-                        let tool_name = mcp_tool
-                            .mcp_server_tool
-                            .to_lowercase()
-                            .replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
-                        mcp_tool.tool_router_key = Some(MCPServerTool::create_tool_router_key(Some(hash.clone()), tool_name));
-                        tool = ShinkaiTool::MCPServer(mcp_tool.clone(), enabled);
-                    }
+            .await
+            {
+                Ok(tool_zip) => tool_zip,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Tool Archive".to_string(),
+                        message: format!("Failed to extract tool.json: {:?}", err),
+                    };
+                    return Err(api_error);
                 }
-            }
+            };
 
+            let tool: ShinkaiTool = match serde_json::from_slice(&tool_zip.buffer) {
+                Ok(tool) => tool,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Invalid Tool JSON".to_string(),
+                        message: format!("Failed to parse tool.json: {}", err),
+                    };
+                    return Err(api_error);
+                }
+            };
             let import_tool_result = import_tool(db.clone(), node_env.clone(), tool_zip, tool).await;
             if let Err(err) = import_tool_result {
                 println!("Error importing tool: {:?}", err);
@@ -942,17 +902,17 @@ pub async fn import_dependencies_tools(
                 println!("Successfully imported tool.");
             }
         }
-    }
-
-    // Finally import agents
-    for file_name_str in &file_list {
-        if file_name_str.starts_with("__agents/") && *file_name_str != "__agents/" {
-            let agent_zip = bytes_to_zip_tool(
+        if file_name_str.starts_with("__agents/") && file_name_str != "__agents/" {
+            let agent_zip = match bytes_to_zip_tool(
                 zip_contents.clone(),
                 file_name_str.to_string(),
                 ZipDependencyFileName::Agent,
             )
-            .await?;
+            .await
+            {
+                Ok(agent_zip) => agent_zip,
+                Err(err) => return Err(err),
+            };
             let agent = get_agent_from_zip(agent_zip.archive).unwrap();
             let import_agent_result = import_agent(
                 db.clone(),
@@ -968,8 +928,27 @@ pub async fn import_dependencies_tools(
                 println!("Successfully imported agent.");
             }
         }
+        if file_name_str.starts_with("__mcp_servers/") && file_name_str != "__mcp_servers/" {
+            let mcp_server_zip = match bytes_to_zip_tool(
+                zip_contents.clone(),
+                file_name_str.to_string(),
+                ZipDependencyFileName::MCPServer,
+            )
+            .await
+            {
+                Ok(mcp_server_zip) => mcp_server_zip,
+                Err(err) => return Err(err),
+            };
+            let mcp_server = get_mcp_server_from_zip(mcp_server_zip.archive).unwrap();
+            let import_mcp_server_result =
+                import_mcp_server(db.clone(), mcp_server, full_identity.get_node_name_string().to_string()).await;
+            if let Err(err) = import_mcp_server_result {
+                println!("Error importing MCP server: {:?}", err);
+            } else {
+                println!("Successfully imported MCP server.");
+            }
+        }
     }
-
     Ok(())
 }
 
@@ -977,8 +956,7 @@ pub async fn import_mcp_server(
     db: Arc<SqliteManager>,
     mcp_server: MCPServer,
     node_name: String,
-    import_tools: bool,
-) -> Result<MCPServer, APIError> {
+) -> Result<(), APIError> {
     println!("[IMPORTING MCP SERVER]: {}", mcp_server.name);
     let exists = db
         .check_if_server_exists(
@@ -991,97 +969,57 @@ pub async fn import_mcp_server(
             error: "Database Error".to_string(),
             message: format!("Failed to check if MCP server exists: {}", e),
         })?;
-
-    // Retrieve existing server if present, otherwise insert a new one
-    let mcp_server = if exists {
-        let servers = db
-            .get_all_mcp_servers()
-            .map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Database Error".to_string(),
-                message: format!("Failed to list MCP servers: {}", e),
-            })?;
-        servers
-            .into_iter()
-            .find(|s| match mcp_server.r#type {
-                MCPServerType::Command => {
-                    s.command.clone().unwrap_or_default().trim()
-                        == mcp_server.command.clone().unwrap_or_default().trim()
-                }
-                MCPServerType::Sse => {
-                    s.url.clone().unwrap_or_default().trim()
-                        == mcp_server.url.clone().unwrap_or_default().trim()
-                }
-            })
-            .unwrap()
-    } else {
-        db
-            .add_mcp_server(
-                mcp_server.name,
-                mcp_server.r#type,
-                mcp_server.url,
-                mcp_server.command.clone(),
-                mcp_server.env.clone(),
-                mcp_server.is_enabled.clone(),
-            )
-            .map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Database Error".to_string(),
-                message: format!("Failed to save MCP server to database: {}", e),
-            })?
-    };
+    if exists {
+        return Ok(());
+    }
+    let mcp_server = db
+        .add_mcp_server(
+            mcp_server.name,
+            mcp_server.r#type,
+            mcp_server.url,
+            mcp_server.command.clone(),
+            mcp_server.env.clone(),
+            mcp_server.is_enabled.clone(),
+        )
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Database Error".to_string(),
+            message: format!("Failed to save MCP server to database: {}", e),
+        })?;
     println!("[IMPORTING MCP SERVER]: {}", mcp_server.name);
-    if import_tools {
-        let tools = match mcp_server.r#type {
-            MCPServerType::Command => {
-                let tools = list_tools_via_command(
-                    &mcp_server.command.clone().unwrap_or_default().to_string(),
-                    None,
-                )
+    let tools = match mcp_server.r#type {
+        MCPServerType::Command => {
+            let tools = list_tools_via_command(&mcp_server.command.clone().unwrap_or_default().to_string(), None)
                 .await
                 .map_err(|e| println!("Failed to list tools: {:?}", e));
-                tools
-            }
-            MCPServerType::Sse => {
-                let tools = list_tools_via_sse(
-                    &mcp_server.url.clone().unwrap_or_default().to_string(),
-                    None,
-                )
+            tools
+        }
+        MCPServerType::Sse => {
+            let tools = list_tools_via_sse(&mcp_server.url.clone().unwrap_or_default().to_string(), None)
                 .await
                 .map_err(|e| println!("Failed to list tools: {:?}", e));
-                tools
-            }
-        };
-        if let Ok(tools) = tools {
-            for tool in tools {
-                println!("[IMPORTING TOOL]: {}", tool.name);
-                let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
-                    &tool,
-                    &mcp_server.name,
-                    &mcp_server.id.unwrap_or(0).to_string(),
-                    &mcp_server.command.clone().unwrap_or_default().to_string(),
-                    &node_name.to_string(),
-                    vec![],
-                );
-                if let Err(e) = db.add_tool(shinkai_tool).await {
-                    match e {
-                        SqliteManagerError::ToolAlreadyExists(_) => {
-                            // Ignore if the tool already exists
-                            continue;
-                        }
-                        _ => {
-                            return Err(APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Database Error".to_string(),
-                                message: format!("Failed to save tool to database: {}", e),
-                            });
-                        }
-                    }
-                }
-            }
+            tools
+        }
+    };
+    if let Ok(tools) = tools {
+        for tool in tools {
+            println!("[IMPORTING TOOL]: {}", tool.name);
+            let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                &tool,
+                &mcp_server.name,
+                &mcp_server.id.unwrap_or(0).to_string(),
+                &mcp_server.command.clone().unwrap_or_default().to_string(),
+                &node_name.to_string(),
+                vec![],
+            );
+            db.add_tool(shinkai_tool).await.map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save tool to database: {}", e),
+            })?;
         }
     }
-    Ok(mcp_server)
+    Ok(())
 }
 
 pub async fn import_tool(
