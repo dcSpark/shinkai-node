@@ -962,7 +962,7 @@ pub async fn import_mcp_server(
                 &tool,
                 &mcp_server.name,
                 &mcp_server.id.unwrap_or(0).to_string(),
-                &mcp_server.command.clone().unwrap_or_default().to_string(),
+                &mcp_server.get_command_hash(),
                 &node_name.to_string(),
                 vec![],
             );
