@@ -34,7 +34,6 @@ tracing-subscriber = "0.3.18"
 anyhow = { workspace = true }
 rmcp = { workspace = true, features = ["server", "macros"] }
 tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
-async-compression = "0.4"
 
 [dependencies.serde]
 workspace = true
