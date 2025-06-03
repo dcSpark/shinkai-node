@@ -52,17 +52,18 @@ pub async fn get_identity_data(
 ) -> Result<Output, RunError> {
     let code = include_str!("getIdentityDataImpl.ts");
 
+    let per_rpc_timeout = Duration::from_secs(5);
     let configurations = Configurations {
-        rpc_urls,
+        rpc_urls: rpc_urls.clone(),
         contract_address,
         contract_abi,
-        timeout_rpc_request_ms: 5000,
+        timeout_rpc_request_ms: per_rpc_timeout.as_millis() as u64,
     };
 
     // The JsonRpcProvider has some issues https://github.com/ethers-io/ethers.js/issues/4377
     // and the are some casses where even with a real timeout on the network layer the node/deno process remains opened
     // so we need to set a custom timeout on top of the process
-    let execution_timeout = Some(Duration::from_secs(7));
+    let execution_timeout = Some(per_rpc_timeout * rpc_urls.len() as u32);
     let runner = NonRustCodeRunnerFactory::new("get_identity_data", code, vec![])
         .with_runtime(NonRustRuntime::Deno)
         .create_runner(configurations);
@@ -118,6 +119,26 @@ mod tests {
             vec![
                 "https://sepolia.base.org".to_string(),
                 "https://base-sepolia.blockpi.network/v1/rpc/public".to_string(),
+                "https://base-sepolia-rpc.publicnode.com".to_string(),
+            ],
+            "0x425Fb20ba3874e887336aAa7f3fab32D08135BA9".to_string(),
+            include_str!("../../../shinkai-crypto-identities/src/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json")
+                .to_string(),
+            "official.sep-shinkai".to_string(),
+        )
+        .await;
+        println!("output: {:?}", output);
+        assert!(output.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_identity_data_hanging_forever() {
+        let _dir = testing_create_tempdir_and_set_env_var();
+        let output = get_identity_data(
+            vec![
+                "https://api.shinkai.com".to_string(),
+                "https://base-sepolia.blockpi.network/v1/rpc/public".to_string(),
+                "https://sepolia.base.org".to_string(),
                 "https://base-sepolia-rpc.publicnode.com".to_string(),
             ],
             "0x425Fb20ba3874e887336aAa7f3fab32D08135BA9".to_string(),
