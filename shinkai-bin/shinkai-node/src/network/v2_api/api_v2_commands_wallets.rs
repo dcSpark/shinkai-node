@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::WalletRole, wallet_complementary::WalletSource, x402_types::Network
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Asset, AssetType}, x402_types::Network
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
