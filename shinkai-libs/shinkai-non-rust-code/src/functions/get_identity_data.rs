@@ -116,8 +116,8 @@ mod tests {
         let _dir = testing_create_tempdir_and_set_env_var();
         let output = get_identity_data(
             vec![
-                "https://base-sepolia.blockpi.network/v1/rpc/public".to_string(),
                 "https://sepolia.base.org".to_string(),
+                "https://base-sepolia.blockpi.network/v1/rpc/public".to_string(),
                 "https://base-sepolia-rpc.publicnode.com".to_string(),
             ],
             "0x425Fb20ba3874e887336aAa7f3fab32D08135BA9".to_string(),
