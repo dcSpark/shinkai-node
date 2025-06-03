@@ -200,14 +200,61 @@ async fn calculate_zip_dependencies(
     return Ok(());
 }
 
+fn filter_full_mcp_tools(
+    db: Arc<SqliteManager>,
+    tool_dependencies: &mut HashMap<String, ShinkaiTool>,
+    mcp_server_dependencies: &HashMap<String, MCPServer>,
+) -> Result<(), NodeError> {
+    use std::collections::HashSet;
+
+    for (server_id, _) in mcp_server_dependencies {
+        let all_tools = db
+            .get_all_tools_from_mcp_server(server_id.clone())
+            .map_err(|e| NodeError {
+                message: format!(
+                    "Failed to get tools from MCP server {}: {}",
+                    server_id, e
+                ),
+            })?;
+
+        if all_tools.is_empty() {
+            continue;
+        }
+
+        let all_names: HashSet<String> =
+            all_tools.into_iter().map(|t| t.mcp_server_tool).collect();
+
+        let mut dep_names = HashSet::new();
+        let mut dep_keys = Vec::new();
+        for (key, tool) in tool_dependencies.iter() {
+            if let ShinkaiTool::MCPServer(mcp_tool, _) = tool {
+                if mcp_tool.mcp_server_ref == *server_id {
+                    dep_names.insert(mcp_tool.mcp_server_tool.clone());
+                    dep_keys.push(key.clone());
+                }
+            }
+        }
+
+        if !dep_names.is_empty() && dep_names == all_names {
+            for key in dep_keys {
+                tool_dependencies.remove(&key);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn get_dependencies_for_zip(
     db: Arc<SqliteManager>,
     shinkai_name: ShinkaiName,
     node_env: NodeEnvironment,
     agent_dependencies: &HashMap<String, Agent>,
-    tool_dependencies: &HashMap<String, ShinkaiTool>,
+    tool_dependencies: &mut HashMap<String, ShinkaiTool>,
     mcp_server_dependencies: &HashMap<String, MCPServer>,
 ) -> Result<HashMap<String, Vec<u8>>, NodeError> {
+    filter_full_mcp_tools(db.clone(), tool_dependencies, mcp_server_dependencies)?;
+
     let mut zip_files = HashMap::new();
     for (agent_id, _) in agent_dependencies {
         let agent_bytes = match Box::pin(generate_agent_zip(
@@ -356,7 +403,7 @@ pub async fn generate_agent_zip(
             shinkai_name.clone(),
             node_env.clone(),
             &agent_dependencies,
-            &tool_dependencies,
+            &mut tool_dependencies,
             &mcp_server_dependencies,
         )
         .await
@@ -544,7 +591,7 @@ pub async fn generate_tool_zip(
             shinkai_name,
             node_env.clone(),
             &agent_dependencies,
-            &tool_dependencies,
+            &mut tool_dependencies,
             &mcp_server_dependencies,
         )
         .await
