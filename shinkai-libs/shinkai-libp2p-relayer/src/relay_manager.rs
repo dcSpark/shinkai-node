@@ -340,10 +340,6 @@ impl RelayManager {
         
         println!("Routing ShinkaiMessage from {} to {}", sender, recipient);
         
-        // Serialize the message for forwarding
-        let data = serde_json::to_vec(&shinkai_message)
-            .map_err(|e| LibP2PRelayError::MessageDeliveryFailed(format!("Failed to serialize message: {}", e)))?;
-        
         // Extract the node name from the recipient (remove subidentity parts)
         let target_node = if let Ok(parsed_name) = shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(recipient.clone()) {
             parsed_name.get_node_name_string()
@@ -355,18 +351,15 @@ impl RelayManager {
         let topic_name = format!("shinkai-{}", target_node);
         let topic = gossipsub::IdentTopic::new(topic_name.clone());
         
-        // Subscribe to the topic if not already subscribed
-        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&topic);
-        
-        // Publish the message to the appropriate topic
-        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, data) {
-            return Err(LibP2PRelayError::MessageDeliveryFailed(format!(
-                "Failed to route message to topic {}: {:?}",
-                topic_name, e
-            )));
+        // Subscribe to the topic if not already subscribed (this allows us to relay messages)
+        if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
+            println!("Already subscribed to topic {}: {}", topic_name, e);
         }
         
-        println!("Successfully routed ShinkaiMessage from {} to topic: {}", sender, topic_name);
+        // Don't republish the message - just ensure we're subscribed to relay it
+        // The gossipsub protocol will automatically relay messages to subscribed peers
+        println!("Relay is now subscribing to topic: {} to relay messages for {}", topic_name, target_node);
+        
         Ok(())
     }
 
