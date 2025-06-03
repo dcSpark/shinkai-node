@@ -62,6 +62,7 @@ impl SqliteManager {
 
     pub fn add_mcp_server(
         &self,
+        id: Option<i64>,
         name: String,
         r#type: MCPServerType,
         url: Option<String>,
@@ -70,10 +71,12 @@ impl SqliteManager {
         is_enabled: bool,
     ) -> Result<MCPServer, SqliteManagerError> {
         let conn = self.get_connection()?;
-        let id: i64 = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let id: i64 = id.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64
+        });
         let mut stmt = conn.prepare(
             "INSERT INTO mcp_servers (id, name, type, url, command, env, is_enabled) 
              VALUES (?, ?, ?, ?, ?, ?, ?) 
@@ -318,6 +321,7 @@ mod tests {
         let initial_env = create_test_mcp_server_env();
         let original_server = manager
             .add_mcp_server(
+                None,
                 "Test MCP Server".to_string(),
                 MCPServerType::Command,
                 Some("http://original.example.com".to_string()),
@@ -393,6 +397,7 @@ mod tests {
         let initial_env = create_test_mcp_server_env();
         let original_server = manager
             .add_mcp_server(
+                None,
                 "Test Server".to_string(),
                 MCPServerType::Command,
                 Some("http://example.com".to_string()),
@@ -456,6 +461,7 @@ mod tests {
         // Add a server
         let original_server = manager
             .add_mcp_server(
+                None,
                 "Test Server".to_string(),
                 MCPServerType::Command,
                 None,
@@ -512,6 +518,7 @@ mod tests {
         let initial_env = create_test_mcp_server_env();
         let added_server = manager
             .add_mcp_server(
+                None,
                 "Lifecycle Test Server".to_string(),
                 MCPServerType::Command,
                 Some("http://initial.example.com".to_string()),

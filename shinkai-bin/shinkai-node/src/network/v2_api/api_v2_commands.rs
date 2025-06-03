@@ -2374,6 +2374,7 @@ impl Node {
 
         // Add the MCP server to the database
         match db.add_mcp_server(
+            None,
             mcp_server.name.clone(), // Clone name for db insertion
             mcp_server.r#type,
             mcp_server.url.clone(),

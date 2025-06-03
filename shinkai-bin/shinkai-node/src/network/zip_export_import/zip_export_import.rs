@@ -928,6 +928,7 @@ pub async fn import_mcp_server(
     }
     let mcp_server = db
         .add_mcp_server(
+            mcp_server.id,
             mcp_server.name,
             mcp_server.r#type,
             mcp_server.url,
