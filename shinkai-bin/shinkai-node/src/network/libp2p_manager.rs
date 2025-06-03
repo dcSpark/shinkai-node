@@ -120,11 +120,13 @@ impl LibP2PManager {
         // Subscribe to default shinkai topic
         let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
         gossipsub.subscribe(&shinkai_topic)?;
+        #[cfg(feature = "debug")]
         eprintln!(">> DEBUG: LibP2P {} subscribed to topic: 'shinkai-network'", node_name);
 
         // Also subscribe to node-specific topics to receive messages addressed to this node
         let node_topic = gossipsub::IdentTopic::new(format!("shinkai-{}", node_name));
         gossipsub.subscribe(&node_topic)?;
+        #[cfg(feature = "debug")]
         eprintln!(">> DEBUG: LibP2P {} subscribed to topic: 'shinkai-{}'", node_name, node_name);
         
         // Subscribe to the base node name (without subidentity) for broader message reception
@@ -132,6 +134,7 @@ impl LibP2PManager {
             let base_node_name = parsed_name.get_node_name_string();
             let base_topic = gossipsub::IdentTopic::new(format!("shinkai-{}", base_node_name));
             gossipsub.subscribe(&base_topic)?;
+            #[cfg(feature = "debug")]
             eprintln!(">> DEBUG: LibP2P {} subscribed to base topic: 'shinkai-{}'", node_name, base_node_name);
         }
 

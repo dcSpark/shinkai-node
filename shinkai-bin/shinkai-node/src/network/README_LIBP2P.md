@@ -14,9 +14,7 @@ The main component that manages the libp2p swarm and handles networking events. 
 
 - **Protocols Used:**
   - GossipSub: For message broadcasting and pub/sub communication
-  - mDNS: For local peer discovery
   - Identify: For peer identification and capability exchange
-  - Kademlia: For distributed hash table and peer routing
   - Ping: For connection health monitoring
   - DCUtR: For NAT traversal and hole punching
 
@@ -24,7 +22,6 @@ The main component that manages the libp2p swarm and handles networking events. 
   - Deterministic peer ID generation based on node name
   - Message broadcasting to topics
   - Direct peer-to-peer messaging
-  - Automatic peer discovery via mDNS
 
 ### 2. ShinkaiMessageHandler (`libp2p_message_handler.rs`)
 
@@ -46,12 +43,10 @@ The Node struct has been updated to include:
 
 1. **Initialization**: When a Node starts, it initializes the libp2p manager with:
    - A deterministic keypair based on the node name
-   - Network behaviors (GossipSub, mDNS, Identify, etc.)
+   - Network behaviors (GossipSub, Identify, etc.)
    - A message handler that integrates with existing Shinkai logic
 
-2. **Peer Discovery**: Nodes automatically discover each other through:
-   - mDNS for local network discovery
-   - Kademlia DHT for wider network discovery
+2. **Peer Discovery**: Nodes automatically discover each other through the relay network or direct connections
 
 3. **Message Sending**: The `send` method has been updated to:
    - First attempt to use libp2p for peer communication
@@ -109,11 +104,9 @@ Node::send(
 
 The integration uses libp2p 0.53 with the following features:
 - gossipsub
-- mdns
 - noise
 - yamux
 - tcp
-- kad
 - dcutr
 - identify
 - ping
