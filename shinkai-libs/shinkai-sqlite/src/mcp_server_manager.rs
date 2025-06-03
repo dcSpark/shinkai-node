@@ -62,6 +62,7 @@ impl SqliteManager {
 
     pub fn add_mcp_server(
         &self,
+        id: Option<i64>,
         name: String,
         r#type: MCPServerType,
         url: Option<String>,
@@ -70,18 +71,26 @@ impl SqliteManager {
         is_enabled: bool,
     ) -> Result<MCPServer, SqliteManagerError> {
         let conn = self.get_connection()?;
+        let id: i64 = id.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64
+        });
         let mut stmt = conn.prepare(
-            "INSERT INTO mcp_servers (name, type, url, command, env, is_enabled) 
-             VALUES (?, ?, ?, ?, ?, ?) 
+            "INSERT INTO mcp_servers (id, name, type, url, command, env, is_enabled) 
+             VALUES (?, ?, ?, ?, ?, ?, ?) 
              RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
         )?;
 
         let mut rows = stmt.query([
+            id.to_string(),
             name.clone(),
             r#type.to_string(),
             url.clone().unwrap_or("".to_string()),
             command.clone().unwrap_or("".to_string()),
-            env.map(|e| serde_json::to_string(&e).unwrap())
+            env.as_ref()
+                .map(|e| serde_json::to_string(&e).unwrap())
                 .unwrap_or_else(|| "{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
         ])?;
@@ -128,7 +137,7 @@ impl SqliteManager {
             env.map(|e| serde_json::to_string(&e).unwrap())
                 .unwrap_or_else(|| "{}".to_string()),
             if is_enabled { 1.to_string() } else { 0.to_string() },
-            (id as i32).to_string(),
+            (id as i64).to_string(),
         ])?;
         match rows.next()? {
             Some(row) => Ok(MCPServer {
@@ -161,8 +170,7 @@ impl SqliteManager {
         let mut stmt = conn.prepare(
             "UPDATE mcp_servers SET is_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled"
         )?;
-        let mut rows = stmt.query([is_enabled as i32, id as i32])?;
-
+        let mut rows = stmt.query([if is_enabled { 1.to_string() } else { 0.to_string() }, id.to_string()])?;
         match rows.next()? {
             Some(row) => Ok(MCPServer {
                 id: row.get(0)?,
@@ -180,6 +188,103 @@ impl SqliteManager {
             }),
             None => Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
         }
+    }
+
+    pub fn add_mcp_server_with_id(
+        &self,
+        id: i64,
+        name: String,
+        r#type: MCPServerType,
+        url: Option<String>,
+        command: Option<String>,
+        env: Option<MCPServerEnv>,
+        is_enabled: bool,
+    ) -> Result<MCPServer, SqliteManagerError> {
+        let conn = self.get_connection()?;
+
+        let mut stmt = conn.prepare(
+            "INSERT INTO mcp_servers (id, name, type, url, command, env, is_enabled) 
+             VALUES (?, ?, ?, ?, ?, ?, ?) 
+             RETURNING id, created_at, updated_at, name, type, url, command, env, is_enabled",
+        )?;
+
+        let mut rows = stmt.query([
+            id.to_string(),
+            name.clone(),
+            r#type.to_string(),
+            url.clone().unwrap_or("".to_string()),
+            command.clone().unwrap_or("".to_string()),
+            env.as_ref()
+                .map(|e| serde_json::to_string(&e).unwrap())
+                .unwrap_or_else(|| "{}".to_string()),
+            if is_enabled { 1.to_string() } else { 0.to_string() },
+        ])?;
+
+        match rows.next()? {
+            Some(row) => Ok(MCPServer {
+                id: row.get(0)?,
+                created_at: row.get(1)?,
+                updated_at: row.get(2)?,
+                name: row.get(3)?,
+                r#type: MCPServerType::from_str(&row.get::<_, String>(4)?).unwrap(),
+                url: row.get(5)?,
+                command: row.get(6)?,
+                env: {
+                    let env_str: Option<String> = row.get(7)?;
+                    env_str.map(|s| serde_json::from_str(&s).unwrap_or_default())
+                },
+                is_enabled: row.get::<_, bool>(8)?,
+            }),
+            None => {
+                log::error!("Insert query returned no rows");
+                Err(SqliteManagerError::DatabaseError(rusqlite::Error::QueryReturnedNoRows))
+            }
+        }
+    }
+    pub fn check_if_server_exists(
+        &self,
+        r#type: &MCPServerType,
+        command: String,
+        url: String,
+    ) -> Result<bool, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT id, name, type, url, command FROM mcp_servers")?;
+        let mut rows = stmt.query([])?;
+        let mut result: bool = false;
+        while let Some(row) = rows.next()? {
+            let server: MCPServer = MCPServer {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                r#type: MCPServerType::from_str(&row.get::<_, String>(2)?).unwrap(),
+                url: row.get(3)?,
+                command: row.get(4)?,
+                created_at: None,
+                updated_at: None,
+                env: None,
+                is_enabled: true,
+            };
+            match r#type {
+                MCPServerType::Command => {
+                    let server_command = server.command;
+                    if let Some(server_command) = server_command {
+                        if server_command.trim() == command.trim() {
+                            result = true;
+                            break;
+                        }
+                    }
+                }
+                MCPServerType::Sse => {
+                    let server_url = server.url;
+                    if let Some(server_url) = server_url {
+                        if server_url.trim() == url.trim() {
+                            result = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(result)
     }
 }
 
@@ -216,6 +321,7 @@ mod tests {
         let initial_env = create_test_mcp_server_env();
         let original_server = manager
             .add_mcp_server(
+                None,
                 "Test MCP Server".to_string(),
                 MCPServerType::Command,
                 Some("http://original.example.com".to_string()),
@@ -291,6 +397,7 @@ mod tests {
         let initial_env = create_test_mcp_server_env();
         let original_server = manager
             .add_mcp_server(
+                None,
                 "Test Server".to_string(),
                 MCPServerType::Command,
                 Some("http://example.com".to_string()),
@@ -354,6 +461,7 @@ mod tests {
         // Add a server
         let original_server = manager
             .add_mcp_server(
+                None,
                 "Test Server".to_string(),
                 MCPServerType::Command,
                 None,
@@ -400,5 +508,96 @@ mod tests {
         } else {
             panic!("Environment should not be None");
         }
+    }
+
+    #[tokio::test]
+    async fn test_add_update_and_disable_mcp_server_lifecycle() {
+        let manager = setup_test_db().await;
+
+        // Step 1: Add an MCP server
+        let initial_env = create_test_mcp_server_env();
+        let added_server = manager
+            .add_mcp_server(
+                None,
+                "Lifecycle Test Server".to_string(),
+                MCPServerType::Command,
+                Some("http://initial.example.com".to_string()),
+                Some("npx initial-command".to_string()),
+                Some(initial_env.clone()),
+                true, // Initially enabled
+            )
+            .unwrap();
+
+        let server_id = added_server.id.unwrap();
+
+        // Verify the server was added correctly
+        assert_eq!(added_server.name, "Lifecycle Test Server");
+        assert_eq!(added_server.r#type, MCPServerType::Command);
+        assert_eq!(added_server.url, Some("http://initial.example.com".to_string()));
+        assert_eq!(added_server.command, Some("npx initial-command".to_string()));
+        assert_eq!(added_server.env, Some(initial_env));
+        assert!(added_server.is_enabled);
+
+        // Step 2: Update the server with new values
+        let mut updated_env = HashMap::new();
+        updated_env.insert("API_KEY".to_string(), "updated_lifecycle_key".to_string());
+        updated_env.insert("ENVIRONMENT".to_string(), "production".to_string());
+
+        let updated_server = manager
+            .update_mcp_server(
+                server_id,
+                "Updated Lifecycle Server".to_string(),
+                MCPServerType::Sse,
+                Some("https://updated.lifecycle.com".to_string()),
+                Some("npx updated-lifecycle-command".to_string()),
+                Some(updated_env.clone()),
+                true, // Keep enabled during update
+            )
+            .unwrap();
+
+        // Verify the server was updated correctly
+        assert_eq!(updated_server.id, Some(server_id));
+        assert_eq!(updated_server.name, "Updated Lifecycle Server");
+        assert_eq!(updated_server.r#type, MCPServerType::Sse);
+        assert_eq!(updated_server.url, Some("https://updated.lifecycle.com".to_string()));
+        assert_eq!(
+            updated_server.command,
+            Some("npx updated-lifecycle-command".to_string())
+        );
+        assert_eq!(updated_server.env, Some(updated_env));
+        assert!(updated_server.is_enabled);
+
+        // Step 3: Disable the server using the enabled status update method
+        let disabled_server = manager.update_mcp_server_enabled_status(server_id, false).unwrap();
+
+        // Verify the server was disabled correctly
+        assert_eq!(disabled_server.id, Some(server_id));
+        assert_eq!(disabled_server.name, "Updated Lifecycle Server"); // Name should remain the same
+        assert_eq!(disabled_server.r#type, MCPServerType::Sse); // Type should remain the same
+        assert_eq!(disabled_server.url, Some("https://updated.lifecycle.com".to_string())); // URL should remain the same
+        assert_eq!(
+            disabled_server.command,
+            Some("npx updated-lifecycle-command".to_string())
+        ); // Command should remain the same
+        assert!(!disabled_server.is_enabled); // Should now be disabled
+
+        // Verify environment was preserved during disable operation
+        if let Some(env) = disabled_server.env {
+            assert_eq!(env.get("API_KEY").unwrap(), "updated_lifecycle_key");
+            assert_eq!(env.get("ENVIRONMENT").unwrap(), "production");
+        } else {
+            panic!("Environment should be preserved during disable operation");
+        }
+
+        // Final verification: Retrieve the server from database to ensure persistence
+        let final_server = manager.get_mcp_server(server_id).unwrap().unwrap();
+        assert_eq!(final_server.name, "Updated Lifecycle Server");
+        assert_eq!(final_server.r#type, MCPServerType::Sse);
+        assert!(!final_server.is_enabled);
+
+        // Bonus: Test re-enabling the server
+        let re_enabled_server = manager.update_mcp_server_enabled_status(server_id, true).unwrap();
+        assert!(re_enabled_server.is_enabled);
+        assert_eq!(re_enabled_server.name, "Updated Lifecycle Server"); // All other properties should remain unchanged
     }
 }
