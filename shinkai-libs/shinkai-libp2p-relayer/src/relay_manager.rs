@@ -8,7 +8,10 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent, Config},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
-use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
+use shinkai_message_primitives::{
+    schemas::shinkai_network::NetworkMessageType,
+    shinkai_message::shinkai_message::ShinkaiMessage,
+};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
@@ -314,18 +317,56 @@ impl RelayManager {
             }
         }
         
-        // If not a discovery message, try to parse as RelayMessage
-        match RelayMessage::from_bytes(&data) {
-            Ok(relay_message) => {
-                println!("Received relay message from: {}", relay_message.identity);
-                self.route_message(relay_message).await?;
+        // Try to parse as ShinkaiMessage directly
+        match serde_json::from_slice::<ShinkaiMessage>(&data) {
+            Ok(shinkai_message) => {
+                println!("Received ShinkaiMessage from: {} to: {}", 
+                    shinkai_message.external_metadata.sender,
+                    shinkai_message.external_metadata.recipient);
+                self.handle_shinkai_message_direct(shinkai_message).await?;
             }
             Err(e) => {
                 // Log but don't fail - could be other types of messages
-                println!("Received non-relay message ({}): {:?}", e, 
+                println!("Received non-Shinkai message ({}): {:?}", e, 
                     String::from_utf8_lossy(&data[..std::cmp::min(100, data.len())]));
             }
         }
+        Ok(())
+    }
+
+    async fn handle_shinkai_message_direct(&mut self, shinkai_message: ShinkaiMessage) -> Result<(), LibP2PRelayError> {
+        let recipient = &shinkai_message.external_metadata.recipient;
+        let sender = &shinkai_message.external_metadata.sender;
+        
+        println!("Routing ShinkaiMessage from {} to {}", sender, recipient);
+        
+        // Serialize the message for forwarding
+        let data = serde_json::to_vec(&shinkai_message)
+            .map_err(|e| LibP2PRelayError::MessageDeliveryFailed(format!("Failed to serialize message: {}", e)))?;
+        
+        // Extract the node name from the recipient (remove subidentity parts)
+        let target_node = if let Ok(parsed_name) = shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(recipient.clone()) {
+            parsed_name.get_node_name_string()
+        } else {
+            recipient.clone()
+        };
+        
+        // Create topic based on recipient node name
+        let topic_name = format!("shinkai-{}", target_node);
+        let topic = gossipsub::IdentTopic::new(topic_name.clone());
+        
+        // Subscribe to the topic if not already subscribed
+        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&topic);
+        
+        // Publish the message to the appropriate topic
+        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, data) {
+            return Err(LibP2PRelayError::MessageDeliveryFailed(format!(
+                "Failed to route message to topic {}: {:?}",
+                topic_name, e
+            )));
+        }
+        
+        println!("Successfully routed ShinkaiMessage from {} to topic: {}", sender, topic_name);
         Ok(())
     }
 

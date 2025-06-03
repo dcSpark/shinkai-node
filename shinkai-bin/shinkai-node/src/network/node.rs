@@ -544,68 +544,57 @@ impl Node {
                 if let Some(proxy) = proxy_info.as_ref() {
                     eprintln!(">> DEBUG: Proxy found: {}", proxy.proxy_identity);
                     
-                    // Skip proxy resolution during tests
-                    if std::env::var("IS_TESTING").unwrap_or_else(|_| "0".to_string()) == "1" {
-                        eprintln!(">> DEBUG: Skipping proxy resolution during testing");
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Info,
-                            "Skipping proxy resolution during testing - no relay configured",
-                        );
-                        None
-                    } else {
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Info,
-                            &format!("Setting up LibP2P with relay: {}", proxy.proxy_identity),
-                        );
-                        
-                        eprintln!(">> DEBUG: About to resolve proxy identity to address");
-                        // Try to resolve proxy identity to address
-                        // Add a small random delay to avoid simultaneous requests from multiple test nodes
-                        let delay_ms = rand::RngCore::next_u32(&mut rand::rngs::OsRng) % 1000; // 0-1000ms
-                        tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
-                        eprintln!(">> DEBUG: Applied random delay of {}ms before resolution", delay_ms);
-                        
-                        // Add timeout to prevent hanging on identity resolution
-                        let resolution_timeout = Duration::from_secs(30);
-                        match tokio::time::timeout(
-                            resolution_timeout,
-                            Node::get_address_from_identity(
-                                self.identity_manager.clone(),
-                                &proxy.proxy_identity.get_node_name_string(),
-                            )
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Setting up LibP2P with relay: {}", proxy.proxy_identity),
+                    );
+                    
+                    eprintln!(">> DEBUG: About to resolve proxy identity to address");
+                    // Try to resolve proxy identity to address
+                    // Add a small random delay to avoid simultaneous requests from multiple test nodes
+                    let delay_ms = rand::RngCore::next_u32(&mut rand::rngs::OsRng) % 1000; // 0-1000ms
+                    tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
+                    eprintln!(">> DEBUG: Applied random delay of {}ms before resolution", delay_ms);
+                    
+                    // Add timeout to prevent hanging on identity resolution
+                    let resolution_timeout = Duration::from_secs(30);
+                    match tokio::time::timeout(
+                        resolution_timeout,
+                        Node::get_address_from_identity(
+                            self.identity_manager.clone(),
+                            &proxy.proxy_identity.get_node_name_string(),
                         )
-                        .await
-                        {
-                            Ok(Ok(addr)) => {
-                                let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
-                                eprintln!(">> DEBUG: Successfully resolved proxy address: {}", multiaddr_str);
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Info,
-                                    &format!("Connecting to LibP2P relay at: {}", multiaddr_str),
-                                );
-                                multiaddr_str.parse::<Multiaddr>().ok()
-                            }
-                            Ok(Err(e)) => {
-                                eprintln!(">> DEBUG: Failed to resolve proxy address: {}", e);
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Error,
-                                    &format!("Failed to resolve relay address: {}", e),
-                                );
-                                None
-                            }
-                            Err(_) => {
-                                eprintln!(">> DEBUG: Timeout while resolving proxy address after {}s", resolution_timeout.as_secs());
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Error,
-                                    &format!("Timeout while resolving relay address after {}s", resolution_timeout.as_secs()),
-                                );
-                                None
-                            }
+                    )
+                    .await
+                    {
+                        Ok(Ok(addr)) => {
+                            let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
+                            eprintln!(">> DEBUG: Successfully resolved proxy address: {}", multiaddr_str);
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                &format!("Connecting to LibP2P relay at: {}", multiaddr_str),
+                            );
+                            multiaddr_str.parse::<Multiaddr>().ok()
+                        }
+                        Ok(Err(e)) => {
+                            eprintln!(">> DEBUG: Failed to resolve proxy address: {}", e);
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to resolve relay address: {}", e),
+                            );
+                            None
+                        }
+                        Err(_) => {
+                            eprintln!(">> DEBUG: Timeout while resolving proxy address after {}s", resolution_timeout.as_secs());
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("Timeout while resolving relay address after {}s", resolution_timeout.as_secs()),
+                            );
+                            None
                         }
                     }
                 } else {
