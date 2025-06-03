@@ -318,4 +318,78 @@ impl Node {
             }
         }
     }
+
+    pub async fn v2_api_get_wallet_balance(
+        db: Arc<SqliteManager>,
+        wallet_manager: Arc<tokio::sync::Mutex<Option<WalletManager>>>,
+        bearer: String,
+        node_name: ShinkaiName,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let wallet_manager_lock = wallet_manager.lock().await;
+
+        if let Some(ref wallet_manager) = *wallet_manager_lock {
+            let address = wallet_manager.payment_wallet.get_address();
+            let mut balances = serde_json::Map::new();
+
+            if let Some(asset) = Asset::new(AssetType::ETH, &address.network_id) {
+                match wallet_manager
+                    .check_balance_payment_wallet(address.clone().into(), asset.clone(), node_name.clone())
+                    .await
+                {
+                    Ok(balance) => {
+                        if let Ok(value) = serde_json::to_value(balance) {
+                            balances.insert("ETH".to_string(), value);
+                        }
+                    }
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to get ETH balance: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                }
+            }
+
+            if let Some(asset) = Asset::new(AssetType::USDC, &address.network_id) {
+                match wallet_manager
+                    .check_balance_payment_wallet(address.clone().into(), asset.clone(), node_name)
+                    .await
+                {
+                    Ok(balance) => {
+                        if let Ok(value) = serde_json::to_value(balance) {
+                            balances.insert("USDC".to_string(), value);
+                        }
+                    }
+                    Err(e) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to get USDC balance: {}", e),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                }
+            }
+
+            let _ = res.send(Ok(Value::Object(balances))).await;
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Wallet manager not initialized".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+        }
+
+        Ok(())
+    }
 }

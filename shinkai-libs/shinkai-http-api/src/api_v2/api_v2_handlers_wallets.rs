@@ -48,11 +48,18 @@ pub fn wallet_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(list_wallets_handler);
 
+    let get_wallet_balance_route = warp::path("get_wallet_balance")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_wallet_balance_handler);
+
     restore_local_wallet_route
         .or(create_local_wallet_route)
         .or(pay_invoice_route)
         .or(restore_coinbase_mpc_wallet_route)
         .or(list_wallets_route)
+        .or(get_wallet_balance_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -240,6 +247,33 @@ pub async fn list_wallets_handler(
             bearer,
             res: res_sender,
         })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_wallet_balance",
+    responses(
+        (status = 200, description = "Successfully retrieved wallet balance", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_wallet_balance_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetWalletBalance { bearer, res: res_sender })
         .await
         .map_err(|_| warp::reject::reject())?;
 
