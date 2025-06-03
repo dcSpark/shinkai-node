@@ -2346,8 +2346,35 @@ impl Node {
             }
         }
 
+        let exists = db.check_if_server_exists(
+            &mcp_server.r#type,
+            mcp_server.command.clone().unwrap_or_default().to_string(),
+            mcp_server.url.clone().unwrap_or_default().to_string(),
+        )?;
+        if exists {
+            let message = match mcp_server.r#type {
+                MCPServerType::Command => format!(
+                    "MCP Server with command '{}' already exists.",
+                    mcp_server.command.clone().unwrap_or_default().to_string()
+                ),
+                MCPServerType::Sse => format!(
+                    "MCP Server with url '{}' already exists.",
+                    mcp_server.url.clone().unwrap_or_default().to_string()
+                ),
+            };
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "MCP Server Exists".to_string(),
+                    message,
+                }))
+                .await;
+            return Ok(());
+        }
+
         // Add the MCP server to the database
         match db.add_mcp_server(
+            None,
             mcp_server.name.clone(), // Clone name for db insertion
             mcp_server.r#type,
             mcp_server.url.clone(),
@@ -2364,6 +2391,7 @@ impl Node {
                 if let Some(env) = &server.env {
                     log::info!("MCP Server '{}' (ID: {:?}) env: {:?}", server.name, server.id, env);
                 }
+                let server_command_hash = server.get_command_hash();
                 if server.r#type == MCPServerType::Command && server.is_enabled {
                     if let Some(command_str) = &server.command {
                         log::info!(
@@ -2396,6 +2424,7 @@ impl Node {
                                         &tool,
                                         &server.name,
                                         &server_id,
+                                        &server_command_hash,
                                         &node_name.to_string(),
                                         tools_config.clone(),
                                     );
@@ -2433,6 +2462,7 @@ impl Node {
                                         &tool,
                                         &server.name,
                                         &server_id,
+                                        &server_command_hash,
                                         &node_name.to_string(),
                                         vec![],
                                     );
@@ -2583,6 +2613,7 @@ impl Node {
                     .as_ref()
                     .expect("Server ID should exist")
                     .to_string();
+                let server_command_hash = updated_mcp_server.get_command_hash();
                 match updated_mcp_server.r#type {
                     MCPServerType::Command => {
                         if let Some(cmd) = &mcp_server.command {
@@ -2607,6 +2638,7 @@ impl Node {
                                             &tool,
                                             &updated_mcp_server.name,
                                             &server_id,
+                                            &server_command_hash,
                                             &node_name.to_string(),
                                             tools_config.clone(),
                                         );
@@ -2634,6 +2666,7 @@ impl Node {
                                             &tool,
                                             &updated_mcp_server.name,
                                             &server_id,
+                                            &server_command_hash,
                                             &node_name.to_string(),
                                             vec![],
                                         );
