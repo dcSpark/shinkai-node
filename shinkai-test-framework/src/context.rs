@@ -9,6 +9,7 @@ use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
 use shinkai_node::network::Node;
 use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair, hash_signature_public_key};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
@@ -272,6 +273,23 @@ impl TestContext {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
+    }
+
+    pub async fn update_job_config(&self, job_id: &str, config: JobConfig) -> anyhow::Result<()> {
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        self.commands
+            .send(NodeCommand::V2ApiUpdateJobConfig {
+                bearer: self.api_key.clone(),
+                job_id: job_id.to_string(),
+                config,
+                res: res_sender,
+            })
+            .await?;
+        res_receiver
+            .recv()
+            .await?
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!(format!("{:?}", e)))
     }
 }
 

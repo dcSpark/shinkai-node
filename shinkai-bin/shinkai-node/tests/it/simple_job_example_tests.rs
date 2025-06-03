@@ -75,18 +75,16 @@ async fn simple_job_message_test(ctx: TestContext) {
     let agent_sub = format!("{}/agent/test_agent", ctx.profile_name);
     let job_id = ctx.create_job(&agent_sub).await.unwrap();
 
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    ctx.commands
-        .send(NodeCommand::V2ApiUpdateJobConfig {
-            bearer: ctx.api_key.clone(),
-            job_id: job_id.clone(),
-            config: JobConfig { stream: Some(false), ..JobConfig::empty() },
-            res: res_sender,
-        })
+    ctx
+        .update_job_config(
+            &job_id,
+            JobConfig {
+                stream: Some(false),
+                ..JobConfig::empty()
+            },
+        )
         .await
         .unwrap();
-    let result = res_receiver.recv().await.unwrap();
-    assert!(result.is_ok());
 
     ctx.send_job_message(&job_id, "This is a test message").await.unwrap();
 
