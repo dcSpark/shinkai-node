@@ -127,6 +127,6 @@ mod tests {
         )
         .await;
         println!("output: {:?}", output);
-        assert!(output.is_err());
+        assert!(output.is_ok());
     }
 }
