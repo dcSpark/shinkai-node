@@ -57,6 +57,37 @@ async fn calculate_zip_dependencies(
             // Done, this path has been handled
             return Ok(());
         }
+
+        // MCP server tools are exported as part of their associated MCP server
+        // package, so we skip adding them to the tool_dependencies list. This
+        // avoids exporting duplicate tool archives when an agent uses all tools
+        // from a single MCP server.
+        if let ShinkaiTool::MCPServer(mcp_server_tool, _) = tool.clone() {
+            let mcp_server = match db.get_mcp_server(mcp_server_tool.mcp_server_ref.parse::<i64>().unwrap()) {
+                Ok(mcp_server) => mcp_server,
+                Err(err) => {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to get mcp server dependency: {}", err),
+                    });
+                }
+            };
+            Box::pin(calculate_zip_dependencies(
+                db.clone(),
+                shinkai_name.clone(),
+                None,
+                None,
+                mcp_server,
+                agent_dependencies,
+                tool_dependencies,
+                mcp_server_dependencies,
+            ))
+            .await?;
+            // Skip inserting this tool itself as a dependency
+            return Ok(());
+        }
+
         tool_dependencies.insert(tool_router_key, tool.clone());
 
         match tool.clone() {
@@ -89,29 +120,8 @@ async fn calculate_zip_dependencies(
                 return Ok(());
             }
             ShinkaiTool::Network(_, _) => (),
-            ShinkaiTool::MCPServer(mcp_server_tool, _) => {
-                let mcp_server = match db.get_mcp_server(mcp_server_tool.mcp_server_ref.parse::<i64>().unwrap()) {
-                    Ok(mcp_server) => mcp_server,
-                    Err(err) => {
-                        return Err(APIError {
-                            code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Bad Request".to_string(),
-                            message: format!("Failed to get mcp server dependency: {}", err),
-                        });
-                    }
-                };
-                Box::pin(calculate_zip_dependencies(
-                    db.clone(),
-                    shinkai_name.clone(),
-                    None,
-                    None,
-                    mcp_server,
-                    agent_dependencies,
-                    tool_dependencies,
-                    mcp_server_dependencies,
-                ))
-                .await?;
-            }
+            // MCPServer tools handled above
+            ShinkaiTool::MCPServer(_, _) => (),
         }
 
         // This tool might have dependendies, so let's check them.
@@ -241,7 +251,10 @@ async fn get_dependencies_for_zip(
                 continue;
             }
             ShinkaiTool::Network(_, _) => (),
-            ShinkaiTool::MCPServer(_, _) => (),
+            ShinkaiTool::MCPServer(_, _) => {
+                println!("Not including MCP server tool in zip");
+                continue;
+            }
         }
 
         let tool_bytes = match Box::pin(generate_tool_zip(
