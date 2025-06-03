@@ -34,20 +34,6 @@ jobs:
             target/
           key: ${{ matrix.arch }}-build-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: (MACOS) Install build deps
-        if: ${{ matrix.arch == 'aarch64-apple-darwin' }}
-        run: |
-          brew install protobuf
-
-      - name: (Windows) Install build deps
-        if: ${{ matrix.arch == 'x86_64-pc-windows-msvc' }}
-        run: |
-          choco install -y protoc
-
-      - name: (Linux) Install build deps
-        if: ${{ matrix.arch == 'x86_64-unknown-linux-gnu' }}
-        run: |
-          sudo apt-get install -y protobuf-compiler
 
       - name: Build
         run: cargo build --release
@@ -90,6 +76,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download tools from store to pre-install folder
+        run: |
+          ./scripts/update_tools.sh        
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3

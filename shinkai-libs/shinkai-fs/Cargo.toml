@@ -12,23 +12,23 @@ bincode = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 blake3 = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 chrono = { workspace = true }
 comrak = { version = "0.22.0", default-features = true }
-thiserror = "2.0.3"
+thiserror = { workspace = true }
 reqwest = { workspace = true }
-lazy_static = "1.5.0"
+lazy_static = { workspace = true }
 async-trait = { workspace = true }
 keyphrases = { workspace = true }
 futures = { workspace = true }
 scraper = "0.19.0"
 urlencoding = "2.1.0"
 walkdir = "2.5.0"
-csv = "1.1.6"
-utoipa = "4.2.3"
+csv = { workspace = true }
+utoipa = { workspace = true }
 regex = { workspace = true }
-os_path = "0.8.0"
-tempfile = "3.19"
+os_path = { workspace = true }
+tempfile = { workspace = true }
 shinkai_non_rust_code = { workspace = true }
 
 [dependencies.serde]
@@ -36,7 +36,7 @@ workspace = true
 features = ["derive"]
 
 [dev-dependencies]
-tempfile = "3.19"
+tempfile = { workspace = true }
 serial_test = "0.5"
 
 [[test]]

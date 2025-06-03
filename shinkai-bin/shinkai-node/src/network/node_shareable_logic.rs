@@ -3,7 +3,6 @@ use shinkai_message_primitives::schemas::identity::{Identity, StandardIdentityTy
 use std::io::Read;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio_util::bytes::Bytes;
 
 use crate::managers::identity_manager::IdentityManager;
 use crate::managers::identity_manager::IdentityManagerTrait;

@@ -97,7 +97,7 @@ impl ShinkaiFileManager {
             return Err(ShinkaiFsError::FileNotFoundOnFilesystem);
         }
 
-        let new_rel_path = new_path.relative_path();
+        let _new_rel_path = new_path.relative_path();
 
         // Check if the parent directory of the new path exists
         let parent_dir = new_path.as_path().parent().unwrap();

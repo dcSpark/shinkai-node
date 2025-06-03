@@ -522,7 +522,7 @@ pub async fn parse_openai_stream_chunk(
                                         if let Some(function) = tool_call.get("function") {
                                             if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
                                                 let new_id = tool_call.get("id").and_then(|id| id.as_str());
-                                                let index = tool_call.get("index").and_then(|i| i.as_u64());
+                                                let _index = tool_call.get("index").and_then(|i| i.as_u64());
 
                                                 // If partial_fc is in use, check both name and ID before continuing
                                                 if partial_fc.is_accumulating {
@@ -570,7 +570,7 @@ pub async fn parse_openai_stream_chunk(
                                                                     tools,
                                                                 );
                                                             }
-                                                            Err(e) => {
+                                                            Err(_e) => {
                                                                 // Continue accumulating
                                                             }
                                                         }
@@ -799,7 +799,7 @@ pub async fn handle_streaming_response(
                 .await?;
 
                 // Process complete messages in the buffer
-                if let Ok(Some(err)) = parse_openai_stream_chunk(
+                if let Ok(Some(_err)) = parse_openai_stream_chunk(
                     &mut buffer,
                     &mut response_text,
                     &mut function_calls,
@@ -811,7 +811,7 @@ pub async fn handle_streaming_response(
                 )
                 .await
                 {
-                    error_message = Some(err);
+                    // error message ignored in this early-return branch
                 }
 
                 // Handle WebSocket updates for function calls
@@ -1282,7 +1282,7 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
     // Remove the ":0" part to match any index
     let tool_calls_prefix = r#""tool_calls":[{"index":"#;
 
-    let (prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
+    let (_prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
         (function_call_prefix, args_start_pos + function_call_prefix.len())
     } else if let Some(args_start_pos) = json_str.find(tool_calls_prefix) {
         // Since we changed the prefix, we need to find where the actual arguments start

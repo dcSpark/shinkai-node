@@ -4,6 +4,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
 use shinkai_embedding::model_type::EmbeddingModelType;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
@@ -25,6 +26,7 @@ pub mod job_manager;
 pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
+pub mod mcp_server_manager;
 pub mod oauth_manager;
 pub mod preferences;
 pub mod prompt_manager;
@@ -137,8 +139,27 @@ impl SqliteManager {
         }
 
         manager.update_default_embedding_model(model_type)?;
-
+        Self::migrate_agents_full_identity_name(&manager)?;
         Ok(manager)
+    }
+
+    // There might be old agents with partial full_identity_name.
+    // This function migrates them to the new format.
+    fn migrate_agents_full_identity_name(manager: &SqliteManager) -> Result<(), SqliteManagerError> {
+        let agents = manager.get_all_agents()?;
+        for mut agent in agents {
+            if !agent.full_identity_name.has_profile() {
+                println!("Migrating agent: {:?}", agent);
+                agent.full_identity_name = ShinkaiName::new(format!(
+                    "{}/main/agent/{}",
+                    agent.full_identity_name.node_name.clone(),
+                    agent.agent_id
+                ))
+                .map_err(|_e| SqliteManagerError::InvalidData)?;
+                manager.update_agent(agent)?;
+            }
+        }
+        Ok(())
     }
 
     // Initializes the required tables in the SQLite database
@@ -182,6 +203,8 @@ impl SqliteManager {
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
         Self::initialize_embedding_model_type_table(conn)?;
+        // Initialize MCP servers table
+        Self::initialize_mcp_servers_table(conn)?;
         Ok(())
     }
 
@@ -202,6 +225,19 @@ impl SqliteManager {
         if column_exists == 0 {
             conn.execute("ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT", [])?;
         }
+        // Check if edited column exists
+        let mut stmt =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'edited'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // Add the column if it doesn't exist
+        if column_exists == 0 {
+            conn.execute(
+                "ALTER TABLE shinkai_agents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
+
         Ok(())
     }
 
@@ -240,7 +276,8 @@ impl SqliteManager {
                 debug_mode INTEGER NOT NULL,
                 config TEXT, -- Store as a JSON string
                 scope TEXT NOT NULL, -- Change this line to use TEXT instead of BLOB
-                tools_config_override TEXT -- Store as a JSON string
+                tools_config_override TEXT, -- Store as a JSON string
+                edited INTEGER NOT NULL DEFAULT 0
             );",
             [],
         )?;
@@ -697,8 +734,7 @@ impl SqliteManager {
                 requester_name TEXT NOT NULL,
                 tool_key_name TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,
-                date_time TEXT NOT NULL,
-                secret_prehash TEXT NOT NULL
+                date_time TEXT NOT NULL
             );",
             [],
         )?;
@@ -877,6 +913,25 @@ impl SqliteManager {
             "CREATE TABLE IF NOT EXISTS embedding_model_type (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 model_type TEXT NOT NULL UNIQUE
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
+    // Initialize MCP servers table
+    fn initialize_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS mcp_servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND')) DEFAULT 'SSE',
+                url TEXT,
+                env TEXT,
+                command TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE
             );",
             [],
         )?;

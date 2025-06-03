@@ -47,13 +47,13 @@ This can be used to process complex requests, text analysis, text matching, text
                 mcp_enabled: Some(false),
                 input_args: {
                     let mut params = Parameters::new();
-                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to apply over the data".to_string(), true);
-                    params.add_property("data".to_string(), "string".to_string(), "The data to process".to_string(), true);
+                    params.add_property("prompt".to_string(), "string".to_string(), "The prompt to apply over the data".to_string(), true, None);
+                    params.add_property("data".to_string(), "string".to_string(), "The data to process".to_string(), true, None);
                     
                     // Add the optional tools array parameter
                     let tools_property = Property::with_array_items(
                         "List of tools names or tool router keys to be used with the prompt".to_string(),
-                        Property::new("string".to_string(), "Tool".to_string())
+                        Property::new("string".to_string(), "Tool".to_string(), None)
                     );
                     params.properties.insert("tools".to_string(), tools_property);
                     
@@ -151,7 +151,13 @@ fn get_model_context_size(llm_provider: String, db: Arc<SqliteManager>, node_nam
         Some(llm_provider) => llm_provider,
         None => return Err(ToolError::ExecutionError("Failed to get llm provider".to_string())),
     };
-    Ok(ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model).min(25000))
+    let max_tokens = ModelCapabilitiesManager::get_max_input_tokens(&llm_provider.model);
+    let window_size = if max_tokens > 60000 {
+        max_tokens
+    } else {
+        max_tokens.min(25000)
+    };
+    Ok(window_size)
 }
 
 fn get_context_size_for_fragment(data: String) -> usize {

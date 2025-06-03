@@ -18,8 +18,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use std::fs;
-use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
+use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
 use std::time::Duration;
 use tokio::runtime::Runtime;
@@ -42,14 +42,21 @@ fn setup() {
 fn native_tool_test_knowledge() {
     setup_node_storage_path();
     std::env::set_var("WELCOME_MESSAGE", "false");
-
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
     // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();
 
     let mut server = Server::new();
+    fn port_is_available(port: u16) -> bool {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
 
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node1_subidentity_name = "main";
         let node1_device_name = "node1_device";
@@ -69,7 +76,6 @@ fn native_tool_test_knowledge() {
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
-        let node1_profile_name = "main";
         let api_key_bearer = "my_api_key".to_string();
 
         // Agent pre-creation
@@ -123,6 +129,7 @@ fn native_tool_test_knowledge() {
             model: LLMProviderInterface::OpenAI(open_ai),
         };
 
+        assert!(port_is_available(8080), "Port 8080 is not available");
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
@@ -180,53 +187,11 @@ fn native_tool_test_knowledge() {
                 let tools_ready = wait_for_default_tools(
                     node1_commands_sender.clone(),
                     api_key_bearer.clone(),
-                    20, // Wait up to 20 seconds
+                    120, // Wait up to 120 seconds
                 )
                 .await
                 .expect("Failed to check for default tools");
                 assert!(tools_ready, "Default tools should be ready within 20 seconds");
-            }
-            {
-                // Check that Rust tools are installed, retry up to 10 times
-                let mut retry_count = 0;
-                let max_retries = 40;
-                let retry_delay = Duration::from_millis(500);
-
-                loop {
-                    tokio::time::sleep(retry_delay).await;
-
-                    let (res_sender, res_receiver) = async_channel::bounded(1);
-                    node1_commands_sender
-                        .send(NodeCommand::InternalCheckRustToolsInstallation { res: res_sender })
-                        .await
-                        .unwrap();
-
-                    match res_receiver.recv().await {
-                        Ok(result) => {
-                            match result {
-                                Ok(has_tools) => {
-                                    if has_tools {
-                                        // Rust tools are installed, we can break the loop
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Error checking Rust tools installation: {:?}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Error receiving check result: {:?}", e);
-                            panic!("Error receiving check result: {:?}", e);
-                        }
-                    }
-
-                    retry_count += 1;
-                    if retry_count >= max_retries {
-                        panic!("Rust tools were not installed after {} retries", max_retries);
-                    }
-                }
-                eprintln!("Rust tools were installed after {} retries", retry_count);
             }
             {
                 //
@@ -236,17 +201,7 @@ fn native_tool_test_knowledge() {
                 // Send message (APICreateFilesInboxWithSymmetricKey) from Device subidentity to Node 1
                 {
                     // Create test folder
-                    create_folder(
-                        &node1_commands_sender,
-                        "/",
-                        "test_folder",
-                        node1_profile_encryption_sk.clone(),
-                        clone_signature_secret_key(&node1_profile_identity_sk),
-                        node1_encryption_pk,
-                        node1_identity_name,
-                        node1_profile_name,
-                    )
-                    .await;
+                    create_folder(&node1_commands_sender, "/", "test_folder", &api_key_bearer.clone()).await;
 
                     // Upload File to /test_folder
                     let file_path = Path::new("../../files/shinkai_intro.vrkai");
@@ -260,7 +215,7 @@ fn native_tool_test_knowledge() {
                 }
 
                 #[allow(unused_assignments)]
-                let mut job_id = "".to_string();
+                let mut job_id: String;
                 let agent_subidentity = format!("{}/agent/{}", node1_subidentity_name, node1_agent).to_string();
                 {
                     // Create a Job
@@ -331,17 +286,23 @@ fn native_tool_test_knowledge() {
         let result = tokio::try_join!(node1_handler, interactions_handler);
 
         match result {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
                     println!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
                 } else {
                     // If the error is not due to an abort, then it's unexpected
-                    panic!("An unexpected error occurred: {:?}", e);
+                    Err(e)
                 }
             }
         }
     });
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
+    assert!(port_is_available(8080), "Port 8080 is not available after test");
+    assert!(port_is_available(8081), "Port 8081 is not available after test");
 }

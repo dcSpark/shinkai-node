@@ -1,21 +1,12 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::{tool_router::ToolRouter, IdentityManager},
-    network::{
-        node_error::NodeError,
-        node_shareable_logic::{download_zip_from_url, ZipFileContents},
-        zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool},
-        Node,
-    },
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{
+        node_error::NodeError, node_shareable_logic::{download_zip_from_url, ZipFileContents}, zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool}, Node
+    }, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 use async_channel::Sender;
+use base64::Engine;
 use chrono::Utc;
 use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use reqwest::StatusCode;
@@ -24,43 +15,18 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        indexable_version::IndexableVersion,
-        job::JobLike,
-        job_config::JobConfig,
-        shinkai_name::ShinkaiSubidentityType,
-        tool_router_key::ToolRouterKey,
-        shinkai_name::ShinkaiName,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType, JobMessage},
-    shinkai_utils::{
-        job_scope::MinimalJobScope,
-        shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
+        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiName, shinkai_name::ShinkaiSubidentityType, shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType}, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
+    }
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
+use rusqlite::Error as RusqliteError;
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    parameters::Parameters,
-    python_tools::PythonTool,
-    shinkai_tool::ShinkaiToolHeader,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::ShinkaiToolHeader, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 use std::{
-    collections::HashMap,
-    env,
-    fs::File,
-    io::{Read, Write},
-    path::{absolute, PathBuf},
-    sync::Arc,
-    time::Instant,
+    collections::HashMap, env, io::Read, path::{absolute, PathBuf}, sync::Arc, time::Instant
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -165,7 +131,7 @@ impl Node {
         let vector_start_time = Instant::now();
 
         // Use different search method based on whether we have allowed_tools
-        let vector_search_result = if let Some(tools) = allowed_tools {
+        let vector_search_res = if let Some(tools) = allowed_tools {
             // First generate the embedding from the query
             let embedding = db
                 .generate_embeddings(&sanitized_query)
@@ -187,9 +153,23 @@ impl Node {
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = db.search_tools_fts(&sanitized_query);
+        let fts_search_res = db.search_tools_fts(&sanitized_query);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
+
+        let vector_search_result = match vector_search_res {
+            Ok(v) => Ok(v),
+            Err(SqliteManagerError::ToolNotFound(_))
+            | Err(SqliteManagerError::DatabaseError(RusqliteError::QueryReturnedNoRows)) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        };
+
+        let fts_search_result = match fts_search_res {
+            Ok(v) => Ok(v),
+            Err(SqliteManagerError::ToolNotFound(_))
+            | Err(SqliteManagerError::DatabaseError(RusqliteError::QueryReturnedNoRows)) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        };
 
         match (vector_search_result, fts_search_result) {
             (Ok(vector_tools), Ok(fts_tools)) => {
@@ -727,7 +707,7 @@ impl Node {
                         // Create the assets
                         for asset in assets {
                             let asset_path = file_path.join(asset.file_name);
-                            let asset_content = base64::decode(asset.data).unwrap();
+                            let asset_content = base64::engine::general_purpose::STANDARD.decode(asset.data).unwrap();
                             let status = fs::write(asset_path, asset_content).await;
                             if status.is_err() {
                                 let api_error = APIError {
@@ -750,7 +730,7 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to add tool to LanceShinkaiDb: {}", err),
+                    message: format!("Failed to add tool to SqliteManager: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
@@ -2407,9 +2387,9 @@ impl Node {
     pub async fn v2_api_import_tool_url(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         url: String,
-        node_name: String,
         signing_secret_key: SigningKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Value, APIError>>,
@@ -2421,9 +2401,9 @@ impl Node {
 
         let result = Self::v2_api_import_tool_url_internal(
             db,
+            full_identity,
             node_env,
             url,
-            node_name,
             signing_secret_key,
             embedding_generator,
         )
@@ -2437,14 +2417,15 @@ impl Node {
 
     pub async fn v2_api_import_tool_url_internal(
         db: Arc<SqliteManager>,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         url: String,
-        node_name: String,
         signing_secret_key: SigningKey,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<Value, APIError> {
+        let node_name = full_identity.node_name.clone();
         let zip_contents: ZipFileContents =
-            match download_zip_from_url(url, "__tool.json".to_string(), node_name.clone(), signing_secret_key).await {
+            match download_zip_from_url(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
                 Ok(contents) => contents,
                 Err(err) => return Err(err),
             };
@@ -2463,6 +2444,7 @@ impl Node {
 
         let import_status = import_dependencies_tools(
             db.clone(),
+            full_identity,
             node_env.clone(),
             zip_contents.archive.clone(),
             embedding_generator,
@@ -3049,10 +3031,19 @@ impl Node {
         new_tool.update_name(new_name.clone());
         new_tool.update_author(node_name.node_name.clone());
 
-        // Update the tool_router_key for Deno tools since they store it explicitly
-        if let ShinkaiTool::Deno(deno_tool, enabled) = &mut new_tool {
+        // Update the tool_router_key for Deno and Python tools since they store it explicitly
+        if let ShinkaiTool::Deno(deno_tool, _enabled) = &mut new_tool {
             if deno_tool.tool_router_key.is_some() {
                 deno_tool.tool_router_key = Some(ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name.node_name.clone(),
+                    new_name,
+                    None,
+                ));
+            }
+        } else if let ShinkaiTool::Python(python_tool, _enabled) = &mut new_tool {
+            if python_tool.tool_router_key.is_some() {
+                python_tool.tool_router_key = Some(ToolRouterKey::new(
                     "local".to_string(),
                     node_name.node_name.clone(),
                     new_name,
@@ -3209,6 +3200,7 @@ impl Node {
 
     pub async fn install_tool_from_u8(
         db: Arc<SqliteManager>,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -3263,6 +3255,7 @@ impl Node {
         let zip_contents = ZipFileContents { buffer, archive };
         let import_status = import_dependencies_tools(
             db.clone(),
+            full_identity,
             node_env.clone(),
             zip_contents.archive.clone(),
             embedding_generator.clone(),
@@ -3277,6 +3270,7 @@ impl Node {
     pub async fn v2_api_import_tool_zip(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
@@ -3287,7 +3281,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::install_tool_from_u8(db, node_env, file_data, embedding_generator).await;
+        let result = Self::install_tool_from_u8(db, full_identity, node_env, file_data, embedding_generator).await;
         let _ = res.send(result).await;
         Ok(())
     }
@@ -3910,6 +3904,52 @@ LANGUAGE={env_language}
         Ok(())
     }
 
+    pub async fn v2_api_get_tools_from_toolset(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_set_key: String,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    ) {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return;
+        }
+        let result = match db.get_tools_by_tool_set(&tool_set_key) {
+            Ok(tools) => Ok(tools),
+            Err(e) => {
+                eprintln!("Error getting tools by toolset '{}': {}", tool_set_key, e);
+                Err(APIError {
+                    code: 500,
+                    error: "Failed to retrieve tools".to_string(),
+                    message: format!("Failed to retrieve tools for toolset '{}': {}", tool_set_key, e),
+                })
+            }
+        };
+        let _ = res.send(result).await;
+    }
+    pub async fn v2_api_set_common_toolset_config(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_set_key: String,
+        values: HashMap<String, Value>,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return;
+        }
+        let result = match db.set_common_toolset_config(&tool_set_key, values).await {
+            Ok(updated_keys) => Ok(updated_keys),
+            Err(e) => {
+                eprintln!("Error setting common config for toolset '{}': {}", tool_set_key, e);
+                Err(APIError {
+                    code: 500,
+                    error: "Failed to set common config".to_string(),
+                    message: format!("Failed to set common config for toolset '{}': {}", tool_set_key, e),
+                })
+            }
+        };
+        let _ = res.send(result).await;
+    }
     pub async fn v2_api_copy_tool_assets(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -4166,6 +4206,56 @@ LANGUAGE={env_language}
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_api_get_shinkai_tool_metadata(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tool = db.get_tool_by_key(&tool_router_key);
+
+        match tool {
+            Ok(tool) => {
+                let metadata_struct = tool.get_metadata();
+                match serde_json::to_value(metadata_struct) {
+                    Ok(metadata_value) => {
+                        if res.send(Ok(metadata_value)).await.is_err() {
+                            eprintln!("Failed to send metadata response");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to serialize metadata: {}", e);
+                        if res
+                            .send(Err(APIError {
+                                code: 500,
+                                error: "Serialization Error".to_string(),
+                                message: format!("Failed to serialize tool metadata: {}", e),
+                            }))
+                            .await
+                            .is_err()
+                        {
+                            eprintln!("Failed to send serialization error response");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: 500,
+                        error: "Failed to get tool metadata".to_string(),
+                        message: format!("Failed to get tool metadata: {}", e),
+                    }))
+                    .await;
+            }
+        }
         Ok(())
     }
 }

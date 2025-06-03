@@ -5,9 +5,6 @@ use crate::{
         node::ProxyConnectionInfo, node_error::NodeError, node_shareable_logic::validate_message_main_logic, Node
     }, utils::update_global_identity::update_global_identity_name
 };
-use aes_gcm::aead::{generic_array::GenericArray, Aead};
-use aes_gcm::Aes256Gcm;
-use aes_gcm::KeyInit;
 use async_channel::Sender;
 use blake3::Hasher;
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -17,8 +14,7 @@ use serde_json::{json, Value as JsonValue};
 
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::EmbeddingModelType;
-use shinkai_http_api::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
-use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
+use shinkai_http_api::node_api_router::{APIError, APIUseRegistrationCodeSuccessResponse, SendResponseBodyData};
 use shinkai_message_primitives::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType
 };
@@ -609,7 +605,7 @@ impl Node {
         node_name: ShinkaiName,
         encryption_secret_key: EncryptionStaticKey,
         first_device_needs_registration_code: bool,
-        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        _embedding_generator: Arc<RemoteEmbeddingGenerator>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_public_key: EncryptionPublicKey,
@@ -701,7 +697,7 @@ impl Node {
             db,
             node_name,
             first_device_needs_registration_code,
-            embedding_generator,
+            _embedding_generator,
             identity_manager,
             job_manager,
             encryption_public_key,
@@ -821,12 +817,12 @@ impl Node {
 
         // If any new profile has been created using the registration code, we update the VectorFS
         // to initialize the new profile
-        let profile_list: Vec<ShinkaiName> = match db.get_all_profiles(node_name.clone()) {
+        let _profile_list: Vec<ShinkaiName> = match db.get_all_profiles(node_name.clone()) {
             Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
             Err(e) => panic!("Failed to fetch profiles: {}", e),
         };
-        let create_default_folders = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
-        let supported_models = {
+        let _create_default_folders = std::env::var("WELCOME_MESSAGE").unwrap_or("true".to_string()) == "true";
+        let _supported_models = {
             let models = supported_embedding_models.lock().await;
             models.clone()
         };

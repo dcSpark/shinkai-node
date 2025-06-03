@@ -10,6 +10,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_sqlite::SqliteManager;
 use std::sync::Arc;
+use base64::Engine;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -304,7 +305,7 @@ pub async fn compute_quests(
 }
 
 pub async fn compute_create_identity_quest(
-    db: Arc<SqliteManager>,
+    _db: Arc<SqliteManager>,
     node_name: ShinkaiName,
     encryption_public_key: EncryptionPublicKey,
     identity_public_key: VerifyingKey,
@@ -462,7 +463,7 @@ pub async fn compute_create_tool_quest(db: Arc<SqliteManager>) -> Result<bool, S
     Ok(created_tools > 0)
 }
 
-pub async fn compute_submit_approval_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+pub async fn compute_submit_approval_quest(_db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
     let url = format!("https://store-api.shinkai.com/user/{}/apps", node_name.to_string());
 
     let client = reqwest::Client::new();
@@ -486,7 +487,7 @@ pub async fn compute_submit_approval_quest(db: Arc<SqliteManager>, node_name: Sh
     Ok(!apps.is_empty())
 }
 
-pub async fn compute_top_ranking_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+pub async fn compute_top_ranking_quest(_db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
     let url = format!("https://store-api.shinkai.com/user/{}/apps", node_name.to_string());
 
     let client = reqwest::Client::new();
@@ -514,7 +515,7 @@ pub async fn compute_top_ranking_quest(db: Arc<SqliteManager>, node_name: Shinka
     Ok(has_featured)
 }
 
-pub async fn compute_write_app_reviews_quest(db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
+pub async fn compute_write_app_reviews_quest(_db: Arc<SqliteManager>, node_name: ShinkaiName) -> Result<bool, String> {
     let url = format!("https://store-api.shinkai.com/user/{}/reviews", node_name.to_string());
 
     let client = reqwest::Client::new();
@@ -701,7 +702,7 @@ pub fn generate_proof(node_signature: String, payload: String) -> Result<(String
         "{}:::{}:::{}",
         public_key_hex,
         last_8_chars,
-        base64::encode(payload.as_bytes())
+        base64::engine::general_purpose::STANDARD.encode(payload.as_bytes())
     );
 
     // Create the final signature by:
@@ -720,7 +721,7 @@ pub fn generate_proof(node_signature: String, payload: String) -> Result<(String
 }
 
 pub async fn compute_submit_approval_quest_with_count(
-    db: Arc<SqliteManager>,
+    _db: Arc<SqliteManager>,
     node_name: ShinkaiName,
     required_count: usize,
 ) -> Result<bool, String> {
@@ -748,7 +749,7 @@ pub async fn compute_submit_approval_quest_with_count(
 }
 
 pub async fn compute_write_app_reviews_quest_with_count(
-    db: Arc<SqliteManager>,
+    _db: Arc<SqliteManager>,
     node_name: ShinkaiName,
     required_count: usize,
 ) -> Result<bool, String> {

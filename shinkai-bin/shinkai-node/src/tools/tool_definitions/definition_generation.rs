@@ -174,7 +174,20 @@ pub async fn generate_tool_definitions(
                     .map(|v| v.as_str().unwrap_or("").to_string())
                     .collect();
                 ToolResult::new(result_type.to_string(), properties, required)
-            }
+            },
+            ShinkaiTool::MCPServer(mcp_server_tool, _) => {
+                println!("mcp_server_tool output_arg: {:?}", mcp_server_tool.output_arg.clone());
+                let value = serde_json::from_str::<serde_json::Value>("{}").unwrap();
+                let result_type = value["result_type"].as_str().unwrap_or("object");
+                let properties = value["properties"].clone();
+                let required = value["required"]
+                    .as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .map(|v| v.as_str().unwrap_or("").to_string())
+                    .collect();
+                ToolResult::new(result_type.to_string(), properties, required)
+            },
             _ => return Err(APIError::from("Unsupported tool type".to_string())),
         };
 

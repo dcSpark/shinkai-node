@@ -6,17 +6,15 @@ authors = { workspace = true }
 
 [dependencies]
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true }
 regex = { workspace = true }
 shinkai_message_primitives = { workspace = true }
 # shinkai_vector_resources = { workspace = true }
-reqwest = { workspace = true, features = [
-    "json",
-    "tokio-native-tls",
-    "blocking",
-    "stream",
-] }
-anyhow = { workspace = true }
+reqwest = { workspace = true, features = ["json", "tokio-native-tls"] }
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 serde = { workspace = true, features = ["derive"] }
 base64 = { workspace = true }
+rmcp = { workspace = true, features = ["client", "transport-child-process", "transport-sse"] }
+log = { workspace = true }
+once_cell = "1.19"
+shinkai_mcp = { workspace = true }

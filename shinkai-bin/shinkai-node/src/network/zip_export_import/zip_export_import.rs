@@ -1,12 +1,16 @@
+use crate::network::mcp_manager;
 use crate::network::node_error::NodeError;
 use crate::network::node_shareable_logic::ZipFileContents;
+use crate::network::Node;
 use crate::utils::environment::NodeEnvironment;
 use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
 use shinkai_http_api::node_api_router::APIError;
+use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_sse};
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
+use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
@@ -20,14 +24,31 @@ use std::sync::Arc;
 use tokio::fs;
 use zip::ZipArchive;
 use zip::{write::FileOptions, ZipWriter};
+pub enum ZipDependencyFileName {
+    Tool,
+    Agent,
+    MCPServer,
+}
+
+impl ZipDependencyFileName {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ZipDependencyFileName::Tool => "__tool.json",
+            ZipDependencyFileName::Agent => "__agent.json",
+            ZipDependencyFileName::MCPServer => "__mcp_server.json",
+        }
+    }
+}
 
 async fn calculate_zip_dependencies(
     db: Arc<SqliteManager>,
     shinkai_name: ShinkaiName,
     tool_entry_point: Option<ShinkaiTool>,
     agent_entry_point: Option<Agent>,
+    mcp_server_entry_point: Option<MCPServer>,
     agent_dependencies: &mut HashMap<String, Agent>,
     tool_dependencies: &mut HashMap<String, ShinkaiTool>,
+    mcp_server_dependencies: &mut HashMap<String, MCPServer>,
 ) -> Result<(), APIError> {
     if let Some(tool) = tool_entry_point {
         let tool_router_key = tool.tool_router_key().to_string_with_version();
@@ -59,13 +80,38 @@ async fn calculate_zip_dependencies(
                     shinkai_name.clone(),
                     None,
                     agent,
+                    None,
                     agent_dependencies,
                     tool_dependencies,
+                    mcp_server_dependencies,
                 ))
                 .await?;
                 return Ok(());
             }
             ShinkaiTool::Network(_, _) => (),
+            ShinkaiTool::MCPServer(mcp_server_tool, _) => {
+                let mcp_server = match db.get_mcp_server(mcp_server_tool.mcp_server_ref.parse::<i64>().unwrap()) {
+                    Ok(mcp_server) => mcp_server,
+                    Err(err) => {
+                        return Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: format!("Failed to get mcp server dependency: {}", err),
+                        });
+                    }
+                };
+                Box::pin(calculate_zip_dependencies(
+                    db.clone(),
+                    shinkai_name.clone(),
+                    None,
+                    None,
+                    mcp_server,
+                    agent_dependencies,
+                    tool_dependencies,
+                    mcp_server_dependencies,
+                ))
+                .await?;
+            }
         }
 
         // This tool might have dependendies, so let's check them.
@@ -87,8 +133,10 @@ async fn calculate_zip_dependencies(
                 shinkai_name.clone(),
                 Some(tool_dependency),
                 None,
+                None,
                 agent_dependencies,
                 tool_dependencies,
+                mcp_server_dependencies,
             ))
             .await?;
         }
@@ -100,23 +148,17 @@ async fn calculate_zip_dependencies(
             // Done, this path has been handled
             return Ok(());
         }
-        agent_dependencies.insert(agent_id, agent.clone());
+        agent_dependencies.insert(agent_id.clone(), agent.clone());
+        let tool: ShinkaiTool = db.get_tool_by_agent_id(&agent_id).map_err(|e| {
+            println!("ERROR - Internal inconsistency: {}", e);
+            return APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to get tool dependency: {}", e),
+            };
+        })?;
 
-        let agent_tool_wrapper = AgentToolWrapper::new(
-            agent.agent_id.clone(),
-            agent.name.clone(),
-            agent.ui_description.clone(),
-            shinkai_name.get_node_name_string(),
-            None,
-        );
-
-        let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper.clone(), true);
-        tool_dependencies.insert(
-            ShinkaiTool::Agent(agent_tool_wrapper, true)
-                .tool_router_key()
-                .to_string_with_version(),
-            shinkai_tool,
-        );
+        tool_dependencies.insert(tool.tool_router_key().to_string_with_version(), tool);
 
         for tool in agent.tools {
             let tool_dependency =
@@ -135,11 +177,22 @@ async fn calculate_zip_dependencies(
                 shinkai_name.clone(),
                 Some(tool_dependency),
                 None,
+                None,
                 agent_dependencies,
                 tool_dependencies,
+                mcp_server_dependencies,
             ))
             .await?;
         }
+    }
+
+    if let Some(mcp_server) = mcp_server_entry_point {
+        let mcp_server_id = mcp_server.id.unwrap().to_string();
+        if mcp_server_dependencies.contains_key(&mcp_server_id) {
+            // Done, this path has been handled
+            return Ok(());
+        }
+        mcp_server_dependencies.insert(mcp_server_id, mcp_server);
     }
 
     return Ok(());
@@ -151,6 +204,7 @@ async fn get_dependencies_for_zip(
     node_env: NodeEnvironment,
     agent_dependencies: &HashMap<String, Agent>,
     tool_dependencies: &HashMap<String, ShinkaiTool>,
+    mcp_server_dependencies: &HashMap<String, MCPServer>,
 ) -> Result<HashMap<String, Vec<u8>>, NodeError> {
     let mut zip_files = HashMap::new();
     for (agent_id, _) in agent_dependencies {
@@ -187,6 +241,7 @@ async fn get_dependencies_for_zip(
                 continue;
             }
             ShinkaiTool::Network(_, _) => (),
+            ShinkaiTool::MCPServer(_, _) => (),
         }
 
         let tool_bytes = match Box::pin(generate_tool_zip(
@@ -203,6 +258,18 @@ async fn get_dependencies_for_zip(
         };
 
         zip_files.insert(format!("__tools/{}.zip", tool_key.replace(':', "_")), tool_bytes);
+    }
+
+    for (mcp_server_id, mcp_server) in mcp_server_dependencies {
+        let mcp_server_bytes = match Box::pin(generate_mcp_server_zip(mcp_server.clone())).await {
+            Ok(bytes) => bytes,
+            Err(err) => return Err(NodeError::from(err)),
+        };
+
+        zip_files.insert(
+            format!("__mcp_servers/{}.zip", mcp_server_id.replace(':', "_")),
+            mcp_server_bytes,
+        );
     }
 
     Ok(zip_files)
@@ -224,11 +291,12 @@ pub async fn generate_agent_zip(
     }
 
     // Retrieve the agent from the database
-    let agent = match db.get_agent(&agent_id) {
+    let mut agent = match db.get_agent(&agent_id) {
         Ok(Some(agent)) => agent,
         Ok(None) => return Err(internal_error(format!("Agent not found: {}", agent_id))),
         Err(err) => return Err(internal_error(format!("Failed to retrieve agent: {}", err))),
     };
+    agent.sanitize_config();
 
     // Serialize the agent to JSON bytes
     let agent_bytes = match serde_json::to_vec(&agent) {
@@ -248,41 +316,46 @@ pub async fn generate_agent_zip(
         // Add the dependencies to the zip file
         let mut tool_dependencies = HashMap::new();
         let mut agent_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         Box::pin(calculate_zip_dependencies(
             db.clone(),
             shinkai_name.clone(),
             None,
             Some(agent.clone()),
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         ))
         .await?;
 
         // Remove self from dependencies
         agent_dependencies.remove(&agent_id);
-        let agent_tool_wrapper = ShinkaiTool::Agent(
-            AgentToolWrapper::new(
-                agent.agent_id.clone(),
-                agent.name.clone(),
-                agent.ui_description.clone(),
-                shinkai_name.get_node_name_string(),
-                None,
-            ),
-            true,
-        )
-        .tool_router_key()
-        .to_string_with_version();
-        tool_dependencies.remove(&agent_tool_wrapper);
+        let tool = match db.get_tool_by_agent_id(&agent_id) {
+            Ok(tool) => tool,
+            Err(err) => {
+                println!("ERROR - Internal inconsistency: {}", err);
+                return Err(APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get tool dependency: {}", err),
+                });
+            }
+        };
+
+        tool_dependencies.remove(&tool.tool_router_key().to_string_with_version());
         println!("For agent: {}", agent_id);
         println!("Agent dependencies: {:?}", agent_dependencies);
         println!("Tool dependencies: {:?}", tool_dependencies);
+        println!("MCP server dependencies: {:?}", mcp_server_dependencies);
 
         let mut zip_files = get_dependencies_for_zip(
             db.clone(),
-            shinkai_name,
-            node_env,
+            shinkai_name.clone(),
+            node_env.clone(),
             &agent_dependencies,
             &tool_dependencies,
+            &mcp_server_dependencies,
         )
         .await
         .map_err(|e| internal_error(format!("Failed to add dependencies to zip: {}", e)))?;
@@ -299,53 +372,7 @@ pub async fn generate_agent_zip(
     }
     let mut zip_files = zip_files.unwrap();
 
-    for item in agent.scope.vector_fs_items {
-        let p = item.full_path();
-        if item.exists() {
-            let file_bytes = fs::read(p).await.map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to read file: {}", e),
-            })?;
-
-            zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
-        }
-    }
-
-    for item in agent.scope.vector_fs_folders {
-        if item.clone().exists() {
-            let files = std::fs::read_dir(item.clone().path).map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Internal Server Error".to_string(),
-                message: format!("Failed to read file: {}", e),
-            })?;
-
-            for entry in files {
-                let file = entry.map_err(|e| APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to read file: {}", e),
-                })?;
-                if file
-                    .file_type()
-                    .map_err(|e| APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to read file: {}", e),
-                    })?
-                    .is_file()
-                {
-                    let file_bytes = fs::read(file.path()).await.map_err(|e| APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to read file: {}", e),
-                    })?;
-
-                    zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
-                }
-            }
-        }
-    }
+    add_knowledge_to_zip(db.clone(), agent, &mut zip_files).await?;
 
     let mut zip = ZipWriter::new(file);
     for (file_name, file_bytes) in zip_files {
@@ -377,6 +404,94 @@ pub async fn generate_agent_zip(
     Ok(file_bytes)
 }
 
+fn add_knowledge_embeddings_to_zip(
+    db: Arc<SqliteManager>,
+    item: ShinkaiPath,
+    zip_files: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), APIError> {
+    let name = item.relative_path().to_string();
+    let text_groups: Vec<(String, Vec<f32>)> =
+        ShinkaiFileManager::get_text_groups_with_embeddings(item, &db).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed to get text groups with embeddings: {}", e),
+        })?;
+
+    // Serialize text_groups to JSON bytes
+    let data = serde_json::to_vec(&text_groups).map_err(|e| APIError {
+        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+        error: "Internal Server Error".to_string(),
+        message: format!("Failed to serialize text groups: {}", e),
+    })?;
+
+    zip_files.insert(format!("__knowledge_embeddings/{}", name), data);
+
+    Ok(())
+}
+
+async fn add_knowledge_to_zip(
+    db: Arc<SqliteManager>,
+    agent: Agent,
+    zip_files: &mut HashMap<String, Vec<u8>>,
+) -> Result<(), APIError> {
+    for item in agent.scope.vector_fs_items {
+        let p: &str = item.full_path();
+        if item.exists() {
+            let file_bytes = fs::read(p).await.map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read file: {}", e),
+            })?;
+
+            zip_files.insert(format!("__knowledge/{}", item.relative_path().to_string()), file_bytes);
+        }
+        add_knowledge_embeddings_to_zip(db.clone(), item, zip_files)?;
+    }
+
+    for item in agent.scope.vector_fs_folders {
+        if item.clone().exists() {
+            let files = std::fs::read_dir(item.clone().path).map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read file: {}", e),
+            })?;
+
+            for entry in files {
+                let file = entry.map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to read file: {}", e),
+                })?;
+                if file
+                    .file_type()
+                    .map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to read file: {}", e),
+                    })?
+                    .is_file()
+                {
+                    let path = file.path().to_str().unwrap_or_default().to_string();
+                    let shinkai_path = ShinkaiPath::new(&path);
+                    let file_bytes = fs::read(file.path()).await.map_err(|e| APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to read file: {}", e),
+                    })?;
+
+                    zip_files.insert(
+                        format!("__knowledge/{}", shinkai_path.relative_path().to_string()),
+                        file_bytes,
+                    );
+                    add_knowledge_embeddings_to_zip(db.clone(), shinkai_path, zip_files)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn generate_tool_zip(
     db: Arc<SqliteManager>,
     shinkai_name: ShinkaiName,
@@ -400,13 +515,16 @@ pub async fn generate_tool_zip(
         // Add the dependencies to the zip file
         let mut tool_dependencies = HashMap::new();
         let mut agent_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         calculate_zip_dependencies(
             db.clone(),
             shinkai_name.clone(),
             Some(tool.clone()),
             None,
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await
         .map_err(|e| NodeError {
@@ -417,6 +535,7 @@ pub async fn generate_tool_zip(
         println!("For tool: {}", tool.tool_router_key().to_string_without_version());
         println!("Agent dependencies: {:?}", agent_dependencies);
         println!("Tool dependencies: {:?}", tool_dependencies);
+        println!("MCP server dependencies: {:?}", mcp_server_dependencies);
 
         let mut zip_files = get_dependencies_for_zip(
             db.clone(),
@@ -424,6 +543,7 @@ pub async fn generate_tool_zip(
             node_env.clone(),
             &agent_dependencies,
             &tool_dependencies,
+            &mcp_server_dependencies,
         )
         .await
         .map_err(|e| NodeError {
@@ -474,6 +594,29 @@ pub async fn generate_tool_zip(
     Ok(file_bytes)
 }
 
+async fn generate_mcp_server_zip(mcp_server: MCPServer) -> Result<Vec<u8>, NodeError> {
+    let mut mcp_server = mcp_server;
+    mcp_server.sanitize_env();
+
+    let mcp_server_bytes = serde_json::to_vec(&mcp_server).unwrap();
+
+    let name = format!("{}.zip", mcp_server.id.unwrap().to_string().replace(':', "_"));
+    let path = std::env::temp_dir().join(&name);
+    let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
+
+    let mut zip = ZipWriter::new(file);
+    zip.start_file::<_, ()>("__mcp_server.json", FileOptions::default())
+        .map_err(|e| NodeError::from(e.to_string()))?;
+    zip.write_all(&mcp_server_bytes)
+        .map_err(|e| NodeError::from(e.to_string()))?;
+    zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
+
+    let file_bytes = fs::read(&path).await?;
+    // Delete the zip file after reading it
+    fs::remove_file(&path).await?;
+    Ok(file_bytes)
+}
+
 async fn import_tool_assets(
     tool: ShinkaiTool,
     node_env: NodeEnvironment,
@@ -489,7 +632,12 @@ async fn import_tool_assets(
         if file == "__tool.json" {
             continue;
         }
-        if file.starts_with("__agents/") || file.starts_with("__tools/") || file.starts_with("__knowledge/") {
+        if file.starts_with("__agents/")
+            || file.starts_with("__tools/")
+            || file.starts_with("__knowledge/")
+            || file.starts_with("__knowledge_embeddings/")
+            || file.starts_with("__mcp_servers/")
+        {
             continue;
         }
         println!("[IMPORTING ASSETS]: {}", file);
@@ -552,18 +700,18 @@ async fn import_agent_knowledge(
     let archive_clone = zip_contents.clone();
     let files = archive_clone.file_names();
     for file in files {
-        if file.starts_with("__knowledge/") {
+        if file.starts_with("__knowledge/") && !file.ends_with("/") {
             let mut buffer = Vec::new();
             {
                 println!("[IMPORTING KNOWLEDGE]: {}", file);
-                let file: Result<zip::read::ZipFile<'_>, zip::result::ZipError> = zip_contents.by_name(file);
-                let mut tool_file = match file {
-                    Ok(file) => file,
-                    Err(_) => {
+                let knowledge_file_entry = zip_contents.by_name(file);
+                let mut tool_file = match knowledge_file_entry {
+                    Ok(opened_file) => opened_file,
+                    Err(zip_err) => {
                         return Err(APIError {
                             code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Invalid Tool Archive".to_string(),
-                            message: "Archive does not contain tool.json".to_string(),
+                            error: "Invalid Knowledge Archive".to_string(),
+                            message: format!("Failed to access knowledge file '{}' in archive: {}", file, zip_err),
                         });
                     }
                 };
@@ -578,39 +726,107 @@ async fn import_agent_knowledge(
                 }
             } // `tool_file` goes out of scope here
 
-            let relative_path = file.replace("__knowledge/", "");
+            let relative_path: String = file.replace("__knowledge/", "");
             let dest_path = ShinkaiPath::from_str(&relative_path);
-            ShinkaiFileManager::save_and_process_file(
-                dest_path,
-                buffer,
-                &db,
-                FileProcessingMode::Auto,
-                &*embedding_generator,
-            )
-            .await
-            .map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Failed to save and process file".to_string(),
-                message: format!("Failed to save and process file: {}", e),
-            })?;
+
+            let file_content = ShinkaiFileManager::get_file_content(dest_path.clone());
+            if file_content.is_ok() {
+                println!("[SKIPPING KNOWLEDGE]: {}", file);
+                continue;
+            }
+
+            // Let's check if the file has a embedding precalculated
+            let embedding_file: String = file.replace("__knowledge/", "__knowledge_embeddings/");
+            let embedding_buffer = get_embeedings_from_zip(embedding_file.clone(), zip_contents.clone())?;
+            if embedding_buffer.is_some() {
+                println!("[IMPORTING KNOWLEDGE (with embeddings)]: {}", file);
+                ShinkaiFileManager::save_and_process_file_with_embeddings(
+                    dest_path,
+                    buffer,
+                    &db,
+                    embedding_buffer.unwrap(),
+                )
+                .await
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to save and process file".to_string(),
+                    message: format!("Failed to save and process file: {}", e),
+                })?;
+            } else {
+                // Insert file and process it generating new embeddings
+                println!("[IMPORTING KNOWLEDGE (without embeddings)]: {}", file);
+                ShinkaiFileManager::save_and_process_file(
+                    dest_path,
+                    buffer,
+                    &db,
+                    FileProcessingMode::Auto,
+                    &*embedding_generator,
+                )
+                .await
+                .map_err(|e| APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Failed to save and process file".to_string(),
+                    message: format!("Failed to save and process file: {}", e),
+                })?;
+            }
         }
     }
 
     Ok(())
 }
 
+fn get_embeedings_from_zip(
+    file: String,
+    mut zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
+) -> Result<Option<Vec<(String, Vec<f32>)>>, APIError> {
+    let embedding_file = zip_contents.by_name(&file);
+    if embedding_file.is_err() {
+        return Ok(None);
+    }
+    let mut embedding_file = embedding_file.unwrap();
+    let mut embedding_buffer = Vec::new();
+    embedding_file
+        .read_to_end(&mut embedding_buffer)
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Failed to read embedding file".to_string(),
+            message: format!("Failed to read embedding file: {}", e),
+        })?;
+
+    let embedding_buffer: Vec<(String, Vec<f32>)> =
+        serde_json::from_slice(&embedding_buffer).map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Failed to parse embedding file".to_string(),
+            message: format!("Failed to parse embedding file: {}", e),
+        })?;
+
+    let embedding_buffer = embedding_buffer
+        .into_iter()
+        .map(|(text, embedding)| (text, embedding.into_iter().map(|f| f as f32).collect()))
+        .collect();
+    Ok(Some(embedding_buffer))
+}
+
 pub async fn import_dependencies_tools(
     db: Arc<SqliteManager>,
+    full_identity: ShinkaiName,
     node_env: NodeEnvironment,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
     embedding_generator: Arc<dyn EmbeddingGenerator>,
 ) -> Result<(), APIError> {
     // Import tools from the zip file
     let archive_clone = zip_contents.clone();
-    let files = archive_clone.file_names();
-    for file in files {
-        if file.starts_with("__tools/") {
-            let tool_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), true).await {
+    let file_list: Vec<&str> = archive_clone.file_names().collect();
+    println!("Files:\n{}", file_list.join("\n"));
+    for file_name_str in file_list {
+        if file_name_str.starts_with("__tools/") && file_name_str != "__tools/" {
+            let tool_zip = match bytes_to_zip_tool(
+                zip_contents.clone(),
+                file_name_str.to_string(),
+                ZipDependencyFileName::Tool,
+            )
+            .await
+            {
                 Ok(tool_zip) => tool_zip,
                 Err(err) => {
                     let api_error = APIError {
@@ -636,19 +852,126 @@ pub async fn import_dependencies_tools(
             let import_tool_result = import_tool(db.clone(), node_env.clone(), tool_zip, tool).await;
             if let Err(err) = import_tool_result {
                 println!("Error importing tool: {:?}", err);
+            } else {
+                println!("Successfully imported tool.");
             }
         }
-        if file.starts_with("__agents/") {
-            let agent_zip = match bytes_to_zip_tool(zip_contents.clone(), file.to_string(), false).await {
+        if file_name_str.starts_with("__agents/") && file_name_str != "__agents/" {
+            let agent_zip = match bytes_to_zip_tool(
+                zip_contents.clone(),
+                file_name_str.to_string(),
+                ZipDependencyFileName::Agent,
+            )
+            .await
+            {
                 Ok(agent_zip) => agent_zip,
                 Err(err) => return Err(err),
             };
             let agent = get_agent_from_zip(agent_zip.archive).unwrap();
-            let import_agent_result =
-                import_agent(db.clone(), zip_contents.clone(), agent, embedding_generator.clone()).await;
+            let import_agent_result = import_agent(
+                db.clone(),
+                full_identity.clone(),
+                zip_contents.clone(),
+                agent,
+                embedding_generator.clone(),
+            )
+            .await;
             if let Err(err) = import_agent_result {
                 println!("Error importing agent: {:?}", err);
+            } else {
+                println!("Successfully imported agent.");
             }
+        }
+        if file_name_str.starts_with("__mcp_servers/") && file_name_str != "__mcp_servers/" {
+            let mcp_server_zip = match bytes_to_zip_tool(
+                zip_contents.clone(),
+                file_name_str.to_string(),
+                ZipDependencyFileName::MCPServer,
+            )
+            .await
+            {
+                Ok(mcp_server_zip) => mcp_server_zip,
+                Err(err) => return Err(err),
+            };
+            let mcp_server = get_mcp_server_from_zip(mcp_server_zip.archive).unwrap();
+            let import_mcp_server_result =
+                import_mcp_server(db.clone(), mcp_server, full_identity.get_node_name_string().to_string()).await;
+            if let Err(err) = import_mcp_server_result {
+                println!("Error importing MCP server: {:?}", err);
+            } else {
+                println!("Successfully imported MCP server.");
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn import_mcp_server(
+    db: Arc<SqliteManager>,
+    mcp_server: MCPServer,
+    node_name: String,
+) -> Result<(), APIError> {
+    println!("[IMPORTING MCP SERVER]: {}", mcp_server.name);
+    let exists = db
+        .check_if_server_exists(
+            &mcp_server.r#type,
+            mcp_server.command.clone().unwrap_or_default().to_string(),
+            mcp_server.url.clone().unwrap_or_default().to_string(),
+        )
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Database Error".to_string(),
+            message: format!("Failed to check if MCP server exists: {}", e),
+        })?;
+    if exists {
+        return Ok(());
+    }
+    let mcp_server = db
+        .add_mcp_server(
+            mcp_server.id,
+            mcp_server.name,
+            mcp_server.r#type,
+            mcp_server.url,
+            mcp_server.command.clone(),
+            mcp_server.env.clone(),
+            mcp_server.is_enabled.clone(),
+        )
+        .map_err(|e| APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Database Error".to_string(),
+            message: format!("Failed to save MCP server to database: {}", e),
+        })?;
+    println!("[IMPORTING MCP SERVER]: {}", mcp_server.name);
+    let tools = match mcp_server.r#type {
+        MCPServerType::Command => {
+            let tools = list_tools_via_command(&mcp_server.command.clone().unwrap_or_default().to_string(), None)
+                .await
+                .map_err(|e| println!("Failed to list tools: {:?}", e));
+            tools
+        }
+        MCPServerType::Sse => {
+            let tools = list_tools_via_sse(&mcp_server.url.clone().unwrap_or_default().to_string(), None)
+                .await
+                .map_err(|e| println!("Failed to list tools: {:?}", e));
+            tools
+        }
+    };
+    if let Ok(tools) = tools {
+        for tool in tools {
+            println!("[IMPORTING TOOL]: {}", tool.name);
+            let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                &tool,
+                &mcp_server.name,
+                &mcp_server.id.unwrap_or(0).to_string(),
+                &mcp_server.get_command_hash(),
+                &node_name.to_string(),
+                vec![],
+            );
+            db.add_tool(shinkai_tool).await.map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: format!("Failed to save tool to database: {}", e),
+            })?;
         }
     }
     Ok(())
@@ -695,6 +1018,7 @@ pub async fn import_tool(
                 "tool": tool.clone()
             }));
         }
+        ShinkaiTool::MCPServer(_, _) => {}
     }
 
     // check if any version of the tool exists in the database
@@ -743,8 +1067,9 @@ pub async fn import_tool(
 
 pub async fn import_agent(
     db: Arc<SqliteManager>,
+    full_identity: ShinkaiName,
     zip_contents: ZipArchive<std::io::Cursor<Vec<u8>>>,
-    agent: Agent,
+    mut agent: Agent,
     embedding_generator: Arc<dyn EmbeddingGenerator>,
 ) -> Result<Value, APIError> {
     println!("[IMPORTING AGENT]: {}", agent.agent_id);
@@ -753,21 +1078,71 @@ pub async fn import_agent(
     // So we just check if the agent exists in the database
     let install = match db.get_agent(&agent.agent_id) {
         Ok(agent) => match agent {
-            Some(_) => false,
+            Some(agent) => {
+                // If the agent has been edited. Do not overwrite it.
+                if agent.edited {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Agent has been edited".to_string(),
+                        message: "Agent has been edited. Please delete it first.".to_string(),
+                    });
+                } else {
+                    return Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Agent Exists.".to_string(),
+                        message: "Agent Exists. Please delete it first.".to_string(),
+                    });
+                }
+            }
             None => true,
         },
-        Err(_) => true,
+        Err(_) => {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: "Failed to get agent".to_string(),
+            })
+        }
     };
+
+    let preferences_llm_provider_result = match db.get_preference::<String>("default_llm_provider") {
+        Ok(llm_provider) => match llm_provider {
+            Some(llm_provider) => llm_provider,
+            None => Node::shinkai_free_provider_id(),
+        },
+        Err(_) => {
+            return Err(APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Database Error".to_string(),
+                message: "Failed to get default LLM provider".to_string(),
+            })
+        }
+    };
+
+    let original_author = agent.full_identity_name.node_name.clone();
+
+    // Construct the Agent's full identity name, in the local node.
+    let local_full_identity_name = ShinkaiName::new(format!(
+        "{}/main/agent/{}",
+        full_identity.get_node_name_string(),
+        agent.agent_id.to_lowercase()
+    ))
+    .unwrap();
+    agent.full_identity_name = local_full_identity_name;
+
+    agent.llm_provider_id = preferences_llm_provider_result;
+    agent.edited = false;
+
+    import_agent_knowledge(zip_contents, db.clone(), embedding_generator.clone()).await?;
 
     if install {
         match db.add_agent(agent.clone(), &agent.full_identity_name) {
             Ok(_) => {
-                let author = agent.full_identity_name.node_name.clone();
                 let agent_tool_wrapper = AgentToolWrapper::new(
                     agent.agent_id.clone(),
                     agent.name.clone(),
                     agent.ui_description.clone(),
-                    author,
+                    original_author,
                     None,
                 );
                 let shinkai_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
@@ -802,8 +1177,6 @@ pub async fn import_agent(
             }
         }
     }
-
-    import_agent_knowledge(zip_contents, db, embedding_generator).await?;
 
     return Ok(json!({
         "status": "success",
@@ -879,10 +1252,43 @@ pub fn get_agent_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> 
     Ok(agent)
 }
 
+pub fn get_mcp_server_from_zip(mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>) -> Result<MCPServer, APIError> {
+    // Extract and parse tool.json
+    let mut buffer = Vec::new();
+    {
+        let mut file = match archive.by_name("__mcp_server.json") {
+            Ok(file) => file,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid MCP Server Zip".to_string(),
+                    message: "Archive does not contain __mcp_server.json".to_string(),
+                };
+                return Err(api_error);
+            }
+        };
+
+        if let Err(err) = file.read_to_end(&mut buffer) {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to read mcp_server.json: {}", err),
+            };
+            return Err(api_error);
+        }
+    }
+    let mcp_server: MCPServer = serde_json::from_slice(&buffer).map_err(|e| APIError {
+        code: StatusCode::BAD_REQUEST.as_u16(),
+        error: "Invalid MCP Server JSON".to_string(),
+        message: format!("Failed to parse mcp_server.json: {}", e),
+    })?;
+    Ok(mcp_server)
+}
+
 async fn bytes_to_zip_tool(
     mut archive: ZipArchive<std::io::Cursor<Vec<u8>>>,
     file_name: String,
-    is_tool: bool, // if not is agent
+    zip_dependency_file_name: ZipDependencyFileName,
 ) -> Result<ZipFileContents, APIError> {
     // Extract and parse file
     let mut zip_buffer = Vec::new();
@@ -914,13 +1320,14 @@ async fn bytes_to_zip_tool(
 
     let mut tool_agent_buffer: Vec<u8> = Vec::new();
     {
-        let mut file = match return_archive.by_name(if is_tool { "__tool.json" } else { "__agent.json" }) {
+        let expected_file_name = zip_dependency_file_name.as_str();
+        let mut file = match return_archive.by_name(expected_file_name) {
             Ok(file) => file,
             Err(_) => {
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Invalid Zip File".to_string(),
-                    message: "Archive does not contain __tool.json".to_string(),
+                    message: format!("Archive does not contain {}", expected_file_name),
                 });
             }
         };
@@ -1109,13 +1516,16 @@ mod tests {
         // Test calculate_zip_dependencies with tool A as entry point
         let mut agent_dependencies = HashMap::new();
         let mut tool_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         let result = calculate_zip_dependencies(
             db.clone(),
             profile.clone(),
             Some(ShinkaiTool::Deno(tool_a.clone(), true)),
             None,
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await;
 
@@ -1127,12 +1537,12 @@ mod tests {
     async fn test_tool_dependency_cycles_agent() {
         let manager = setup_test_db().await;
         let db = Arc::new(manager);
-        let profile = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
+        let profile: ShinkaiName = ShinkaiName::new("@@test_user.shinkai/main".to_string()).unwrap();
 
         let agent = Agent {
             name: "test_agent".to_string(),
             agent_id: "test123".to_string(),
-            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            full_identity_name: profile.clone(),
             llm_provider_id: "test_provider".to_string(),
             ui_description: "Test Agent".to_string(),
             knowledge: vec![],
@@ -1143,6 +1553,7 @@ mod tests {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            edited: false,
         };
 
         let agent_tool_wrapper = ShinkaiTool::Agent(
@@ -1150,7 +1561,7 @@ mod tests {
                 agent.agent_id.clone(),
                 agent.name.clone(),
                 agent.ui_description.clone(),
-                profile.node_name.clone(),
+                agent.full_identity_name.node_name.clone(),
                 None,
             ),
             true,
@@ -1245,19 +1656,23 @@ mod tests {
 
         let mut agent_dependencies = HashMap::new();
         let mut tool_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         let result = calculate_zip_dependencies(
             db.clone(),
             profile.clone(),
             Some(ShinkaiTool::Deno(tool_a.clone(), true)),
             None,
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await;
 
         assert!(result.is_ok());
         assert!(agent_dependencies.len() == 1);
         assert!(tool_dependencies.len() == 3);
+        assert!(mcp_server_dependencies.len() == 0);
     }
 
     #[tokio::test]
@@ -1350,7 +1765,7 @@ mod tests {
         let agent = Agent {
             name: "test_agent".to_string(),
             agent_id: "test123".to_string(),
-            full_identity_name: ShinkaiName::new("test.agent".to_string()).unwrap(),
+            full_identity_name: profile.clone(),
             llm_provider_id: "test_provider".to_string(),
             ui_description: "Test Agent".to_string(),
             knowledge: vec![],
@@ -1361,13 +1776,14 @@ mod tests {
             cron_tasks: None,
             scope: MinimalJobScope::default(),
             tools_config_override: None,
+            edited: false,
         };
         let agent_tool_wrapper = ShinkaiTool::Agent(
             AgentToolWrapper::new(
                 agent.agent_id.clone(),
                 agent.name.clone(),
                 agent.ui_description.clone(),
-                profile.node_name.clone(),
+                agent.full_identity_name.node_name.clone(),
                 None,
             ),
             true,
@@ -1381,18 +1797,22 @@ mod tests {
         // Test calculate_zip_dependencies with agent as entry point
         let mut agent_dependencies = HashMap::new();
         let mut tool_dependencies = HashMap::new();
+        let mut mcp_server_dependencies: HashMap<String, MCPServer> = HashMap::new();
         let result = calculate_zip_dependencies(
             db.clone(),
             profile.clone(),
             None,
             Some(agent),
+            None,
             &mut agent_dependencies,
             &mut tool_dependencies,
+            &mut mcp_server_dependencies,
         )
         .await;
 
         assert!(result.is_ok());
         assert!(agent_dependencies.len() == 1);
         assert!(tool_dependencies.len() == 3);
+        assert!(mcp_server_dependencies.len() == 0);
     }
 }

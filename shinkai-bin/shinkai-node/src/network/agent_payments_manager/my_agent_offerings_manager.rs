@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::AddressBalanceList
+        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
     }, shinkai_message::shinkai_message_schemas::MessageSchemaType, shinkai_utils::{
         encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
     }
@@ -14,7 +14,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
@@ -248,7 +248,7 @@ impl MyAgentOfferingsManager {
         })?;
 
         // Get the price for the usage type
-        let usage_type_inquiry = UsageTypeInquiry::PerUse; // or UsageTypeInquiry::Downloadable based on your context
+        let usage_type_inquiry = UsageTypeInquiry::PerUse;
         let price = invoice
             .shinkai_offering
             .get_price_for_usage(&usage_type_inquiry)
@@ -270,13 +270,18 @@ impl MyAgentOfferingsManager {
 
         let my_address = wallet.payment_wallet.get_address();
 
+        // Create the Asset struct
+        let asset = Asset {
+            network_id: asset_payment.network.clone(),
+            asset_id: asset_payment.asset.clone(),
+            decimals: None, // TODO: this should be retrieved from the asset
+            contract_address: None,
+        };
+        println!("asset: {:?}", asset);
+
         // Check the balance before attempting to pay
         let balance = match wallet
-            .check_balance_payment_wallet(
-                my_address.clone().into(),
-                asset_payment.asset.clone(),
-                node_name.clone(),
-            )
+            .check_balance_payment_wallet(my_address.clone().into(), asset, node_name.clone())
             .await
         {
             Ok(balance) => balance,
@@ -290,14 +295,16 @@ impl MyAgentOfferingsManager {
         };
         println!("wallet {} balance: {:?}", my_address.address_id.clone(), balance);
 
-        let required_amount = asset_payment.amount.parse::<u128>().map_err(|e| {
+        let required_amount = asset_payment.max_amount_required.parse::<u128>().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to parse required amount: {}", e))
         })?;
         println!("required_amount: {:?}", required_amount);
 
-        let available_amount = balance.amount.split('.').next().unwrap().parse::<u128>().map_err(|e| {
+        let available_amount = balance.amount.parse::<u128>().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e))
         })?;
+
+        println!("available_amount: {:?}", available_amount);
 
         if available_amount < required_amount {
             return Err(AgentOfferingManagerError::OperationFailed(
@@ -416,6 +423,7 @@ impl MyAgentOfferingsManager {
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
         db.set_invoice(&updated_invoice).map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
         })?;
@@ -844,26 +852,4 @@ mod tests {
 
     //     Ok(())
     // }
-
-    #[tokio::test]
-    async fn test_parse_available_amount() {
-        struct MockBalance {
-            amount: String,
-        }
-
-        let balance = MockBalance {
-            amount: "4999000.000".to_string(),
-        };
-
-        let available_amount = balance
-            .amount
-            .split('.')
-            .next()
-            .unwrap()
-            .parse::<u128>()
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e)))
-            .unwrap();
-
-        assert_eq!(available_amount, 4999000);
-    }
 }

@@ -1,7 +1,7 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider
+    LLMProviderInterface, OpenAI, SerializedLLMProvider,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -12,7 +12,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 use super::utils;
 use super::utils::node_test_api::{
-    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job
+    api_create_job, api_initial_registration_with_no_code_for_device, api_llm_provider_registration, api_message_job,
 };
 use mockito::Server;
 
@@ -63,6 +63,8 @@ fn job_branchs_retries_tests() {
 
     let api_v2_key = std::env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
     let mut server = Server::new();
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -171,7 +173,7 @@ fn job_branchs_retries_tests() {
                     └── 4
             */
 
-            let mut job_id = "".to_string();
+            let mut job_id: String;
             let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
             {
                 // Create a Job
@@ -262,8 +264,8 @@ fn job_branchs_retries_tests() {
                     └── 3 (done)
                         └── 4 (done)
             */
-            let mut message2_hash: Option<String> = None;
-            let mut inbox_name: Option<String> = None;
+            let mut message2_hash: Option<String>;
+            let mut inbox_name: Option<String>;
             {
                 // Confirm that we receive 1, 2, 3, 4
                 let start = Instant::now();
@@ -325,7 +327,7 @@ fn job_branchs_retries_tests() {
                     └── 3 (done)
                         └── 4 (done)
             */
-            let mut node1_last_messages = Vec::new();
+            let mut node1_last_messages;
             {
                 // Confirm that we receive 1, 2, 5, 6
                 let start = Instant::now();

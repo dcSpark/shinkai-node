@@ -1,61 +1,45 @@
+use super::IdentityManager;
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::generic_chain::generic_inference_chain::GenericInferenceChain;
 use crate::llm_provider::execution::chains::inference_chain_trait::{FunctionCall, InferenceChainContextTrait};
 use crate::llm_provider::job_manager::JobManager;
 use crate::network::node_shareable_logic::ZipFileContents;
 use crate::network::zip_export_import::zip_export_import::{
-    get_agent_from_zip, get_tool_from_zip, import_agent, import_tool,
+    get_agent_from_zip, get_tool_from_zip, import_agent, import_tool
 };
 use crate::network::Node;
 use crate::tools::tool_definitions::definition_generation::{generate_tool_definitions, get_rust_tools};
 use crate::tools::tool_execution::{
-    execute_agent_dynamic::execute_agent_tool,
-    execution_coordinator::override_tool_config,
-    execution_custom::try_to_execute_rust_tool,
-    execution_header_generator::{check_tool, generate_execution_environment},
+    execute_agent_dynamic::execute_agent_tool, execution_coordinator::override_tool_config, execution_custom::try_to_execute_rust_tool, execution_header_generator::{check_tool, generate_execution_environment}
 };
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
-use async_std::path::PathBuf;
+use ed25519_dalek::SigningKey;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::shinkai_tools::CodeLanguage;
+use shinkai_message_primitives::schemas::x402_types::Network;
 use shinkai_message_primitives::schemas::{
-    indexable_version::IndexableVersion,
-    invoices::{Invoice, InvoiceStatusEnum},
-    job::JobLike,
-    llm_providers::common_agent_llm_provider::ProviderOrAgent,
-    shinkai_name::ShinkaiName,
-    shinkai_preferences::ShinkaiInternalComms,
-    shinkai_tool_offering::{AssetPayment, ToolPrice, UsageType, UsageTypeInquiry},
-    tool_router_key::ToolRouterKey,
-    wallet_mixed::{Asset, NetworkIdentifier},
-    ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata},
+    indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}, x402_types::PaymentRequirements
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::files::prompts_data;
 use shinkai_sqlite::SqliteManager;
+use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
+use shinkai_tools_primitives::tools::tool_types::ToolResult;
 use shinkai_tools_primitives::tools::{
-    error::ToolError,
-    network_tool::NetworkTool,
-    parameters::Parameters,
-    rust_tools::RustTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
-    tool_config::ToolConfig,
-    tool_output_arg::ToolOutputArg,
+    error::ToolError, network_tool::NetworkTool, parameters::Parameters, rust_tools::RustTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}, tool_config::ToolConfig, tool_output_arg::ToolOutputArg
 };
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
-
-use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
-use super::IdentityManager;
 
 #[derive(Clone)]
 pub struct ToolRouter {
@@ -109,15 +93,24 @@ impl ToolRouter {
                 .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
         }
 
+        println!(
+            "Initializing tool router - Database empty: {}, Has JS tools: {}",
+            is_empty, has_any_js_tools
+        );
+
         if let Err(e) = self.add_rust_tools().await {
             eprintln!("Error adding rust tools: {}", e);
         }
 
         let node_env = fetch_node_environment();
         let node_name: String = node_env.global_identity_name.clone();
+        let full_identity =
+            ShinkaiName::new(format!("{}/main", node_name)).map_err(|e| ToolError::ExecutionError(e.to_string()))?;
+
+        println!("Importing tools from directory for node: {}", node_name);
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
-            node_name,
+            full_identity,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator.clone(),
@@ -128,6 +121,7 @@ impl ToolRouter {
         }
 
         if is_empty {
+            println!("Database is empty, adding static prompts and testing network tools");
             if let Err(e) = self.add_static_prompts(embedding_generator).await {
                 eprintln!("Error adding static prompts: {}", e);
             }
@@ -135,6 +129,7 @@ impl ToolRouter {
                 eprintln!("Error adding testing network tools: {}", e);
             }
         } else if !has_any_js_tools {
+            println!("No JS tools found, adding testing network tools");
             if let Err(e) = self.add_testing_network_tools().await {
                 eprintln!("Error adding testing network tools: {}", e);
             }
@@ -152,10 +147,11 @@ impl ToolRouter {
         }
 
         let node_env = fetch_node_environment();
-        let node_name: String = node_env.global_identity_name.clone();
+        let full_identity = ShinkaiName::new(format!("{}/main", node_env.global_identity_name))
+            .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
-            node_name,
+            full_identity,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator,
@@ -175,10 +171,11 @@ impl ToolRouter {
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
         let node_env = fetch_node_environment();
-        let node_name: String = node_env.global_identity_name.clone();
+        let full_identity = ShinkaiName::new(format!("{}/main", node_env.global_identity_name))
+            .map_err(|e| ToolError::ExecutionError(e.to_string()))?;
         if let Err(e) = Self::import_tools_from_directory(
             self.sqlite_manager.clone(),
-            node_name,
+            full_identity,
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator.clone(),
@@ -192,6 +189,7 @@ impl ToolRouter {
 
     async fn import_from_local_directory(
         db: Arc<SqliteManager>,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
@@ -203,7 +201,7 @@ impl ToolRouter {
             }
         };
 
-        if !directory_path.exists().await {
+        if !directory_path.exists() {
             eprintln!("Install directory not found: {}", directory_path.display());
             return Ok(());
         }
@@ -249,9 +247,17 @@ impl ToolRouter {
 
             if is_agent {
                 let agent = get_agent_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
-                import_agent(db.clone(), archive.clone(), agent, embedding_generator.clone())
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+                let import_result = import_agent(
+                    db.clone(),
+                    full_identity.clone(),
+                    archive.clone(),
+                    agent,
+                    embedding_generator.clone(),
+                )
+                .await;
+                if let Err(e) = import_result {
+                    eprintln!("Error importing agent: {:?}", e);
+                }
             }
             if is_tool {
                 let tool = get_tool_from_zip(archive.clone()).map_err(|e| ToolError::ExecutionError(e.message))?;
@@ -259,9 +265,10 @@ impl ToolRouter {
                     buffer: serde_json::to_vec(&tool).unwrap(),
                     archive: archive.clone(),
                 };
-                import_tool(db.clone(), node_env.clone(), tool_archive, tool)
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.message))?;
+                let import_result = import_tool(db.clone(), node_env.clone(), tool_archive, tool).await;
+                if let Err(e) = import_result {
+                    eprintln!("Error importing tool: {:?}", e);
+                }
             }
         }
 
@@ -272,21 +279,40 @@ impl ToolRouter {
     /// Now also checks if a tool is installed with an older version, and if so, calls `upgrade_tool`.
     async fn import_tools_from_directory(
         db: Arc<SqliteManager>,
-        node_name: String,
+        full_identity: ShinkaiName,
         signing_secret_key: SigningKey,
         default_tool_router_keys: Arc<Mutex<Vec<String>>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<(), ToolError> {
         let node_env = fetch_node_environment();
-        Self::import_from_local_directory(db.clone(), node_env.clone(), embedding_generator.clone()).await?;
 
         if env::var("SKIP_IMPORT_FROM_DIRECTORY")
             .unwrap_or("false".to_string())
             .to_lowercase()
             .eq("true")
         {
+            println!("Skipping directory imports due to SKIP_IMPORT_FROM_DIRECTORY flag");
+            let internal_comms = ShinkaiInternalComms {
+                internal_has_sync_default_tools: true,
+            };
+            if let Err(e) = db.set_preference(
+                "internal_comms",
+                &internal_comms,
+                Some("Internal communication preferences"),
+            ) {
+                eprintln!("Error setting internal_comms preference: {}", e);
+            }
             return Ok(());
         }
+
+        println!("Starting import from local directory");
+        Self::import_from_local_directory(
+            db.clone(),
+            full_identity.clone(),
+            node_env.clone(),
+            embedding_generator.clone(),
+        )
+        .await?;
 
         // Set the sync status to false at the start
         let internal_comms = ShinkaiInternalComms {
@@ -306,6 +332,7 @@ impl ToolRouter {
         let url = env::var("SHINKAI_TOOLS_DIRECTORY_URL")
             .unwrap_or_else(|_| format!("https://store-api.shinkai.com/store/defaults"));
 
+        println!("Fetching tools from remote directory: {}", url);
         let client = reqwest::Client::new();
         let response = client
             .get(url)
@@ -326,6 +353,8 @@ impl ToolRouter {
             .await
             .map_err(|e| ToolError::ParseError(format!("Failed to parse tools directory: {}", e)))?;
 
+        println!("Found {} tools in remote directory", tools.len());
+
         // Collect default tool router keys
         let default_tool_keys: Vec<String> = tools
             .iter()
@@ -339,6 +368,8 @@ impl ToolRouter {
                 }
             })
             .collect();
+
+        println!("Found {} default tool router keys", default_tool_keys.len());
 
         // Store the default tool keys in the ToolRouter
         {
@@ -357,69 +388,140 @@ impl ToolRouter {
                 let router_key = tool["routerKey"].as_str()?;
                 // It's OK if no version is specified in the JSON; default to 1.0.0
                 let version = tool["version"].as_str().unwrap_or("1.0.0").to_owned();
-                Some((name.to_owned(), file.to_owned(), router_key.to_owned(), version))
+                let r#type = tool["type"].as_str().unwrap_or("").to_owned();
+                Some((name.to_owned(), file.to_owned(), router_key.to_owned(), version, r#type))
             })
             .collect::<Vec<_>>();
 
+        println!("Processing {} tools in chunks", tool_infos.len());
+        let mut tools_added = 0;
+        let mut tools_skipped = 0;
+        let mut tools_failed = 0;
+
         let chunk_size = 5;
-        for chunk in tool_infos.chunks(chunk_size) {
-            let futures = chunk.iter().map(|(tool_name, tool_url, router_key, new_version)| {
-                let db = db.clone();
-                let node_env = node_env.clone();
-                let node_name = node_name.clone();
-                let signing_secret_key = signing_secret_key.clone();
-                let embedding_generator = embedding_generator.clone();
-                async move {
-                    // Try to see if a tool with the same routerKey is already installed.
-                    let do_install = match db.get_tool_by_key(router_key) {
-                        Ok(existing_tool) => {
-                            // Compare version numbers:
-                            // The local version is existing_tool.version(),
-                            // the remote version is new_version (string from the JSON).
-                            // We parse them into IndexableVersion and compare.
-                            let local_ver = existing_tool.version_indexable()?;
-                            let remote_ver = IndexableVersion::from_string(new_version)?;
-                            Ok(remote_ver > local_ver)
-                        }
-                        Err(SqliteManagerError::ToolNotFound(_)) => Ok(true), // Update needed
-                        Err(e) => Err(ToolError::DatabaseError(e.to_string())),
-                    }?;
+        for (chunk_index, chunk) in tool_infos.chunks(chunk_size).enumerate() {
+            println!(
+                "Processing chunk {}/{}",
+                chunk_index + 1,
+                (tool_infos.len() + chunk_size - 1) / chunk_size
+            );
+            let futures = chunk
+                .iter()
+                .map(|(tool_name, tool_url, router_key, new_version, r#type)| {
+                    let db = db.clone();
+                    let node_env = node_env.clone();
+                    let full_identity = full_identity.clone();
+                    let signing_secret_key: SigningKey = signing_secret_key.clone();
+                    let embedding_generator = embedding_generator.clone();
+                    async move {
+                        if r#type == "Tool" {
+                            // Try to see if a tool with the same routerKey is already installed.
+                            let do_install = match db.get_tool_by_key(router_key) {
+                                Ok(existing_tool) => {
+                                    // Compare version numbers:
+                                    // The local version is existing_tool.version(),
+                                    // the remote version is new_version (string from the JSON).
+                                    // We parse them into IndexableVersion and compare.
+                                    let local_ver = existing_tool.version_indexable()?;
+                                    let remote_ver = IndexableVersion::from_string(new_version)?;
+                                    Ok(remote_ver > local_ver)
+                                }
+                                Err(SqliteManagerError::ToolNotFound(_)) => Ok(true),
+                                Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+                            }?;
 
-                    if !do_install {
-                        // Skip installation
-                        return Ok::<(), ToolError>(());
+                            if !do_install {
+                                return Ok::<_, ToolError>(("skipped", tool_name.clone()));
+                            }
+
+                            let val: Value = Node::v2_api_import_tool_url_internal(
+                                db.clone(),
+                                full_identity.clone(),
+                                node_env.clone(),
+                                tool_url.to_string(),
+                                signing_secret_key,
+                                embedding_generator,
+                            )
+                            .await
+                            .map_err(|e| ToolError::ExecutionError(e.message))?;
+
+                            // We stored the tool under val["tool"] in the JSON response
+                            match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
+                                Ok(_tool) => {
+                                    println!("Successfully imported tool {} (version: {})", tool_name, new_version);
+                                    Ok::<_, ToolError>(("added", tool_name.clone()))
+                                }
+                                Err(err) => {
+                                    eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
+                                    Ok::<_, ToolError>(("failed", tool_name.clone()))
+                                }
+                            }
+                        } else if r#type == "Agent" {
+                            let tool_router_key = ToolRouterKey::from_string(router_key)?;
+                            let agent_id = tool_router_key.name;
+                            let do_install = match db.get_agent(&agent_id) {
+                                Ok(agent) => match agent {
+                                    Some(_) => Ok(false),
+                                    None => Ok(true),
+                                },
+                                Err(e) => Err(ToolError::DatabaseError(e.to_string())),
+                            }?;
+                            if !do_install {
+                                return Ok::<_, ToolError>(("skipped", tool_name.clone()));
+                            }
+
+                            let val: Value = Node::v2_api_import_agent_url_internal(
+                                db.clone(),
+                                tool_url.to_string(),
+                                full_identity.clone(),
+                                node_env.clone(),
+                                signing_secret_key,
+                                embedding_generator,
+                            )
+                            .await
+                            .map_err(|e| ToolError::ExecutionError(e.message))?;
+
+                            match serde_json::from_value::<Agent>(val["agent"].clone()) {
+                                Ok(agent) => {
+                                    println!("Successfully imported agent {}", agent.name);
+                                    Ok::<_, ToolError>(("added", tool_name.clone()))
+                                }
+                                Err(err) => {
+                                    eprintln!("Couldn't parse 'agent' field as Agent: {}", err);
+                                    Ok::<_, ToolError>(("failed", tool_name.clone()))
+                                }
+                            }
+                        } else {
+                            Ok::<_, ToolError>(("skipped", tool_name.clone()))
+                        }
                     }
+                });
 
-                    let val: Value = Node::v2_api_import_tool_url_internal(
-                        db.clone(),
-                        node_env.clone(),
-                        tool_url.to_string(),
-                        node_name,
-                        signing_secret_key,
-                        embedding_generator,
-                    )
-                    .await
-                    .map_err(|e| ToolError::ExecutionError(e.message))?;
-
-                    // We stored the tool under val["tool"] in the JSON response
-                    match serde_json::from_value::<ShinkaiTool>(val["tool"].clone()) {
-                        Ok(_tool) => {
-                            println!("Successfully imported tool {} (version: {})", tool_name, new_version);
-                        }
-                        Err(err) => {
-                            eprintln!("Couldn't parse 'tool' field as ShinkaiTool: {}", err);
-                        }
+            let results = futures::future::join_all(futures).await;
+            for result in results {
+                match result {
+                    Ok((status, _)) => match status {
+                        "added" => tools_added += 1,
+                        "skipped" => tools_skipped += 1,
+                        "failed" => tools_failed += 1,
+                        _ => {}
+                    },
+                    Err(e) => {
+                        eprintln!("Error processing tool: {}", e);
+                        tools_failed += 1;
                     }
-                    Ok::<(), ToolError>(())
                 }
-            });
-            futures::future::join_all(futures).await;
+            }
         }
 
         let duration = start_time.elapsed();
-        println!("Total time taken to import/upgrade tools: {:?}", duration);
+        println!("Tool import summary:");
+        println!("- Total tools processed: {}", tool_infos.len());
+        println!("- Tools added: {}", tools_added);
+        println!("- Tools skipped: {}", tools_skipped);
+        println!("- Tools failed: {}", tools_failed);
+        println!("- Total time taken: {:?}", duration);
 
-        // Set the sync status to true after successful completion
         let internal_comms = ShinkaiInternalComms {
             internal_has_sync_default_tools: true,
         };
@@ -480,6 +582,10 @@ impl ToolRouter {
 
     pub async fn add_rust_tools(&self) -> Result<(), ToolError> {
         let rust_tools = get_rust_tools();
+        println!("Adding {} Rust tools", rust_tools.len());
+        let mut added_count = 0;
+        let mut skipped_count = 0;
+
         for tool in rust_tools {
             let rust_tool = RustTool::new(
                 tool.name,
@@ -491,30 +597,46 @@ impl ToolRouter {
             );
 
             let _ = match self.sqlite_manager.get_tool_by_key(&rust_tool.tool_router_key) {
-                // TODO We have no good mechanism to check if the tool is up to date.
-                Err(SqliteManagerError::ToolNotFound(_)) => self
-                    .sqlite_manager
-                    .add_tool(ShinkaiTool::Rust(rust_tool, true))
-                    .await
-                    .map_err(|e| ToolError::DatabaseError(e.to_string())),
+                Err(SqliteManagerError::ToolNotFound(_)) => {
+                    added_count += 1;
+                    self.sqlite_manager
+                        .add_tool(ShinkaiTool::Rust(rust_tool, true))
+                        .await
+                        .map_err(|e| ToolError::DatabaseError(e.to_string()))
+                }
                 Err(e) => Err(ToolError::DatabaseError(e.to_string())),
-                Ok(_db_tool) => continue,
+                Ok(_db_tool) => {
+                    skipped_count += 1;
+                    continue;
+                }
             }?;
         }
+        println!(
+            "Rust tools installation complete - Added: {}, Skipped: {}",
+            added_count, skipped_count
+        );
         Ok(())
     }
 
     async fn add_testing_network_tools(&self) -> Result<(), ToolError> {
         // Check if ADD_TESTING_EXTERNAL_NETWORK_ECHO is set
         if std::env::var("ADD_TESTING_EXTERNAL_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-                asset: Asset {
-                    network_id: NetworkIdentifier::BaseSepolia,
-                    asset_id: "USDC".to_string(),
-                    decimals: Some(6),
-                    contract_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()),
-                },
-                amount: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+            println!("Adding testing external network echo tool");
+            let usage_type = UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
+                scheme: "exact".to_string(),
+                description: "Payment for service".to_string(),
+                network: Network::BaseSepolia,
+                max_amount_required: "1000".to_string(), // 0.001 USDC in atomic units (6 decimals)
+                resource: "https://shinkai.com".to_string(),
+                mime_type: "application/json".to_string(),
+                pay_to: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                max_timeout_seconds: 300,
+                asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+                output_schema: Some(serde_json::json!({})),
+                extra: Some(serde_json::json!({
+                    "decimals": 6,
+                    "asset_id": "USDC"
+                })),
             }]));
 
             // Manually create NetworkTool
@@ -523,7 +645,7 @@ impl ToolRouter {
                 description: "Echoes the input message".to_string(),
                 version: "0.1".to_string(),
                 mcp_enabled: Some(false),
-                provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
+                provider: ShinkaiName::new("@@node1_test.sep-shinkai".to_string()).unwrap(),
                 author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
@@ -535,10 +657,11 @@ impl ToolRouter {
                         "string".to_string(),
                         "The message to echo".to_string(),
                         true,
+                        None,
                     );
                     params
                 },
-                output_arg: ToolOutputArg { json: "".to_string() },
+                output_arg: ToolOutputArg { json: "{}".to_string() },
                 embedding: None,
                 restrictions: None,
             };
@@ -549,84 +672,6 @@ impl ToolRouter {
                     .add_tool(shinkai_tool)
                     .await
                     .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-            }
-
-            // Manually create another NetworkTool
-            let youtube_tool = NetworkTool {
-                name: "youtube_transcript_with_timestamps".to_string(),
-                description: "Takes a YouTube link and summarizes the content by creating multiple sections with a summary and a timestamp.".to_string(),
-                version: "0.1".to_string(),
-                mcp_enabled: Some(false),
-                provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
-                author: "@@official.shinkai".to_string(),
-                usage_type: usage_type.clone(),
-                activated: true,
-                config: vec![],
-                input_args: {
-                    let mut params = Parameters::new();
-                    params.add_property("url".to_string(), "string".to_string(), "The YouTube link to summarize".to_string(), true);
-                    params
-                },
-                output_arg: ToolOutputArg { json: "".to_string() },
-                embedding: None,
-                restrictions: None,
-            };
-
-            {
-                let shinkai_tool = ShinkaiTool::Network(youtube_tool, true);
-                self.sqlite_manager
-                    .add_tool(shinkai_tool)
-                    .await
-                    .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-            }
-        }
-
-        // Check if ADD_TESTING_NETWORK_ECHO is set
-        if std::env::var("ADD_TESTING_NETWORK_ECHO").unwrap_or_else(|_| "false".to_string()) == "true" {
-            match self
-                .sqlite_manager
-                .get_tool_by_key("local:::shinkai-tool-echo:::shinkai__echo")
-            {
-                Ok(shinkai_tool) => {
-                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        js_tool.name = "network__echo".to_string();
-                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
-                            .add_tool(modified_tool)
-                            .await
-                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                    }
-                }
-                Err(SqliteManagerError::ToolNotFound(_)) => {
-                    eprintln!("Tool not found: local:::shinkai-tool-echo:::shinkai__echo");
-                    // Handle the case where the tool is not found, if necessary
-                }
-                Err(e) => {
-                    return Err(ToolError::DatabaseError(e.to_string()));
-                }
-            }
-
-            match self
-                .sqlite_manager
-                .get_tool_by_key("local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript")
-            {
-                Ok(shinkai_tool) => {
-                    if let ShinkaiTool::Deno(mut js_tool, _) = shinkai_tool {
-                        js_tool.name = "youtube_transcript_with_timestamps".to_string();
-                        let modified_tool = ShinkaiTool::Deno(js_tool, true);
-                        self.sqlite_manager
-                            .add_tool(modified_tool)
-                            .await
-                            .map_err(|e| ToolError::DatabaseError(e.to_string()))?;
-                    }
-                }
-                Err(SqliteManagerError::ToolNotFound(_)) => {
-                    eprintln!("Tool not found: local:::shinkai-tool-youtube-transcript:::shinkai__youtube_transcript");
-                    // Handle the case where the tool is not found, if necessary
-                }
-                Err(e) => {
-                    return Err(ToolError::DatabaseError(e.to_string()));
-                }
             }
         }
 
@@ -753,7 +798,7 @@ impl ToolRouter {
         let agent = context.agent().clone();
         match agent {
             ProviderOrAgent::Agent(agent) => {
-                if let Some(agent_id) = &agent_id {
+                if agent_id.is_some() {
                     function_config_vec = override_tool_config(
                         shinkai_tool.tool_router_key().to_string_without_version().clone(),
                         agent,
@@ -765,6 +810,27 @@ impl ToolRouter {
         }
 
         match shinkai_tool {
+            ShinkaiTool::MCPServer(mcp_server_tool, _is_enabled) => {
+                let mcp_server_ref = mcp_server_tool.mcp_server_ref.clone().parse::<i64>().map_err(|e| {
+                    LLMProviderError::FunctionExecutionError(format!("Failed to parse MCP server reference: {}", e))
+                })?;
+                let mcp_server = self.sqlite_manager.get_mcp_server(mcp_server_ref)?;
+                if let Some(mcp_server) = mcp_server {
+                    let result = mcp_server_tool
+                        .run(mcp_server, function_args, function_config_vec)
+                        .await?;
+                    let result_str = serde_json::to_string(&result)
+                        .map_err(|e| LLMProviderError::FunctionExecutionError(e.to_string()))?;
+                    Ok(ToolCallFunctionResponse {
+                        response: result_str,
+                        function_call,
+                    })
+                } else {
+                    return Err(LLMProviderError::FunctionExecutionError(
+                        "MCP server not found".to_string(),
+                    ));
+                }
+            }
             ShinkaiTool::Python(python_tool, _is_enabled) => {
                 let node_env = fetch_node_environment();
                 let node_storage_path = node_env

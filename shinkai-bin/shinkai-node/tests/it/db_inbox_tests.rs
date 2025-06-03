@@ -1,20 +1,14 @@
 use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use shinkai_message_primitives::schemas::identity::{StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    MessageBody, MessageData, ShinkaiMessage, ShinkaiVersion,
-};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, MessageSchemaType};
+use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    unsafe_deterministic_encryption_keypair, EncryptionMethod
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair
 };
-use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
 
 use std::path::PathBuf;
@@ -771,10 +765,11 @@ async fn test_insert_messages_with_tree_structure() {
 async fn db_inbox() {
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let (_, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (node1_identity_sk, _node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, _node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let (_, _node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
     let (_, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
     let message = generate_message_with_text(
@@ -973,4 +968,3 @@ async fn db_inbox() {
         .unwrap();
     assert_eq!(last_messages_inbox.len(), 1);
 }
-

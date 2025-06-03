@@ -4,11 +4,9 @@ use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::{fetch_llm_provider_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
-use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
 use shinkai_http_api::node_api_router;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -21,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
+use std::net::TcpListener;
 use std::path::Path;
 use std::sync::{Arc, Weak};
 use std::{env, fs};
@@ -51,17 +50,61 @@ impl From<Box<dyn StdError + Send + Sync>> for NodeRunnerError {
     }
 }
 
+/// Checks if a port is available for binding
+fn port_is_available(port: u16) -> bool {
+    match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
 pub async fn initialize_node() -> Result<
     (Sender<NodeCommand>, JoinHandle<()>, JoinHandle<()>, Weak<Mutex<Node>>),
     Box<dyn std::error::Error + Send + Sync>,
 > {
     let main_db: &str = "main_db";
-    let vector_fs_db: &str = "vector_fs_db";
+    let _vector_fs_db: &str = "vector_fs_db";
     let secrets_file: &str = ".secret";
 
     // Fetch Env vars/args
     let args = parse_args();
     let node_env = fetch_node_environment();
+
+    // Check if required ports are available
+    let api_port = node_env.api_listen_address.port();
+    let node_port = node_env.listen_address.port();
+    let ws_port = node_env.ws_address.map(|addr| addr.port());
+    let https_port = node_env.api_https_listen_address.port();
+
+    if !port_is_available(api_port) {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("API port {} is already in use", api_port),
+        )));
+    }
+
+    if !port_is_available(node_port) {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("Node port {} is already in use", node_port),
+        )));
+    }
+
+    if let Some(port) = ws_port {
+        if !port_is_available(port) {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::AddrInUse,
+                format!("WebSocket port {} is already in use", port),
+            )));
+        }
+    }
+
+    if !port_is_available(https_port) {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            format!("HTTPS port {} is already in use", https_port),
+        )));
+    }
 
     // TODO:
     // Read file encryption key from ENV variable and decrypt the secrets file
@@ -199,54 +242,51 @@ pub async fn initialize_node() -> Result<
     let start_node = Arc::clone(&node);
     let node_copy = Arc::downgrade(&start_node.clone());
 
-    // Node task
-    let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
-
     // Copy of node commands center
     let node_commands_sender_copy = node_commands_sender.clone();
-
-    // Check if the node is ready
-    if !node.lock().await.is_node_ready().await {
-        println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
-        let _ = generate_qr_codes(
-            &node_commands_sender,
-            &node_env.clone(),
-            &node_keys,
-            global_identity_name.as_str(),
-            identity_public_key_string.as_str(),
-        )
-        .await;
-    } else {
-        print_node_info(
-            &node_env,
-            &encryption_public_key_string,
-            &identity_public_key_string,
-            &main_db_path,
-        );
-    }
 
     // Setup API Server task
     let api_listen_address = node_env.clone().api_listen_address;
     let api_https_listen_address = node_env.clone().api_https_listen_address;
+    let ws_listen_address = node_env.clone().ws_address.unwrap();
     let api_server = tokio::spawn(async move {
-        if let Err(e) = node_api_router::run_api(
+        match node_api_router::run_api(
             node_commands_sender,
             api_listen_address,
             api_https_listen_address,
+            ws_listen_address,
             global_identity_name.clone().to_string(),
             node_keys.private_https_certificate.clone(),
             node_keys.public_https_certificate.clone(),
         )
         .await
         {
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                &format!("API server failed to start: {}", e),
-            );
-            panic!("API server failed to start: {}", e);
+            Ok(_) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    "API server started successfully",
+                );
+            }
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("API server failed to start: {}", e),
+                );
+                panic!("API server failed to start: {}", e);
+            }
         }
     });
+
+    // Node task
+    let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
+    print_node_info(
+        &node_env,
+        &encryption_public_key_string,
+        &identity_public_key_string,
+        &main_db_path,
+    );
 
     // Return the node_commands_sender_copy and the tasks
     Ok((node_commands_sender_copy, api_server, node_task, node_copy))

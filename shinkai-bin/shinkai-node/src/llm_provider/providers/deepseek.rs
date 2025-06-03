@@ -59,7 +59,7 @@ impl LLMService for DeepSeek {
                 };
 
                 // Extract tools_json from the result
-                let mut tools_json = result.functions.unwrap_or_else(Vec::new);
+                let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Set up initial payload with appropriate token limit field based on model capabilities
                 let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {

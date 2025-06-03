@@ -1,5 +1,4 @@
 use async_channel::{bounded, Receiver, Sender};
-use core::panic;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -14,12 +13,13 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
+use crate::it::utils::node_test_api::wait_for_default_tools;
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
 use super::utils::node_test_api::{
@@ -35,10 +35,13 @@ fn setup() {
 
 #[test]
 fn subidentity_registration() {
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
+
     setup();
     let rt = Runtime::new().unwrap();
 
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node2_identity_name = "@@node2_test.sep-shinkai";
         let node1_profile_name = "main";
@@ -80,6 +83,15 @@ fn subidentity_registration() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
+        fn port_is_available(port: u16) -> bool {
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(_) => true,
+                Err(_) => false,
+            }
+        }
+
+        assert!(port_is_available(8080), "Port 8080 is not available");
+        assert!(port_is_available(8081), "Port 8081 is not available");
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
@@ -100,7 +112,7 @@ fn subidentity_registration() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
-            None,
+            Some("debug".to_string()),
         )
         .await;
 
@@ -123,7 +135,7 @@ fn subidentity_registration() {
             None,
             default_embedding_model(),
             supported_embedding_models(),
-            None,
+            Some("debug".to_string()),
         )
         .await;
 
@@ -256,6 +268,24 @@ fn subidentity_registration() {
             }
 
             tokio::time::sleep(Duration::from_secs(3)).await;
+            // Wait for default tools to be ready
+            let tools_ready = wait_for_default_tools(
+                node1_commands_sender.clone(),
+                "debug".to_string(),
+                120, // Wait up to 120 seconds
+            )
+            .await
+            .expect("Failed to check for default tools");
+            assert!(tools_ready, "Default tools should be ready within 30 seconds");
+            // Wait for default tools to be ready
+            let tools_ready = wait_for_default_tools(
+                node2_commands_sender.clone(),
+                "debug".to_string(),
+                120, // Wait up to 120 seconds
+            )
+            .await
+            .expect("Failed to check for default tools");
+            assert!(tools_ready, "Default tools should be ready within 30 seconds");
 
             // Send message from Node 2 subidentity to Node 1
             {
@@ -300,7 +330,11 @@ fn subidentity_registration() {
                     .unwrap();
 
                 let send_result = res_send_msg_receiver.recv().await.unwrap();
-                assert!(send_result.is_ok(), "Failed to send onionized message");
+                assert!(
+                    send_result.is_ok(),
+                    "Failed to send onionized message {:?}",
+                    send_result
+                );
                 tokio::time::sleep(Duration::from_secs(4)).await;
 
                 // Get Node2 messages
@@ -622,18 +656,22 @@ fn subidentity_registration() {
         // Wait for all tasks to complete
         let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
         match result {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
                     eprintln!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
                 } else {
                     // If the error is not due to an abort, then it's unexpected
-                    panic!("An unexpected error occurred: {:?}", e);
+                    Err(e)
                 }
             }
         }
     });
 
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 }

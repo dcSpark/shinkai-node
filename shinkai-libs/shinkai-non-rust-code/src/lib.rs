@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{collections::HashMap, env, path::PathBuf, time::Duration};
 
 use serde_json::Value;
 use shinkai_tools_runner::tools::{
@@ -52,7 +52,7 @@ pub enum NonRustRuntime {
     Python,
 }
 
-fn get_python_binary_path() -> PathBuf {
+fn _get_python_binary_path() -> PathBuf {
     PathBuf::from(env::var("SHINKAI_TOOLS_RUNNER_PYTHON_BINARY_PATH").unwrap_or_else(|_| "python3".to_string()))
 }
 
@@ -60,7 +60,7 @@ fn get_python_runner(
     function_name: &str,
     code: String,
     configurations: Value,
-    mount_files: Vec<PathBuf>,
+    mount_files: Vec<PathBuf>
 ) -> PythonRunner {
     PythonRunner::new(
         CodeFiles {
@@ -90,11 +90,23 @@ pub enum RunError {
     ParseOutputError(String),
 }
 
+impl std::fmt::Display for RunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RunError::CodeExecutionError(err) => write!(f, "code execution error: {}", err),
+            RunError::SerializeConfigurationsError(err) => write!(f, "failed to serialize configurations: {}", err),
+            RunError::SerializeParamsError(err) => write!(f, "failed to serialize parameters: {}", err),
+            RunError::ParseOutputError(err) => write!(f, "failed to parse output: {}", err),
+        }
+    }
+}
+
+
 pub struct NonRustCodeRunnerFactory {
     function_name: String,
     code: String,
     mount_files: Vec<PathBuf>,
-    runtime: NonRustRuntime,
+    runtime: NonRustRuntime
 }
 
 impl NonRustCodeRunnerFactory {
@@ -138,7 +150,7 @@ impl<C> NonRustCodeRunner<C>
 where
     C: serde::Serialize,
 {
-    pub async fn run<P, T>(&self, params: P) -> Result<T, RunError>
+    pub async fn run<P, T>(&self, params: P, timeout: Option<Duration>) -> Result<T, RunError>
     where
         P: serde::Serialize,
         T: serde::de::DeserializeOwned,
@@ -155,7 +167,7 @@ where
                     self.mount_files.clone(),
                 );
                 deno_runner
-                    .run(None, params_value, None)
+                    .run(None, params_value, timeout)
                     .await
                     .map_err(|e| RunError::CodeExecutionError(e.to_string()))?
             }
@@ -167,11 +179,12 @@ where
                     self.mount_files.clone(),
                 );
                 python_runner
-                    .run(None, params_value, None)
+                    .run(None, params_value, timeout)
                     .await
                     .map_err(|e| RunError::CodeExecutionError(e.to_string()))?
             }
         };
+        println!("result: {:?}", result);
         serde_json::from_value(result.data).map_err(|e| RunError::ParseOutputError(e.to_string()))
     }
 }
@@ -203,7 +216,7 @@ mod tests {
         let result = runner
             .run::<_, TestOutput>(json!({
                 "name": "World"
-            }))
+            }), None)
             .await
             .unwrap();
 

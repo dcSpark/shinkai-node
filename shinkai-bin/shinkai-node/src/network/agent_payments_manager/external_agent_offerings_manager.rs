@@ -13,12 +13,18 @@ use shinkai_message_primitives::schemas::invoices::{
     Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_tool_offering::{ShinkaiToolOffering, UsageType, UsageTypeInquiry};
+use shinkai_message_primitives::schemas::shinkai_tool_offering::{
+    ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_non_rust_code::functions::x402;
+use shinkai_non_rust_code::functions::x402::settle_payment::settle_payment;
+use shinkai_non_rust_code::functions::x402::settle_payment::Input as SettleInput;
+use shinkai_non_rust_code::functions::x402::verify_payment::verify_payment;
 use shinkai_sqlite::SqliteManager;
 use std::collections::HashSet;
 use std::pin::Pin;
@@ -26,8 +32,11 @@ use std::result::Result::Ok;
 use std::sync::Arc;
 use std::sync::Weak;
 use std::{env, fmt};
-use tokio::sync::{Mutex, RwLock, Semaphore};
+use tokio::sync::{Mutex, Semaphore};
 
+use shinkai_message_primitives::schemas::x402_types::{
+    ERC20Asset, ERC20TokenAmount, FacilitatorConfig, Network, Price, EIP712
+};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 #[derive(Debug, Clone)]
@@ -240,7 +249,7 @@ impl ExtAgentOfferingsManager {
 
             let mut handles = Vec::new();
             loop {
-                let mut continue_immediately = false;
+                let continue_immediately;
 
                 // Get the jobs to process
                 let jobs_sorted = {
@@ -507,7 +516,7 @@ impl ExtAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<Invoice, AgentOfferingManagerError>` - The generated invoice or an error.
-    pub async fn request_invoice(
+    pub async fn invoice_requested(
         &mut self,
         _requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
@@ -527,19 +536,9 @@ impl ExtAgentOfferingsManager {
         let usage_type = match invoice_request.usage_type_inquiry {
             UsageTypeInquiry::PerUse => match shinkai_offering.usage_type {
                 UsageType::PerUse(price) => UsageType::PerUse(price),
-                UsageType::Both { per_use_price, .. } => UsageType::PerUse(per_use_price),
                 _ => {
                     return Err(AgentOfferingManagerError::InvalidUsageType(
                         "Invalid usage type for PerUse inquiry".to_string(),
-                    ))
-                }
-            },
-            UsageTypeInquiry::Downloadable => match shinkai_offering.usage_type {
-                UsageType::Downloadable(price) => UsageType::Downloadable(price),
-                UsageType::Both { download_price, .. } => UsageType::Downloadable(download_price),
-                _ => {
-                    return Err(AgentOfferingManagerError::InvalidUsageType(
-                        "Invalid usage type for Downloadable inquiry".to_string(),
                     ))
                 }
             },
@@ -575,7 +574,7 @@ impl ExtAgentOfferingsManager {
             },
             expiration_time: Utc::now() + Duration::hours(12),
             status: InvoiceStatusEnum::Pending,
-            payment: None,
+            payment: None, // Payment will be set when the buyer pays
             address: public_address,
             usage_type_inquiry: invoice_request.usage_type_inquiry,
             request_date_time: invoice_request.request_date_time,
@@ -603,14 +602,14 @@ impl ExtAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<Invoice, AgentOfferingManagerError>` - The generated invoice or an error.
-    pub async fn network_request_invoice(
+    pub async fn network_invoice_requested(
         &mut self,
         requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         // Call request_invoice to generate an invoice
         let invoice = self
-            .request_invoice(requester_node_name.clone(), invoice_request.clone())
+            .invoice_requested(requester_node_name.clone(), invoice_request.clone())
             .await;
 
         let invoice = match invoice {
@@ -622,6 +621,7 @@ impl ExtAgentOfferingsManager {
                     ShinkaiLogLevel::Error,
                     &format!("Failed to request invoice: {:?}", e),
                 );
+                eprintln!("Failed to request invoice: {:?}", e);
 
                 // Create an InvoiceNetworkError
                 let network_error = InvoiceRequestNetworkError {
@@ -748,12 +748,87 @@ impl ExtAgentOfferingsManager {
             .get_invoice(&invoice.invoice_id)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
 
-        // Step 2: verify that the invoice is actually paid
-        // For that we grab the tx_hash and we check that it was paid
-        // We also need to check that a previous tx_hash wasn't reused (!)
-        // Also check matching amounts
+        println!("local_invoice: {:?}", local_invoice);
+        println!("received invoice: {:?}", invoice);
 
-        // TODO: ^
+        // Step 2: verify that the invoice is actually paid
+        let payment_payload = invoice
+            .payment
+            .as_ref()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("No payment found in invoice".to_string()))?;
+        let transaction_signed = Some(payment_payload.transaction_signed.clone());
+
+        // Extract payment requirements from local_invoice
+        let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
+            // Note: we are only supporting one payment requirement for now
+            UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.get(0).ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed("No payment requirements found".to_string())
+            })?,
+            _ => {
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Unsupported usage type".to_string(),
+                ))
+            }
+        };
+
+        // TODO: needs refactor
+        let input = {
+            // If the asset is USDC, use ERC20TokenAmount, otherwise use Money
+            if payment_requirements.asset == "USDC"
+                || payment_requirements.asset.to_lowercase() == "usdc"
+                || payment_requirements.asset == "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+                || payment_requirements.asset == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            {
+                // Determine address and decimals based on network
+                let (address, decimals) = match payment_requirements.network {
+                    Network::BaseSepolia => ("0x036CbD53842c5426634e7929541eC2318f3dCF7e", 6),
+                    Network::Base => ("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6),
+                    _ => (payment_requirements.asset.as_str(), 6), // fallback
+                };
+                let erc20_asset = ERC20Asset {
+                    address: address.to_string(),
+                    decimals,
+                    eip712: EIP712 {
+                        name: "USDC".to_string(),
+                        version: "2".to_string(),
+                    },
+                };
+                x402::verify_payment::Input {
+                    price: Price::ERC20TokenAmount(ERC20TokenAmount {
+                        amount: payment_requirements.max_amount_required.clone(),
+                        asset: erc20_asset,
+                    }),
+                    network: payment_requirements.network.clone(),
+                    pay_to: payment_requirements.pay_to.clone(),
+                    payment: transaction_signed,
+                    x402_version: 1, // or your version
+                    facilitator: FacilitatorConfig::default(),
+                }
+            } else {
+                x402::verify_payment::Input {
+                    price: Price::Money(payment_requirements.max_amount_required.parse::<f64>().unwrap_or(0.0)),
+                    network: payment_requirements.network.clone(),
+                    pay_to: payment_requirements.pay_to.clone(),
+                    payment: transaction_signed,
+                    x402_version: 1, // or your version
+                    facilitator: FacilitatorConfig::default(),
+                }
+            }
+        };
+
+        println!("\n\ninput for payment verification: {:?}", input);
+
+        let output = verify_payment(input)
+            .await
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Payment verification failed: {:?}", e)))?;
+
+        println!("\noutput of payment verification: {:?}", output);
+
+        if output.valid.is_none() {
+            return Err(AgentOfferingManagerError::OperationFailed(
+                "Payment verification failed".to_string(),
+            ));
+        }
 
         // Step 3: we extract the data_payload and then we call the tool with it
         let data_payload = invoice
@@ -789,6 +864,45 @@ impl ExtAgentOfferingsManager {
             db.set_invoice(&local_invoice)
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to set invoice: {:?}", e)))?;
         }
+
+        // Step 4: if we got a successful result, we settle the payment
+        // For testing maybe we can add a flag to avoid this step
+        let is_testing = std::env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
+        if !is_testing {
+            // Extract decoded_payment for settlement
+            let decoded_payment = output.valid.as_ref().unwrap().decoded_payment.clone();
+
+            let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
+                UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.clone(),
+                _ => {
+                    return Err(AgentOfferingManagerError::OperationFailed(
+                        "Unsupported usage type for settlement".to_string(),
+                    ))
+                }
+            };
+            let settle_input = SettleInput {
+                payment: decoded_payment,
+                accepts: payment_requirements,
+                facilitator: FacilitatorConfig::default(),
+            };
+            let settle_result = settle_payment(settle_input).await.map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!("Payment settlement failed: {:?}", e))
+            })?;
+            if settle_result.valid.is_none() {
+                local_invoice.status = InvoiceStatusEnum::Failed;
+                db.set_invoice(&local_invoice).map_err(|e| {
+                    AgentOfferingManagerError::OperationFailed(format!(
+                        "Failed to set invoice after failed settlement: {:?}",
+                        e
+                    ))
+                })?;
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Payment settlement failed".to_string(),
+                ));
+            }
+        }
+
+        // Old stuff below
 
         // TODO: we need the transaction_id and then call the crypto service to verify the payment
         // Note: how do we know that this identity actually was the one that paid for it? -> prehash validation
@@ -953,153 +1067,4 @@ mod tests {
     fn node_name() -> ShinkaiName {
         ShinkaiName::new("@@localhost.sep-shinkai".to_string()).unwrap()
     }
-
-    // async fn setup_default_vector_fs() -> VectorFS {
-    //     let generator = RemoteEmbeddingGenerator::new_default();
-    //     let fs_db_path = format!("db_tests/{}", "vector_fs");
-    //     let profile_list = vec![default_test_profile()];
-    //     let supported_embedding_models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-    //         OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
-    //     )];
-
-    //     VectorFS::new(
-    //         generator,
-    //         supported_embedding_models,
-    //         profile_list,
-    //         &fs_db_path,
-    //         node_name(),
-    //     )
-    //     .await
-    //     .unwrap()
-    // }
-
-    // #[test]
-    // fn test_unique_id() {
-    //     let invoice_request = InternalInvoiceRequest::new(
-    //         ShinkaiName::new("@@nico.shinkai".to_string()).unwrap(),
-    //         "test_tool".to_string(),
-    //         UsageTypeInquiry::PerUse,
-    //     );
-
-    //     println!("Generated unique_id: {}", invoice_request.unique_id);
-
-    //     // Assert that the unique_id is not empty
-    //     assert!(!invoice_request.unique_id.is_empty());
-    // }
-
-    // TODO: Fix it
-    // #[tokio::test]
-    // async fn test_agent_offerings_manager() -> Result<(), SqliteManagerError> {
-    //     setup();
-
-    //     let generator = RemoteEmbeddingGenerator::new_default();
-    //     let embedding_model = generator.model_type().clone();
-
-    //     // Initialize ShinkaiDB
-    //     let shinkai_db = match ShinkaiDB::new("shinkai_db_tests/shinkaidb") {
-    //         Ok(db) => Arc::new(db),
-    //         Err(e) => return
-    // Err(SqliteManagerError::DatabaseError(rusqlite::Error::InvalidParameterName(e.to_string()))),     };
-
-    //     let sqlite_manager = SqliteManager::new("sqlite_tests".to_string(), "".to_string(),
-    // embedding_model).unwrap();
-
-    //     let tools = built_in_tools::get_tools();
-
-    //     // Generate crypto keys
-    //     let (my_signature_secret_key, _) = unsafe_deterministic_signature_keypair(0);
-    //     let (my_encryption_secret_key, _) = unsafe_deterministic_encryption_keypair(0);
-
-    //     // Create ToolRouter
-    //     let tool_router = Arc::new(ToolRouter::new(sqlite_manager));
-
-    //     // Create AgentOfferingsManager
-    //     let node_name = node_name();
-    //     let identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>> =
-    //         Arc::new(Mutex::new(MockIdentityManager::new()));
-    //     let proxy_connection_info = Arc::new(Mutex::new(None));
-    //     let vector_fs = Arc::new(setup_default_vector_fs().await);
-
-    //     // Wallet Manager
-    //     let wallet_manager = Arc::new(Mutex::new(None));
-
-    //     let mut agent_offerings_manager = ExtAgentOfferingsManager::new(
-    //         Arc::downgrade(&shinkai_db),
-    //         Arc::downgrade(&vector_fs),
-    //         Arc::downgrade(&identity_manager),
-    //         node_name.clone(),
-    //         my_signature_secret_key.clone(),
-    //         my_encryption_secret_key.clone(),
-    //         Arc::downgrade(&proxy_connection_info),
-    //         Arc::downgrade(&tool_router),
-    //         Arc::downgrade(&wallet_manager),
-    //     )
-    //     .await;
-
-    //     // Add tools to the database
-    //     for (name, definition) in tools {
-    //         let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-    //         for tool in toolkit.tools {
-    //             let mut shinkai_tool = ShinkaiTool::JS(tool.clone(), true);
-    //             eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
-    //             let embedding = generator
-    //                 .generate_embedding_default(&shinkai_tool.format_embedding_string())
-    //                 .await
-    //                 .unwrap();
-    //             shinkai_tool.set_embedding(embedding);
-
-    // --- merge conflict of commented code ---
-    // // Add tools to the database
-    // for (name, definition) in tools {
-    //     let toolkit = JSToolkit::new(&name, vec![definition.clone()]);
-    //     for tool in toolkit.tools {
-    //         let mut shinkai_tool = ShinkaiTool::Deno(tool.clone(), true);
-    //         eprintln!("shinkai_tool name: {:?}", shinkai_tool.name());
-    //         let embedding = generator
-    //             .generate_embedding_default(&shinkai_tool.format_embedding_string())
-    //             .await
-    //             .unwrap();
-    //         shinkai_tool.set_embedding(embedding);
-    // ---
-
-    //             lance_db
-    //                 .write()
-    //                 .await
-    //                 .set_tool(&shinkai_tool)
-    //                 .await
-    //                 .map_err(|e| ShinkaiLanceDBError::ToolError(e.to_string()))?;
-
-    //             // Check if the tool is "shinkai__weather_by_city" and make it shareable
-    //             if shinkai_tool.name() == "shinkai__weather_by_city" {
-    //                 let shinkai_offering = ShinkaiToolOffering {
-    //                     tool_key: shinkai_tool.tool_router_key(),
-    //                     usage_type: UsageType::PerUse(ToolPrice::Payment(vec![AssetPayment {
-    //                         asset: Asset {
-    //                             network_id: NetworkIdentifier::Anvil,
-    //                             asset_id: "ETH".to_string(),
-    //                             decimals: Some(18),
-    //                             contract_address: None,
-    //                         },
-    //                         amount: "0.01".to_string(),
-    //                     }])),
-    //                     meta_description: None,
-    //                 };
-
-    //                 agent_offerings_manager
-    //                     .make_tool_shareable(shinkai_offering)
-    //                     .await
-    //                     .unwrap();
-    //             }
-    //         }
-    //     }
-
-    //     // Check available tools
-    //     let available_tools = agent_offerings_manager.available_tools().await.unwrap();
-    //     eprintln!("available_tools: {:?}", available_tools);
-    //     assert!(
-    //         available_tools.contains(&"local:::shinkai-tool-weather-by-city:::shinkai__weather_by_city".to_string())
-    //     );
-
-    //     Ok(())
-    // }
 }

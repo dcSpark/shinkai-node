@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
-use shinkai_message_primitives::schemas::shinkai_subscription::SubscriptionId;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -36,13 +35,6 @@ use super::network_handlers::{
 };
 use super::network_job_manager_error::NetworkJobQueueError;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NetworkVRKai {
-    pub enc_pairs: Vec<u8>, // encrypted VRPack
-    pub subscription_id: SubscriptionId,
-    pub nonce: String,
-    pub symmetric_key_hash: String,
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct NetworkJobQueue {
@@ -210,7 +202,7 @@ impl NetworkJobManager {
 
             let mut handles = Vec::new();
             loop {
-                let mut continue_immediately = false;
+                let continue_immediately;
 
                 // Scope for acquiring and releasing the lock quickly
                 let job_ids_to_process: Vec<String> = {

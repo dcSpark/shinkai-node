@@ -1,0 +1,5139 @@
+# clients/fetch/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# clients/fetch/README.md
+# x402-fetch Example Client
+
+This is an example client that demonstrates how to use the `x402-fetch` package to make HTTP requests to endpoints protected by the x402 payment protocol.
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A running x402 server (you can use the example express server at `examples/typescript/servers/express`)
+- A valid Ethereum private key for making payments
+
+## Setup
+
+1. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd clients/fetch
+```
+
+2. Copy `.env-local` to `.env` and add your Ethereum private key:
+```bash
+cp .env-local .env
+```
+
+3. Start the example client:
+```bash
+pnpm dev
+```
+
+## How It Works
+
+The example demonstrates how to:
+1. Create a wallet client using viem
+2. Wrap the native fetch function with x402 payment handling
+3. Make a request to a paid endpoint
+4. Handle the response or any errors
+
+## Example Code
+
+```typescript
+import { config } from "dotenv";
+import { createWalletClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { wrapFetchWithPayment } from "x402-fetch";
+import { baseSepolia } from "viem/chains";
+
+config();
+
+const { RESOURCE_SERVER_URL, PRIVATE_KEY, ENDPOINT_PATH } = process.env;
+
+// Create wallet client
+const account = privateKeyToAccount(PRIVATE_KEY as `0x${string}`);
+const client = createWalletClient({
+  account,
+  transport: http(),
+  chain: baseSepolia,
+});
+
+// Wrap fetch with payment handling
+const fetchWithPay = wrapFetchWithPayment(fetch, client);
+
+// Make request to paid endpoint
+fetchWithPay(`${RESOURCE_SERVER_URL}${ENDPOINT_PATH}`, {
+  method: "GET",
+})
+  .then(async response => {
+    const body = await response.json();
+    console.log(body);
+  })
+  .catch(error => {
+    console.error(error.response?.data?.error);
+  });
+```
+
+# clients/fetch/package.json
+{
+  "name": "fetch-client-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "viem": "^2.23.1",
+    "x402-fetch": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "eslint": "^9.24.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint-plugin-import": "^2.31.0",
+    "prettier": "3.5.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
+
+# clients/fetch/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# clients/fetch/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# clients/fetch/index.ts
+import { config } from "dotenv";
+import { Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { decodeXPaymentResponse, wrapFetchWithPayment } from "x402-fetch";
+
+config();
+
+const privateKey = process.env.PRIVATE_KEY as Hex;
+const baseURL = process.env.RESOURCE_SERVER_URL as string; // e.g. https://example.com
+const endpointPath = process.env.ENDPOINT_PATH as string; // e.g. /weather
+const url = `${baseURL}${endpointPath}`; // e.g. https://example.com/weather
+
+if (!baseURL || !privateKey || !endpointPath) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const account = privateKeyToAccount(privateKey);
+
+const fetchWithPayment = wrapFetchWithPayment(fetch, account);
+
+fetchWithPayment(url, {
+  method: "GET",
+})
+  .then(async response => {
+    const body = await response.json();
+    console.log(body);
+
+    const paymentResponse = decodeXPaymentResponse(response.headers.get("x-payment-response")!);
+    console.log(paymentResponse);
+  })
+  .catch(error => {
+    console.error(error.response?.data?.error);
+  });
+
+# clients/fetch/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# clients/fetch/.env-local
+RESOURCE_SERVER_URL=http://localhost:4021
+ENDPOINT_PATH=/weather
+PRIVATE_KEY=
+
+# clients/axios/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# clients/axios/README.md
+# x402-axios Example Client
+
+This is an example client that demonstrates how to use the `x402-axios` package to make HTTP requests to endpoints protected by the x402 payment protocol.
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A running x402 server (you can use the example express server at `examples/typescript/servers/express`)
+- A valid Ethereum private key for making payments
+
+## Setup
+
+1. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd clients/axios
+```
+
+2. Copy `.env-local` to `.env` and add your Ethereum private key (remember it should have USDC on Base Sepolia, which you can provision using the [CDP Faucet](https://portal.cdp.coinbase.com/products/faucet)):
+```bash
+cp .env-local .env
+```
+
+3. Start the example client (remember you need to be running a server locally or point at an endpoint):
+```bash
+pnpm dev
+```
+
+## How It Works
+
+The example demonstrates how to:
+1. Create a wallet client using viem
+2. Create an Axios instance with x402 payment handling
+3. Make a request to a paid endpoint
+4. Handle the response or any errors
+
+## Example Code
+
+```typescript
+import { config } from "dotenv";
+import { createWalletClient, http, publicActions } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { withPaymentInterceptor } from "x402-axios";
+import axios from "axios";
+import { baseSepolia } from "viem/chains";
+
+config();
+
+const { RESOURCE_SERVER_URL, PRIVATE_KEY, ENDPOINT_PATH } = process.env;
+
+// Create wallet client
+const account = privateKeyToAccount(PRIVATE_KEY as "0x${string}");
+const client = createWalletClient({
+  account,
+  transport: http(),
+  chain: baseSepolia,
+}).extend(publicActions);
+
+// Create Axios instance with payment handling
+const api = withPaymentInterceptor(
+  axios.create({
+    baseURL: RESOURCE_SERVER_URL,
+  }),
+  client
+);
+
+// Make request to paid endpoint
+api
+  .get(ENDPOINT_PATH)
+  .then(response => {
+    console.log(response.headers);
+    console.log(response.data);
+  })
+  .catch(error => {
+    console.error(error.response?.data?.error);
+  });
+```
+
+# clients/axios/package.json
+{
+  "name": "axios-client-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.5.0",
+    "viem": "^2.23.1",
+    "x402-axios": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint": "^9.24.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "prettier": "3.5.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
+
+# clients/axios/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# clients/axios/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# clients/axios/index.ts
+import axios from "axios";
+import { config } from "dotenv";
+import { Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { withPaymentInterceptor, decodeXPaymentResponse } from "x402-axios";
+
+config();
+
+const privateKey = process.env.PRIVATE_KEY as Hex;
+const baseURL = process.env.RESOURCE_SERVER_URL as string; // e.g. https://example.com
+const endpointPath = process.env.ENDPOINT_PATH as string; // e.g. /weather
+
+if (!baseURL || !privateKey || !endpointPath) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const account = privateKeyToAccount(privateKey);
+
+const api = withPaymentInterceptor(
+  axios.create({
+    baseURL,
+  }),
+  account,
+);
+
+api
+  .get(endpointPath)
+  .then(response => {
+    console.log(response.data);
+
+    const paymentResponse = decodeXPaymentResponse(response.headers["x-payment-response"]);
+    console.log(paymentResponse);
+  })
+  .catch(error => {
+    console.error(error.response?.data);
+  });
+
+# clients/axios/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# clients/axios/.env-local
+RESOURCE_SERVER_URL=http://localhost:4021
+ENDPOINT_PATH=/weather
+PRIVATE_KEY=
+
+# dynamic_agent/agent.ts
+/** Dynamic Agent
+ * Example of an agent that has dynamic, discoverable tools, enabled by x402 payments.
+ */
+import axios from "axios";
+import { withPaymentInterceptor } from "x402-axios";
+import { baseSepolia } from "viem/chains";
+import { privateKeyToAccount } from "viem/accounts";
+import { http, publicActions, createWalletClient } from "viem";
+import { Hex } from "viem";
+import { Anthropic } from "@llamaindex/anthropic";
+import { agent, tool } from "llamaindex";
+import { z } from "zod";
+
+const wallet = createWalletClient({
+  chain: baseSepolia,
+  transport: http(),
+  account: privateKeyToAccount(process.env.PRIVATE_KEY as Hex),
+}).extend(publicActions);
+
+const axiosWithPayment = withPaymentInterceptor(axios.create({}), wallet);
+
+const llm = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  model: "claude-3-5-sonnet-20241022",
+});
+
+const indexTool = tool(
+  async () => {
+    const response = await axiosWithPayment.get("http://localhost:4021/");
+    const data = await response.data;
+    console.log("Available Resources:", data);
+    return data;
+  },
+  {
+    name: "api-index",
+    description:
+      "Returns to you a list of all the APIs available for you to access",
+    parameters: z.object({}),
+  }
+);
+
+const httpTool = tool(
+  async ({ url }: { url: string }) => {
+    console.log("Making http call to", url);
+    const response = await axiosWithPayment.get(url);
+    const data = await response.data;
+    return data;
+  },
+  {
+    name: "make-http-request",
+    description: "Allows you to make http calls to different APIs",
+    parameters: z.object({
+      url: z.string({ description: "The URL of the API to call" }),
+    }),
+  }
+);
+
+const bot = agent({
+  llm,
+  tools: [indexTool, httpTool],
+  timeout: 100000,
+});
+
+const response = await bot.run(`
+  You are a helpful assistant. You have access to an index of APIs you can use to dynamically get data.
+  
+  Make a pun based on the weather in San Francisco and the price of SPY
+`);
+
+console.log(response);
+
+# dynamic_agent/discover_server.ts
+/** This file is a server that proxies a few services and serves an index with descriptions of the resources available.
+ *
+ *
+ *
+ */
+
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { logger } from "hono/logger";
+import { paymentMiddleware } from "x402-hono";
+
+const app = new Hono();
+const port = 4021;
+app.use("*", logger());
+
+type IndexEntry = {
+  resourceUrl: string;
+  resourceDescription: string;
+  price: {
+    amount: number;
+    currency: string;
+  };
+};
+
+app.use(
+  paymentMiddleware(process.env.PAY_TO_ADDRESS as `0x${string}`, {
+    "/weather": "$0.01",
+    "/stock": "$0.05",
+  })
+);
+
+app.get("/", (c) => {
+  const resources: IndexEntry[] = [
+    {
+      resourceUrl: "http://localhost:4021/weather",
+      resourceDescription:
+        "Returns the 7 day forecast for weather in a city. Must include city as a query parameter escaped properly to be url safe (ex: 'http://localhost:4021/weather?city=London')",
+      price: {
+        amount: 0.01,
+        currency: "USD",
+      },
+    },
+    {
+      resourceUrl: "http://localhost:4021/stock",
+      resourceDescription:
+        "Returns the last 5 days of stock data for a given stock symbol. Must include symbol as a query parameter escaped properly to be url safe (ex: 'http://localhost:4021/stock?symbol=AAPL')",
+      price: {
+        amount: 0.05,
+        currency: "USD",
+      },
+    },
+  ];
+  return c.json(resources);
+});
+
+
+app.get("/weather", async (c) => {
+  const city = c.req.query("city");
+  console.log("City", city);
+  const url = `http://api.weatherapi.com/v1/forecast.json?key=${process.env.WEATHER_API_KEY}&q=${city}&days=7`;
+
+  const response = await fetch(url);
+  const data = await response.json();
+
+  return c.json(data);
+});
+
+
+app.get("/stock", async (c) => {
+  const symbol = c.req.query("symbol")?.toUpperCase();
+  if (!symbol) {
+    return c.json({ error: "Symbol is required" }, 400);
+  }
+  const url = `https://api.marketstack.com/v2/eod?access_key=${process.env.MARKETSTACK_API_KEY}&symbols=${symbol}`;
+  const response = await fetch(url);
+  const data = await response.json();
+  const last5Days = data.data.slice(0, 5);
+  const last5DaysWithPrices = last5Days.map((day) => ({
+    open: day.open,
+    close: day.close,
+    high: day.high,
+    low: day.low,
+    volume: day.volume,
+    date: day.date,
+    symbol: day.symbol,
+  }));
+  return c.json(last5DaysWithPrices);
+});
+
+console.log(`Resource running on port ${port}`);
+
+serve({
+  port: port,
+  fetch: app.fetch,
+});
+
+# dynamic_agent/README.md
+# Dynamic Agent
+
+This example demonstrates an agent that can perform multi-tool tasks, without prior knowledge of the tools available to it. Each tool is paid for on a per-request basis using x402.
+
+## Run
+
+(All steps run from `examples/typescript/dynamic_agent`)
+
+1. Install dependencies
+
+```bash
+pnpm install
+```
+
+2. Configure environment variables
+
+```bash
+cp .env-local .env
+```
+
+Follow instructions in `.env` to get required API keys to proxy (they're all free).
+Add your Ethereum development private key to `.env` (remember it should have USDC on Base Sepolia, which you can provision using the [CDP Faucet](https://portal.cdp.coinbase.com/products/faucet)):
+
+3. Start index server
+
+This server mocks an index of tools that an agent may access via http.
+
+```
+pnpm run index-server
+```
+
+4. Run the agent
+
+In a new terminal, run
+
+```
+pnpm run agent
+```
+
+You should see the agent query the index server to see what tools are available, then pay to use several tools.
+Then in the agent's terminal you should see something like:
+
+```
+Available Resources: [
+  {
+    resourceUrl: 'http://localhost:4021/weather',
+    resourceDescription: "Returns the 7 day forecast for weather in a city. Must include city as a query parameter escaped properly to be url safe (ex: 'http://localhost:4021/weather?city=London')",
+    price: { amount: 0.01, currency: 'USD' }
+  },
+  {
+    resourceUrl: 'http://localhost:4021/stock',
+    resourceDescription: "Returns the last 5 days of stock data for a given stock symbol. Must include symbol as a query parameter escaped properly to be url safe (ex: 'http://localhost:4021/stock?symbol=AAPL')",
+    price: { amount: 0.05, currency: 'USD' }
+  }
+]
+Making http call to http://localhost:4021/weather?city=San%20Francisco
+Making http call to http://localhost:4021/stock?symbol=SPY
+StopEvent {
+  data: {
+    result: "Based on the current weather in San Francisco (partly cloudy with a temperature of 60.1Â°F) and the SPY stock price (which closed at $566.76 today), here's a weather and stock market pun:\n" +
+      '\n' +
+      '"The market is looking partly BULL-dy today, with SPY reaching new heights while San Francisco stays in the COLDateral damage of mild temperatures!"\n' +
+      '\n' +
+      'This pun combines:\n' +
+      '1. "Partly cloudy" weather condition with "partly BULL-dy" (playing on bullish market)\n' +
+      '2. "COLDateral" combines the cool temperature with "collateral"\n' +
+      '3. References both the high stock price and mild weather conditions'
+  },
+  displayName: 'StopEvent'
+}
+```
+
+## How it works
+
+The agent has 2 generic tools, neither of which are directly related to the task to perform:
+
+```typescript
+const indexTool = tool(
+  async () => {
+    const response = await axiosWithPayment.get("http://localhost:4021/");
+    const data = await response.data;
+    console.log("Available Resources:", data);
+    return data;
+  },
+  {
+    name: "api-index",
+    description:
+      "Returns to you a list of all the APIs available for you to access",
+    parameters: z.object({}),
+  }
+);
+
+const httpTool = tool(
+  async ({ url }: { url: string }) => {
+    console.log("Making http call to", url);
+    const response = await axiosWithPayment.get(url);
+    const data = await response.data;
+    return data;
+  },
+  {
+    name: "make-http-request",
+    description: "Allows you to make http calls to different APIs",
+    parameters: z.object({
+      url: z.string({ description: "The URL of the API to call" }),
+    }),
+  }
+);
+
+const bot = agent({
+  llm,
+  tools: [indexTool, httpTool],
+  timeout: 100000,
+});
+```
+
+`indexTool` makes a call to the index and receives a list of available tools, `httpTool` allows the agent to pay for http requests via x402.
+
+With these 2 tools and a small system prompt, the agent can now dynamically perform tasks with tools without tools being known to it ahead of time in code.
+
+```typescript
+const response = await bot.run(`
+  You are a helpful assistant. You have access to an index of APIs you can use to dynamically get data.
+  
+  Make a pun based on the weather in San Francisco and the price of SPY
+`);
+
+console.log(response);
+```
+
+# dynamic_agent/.gitignore
+proxies/proxy
+
+# dynamic_agent/package.json
+{
+  "name": "dynamic_agent",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "index-server": "tsx --env-file=.env discover_server.ts",
+    "agent": "tsx --env-file=.env agent.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@hono/node-server": "^1.14.1",
+    "@llamaindex/anthropic": "^0.3.3",
+    "@types/node": "^22.15.3",
+    "axios": "^1.8.4",
+    "hono": "^4.7.7",
+    "llamaindex": "^0.10.2",
+    "viem": "^2.28.3",
+    "x402": "^0.2.0",
+    "x402-axios": "^0.1.0",
+    "x402-hono": "^0.1.0",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint": "^9.24.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "prettier": "3.5.2",
+    "tsup": "^7.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
+
+# dynamic_agent/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["discover_server.ts", "agent.ts"]
+}
+
+# dynamic_agent/.env-local
+WEATHER_API_KEY="get from weatherapi.com"
+PRIVATE_KEY="generate with viem or cast"
+MARKETSTACK_API_KEY="get from marketstack.com"
+ANTHROPIC_API_KEY="get from anthropic.com"
+PAY_TO_ADDRESS="0xYourAddress"
+
+# turbo.json
+{
+  "$schema": "https://turborepo.org/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "dist/**"
+      ]
+    },
+    "lint": {
+      "dependsOn": [
+        "^lint"
+      ],
+      "outputs": []
+    },
+    "lint:check": {
+      "dependsOn": [
+        "^lint:check"
+      ],
+      "outputs": []
+    },
+    "format": {
+      "dependsOn": [
+        "^format"
+      ],
+      "outputs": []
+    },
+    "format:check": {
+      "dependsOn": [
+        "^format:check"
+      ],
+      "outputs": []
+    }
+  }
+}
+# agent/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# agent/README.md
+# Demo of paying for Anthropic tokens via a proxy
+
+This example demonstrates how to use x402 to pay for Anthropic API calls using a proxy server. The setup involves configuring both a Go proxy server and a TypeScript agent.
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- Go (install via `brew install go` on macOS or [golang.org/dl](https://golang.org/dl) for other platforms)
+- A valid Ethereum private key for making payments (must have Base Sepolia USDC)
+- An Anthropic API key
+
+## Setup
+
+1. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd clients/agent
+```
+
+2. Configure your environment:
+   - Create a `.env` file in the agent directory
+   - Add your private key (must be prefixed with `0x`):
+     ```
+     PRIVATE_KEY=0x<your-private-key>
+     ```
+   - Add your resource server URL (default: http://localhost:4021):
+     ```
+     RESOURCE_SERVER_URL=http://localhost:4021
+     ```
+
+### 1. Configure and Start the Proxy Server
+
+1. Navigate to the proxy directory:
+   ```bash
+   cd go/bin
+   ```
+
+2. Create an `anthropic_config.json` file with the following configuration:
+   ```json
+   {
+     "targetURL": "https://api.anthropic.com",
+     "amount": 0.01,
+     "payTo": "address to pay to",
+     "headers": {
+       "x-api-key": "<your-anthropic-api-key>",
+       "anthropic-version": "2023-06-01",
+       "content-type": "application/json"
+     }
+   }
+   ```
+
+3. Start the proxy server:
+   ```bash
+   go run proxy_demo.go anthropic_config.json
+   ```
+
+### 2. Run the Agent
+
+1. Navigate back to the agent directory:
+   ```bash
+   cd ../../examples/typescript/clients/agent
+   ```
+
+2. Run the agent:
+   ```bash
+   pnpm agent
+   ```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Go Command Not Found**
+   - Ensure Go is properly installed and in your PATH
+   - Verify installation with `go version`
+
+2. **Module Not Found**
+   - Make sure you've built the x402 package before running the agent
+   - Run `pnpm install` and `pnpm build` in the x402 package directory
+
+3. **Invalid Private Key**
+   - Ensure your private key is prefixed with `0x`
+   - Verify the key has the correct format and length
+
+4. **Proxy Connection Issues**
+   - Verify the proxy server is running
+   - Check that the `anthropic_config.json` has the correct configuration
+   - Ensure your Anthropic API key is valid
+
+## Security Notes
+
+- Never commit your private keys or API keys to version control
+- Always use testnet funds (Base Sepolia) for development
+- Keep your `.env` file secure and never share it
+# agent/package.json
+{
+  "name": "agent-client-example",
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "keywords": [],
+  "license": "Apache-2.0",
+  "author": "Coinbase Inc.",
+  "repository": "https://github.com/coinbase/x402",
+  "description": "x402 Payment Protocol",
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "@types/node": "^22.13.4",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint": "^9.24.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "prettier": "3.5.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@coinbase/agentkit": "^0.5.0",
+    "@coinbase/agentkit-langchain": "^0.3.0",
+    "@langchain/core": "^0.3.43",
+    "@langchain/langgraph": "^0.2.62",
+    "@langchain/openai": "^0.5.2",
+    "dotenv": "^16.4.7",
+    "viem": "^2.26.2",
+    "x402-fetch": "workspace:*",
+    "zod": "^3.24.2"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ]
+}
+
+# agent/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# agent/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# agent/index.ts
+import Anthropic from "@anthropic-ai/sdk";
+import { config } from "dotenv";
+import { Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { wrapFetchWithPayment } from "x402-fetch";
+
+config();
+
+const privateKey = process.env.PRIVATE_KEY as Hex;
+const baseURL = process.env.RESOURCE_SERVER_URL as string;
+
+if (!baseURL || !privateKey) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const account = privateKeyToAccount(privateKey);
+
+const anthropic = new Anthropic({
+  baseURL,
+  apiKey: "not needed",
+  fetch: wrapFetchWithPayment(fetch, account),
+});
+
+const msg = await anthropic.messages.create({
+  model: "claude-3-7-sonnet-20250219",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Hello, Claude do you know what x402 is?" }],
+});
+console.log(msg);
+
+# agent/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# agent/.env-local
+PRIVATE_KEY=
+RESOURCE_SERVER_URL=
+# mcp/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# mcp/README.md
+# x402 MCP Example Client
+
+This is an example client that demonstrates how to use the x402 payment protocol with the Model Context Protocol (MCP) to make paid API requests through an MCP server.
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A running x402 server (you can use the example express server at `examples/typescript/servers/express`)
+- A valid Ethereum private key for making payments
+- Claude Desktop with MCP support
+
+## Setup
+
+1. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd clients/mcp
+```
+
+2. Copy `.env-local` to `.env` and add your Ethereum private key:
+```bash
+cp .env-local .env
+```
+
+3. Configure Claude Desktop MCP settings:
+```json
+{
+  "mcpServers": {
+    "demo": {
+      "command": "pnpm",
+      "args": [
+        "--silent",
+        "-C",
+        "<absolute path to this repo>/examples/typescript/clients/mcp",
+        "dev"
+      ],
+      "env": {
+        "PRIVATE_KEY": "<private key of a wallet with USDC on Base Sepolia>",
+        "RESOURCE_SERVER_URL": "http://localhost:4021",
+        "ENDPOINT_PATH": "/weather"
+      }
+    }
+  }
+}
+```
+
+4. Start the example client (remember to be running a server or pointing to one in the .env file):
+```bash
+pnpm dev
+```
+
+## How It Works
+
+The example demonstrates how to:
+1. Create a wallet client using viem
+2. Set up an MCP server with x402 payment handling
+3. Create a tool that makes paid API requests
+4. Handle responses and errors through the MCP protocol
+
+## Example Code
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import axios from "axios";
+import { createWalletClient, Hex, http, publicActions } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { baseSepolia } from "viem/chains";
+import { withPaymentInterceptor } from "x402-axios";
+
+// Create wallet client
+const wallet = createWalletClient({
+  chain: baseSepolia,
+  transport: http(),
+  account: privateKeyToAccount(PRIVATE_KEY as Hex),
+}).extend(publicActions);
+
+// Create Axios instance with payment handling
+const client = withPaymentInterceptor(axios.create({ baseURL: RESOURCE_SERVER_URL }), wallet);
+
+// Create MCP server
+const server = new McpServer({
+  name: "x402 MCP Client Demo",
+  version: "1.0.0",
+});
+
+// Add tool for making paid requests
+server.tool("get-data-from-resource-server", "Get data from the resource server (in this example, the weather)",  {}, async () => {
+  const res = await client.post(`${ENDPOINT_PATH}`);
+  return {
+    content: [{ type: "text", text: JSON.stringify(res.data) }],
+  };
+});
+
+// Connect to MCP transport
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+## Response Handling
+
+### Payment Required (402)
+When a payment is required, the MCP server will:
+1. Receive the 402 response
+2. Parse the payment requirements
+3. Create and sign a payment header
+4. Automatically retry the request with the payment header
+
+### Successful Response
+After payment is processed, the MCP server will return the response data through the MCP protocol:
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"report\":{\"weather\":\"sunny\",\"temperature\":70}}"
+    }
+  ]
+}
+```
+
+## Extending the Example
+
+To use this pattern in your own application:
+
+1. Install the required dependencies:
+```bash
+npm install @modelcontextprotocol/sdk x402-axios viem
+```
+
+2. Set up your environment variables
+3. Create a wallet client
+4. Set up your MCP server with x402 payment handling
+5. Define your tools for making paid requests
+6. Connect to the MCP transport
+
+## Integration with Claude Desktop
+
+This example is designed to work with Claude Desktop's MCP support. The MCP server will:
+1. Listen for tool requests from Claude
+2. Handle the payment process automatically
+3. Return the response data through the MCP protocol
+4. Allow Claude to process and display the results
+
+# mcp/package.json
+{
+  "name": "mcp-client-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "axios": "^1.8.4",
+    "dotenv": "^16.5.0",
+    "viem": "^2.26.2",
+    "x402-axios": "workspace:*",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint": "^9.24.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "prettier": "3.5.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
+
+# mcp/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# mcp/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# mcp/index.ts
+/**
+ * Need:
+ * - MCP server to be able to verify token (SSE should be able to do this)
+ * - Need client to be able to send header
+ * - Each client application would need to implement a wallet type
+ */
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import axios from "axios";
+import { config } from "dotenv";
+import { Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { withPaymentInterceptor } from "x402-axios";
+
+config();
+
+const privateKey = process.env.PRIVATE_KEY as Hex;
+const baseURL = process.env.RESOURCE_SERVER_URL as string; // e.g. https://example.com
+const endpointPath = process.env.ENDPOINT_PATH as string; // e.g. /weather
+
+if (!privateKey || !baseURL || !endpointPath) {
+  throw new Error("Missing environment variables");
+}
+
+const account = privateKeyToAccount(privateKey);
+
+const client = withPaymentInterceptor(axios.create({ baseURL }), account);
+
+// Create an MCP server
+const server = new McpServer({
+  name: "x402 MCP Client Demo",
+  version: "1.0.0",
+});
+
+// Add an addition tool
+server.tool(
+  "get-data-from-resource-server",
+  "Get data from the resource server (in this example, the weather)",
+  {},
+  async () => {
+    const res = await client.get(endpointPath);
+    return {
+      content: [{ type: "text", text: JSON.stringify(res.data) }],
+    };
+  },
+);
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+
+# mcp/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2022,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# mcp/.env-local
+RESOURCE_SERVER_URL=http://localhost:4021
+ENDPOINT_PATH=/weather
+PRIVATE_KEY=
+
+# facilitator/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# facilitator/README.md
+# x402 Facilitator Example
+
+This is an example implementation of an x402 facilitator service that handles payment verification and settlement for the x402 payment protocol. This implementation is for learning purposes and demonstrates how to build a facilitator service.
+
+For production use, we recommend using:
+- Testnet: https://x402.org/facilitator
+- Production: https://api.cdp.coinbase.com/platform/v2/x402
+
+## Overview
+
+The facilitator provides two main endpoints:
+- `/verify`: Verifies x402 payment payloads
+- `/settle`: Settles x402 payments by signing and broadcasting transactions
+
+This example demonstrates how to:
+1. Set up a basic Express server to handle x402 payment verification and settlement
+2. Integrate with the x402 protocol's verification and settlement functions
+3. Handle payment payload validation and error cases
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A valid Ethereum private key for Base Sepolia
+- Base Sepolia testnet ETH for transaction fees
+
+## Setup
+
+1. Install and build all packages from the typescript examples root:
+```bash
+cd ..
+pnpm install
+pnpm build
+cd facilitator
+```
+
+2. Create a `.env` file with the following variables:
+```env
+PRIVATE_KEY=0xYourPrivateKey
+```
+
+3. Start the server:
+```bash
+pnpm dev
+```
+
+The server will start on http://localhost:3000
+
+## API Endpoints
+
+### GET /verify
+Returns information about the verify endpoint.
+
+### POST /verify
+Verifies an x402 payment payload.
+
+Request body:
+```typescript
+{
+  payload: string;  // x402 payment payload
+  details: PaymentRequirements;  // Payment requirements
+}
+```
+
+### GET /settle
+Returns information about the settle endpoint.
+
+### POST /settle
+Settles an x402 payment by signing and broadcasting the transaction.
+
+Request body:
+```typescript
+{
+  payload: string;  // x402 payment payload
+  details: PaymentRequirements;  // Payment requirements
+}
+```
+
+## Learning Resources
+
+This example is designed to help you understand how x402 facilitators work. For more information about the x402 protocol and its implementation, visit:
+- [x402 Protocol Documentation](https://x402.org)
+- [Coinbase Developer Platform](https://www.coinbase.com/developer-platform)
+
+
+# facilitator/package.json
+{
+  "name": "facilitator-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.18.2",
+    "x402": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "eslint": "^9.24.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint-plugin-import": "^2.31.0",
+    "prettier": "3.5.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
+
+# facilitator/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# facilitator/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# facilitator/index.ts
+/* eslint-env node */
+import { config } from "dotenv";
+import express from "express";
+import { verify, settle } from "x402/facilitator";
+import {
+  PaymentRequirementsSchema,
+  PaymentRequirements,
+  evm,
+  PaymentPayload,
+  PaymentPayloadSchema,
+} from "x402/types";
+
+config();
+
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
+
+if (!PRIVATE_KEY) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const { createClientSepolia, createSignerSepolia } = evm;
+
+const app = express();
+
+// Configure express to parse JSON bodies
+app.use(express.json());
+
+type VerifyRequest = {
+  paymentPayload: PaymentPayload;
+  paymentRequirements: PaymentRequirements;
+};
+
+type SettleRequest = {
+  paymentPayload: PaymentPayload;
+  paymentRequirements: PaymentRequirements;
+};
+
+const client = createClientSepolia();
+
+app.get("/verify", (req, res) => {
+  res.json({
+    endpoint: "/verify",
+    description: "POST to verify x402 payments",
+    body: {
+      paymentPayload: "PaymentPayload",
+      paymentRequirements: "PaymentRequirements",
+    },
+  });
+});
+
+app.post("/verify", async (req, res) => {
+  try {
+    const body: VerifyRequest = req.body;
+    const paymentRequirements = PaymentRequirementsSchema.parse(body.paymentRequirements);
+    const paymentPayload = PaymentPayloadSchema.parse(body.paymentPayload);
+    const valid = await verify(client, paymentPayload, paymentRequirements);
+    res.json(valid);
+  } catch {
+    res.status(400).json({ error: "Invalid request" });
+  }
+});
+
+app.get("/settle", (req, res) => {
+  res.json({
+    endpoint: "/settle",
+    description: "POST to settle x402 payments",
+    body: {
+      paymentPayload: "PaymentPayload",
+      paymentRequirements: "PaymentRequirements",
+    },
+  });
+});
+
+app.get("/supported", (req, res) => {
+  res.json({
+    kinds: [
+      {
+        x402Version: 1,
+        scheme: "exact",
+        network: "base-sepolia",
+      },
+    ],
+  });
+});
+
+app.post("/settle", async (req, res) => {
+  try {
+    const signer = createSignerSepolia(PRIVATE_KEY as `0x${string}`);
+    const body: SettleRequest = req.body;
+    const paymentRequirements = PaymentRequirementsSchema.parse(body.paymentRequirements);
+    const paymentPayload = PaymentPayloadSchema.parse(body.paymentPayload);
+    const response = await settle(signer, paymentPayload, paymentRequirements);
+    res.json(response);
+  } catch {
+    res.status(400).json({ error: "Invalid request" });
+  }
+});
+
+app.listen(3000, () => {
+  console.log(`Server listening at http://localhost:3000`);
+});
+
+# facilitator/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# facilitator/.env-local
+PRIVATE_KEY=
+PORT=3002
+# README.md
+# X402 TypeScript Examples
+
+This directory contains a collection of TypeScript examples demonstrating how to use the X402 protocol in various contexts. These examples are designed to work with the X402 npm packages and share a workspace with the main X402 packages.
+
+## Setup
+
+Before running any examples, you need to install dependencies and build the packages:
+
+```bash
+# From the examples/typescript directory
+pnpm install
+pnpm build
+```
+
+## Example Structure
+
+The examples are organized into several categories:
+
+### Clients
+
+Examples of different client implementations for interacting with X402 services:
+
+- `agent/` - Example using an Anthropic agent implementation using `x402-fetch`
+- `axios/` - Example using the Axios interceptor from `x402-axios`
+- `fetch/` - Example using the fetch wrapper from `x402-fetch`
+- `mcp/` - Example using MCP (Multi-Chain Protocol) as a client using `x402-axios`
+
+### Facilitator
+
+- `facilitator/` - Example implementation of an X402 payment facilitator
+
+### Fullstack
+
+- `next/` - Example Next.js application demonstrating full-stack X402 integration using `x402-next`
+
+### Servers
+
+Examples of different server implementations:
+
+- `express/` - Example using Express.js with `x402-express`
+- `hono/` - Example using Hono framework with `x402-hono`
+
+## Running Examples
+
+Each example directory contains its own README with specific instructions for running that example. Navigate to the desired example directory and follow its instructions.
+
+## Development
+
+This workspace uses:
+
+- pnpm for package management
+- Turborepo for monorepo management
+- TypeScript for type safety
+
+The examples are designed to work with the main X402 packages, so they must be built before running any examples.
+
+## A note on private keys
+
+The examples in this folder commonly use private keys to sign messages. **Never put a private key with mainnet funds in a `.env` file**. This can result in keys getting checked into codebases and being drained.
+
+There are many ways to generate a keypair to use exclusively for development, one way is via foundry:
+
+```
+# install foundry
+curl -L https://foundry.paradigm.xyz | bash
+
+# generate a new wallet
+cast w new
+```
+
+You can fund your new wallet on most networks via the testnet [CDP Faucet](https://portal.cdp.coinbase.com/products/faucet), simply provide the address generated by cast.
+
+# package.json
+{
+  "name": "x402_examples",
+  "private": "true",
+  "version": "0.0.2",
+  "description": "x402 Payment Protocol Monorepo",
+  "main": "index.js",
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "lint:check": "turbo run lint:check",
+    "format": "turbo run format",
+    "format:check": "turbo run format:check"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.7.0",
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.3"
+  }
+}
+# fullstack/next/middleware.ts
+import { Address } from "viem";
+import { paymentMiddleware, Network, Resource } from "x402-next";
+
+const facilitatorUrl = process.env.NEXT_PUBLIC_FACILITATOR_URL as Resource;
+const payTo = process.env.RESOURCE_WALLET_ADDRESS as Address;
+const network = process.env.NETWORK as Network;
+
+export const middleware = paymentMiddleware(
+  payTo,
+  {
+    "/protected": {
+      price: "$0.01",
+      network,
+      config: {
+        description: "Access to protected content",
+      },
+    },
+  },
+  {
+    url: facilitatorUrl,
+  },
+);
+
+// Configure which paths the middleware should run on
+export const config = {
+  matcher: ["/protected/:path*"],
+};
+
+# fullstack/next/types/svg.d.ts
+declare module "*.svg" {
+  import React from "react";
+  const SVG: React.FC<React.SVGProps<SVGSVGElement>>;
+  export default SVG;
+}
+
+# fullstack/next/app/favicon.ico
+    00     ¨%  6          ¨  Ş%       h  †6  (   0   `                                                                                                              ÿt8@ÿs6Šÿs3ßÿu4ôşw5ôıx7ßüx8 üx;[ÿ@ÿ™3                                                                                                                                            ÿp@ ÿo;Eÿp;pÿq8šÿr6Åÿt4ïşu4úıv5úıy7ïıy9Ïúy;¨û{>xû}?=ÿy=                                                                                                                            ÿ@@ÿmIÿh@ ÿk?]ÿn<ÿo:äÿp8öÿr6ÿÿt4ÿşu4ÿşw5ÿıx7ÿüy9ÿüz;öû|<äú|>Œø~AK÷H ÿ@ÿ™3                                                                                                                ÿcGÿhDGÿjBŸÿk?Íÿm>ëÿn;úÿp8ıÿr6ÿÿt3ÿşu4ÿşw5ÿıx7ÿüy9ÿü{;ıú{=úú}?èù~@Êù€CŸùDOö{B                                                                                                    ÿ]Fÿ`L%ÿcMPÿfIzÿhEªÿiCßÿkAôÿl>ÿÿn<ÿÿp9ÿÿr6ÿÿt4ÿşu4ÿıw5ÿüx8ÿüy:ÿû{<ÿú|>ÿù}@ÿù~Bô÷€Eßö‚F¯õƒG}ôƒJHö„Oÿ™f                                                                                ÿUUÿ^Qÿ^N1ÿ`NeÿaK°ÿdHåÿfFÿÿhDÿÿjAÿÿl>ÿÿn<ÿÿo:ÿÿq7ÿÿs4ÿşu4ÿıw5ÿüx8ÿûy:ÿû{<ÿú|>ÿù~@ÿøBÿ÷€DÿöFÿöƒHàôƒJ£ô‚MZó‚M+è€Qÿ’I                                                                        ÿZRÿ]R]ÿ_OÿaNÏÿbLïÿdIúÿeGÿÿgEÿÿiBÿÿk?ÿÿm=ÿÿo:ÿÿq7ÿÿs4ÿşu4ÿıw5ÿüx8ÿûz:ÿú|<ÿù}?ÿø~Aÿø€Cÿ÷Eÿö‚GÿöƒIùõ„Kìô†MÕó‡NªñˆOkğŠP#                                                            ÿ``ÿ`Z0ÿ^XZÿ]U‡ÿ]T·ÿ_Qİÿ`OôÿaMÿÿcKÿÿeHÿÿgFÿÿiCÿÿkAÿÿm>ÿÿo;ÿÿq8ÿÿs5ÿşu4ÿıw5ÿüx8ÿûz:ÿú|=ÿù}?ÿø~Aÿ÷€DÿöFÿö‚HÿõƒJÿô„Lÿó†Núò‡OåòŠQ¿ğ‰SŠğŠTUïX è‹]                                    ÿÿffÿaaÿ^Y<ı]Y{ÿ^WÁÿ]Víÿ\Tÿÿ]Rÿÿ^Pÿÿ`NÿÿbLÿÿdJÿÿfGÿÿhEÿÿjBÿÿl>ÿÿn<ÿÿp8ÿÿs5ÿşu4ÿıw5ÿüx8ÿûz;ÿú|=ÿù}?ÿøBÿ÷€DÿöFÿõƒHÿõ„Jÿô…Lÿó‡NÿòˆPÿò‰RÿñŠTíñ‹V¸ïX`ñ[5ôYÿ™fÿ                        ÿUU	ÿ^^ı`[jü`[­ş_Yäı^Xóÿ]Wûş\Vÿÿ\Tÿÿ]Rÿÿ^Pÿÿ`NÿÿbKÿÿdIÿÿfEÿÿiBÿÿk?ÿÿn<ÿÿp9ÿÿs5ÿşu4ÿıw5ÿüy8ÿû{;ÿú}>ÿù~AÿøCÿ÷EÿöƒHÿõ„Jÿô…Lÿó‡NÿòˆPÿò‰QÿñŠSÿñ‹TûïŒVñïXßîY´í[sì^ãU	                    ÿjjú``8ûb`‡ûa^½ı`]äü`[ÿı_Zÿş^Yÿş]Xÿş\Vÿÿ]Tÿÿ^Rÿÿ_PÿÿaMÿÿcJÿÿeGÿÿhDÿÿj@ÿÿm=ÿÿp:ÿÿs6ÿşu5ÿıw6ÿüy9ÿû{<ÿù}?ÿøBÿ÷€DÿöFÿõƒIÿô…Kÿó†Mÿò‡Oÿò‰QÿñŠSÿğŠUÿğ‹VÿïWÿîYÿîZêî\Âî‘^‡í`8ê•j                ùcc,ûc`wúb`òûb_ûüa^ÿü`]ÿı`\ÿı_[ÿş^Yÿş]Wÿş]Vÿÿ]Tÿÿ^Qÿÿ`OÿÿbLÿÿdIÿÿgEÿÿiAÿÿl>ÿÿo:ÿÿr6ÿşu5ÿıw6ÿüy9ÿû{<ÿù}@ÿøBÿ÷Eÿö‚Hÿõ„Jÿó…Lÿò‡OÿòˆQÿñŠSÿğ‹Tÿğ‹VÿïXÿîYÿîZÿî\ÿí\ûì^òî’`wî‘c,                ûdd{ûdcÁúcbüûbaşûb`ÿüa_ÿü`]ÿü`\ÿı_[ÿş^Yÿş]Xÿş\Vÿÿ]Sÿÿ^Pÿÿ`NÿÿbJÿÿeGÿÿhCÿÿk?ÿÿn;ÿÿq7ÿşt5ÿıw6ÿüy9ÿú|=ÿø~@ÿ÷€Dÿö‚FÿõƒIÿô…Lÿó†NÿòˆQÿñŠSÿğŠUÿğ‹VÿïXÿîZÿî[ÿí\ÿí]ÿì’^şì’`üë“`Áì“a{                ùed¡ùeeäùddÿúccÿúcbÿûbaÿûa_ÿüa^ÿü`]ÿı_[ÿı^Yÿı]Xÿş]Uÿÿ]Sÿÿ_PÿÿaLÿÿdIÿÿgEÿÿj@ÿÿm<ÿÿq8ÿşt5ÿıw6ÿûz:ÿú|>ÿøAÿ÷€Eÿö‚Hÿõ„Kÿó†NÿòˆPÿñ‰Sÿğ‹UÿğŒWÿïXÿîZÿî\ÿí]ÿì‘^ÿì’_ÿë’`ÿë’aÿê“bêë”c§                ùeeµùfföùeeÿùedÿùdcÿúccÿúcaÿûb`ÿüa_ÿüa]ÿı`[ÿı^Zÿş]Xÿÿ]Uÿÿ]Sÿÿ_OÿÿbKÿÿfGÿÿiBÿÿl=ÿÿp8ÿşt6ÿıw6ÿûz:ÿú}>ÿøCÿ÷GÿõƒJÿô…Mÿó‡Pÿñ‰Rÿğ‹UÿğŒWÿïYÿîZÿî\ÿí‘^ÿì’_ÿì’`ÿë“aÿë“bÿë“cÿê”cÿê”d¿                øgh½øfhıøfgÿùefÿùeeÿùeeÿúccÿúcbÿûbaÿûa_ÿü`]ÿü`\ÿı^Zÿş]Wÿÿ\Uÿÿ^Qÿÿ`MÿÿdIÿÿgDÿÿk?ÿÿo9ÿşt6ÿıw7ÿûz;ÿù}@ÿ÷€EÿöƒIÿô…Lÿó‡Oÿñ‰Rÿñ‹TÿğŒWÿîYÿî[ÿí\ÿì‘^ÿì’`ÿë“aÿë“bÿê“bÿê”cÿé•eÿé•eÿê–e¿                øgi¿÷giÿ÷giÿøfhÿøfgÿøfgÿùefÿúddÿúdcÿúcaÿûb`ÿûa^ÿü`\ÿı_Zÿş^Wÿÿ^Tÿÿ_PÿÿbLÿÿfFÿÿj@ÿÿo:ÿşs7ÿıw7ÿú{<ÿø~Aÿ÷Fÿõ„Kÿó†NÿñˆQÿğŠTÿïŒWÿîYÿí\ÿì]ÿì‘_ÿë’aÿë“bÿê”cÿê”dÿê•eÿé–fÿé–gÿé—gÿè—h¿                ÷hl¿÷hkÿ÷gkÿ÷gjÿøgiÿøfiÿøfhÿùegÿùefÿùddÿúcbÿûcaÿûb_ÿüa]ÿı_Zÿş^Wÿÿ^Tÿÿ`OÿÿdIÿÿhBÿÿn<ÿşs7ÿıw8ÿú{=ÿøCÿöƒHÿô†MÿòˆQÿğŠTÿïŒWÿîZÿí\ÿí‘_ÿë’`ÿë“aÿë”cÿê”dÿé•eÿé–gÿé—gÿé—hÿé—iÿè˜iÿè˜i¿                ÷im¿öimÿöimÿ÷hlÿ÷hkÿ÷hkÿ÷gjÿøgiÿøghÿùffÿùeeÿùecÿúcbÿûb`ÿûa]ÿı_[ÿş^Wÿÿ^SÿÿbLÿÿfFÿÿl>ÿşr8ÿüx8ÿù}?ÿ÷Eÿô…KÿòˆQÿğŠTÿïŒXÿí[ÿí]ÿì’_ÿë“aÿë”cÿê•dÿé–eÿé–gÿé—hÿè˜iÿè˜iÿç™jÿç™kÿç™kÿçšl¿                öio¿õjoÿõjoÿöinÿöimÿöimÿöhlÿ÷hlÿ÷hkÿøgiÿøghÿøfgÿùeeÿùdcÿúcaÿûa_ÿü`\ÿş^Xÿÿ`QÿÿdJÿÿjBÿşq:ÿüx:ÿøAÿõƒIÿó‡Oÿğ‹UÿïYÿí\ÿì‘_ÿë“aÿê”cÿê•eÿé–fÿé—gÿè˜hÿè˜iÿè™jÿç™kÿçškÿæšlÿæšmÿæšmÿæ›m¿                ökp¿õjqÿõjqÿõjpÿõjoÿöjoÿöjoÿöinÿ÷inÿ÷ilÿ÷hkÿ÷hjÿ÷giÿøfgÿùfeÿùdcÿúb`ÿü`]ÿş_WÿÿaOÿÿgFÿşp<ÿûy<ÿ÷Dÿô†MÿñŠTÿîZÿí‘]ÿì’aÿê”cÿé–eÿé—gÿè˜hÿè˜iÿç™jÿç™kÿçšlÿçšmÿçšmÿæ›mÿæ›nÿæ›oÿå›oÿæ›o¿                ôls¿ôlsÿôlsÿôlrÿôlrÿõlqÿõlqÿõkpÿõkpÿõkpÿöjoÿöjnÿöimÿ÷hkÿ÷hjÿ÷ghÿøefÿúccÿüa^ÿıaVÿÿbLÿşn@ÿúz?ÿõ„JÿñŠSÿî[ÿì’`ÿê”cÿé–fÿè—hÿè˜iÿç™kÿæšlÿæšmÿæ›nÿå›nÿåœoÿåœoÿåœoÿåoÿäpÿäqÿäqÿäp¿                ómt¿ómuÿómuÿómuÿômtÿômtÿômtÿômsÿômsÿômsÿôlrÿôlrÿôkqÿõkpÿõkoÿõjnÿöilÿ÷hjÿøfgÿúdaÿücYÿûnIÿ÷|Hÿï‹Vÿì‘^ÿê•dÿè—hÿç™jÿçšlÿæšmÿå›nÿåœoÿäœpÿäpÿäqÿärÿärÿärÿärÿärÿãrÿãsÿãsÿäŸs¿                òow¿ònwÿónwÿónwÿónwÿónwÿónwÿónvÿónvÿónvÿónvÿónuÿónuÿóntÿónuÿómtÿômsÿôlrÿõkqÿöinÿ÷fiÿøpXÿóWÿé•fÿç™lÿåœoÿäqÿäqÿärÿãsÿãsÿãŸsÿãŸtÿãŸtÿãŸtÿãŸuÿãŸuÿãŸuÿãŸuÿãŸuÿãŸuÿãŸuÿãŸuÿãŸu¿                òpx¿òpyÿòpyÿòpyÿòpyÿòpyÿòpyÿòpyÿòpyÿòpyÿñpyÿñpyÿñpyÿñpzÿñp{ÿñpzÿñp{ÿñq|ÿğr}ÿñq}ÿñpzÿósnÿí„oÿà¢|ÿà¤|ÿà¤{ÿá£{ÿá¢zÿá¢yÿá¢yÿá¢xÿá¡xÿá¡xÿá¡wÿá¡wÿá¡wÿâ¡wÿâ¡wÿâ¡wÿâ¡wÿâ¡wÿâ¡wÿâ¡wÿã¢w¿                òp{¿ñq{ÿñq{ÿñq{ÿñq{ÿñq{ÿñq|ÿñq|ÿñr|ÿñr|ÿğr}ÿğr}ÿğs~ÿğsÿït€ÿït€ÿïtÿîu‚ÿït€ÿòp{ÿöjsÿömmÿï}qÿâšÿß¢ÿİ¦‚ÿİ§‚ÿŞ§€ÿŞ¦ÿß¥~ÿß¥}ÿà¤|ÿà¤|ÿà¤{ÿà£{ÿà£{ÿá£zÿá£zÿá£zÿá£zÿá¢yÿá¢yÿá¢yÿâ£y¿                òq|¿ñq}ÿğq}ÿğq}ÿğr~ÿğr~ÿğr~ÿğsÿğsÿğsÿït€ÿïuÿïu‚ÿîvƒÿîw„ÿíw…ÿíw…ÿív…ÿñr~ÿöjsÿü`eÿúefÿótlÿèzÿâ›ÿİ¥…ÿÜ©‡ÿÜª…ÿÜª„ÿÜ©ƒÿİ¨‚ÿŞ¨ÿŞ§€ÿß¦ÿß¦~ÿß¥~ÿà¥}ÿà¥}ÿà¤}ÿà¤|ÿà¤|ÿà£|ÿà£{ÿà£{¿                ğs¿ğsÿğsÿïsÿït€ÿït€ÿïtÿïtÿîuÿîuƒÿîvƒÿîw„ÿîw…ÿíx‡ÿìyˆÿíw†ÿït‚ÿòp|ÿ÷hrÿûbhÿş]`ÿûddÿõqjÿíƒtÿç‘{ÿâœÿŞ£…ÿÜ¨‡ÿÛ«ˆÿÚ¬ˆÿÛ«†ÿÜª…ÿÜ©ƒÿİ©‚ÿİ¨ÿİ§€ÿŞ§€ÿŞ§ÿŞ¦ÿß¦~ÿß¦~ÿß¥~ÿß¥}ÿß¦}¿                ğt€¿ït€ÿït€ÿïtÿîu‚ÿîu‚ÿîuƒÿîu„ÿív„ÿíw…ÿíw†ÿìx‡ÿíx‡ÿíw‡ÿîv…ÿïsÿòn{ÿöisÿúciÿı^cÿÿ\_ÿûdcÿöoiÿï~qÿêŠwÿå”}ÿáœ‚ÿŞ£…ÿÜ§‡ÿÛªˆÿÛ«ˆÿÛ«ˆÿÛ«†ÿÜ«…ÿÜª„ÿÜ©ƒÿİ©‚ÿİ¨‚ÿİ¨ÿŞ§ÿŞ§€ÿŞ§€ÿŞ¦ÿß§¿                ït‚¿ïu‚ÿîu‚ÿîuƒÿîv„ÿîv„ÿîv…ÿíw†ÿíw‡ÿìxˆÿìxˆÿëxˆÿíw‡ÿïu„ÿñrÿómyÿöhrÿûcjÿı_cÿÿ]`ıÿ\_úûddúöniúñzoúí…uıèzÿä–~ÿáœ‚ÿß¢…ÿİ§‡ÿÛª‰ÿÚ¬‰ÿÚ­‰ÿÛ¬ˆÿÛ¬‡ÿÜ«†ÿÜ«…ÿÜª„ÿİ©ƒÿİ©ƒÿİ¨‚ÿİ¨ÿİ¨ÿŞ§€¿                ïu„¿îv„ÿîv„ÿív…ÿíw†ÿíx†ÿíxˆÿìx‰ÿëy‰ÿìx‰ÿìw‡ÿív…ÿïsÿòq}ÿômxÿ÷hrÿúckÿı_dÿş]aÿÿ\_öÿ]_äüedä÷niäôxoäî‚söë‰wÿç|ÿä–ÿáœ‚ÿß¡„ÿİ¥†ÿÜ¨ˆÿÛ«‰ÿÚ¬‰ÿÚ­‰ÿÚ­‰ÿÛ¬ˆÿÛ«‡ÿÛ«…ÿÜ«…ÿÜª„ÿÜ©ƒÿİ©ƒÿŞªƒ¿                îw†¿íw†ÿíw†ÿíx‡ÿìxˆÿìyˆÿìy‰ÿìx‰ÿìxˆÿív†ÿïuƒÿğs€ÿòp|ÿôlwÿ÷irÿùemßüah¿ÿ_bŸÿ]`ÿ\`€ÿ]`púddpömipôvmpïr€ëˆwé{Ÿå”~Åã˜äáœÿà „ÿŞ¤†ÿÜ§‡ÿÛ©ˆÿÛ«‰ÿÚ¬ŠÿÚ­‰ÿÚ­‰ÿÚ¬ˆÿÛ¬‡ÿÛ«†ÿÛª…ÿÜª„ÿÜ«„¿                îw‡¿ìxˆÿìxˆÿìy‰ÿìy‰ÿëy‰ÿìxˆÿìw‡ÿîu…ÿğsÿñq~ÿòo{ÿõlwûöirïùemÚúbi¡ÿ`ejÿ[`5ÿ^^ÿUUÿ``ÿff
+ÿff
+ÿ`îwwë‰|'ì‰yPè}‘å•~Âã˜âáœ‚òá¡ƒûŞ£…ÿİ¦‡ÿÜ¨ˆÿÛ«‰ÿÚ­ŠÿÚ­ŠÿÚ­ŠÿÚ­‰ÿÛ¬ˆÿÛ¬‡ÿÛ«†ıÛ«†½                ìyŠ¿ìy‰ÿëyŠÿëyŠÿìx‰ÿíw‡ÿîv…ÿïuƒÿğs€ÿòp}ÿónyÿôkuÿöhqíøgn°ûgoEùdj)ÿamÿ]]ÿffÿffÿ``(úcc1õhh1òsl(ğ|l!ğ…vCì…ué‹x®ç‘{¢ã˜~mãš€½â‚íà ƒÿß¢…ÿŞ¥†ÿİ¨‡ÿÛª‰ÿÚ«ŠÿÚ­‹ÿÚ­ŠÿÚ­‰ÿÚ­‰ÿÛ¬ˆöÜ¬‰µ                ëz‰§ëy‰êìy‰ÿìxˆÿíw†ÿîu„ÿïs‚ÿñrÿòp|ÿómyÿõkuÿöhqÿøgp´úemeÿppÿffÿ``ÿ``ÿ]`Rı^`}ı`b—úfe÷khõqj—ówn’ï~r’íƒt˜ëˆwrè{Mæ™€(â™~sâ›ºâœÿáŸƒÿß¢…ÿŞ¤†ÿİ§‡ÿÛ©ˆÿÚ«‰ÿÚ¬ŠÿÚ­ŠÿÙ­ŠÿÚ­ŠäÛ­Š¡                ìz‹{íz‰Áîwˆüîv†şïtƒÿïs€ÿñq~ÿòo{ÿómxÿõkuÿöhqÿøemÿùflxñcj$        ÿYdÿ\`Eÿ]^°ÿ^`íı`aÿúfdÿølgÿõqjÿòvmÿğzpİîr˜ğu2        â—€,ã˜€ã™€ÿâ‚ÿáŸƒÿß¡…ÿŞ¤†ÿİ¦‡ÿÛ¨ˆÿÛª‰ÿÛ«ŠşÚ­‹üÚ­‹ÁÚ®‹{                îz‹,ğv‡wîu„òïs‚ûğr€ÿñq}ÿòozÿómxÿõkuÿ÷hqÿøemÿúcjÿùdi\ÿmm        ÿ__3ÿ]^šÿ\_Úÿ]_ûıaaÿúfdÿøkgÿöpjÿóvmÿò{oçğr·î}q=        ã	ä•}^ä—~ÿã™€ÿâœ‚ÿáŸƒÿß¡…ÿŞ£†ÿİ¦†ÿÜ§ˆÿÛ©ˆûÚª‰òİ«‹wÜ®‹,                êív„8ğu„‡ñqÂño|êònzÿôlwÿõjtÿöhqÿøfnÿúcjÿûagÿüaf_ÿ]]        ÿ[a*ÿ^`€ÿ\_Ïş^`úübbÿúfeÿøkgÿöpjÿôulÿòxnÚñrïp0        ç’yå“}jå”}ÿä—ÿã™ÿáœ‚ÿàƒÿß¡„ÿŞ£…ÿİ¦†äÜ¦‡½İªŠ‡Û¨‰8êª•                    ãqq	ì{{òo|sòoz´ôkwßõjsñ÷hqûøfmÿúdkÿûagÿı_cÿı^b€ÿ[`-ÿffÿÿ]]ÿ[_Cÿ]^ş_`ÒübbäúfeèøjhçöojâõtlÜòwn¬ò~qOõvÿÿ™™ê{>è{‘æ‘|ÿå”~ÿã—ÿâ™ÿâœ‚ûáƒóà¡„äß¤…­İ¦‡jÙª„ãª	                        ÿÿ™™ôozõox5÷mx`øhr¸ùfníúdkÿûbgÿü_dÿş]aÿÿ]`Ôÿ^`ˆÿ^^ÿUU	ÿÿbbÿ``(ÿaaLûaa{úffŒ÷igˆöpimörlSõvl4ïpÿ™fãq	ã„{éŒxŒçzØç{ÿå’}ÿä•~ÿã—ÿãšíâœÁŞƒ{á¢„<çª†ÿÌ™ÿ                                    ètt÷px ùioUùfkŠûdi¿ı`fäı^búş]`ÿÿ]_ôÿ\_Íÿ^`‡ÿ]`Xÿ[`-ÿ``ÿ``ÿaaúee0öhc;öii8ùsl(ôujïpïpñ|u%îƒuJëƒv€êˆwÊé‹xôèzÿç{ôä“}İå–·å™€‡ãœ‚ZßŸ…0ßŸ                                                            ÿff#ıcejş_cªş\aÕÿ\_ìÿ\_ùÿ\^ûÿ]_òÿ\_´ÿ]_vÿ[`8ÿ]],ÿ__#ÿaaöddöjj÷ph ÷pi"ôto.ôzoEğ|rií€síƒtäë‡vöê‰wúéŒyïèzÏç“|æ”~]æ”{                                                                        ÿmmÿamÿ_e+ÿ_aYÿ]^¢ÿ\^àÿ\_şÿ\_üÿ\_ğÿ\_ãÿ]_×ÿ]_Ãş_b¬üdd’ùfe‰úkg÷mhŸôrj¨ôum»ñwnÚğ|páğrëî‚túì…vıëˆwäëŒy¯è|eå’}1ä”yÿª                                                                                ÿffÿaaÿ\`Hÿ\`}ÿ\_¯ÿ]_ßÿ\_ôÿ\_ÿÿ\_ÿş^`ôı`açûdd×úfeÒùjgÔ÷nißöqkäótmïòxnÿñ{pÿğ~rôîsßí„uªìˆwzéŒyPêŠ|%è‹t                                                                                                    ÿ^^ÿ^aOÿ[_Ÿÿ\_Êÿ\_èÿ\_úş_aıüabÿûdcÿúgeÿøjgÿ÷miÿöpjÿôtlıòvnúñ{pëğ~qÍï€sŸísGñq                                                                                                                ÿffÿ``ÿ`` ÿ\_Kÿ]_Œÿ]_äş_`öüabÿûdcÿúgeÿøjgÿ÷mhÿöpjÿõslöównäğyoï{p]ïp í¿                                                                                                                            ÿaaÿ\`=ÿ^`xı`b§ıacÏûdcïùgeúøjgúömiïõojÅõrlšñvmpğvoEïxp                                                                                                                                             ÿffÿ``ÿ`cZübcŸúecßúgeôùkgô÷mißöoiŠópl@                                                                                ÿÿğÿÿ  ÿÿ€ÿÿ  ÿü  ?ÿ  ÿü  ?ÿ  ÿà  ÿ  ÿ€  ÿ  ÿ€  ÿ  ü    ?  à      à      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À      À À   À À   À À   à      à      ü    ?  ÿ€  ÿ  ÿ€  ÿ  ÿà  ÿ  ÿü  ?ÿ  ÿü  ?ÿ  ÿÿ€ÿÿ  ÿÿÀÿÿ  (       @                                                                                  ÿu:0ÿs5Ÿşu4ïıw5ïüy9¯ûx<Hÿ@                                                                                            ÿp@0ÿo;Ÿÿp9ïÿs6ÿşu4ÿıw6ÿüy9ÿû{<ïú}>÷@                                                                                 ÿpPÿiBpÿj@ßÿm=ÿÿp9ÿÿs5ÿşu4ÿıw6ÿüy9ÿû{<ÿù}?ÿøBß÷€DxôJ                                                                ÿ`PÿbM`ÿeIÏÿgFÿÿjBÿÿm>ÿÿo:ÿÿr6ÿşu4ÿıw6ÿûy:ÿú{=ÿù}@ÿøCÿöFÿöƒHÇõƒIPÿ`                                                    ÿ`R8ÿ`Q§ÿaNïÿcJÿÿfGÿÿiCÿÿl?ÿÿo;ÿÿr7ÿşu4ÿıw6ÿûz:ÿú|=ÿø~Aÿ÷€Dÿö‚GÿõƒJÿô…L÷ò‡O·ó‡P@                                        ÿ`Z0ÿ]WŸÿ]Uïÿ]Sÿÿ_PÿÿbMÿÿeIÿÿhEÿÿkAÿÿn<ÿÿq8ÿşu5ÿıw6ÿûz:ÿú|>ÿø~Aÿö€Eÿõ‚Hÿô„Kÿó†NÿòˆQÿñŠSïñ‹VïX                         ÿ``ı`]hı`[×ı_Yÿş]Wÿş\Uÿÿ]Rÿÿ`OÿÿcKÿÿfGÿÿiBÿÿm=ÿÿq8ÿşu5ÿıx6ÿû{;ÿù}?ÿøCÿöFÿõ„Jÿô†MÿòˆPÿñ‰RÿğŠTÿïŒWÿîYßí[pï`            ÿ``ûb`‡ûb`÷üa^ÿü`\ÿı_Zÿş]Xÿş]Uÿÿ^RÿÿaNÿÿdIÿÿhDÿÿk?ÿÿp9ÿşt5ÿıx7ÿû{<ÿù~@ÿ÷€Dÿö‚Hÿô…Lÿò‡Oÿñ‰RÿğŠUÿïŒWÿîYÿî[ÿí]÷î‘^‡ï`        úeb`ùcbßúcbÿûb`ÿüa^ÿü`\ÿı_Zÿş]Xÿş]Tÿÿ_PÿÿbLÿÿfFÿÿj@ÿÿo:ÿşt6ÿıx7ÿú{<ÿøBÿöFÿõ„Jÿó†NÿñˆRÿğŠUÿïŒWÿîZÿí\ÿì]ÿë‘_ÿê’aßê’b`        ùffxùee÷ùedÿùdcÿúcaÿûb_ÿüa]ÿı_Zÿş]Xÿÿ]Tÿÿ_OÿÿdIÿÿiCÿÿn<ÿşs6ÿüx7ÿú|=ÿø€Cÿö‚Iÿô…MÿòˆQÿğ‹UÿïŒXÿîZÿí]ÿì‘_ÿë’`ÿë“bÿê“cÿé“d€        ÷fh€øfhÿøfgÿùefÿùddÿúcbÿûb`ÿûa^ÿü_[ÿş]Wÿÿ]SÿÿaMÿÿfFÿÿl>ÿşs7ÿüx8ÿù}?ÿ÷Fÿô„Lÿò‡PÿğŠTÿïXÿí[ÿì^ÿë’`ÿë“bÿê“cÿé”dÿé•fÿé•f€        ÷hl€÷hkÿ÷gjÿøgiÿøfhÿùefÿùddÿúcaÿûb_ÿü`[ÿş^Wÿÿ_RÿÿcJÿÿj@ÿşr8ÿüx9ÿø~AÿõƒIÿò‡OÿğŠTÿïXÿí\ÿì‘_ÿë’aÿê“cÿé•eÿé–gÿé—hÿè—iÿç—j€        õjn€öinÿöimÿ÷hlÿ÷hkÿ÷giÿøggÿùfeÿùdcÿúb`ÿü`\ÿş^Wÿÿ`OÿÿhEÿşq:ÿûy:ÿ÷€Dÿó†NÿğŠUÿîZÿì^ÿë’aÿê”cÿé–eÿé—gÿè—iÿç˜jÿç™kÿç™lÿç™l€        õjp€õjpÿõjpÿõjoÿöjnÿöinÿ÷ilÿ÷hjÿ÷ghÿøffÿùdcÿûa^ÿş_WÿÿcKÿşo>ÿú{=ÿõƒJÿñŠTÿî[ÿì’`ÿê”dÿé–fÿè—hÿç˜jÿç™kÿçšlÿæšmÿæ›nÿå›nÿå›n€        ónt€ômsÿôlsÿôlsÿõlrÿõlqÿõkqÿõkpÿöjnÿöilÿ÷hjÿøfgÿúcaÿıaVÿşkDÿø}Cÿñ‰Sÿí^ÿê”dÿè—hÿç˜jÿæšlÿæ›nÿå›oÿåœpÿåpÿäpÿäqÿäqÿãr€        ñnv€ònvÿónvÿónvÿónvÿónvÿónuÿónuÿóntÿómsÿómsÿôlqÿõjoÿ÷giÿùlWÿòƒUÿé•fÿæšmÿåœoÿäqÿãrÿãsÿãsÿãŸtÿãŸtÿãŸtÿãŸtÿãŸuÿãŸuÿãŸv€        ñpz€òpyÿòpyÿòpyÿòpzÿòpzÿñpzÿñpzÿñq{ÿñq|ÿñq|ÿğr}ÿïs€ÿïs€ÿñtwÿèxÿŞ¦€ÿß¥~ÿà£|ÿà£{ÿá¢zÿá¢yÿá¢yÿá¢xÿá¢xÿâ¢xÿâ¡xÿâ¡xÿâ¡wÿá¡x€        ñr|€ğq|ÿğq}ÿğr}ÿğr~ÿğs~ÿğsÿït€ÿïu€ÿîv‚ÿíw„ÿìx†ÿîu‚ÿöjrÿúefÿğ|qÿâš€ÿÜ¨†ÿÛª…ÿÜ©ƒÿİ§ÿŞ§€ÿß¦ÿß¥~ÿà¥}ÿà¤|ÿà¤|ÿà£{ÿà£{ÿß£|€        ït€ğsÿït€ÿït€ÿïtÿîu‚ÿîvƒÿîw„ÿíx†ÿìyˆÿìx‡ÿğr€ÿ÷hrÿı_dÿübbÿôulÿé‹xÿâ›ÿİ¦‡ÿÚ¬‰ÿÚ¬ˆÿÛª…ÿÜ©ƒÿİ¨ÿİ§€ÿŞ§€ÿŞ¦ÿß¦ÿß¥~ÿß¥~€        ït€îuÿîu‚ÿîvƒÿîv„ÿíw…ÿìx‡ÿëyˆÿìyˆÿîv„ÿñp}ÿöhrÿüafÿş]`ÿübcÿõrkÿíƒtÿæ‘|ÿáœÿİ¤†ÿÛª‰ÿÚ¬‰ÿÚ¬ˆÿÛ«†ÿÜª„ÿÜ©ƒÿİ¨‚ÿİ¨ÿİ§€ÿİ§€        ívƒ€îv„ÿíw…ÿíx†ÿìxˆÿëy‰ÿëy‰ÿíw†ÿïsÿóozÿ÷hrÿûahÿş]aÿÿ]_ïübbßöpjßğ~qïê‰xÿå“~ÿáœÿŞ£…ÿÜ¨ˆÿÚ¬‰ÿÚ­ŠÿÚ¬‰ÿÛ«‡ÿÛ«…ÿÜª„ÿÜ©ƒÿİ©ƒ€        íx‡€ìx‡ÿìyˆÿëy‰ÿëy‰ÿìx‡ÿîuƒÿñrÿónyÿ÷hqÿúdkÏı`dpÿ``(ÿ``        ÿìŒ€(è‘}xä—×âœÿß¡„ÿİ¦†ÿÛª‰ÿÚ­ŠÿÙ­ŠÿÚ¬‰ÿÛ¬‡ÿÛ«†ÿÛ«…€        ëz‰€ëy‰ÿëyŠÿìxˆÿîv…ÿğtÿòp}ÿôlwÿöiqïùfn€ÿpp        ÿ``údd8ömi8òyl(ì…u`ëŠw¯è‘{‡âš€—á‚ïà¡„ÿŞ¥†ÿÜ¨ˆÿÚ«ŠÿÙ­ŠÿÙ­‰ÿÚ¬ˆ÷Û¬ˆx        êzŠ`ìy‰ßíw†ÿîuƒÿğr€ÿòo|ÿôlwÿöhqÿùgoŸ÷hp     ÿ``ÿ]`‡ş_`ïûedÿ÷mhÿóumÿğ|qÇíuH    æ™€(äš€§âœÿà „ÿŞ¤†ÿÜ§‡ÿÛª‰ÿÚ¬ŠÿÙ­ŒßÚ­Š`        ïğu„‡ğt‚÷ğq~ÿòozÿôlvÿöhqÿùdlÿùbj€        ÿ]`Xÿ]_×ş_`ÿûedÿ÷lhÿôtlÿñ{pßïr`        ã•~€ã˜€ÿâœ‚ÿàŸ„ÿŞ£…ÿÜ¦‡ÿÛ¨ˆ÷İ¬Š‡ß¯            ïñp}pònyßõkuÿ÷hqÿùelÿûagÿı`dÿ``    ÿ``(ÿ]`Ÿı`a÷úedÿ÷lhÿôslÿòyo¯ïp0    ç ç’}Ÿå”~ÿã˜€ÿáœ‚ÿàŸƒÿŞ¢…×İ¤‡hß¯                        ÷px øirùemïûbhÿı_cÿş]`ïÿ^`€ÿ``    ÿ``údd8øfdpølghörm8ÿp    ïé‹x€èzïæ‘|ÿä•~ÿâ™€ïâœ‚ŸßŸ…0                                        ûdh@ş_d·ş]a÷ÿ\_ÿÿ]_÷ÿ]`·ÿ\`Hÿ``                ïpï|t@í‚uŸë†vïéŠxÿè{ïç“}§è–8                                                    ÿ``ÿ\`Pÿ\_Çÿ\_ÿÿ\_ÿÿ\_ÿş]`ïü`aÇúfe§ølg¯õqjÇóvmçñ{pÿïsÿìƒuÿê‰wÏêz`ï                                                                ÿ``ÿ^`xÿ]_ßÿ\_ÿş^`ÿübbÿúfeÿøkhÿöpjÿóumÿñzoÿï~qßï‚tpï                                                                                ÿ`` ÿ]`ş_`ïübbÿúfeÿøkgÿöojÿósmïòxoŸïzp0                                                                                            ÿ``û`cHûcc¯úgeïøkgï÷ojŸôpj0                                                    ÿøÿÿàÿÿ€ÿş  ü  ?ğ  À  €  €  €  €  €  €  €  €  €  €  €  €  €  €  €€€ €€0ÀğüÀ?ş  ÿ€ÿÿàÿÿğÿ(                                                         ÿf3ÿp9pÿt3îıx7îû}=vÿf3                                ÿffÿbHQÿhCÚÿn<ÿÿs4ÿüx8ÿú|>ÿøDÚø…IIÿ@                ÿUUÿ_U3ÿ]S³ÿaNıÿgFÿÿl>ÿÿs5ÿüx8ÿù}?ÿöEÿô…KşñˆQºìŒS(ÿ    ÿjjıb`}ü_[ùş]Wÿÿ^QÿÿcJÿÿj@ÿÿr6ÿüy9ÿøBÿõ„Iÿò‡OÿğŠTÿïYúí]~ê•júdd8ùddøûb`ÿü`\ÿı^Wÿÿ_PÿÿgDÿÿp8ÿûz:ÿ÷Eÿó†Mÿğ‹TÿîYÿì‘]ÿì’aùé‘a:÷hh@÷giÿøffÿúdcÿûa^ÿş^WÿÿbLÿÿn:ÿú{<ÿõ„JÿğŠTÿí\ÿë’`ÿê”dÿé–fÿç—h@óhp@õjoÿöimÿ÷hjÿøffÿúcaÿş^WÿÿjBÿøAÿğ‹Uÿì‘_ÿê•dÿè˜hÿç™kÿæšmÿç›l@ólt@ómuÿômtÿômsÿôlrÿõkoÿ÷hjÿücYÿï‹Vÿè—hÿæ›mÿäpÿärÿärÿãsÿãŸt@ïp|@ñq{ÿñq{ÿñq|ÿğr}ÿğsÿîu‚ÿöjsÿâšÿŞ§‚ÿß¥~ÿà¤|ÿá£zÿá£zÿá¢yÿß£x@ït@ït€ÿîu‚ÿîv„ÿíx‡ÿîv„ÿöisÿÿ\_ÿï~qÿáœ‚ÿÛªˆÿÛ«†ÿİ©ƒÿŞ¨ÿŞ§€ÿß§@ëxƒ@íw†ÿìxˆÿìw‡ÿğr€ÿ÷irûÿ^c ÿ]`pôvmpé|¡âœ‚ûİ§‡ÿÚ¬ŠÿÛ¬ˆÿÜª…ÿÛ«ƒ@í{ˆ:íyˆùîu„ÿòp|ÿ÷hròöhqÿbbı``—õqj—ì‚t•ã’{6â‚óŞ¥†ÿÛ«‰ÿÚ­ŠøÛ­8êïs‚~ónyú÷hqÿûagğÿUUÿ_a|üaaÿöpjÿğr‹ÿä•}ğâœ‚ÿŞ£…ùÜ©‰}Ôª•    ÿùfs(ûci¹ş]`øÿ^_‹ÿUUúbb/òlf(ñqqì…v„çz÷ä–³á›‚3ÿªª                ÿÿ[^Iÿ\_Úÿ\_şúccØ÷nißòwnşïtÚé‹xQÿ™f                                ÿffÿ]_vûedîölhîñvmpÌff                    ø  à  €                                          €  à  ø  
+# fullstack/next/app/layout.tsx
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: 'x402.org',
+  description: 'A chain-agnostic protocol for web payments',
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link
+          rel="icon"
+          type="image/png"
+          href="/favicon-96x96.png"
+          sizes="96x96"
+        />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <link
+          rel="apple-touch-icon"
+          sizes="180x180"
+          href="/apple-touch-icon.png"
+        />
+        <meta name="apple-mobile-web-app-title" content="x402" />
+        <link rel="manifest" href="/site.webmanifest" />
+      </head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        {children}
+      </body>
+    </html>
+  );
+}
+
+# fullstack/next/app/protected/page.tsx
+export default function ProtectedPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="max-w-2xl mx-auto p-8">
+        <h1 className="text-4xl font-bold mb-4">Protected Content</h1>
+        <p className="text-lg">
+          Your payment was successful! Enjoy this banger song.
+        </p>
+        <iframe width="100%" height="300" scrolling="no" frameBorder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/2044190296&color=%23ff5500&auto_play=true&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=true"></iframe>
+        <div style={{ fontSize: '10px', color: '#cccccc', lineBreak: 'anywhere', wordBreak: 'normal', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontFamily: 'Interstate,Lucida Grande,Lucida Sans Unicode,Lucida Sans,Garuda,Verdana,Tahoma,sans-serif', fontWeight: '100' }}>
+          <a href="https://soundcloud.com/dan-kim-675678711" title="danXkim" target="_blank" style={{ color: '#cccccc', textDecoration: 'none' }}>danXkim</a> Â· <a href="https://soundcloud.com/dan-kim-675678711/x402" title="x402 (DJ Reppel Remix)" target="_blank" style={{ color: '#cccccc', textDecoration: 'none' }}>x402 (DJ Reppel Remix)</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+# fullstack/next/app/page.tsx
+import Link from 'next/link';
+import WordmarkCondensed from './assets/x402_wordmark_light.svg';
+
+export default function Home() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 text-gray-900 flex flex-col">
+      <div className="flex-grow">
+        {/* Hero Section */}
+        <section className="max-w-6xl mx-auto px-4 py-20 lg:py-28">
+          <div className="text-center">
+            <div className="w-64 mb-6 mx-auto">
+              <WordmarkCondensed className="mx-auto" />
+            </div>
+            <p className="text-xl text-gray-600 mb-8 font-mono">
+              Fullstack demo powered by Next.js
+            </p>
+            <div className="flex flex-wrap gap-4 justify-center">
+              <Link
+                href="/protected"
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-mono transition-colors text-white"
+              >
+                Live demo
+              </Link>
+            </div>
+          </div>
+        </section>
+      </div>
+      <footer className="py-8 text-center text-sm text-gray-500">
+        By using this site, you agree to be bound by the{' '}
+        <a
+          href="https://www.coinbase.com/legal/developer-platform/terms-of-service"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-500"
+        >
+          CDP Terms of Service
+        </a>{' '}
+        and{' '}
+        <a
+          href="https://www.coinbase.com/legal/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-500"
+        >
+          Global Privacy Policy
+        </a>
+        .
+      </footer>
+    </div>
+  );
+}
+
+# fullstack/next/app/globals.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1a1a2e;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .full-bleed {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+  }
+
+  .unset-full-bleed {
+    width: unset;
+    margin-left: unset;
+  }
+}
+
+# fullstack/next/postcss.config.mjs
+/** @type {import('postcss-load-config').Config} */
+const config = {
+  plugins: {
+    tailwindcss: {},
+  },
+};
+
+export default config;
+
+# fullstack/next/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# fullstack/next/README.md
+# x402-next Example App
+
+This is a Next.js application that demonstrates how to use the `x402-next` middleware to implement paywall functionality in your Next.js routes.
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A valid Ethereum address for receiving payments
+
+## Setup
+
+1. Copy `.env.local` to `.env` and add your Ethereum address to receive payments:
+
+```bash
+cp .env.local .env
+```
+
+2. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd fullstack/next
+```
+
+2. Install and start the Next.js example:
+```bash
+pnpm dev
+```
+
+## Example Routes
+
+The app includes protected routes that require payment to access:
+
+### Protected Page Route
+The `/protected` route requires a payment of $0.01 to access. The route is protected using the x402-next middleware:
+
+```typescript
+// middleware.ts
+import { paymentMiddleware, Network, Resource } from "x402-next";
+
+const facilitatorUrl = process.env.NEXT_PUBLIC_FACILITATOR_URL as Resource;
+const payTo = process.env.RESOURCE_WALLET_ADDRESS as Address;
+const network = process.env.NETWORK as Network;
+
+export const middleware = paymentMiddleware(
+  payTo,
+  {
+    "/protected": {
+      price: "$0.01",
+      network,
+      config: {
+        description: "Access to protected content",
+      },
+    },
+  },
+  {
+    url: facilitatorUrl,
+  },
+);
+
+// Configure which paths the middleware should run on
+export const config = {
+  matcher: ["/protected/:path*"],
+};
+```
+
+## Response Format
+
+### Payment Required (402)
+```json
+{
+  "error": "X-PAYMENT header is required",
+  "paymentRequirements": {
+    "scheme": "exact",
+    "network": "base",
+    "maxAmountRequired": "1000",
+    "resource": "http://localhost:3000/protected",
+    "description": "Access to protected content",
+    "mimeType": "",
+    "payTo": "0xYourAddress",
+    "maxTimeoutSeconds": 60,
+    "asset": "0x...",
+    "outputSchema": null,
+    "extra": null
+  }
+}
+```
+
+### Successful Response
+```ts
+// Headers
+{
+  "X-PAYMENT-RESPONSE": "..." // Encoded response object
+}
+```
+
+## Extending the Example
+
+To add more protected routes, update the middleware configuration:
+
+```typescript
+export const middleware = paymentMiddleware(
+  payTo,
+  {
+    "/protected": {
+      price: "$0.01",
+      network,
+      config: {
+        description: "Access to protected content",
+      },
+    },
+    "/api/premium": {
+      price: "$0.10",
+      network,
+      config: {
+        description: "Premium API access",
+      },
+    },
+  }
+);
+
+export const config = {
+  matcher: ["/protected/:path*", "/api/premium/:path*"],
+};
+```
+# fullstack/next/tailwind.config.ts
+import type { Config } from "tailwindcss";
+
+export default {
+  content: [
+    "./pages/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+      },
+    },
+  },
+  plugins: [],
+} satisfies Config;
+
+# fullstack/next/public/site.webmanifest
+{
+  "name": "x402.org",
+  "short_name": "x402",
+  "icons": [
+    {
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff",
+  "display": "standalone"
+}
+# fullstack/next/.gitignore
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env
+.env.*
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# fullstack/next/package.json
+{
+  "name": "next-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "next": "^15.2.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "viem": "^2.26.2",
+    "x402-next": "workspace:*"
+  },
+  "devDependencies": {
+    "@svgr/webpack": "^8.1.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@eslint/js": "^9.24.0",
+    "eslint": "^9.24.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint-plugin-import": "^2.31.0",
+    "prettier": "3.5.2",
+    "eslint-config-next": "15.1.7",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
+
+# fullstack/next/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# fullstack/next/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": ["types/video.d.ts", "next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+
+# fullstack/next/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**", ".next/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# fullstack/next/.env-local
+NEXT_PUBLIC_FACILITATOR_URL=https://x402.org/facilitator
+NETWORK=base-sepolia
+RESOURCE_WALLET_ADDRESS=
+
+# fullstack/next/next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  env: {
+    RESOURCE_WALLET_ADDRESS: process.env.RESOURCE_WALLET_ADDRESS,
+    NEXT_PUBLIC_FACILITATOR_URL: process.env.NEXT_PUBLIC_FACILITATOR_URL,
+  },
+  webpack(config) {
+    config.module.rules.push({
+      test: /\.svg$/,
+      use: ["@svgr/webpack"],
+    });
+    return config;
+  },
+};
+
+export default nextConfig;
+
+# fullstack/auth_based_pricing/README.md
+# SIWE + JWT + Conditional x402 Demo
+
+This project demonstrates a pattern for combining Sign-In with Ethereum (SIWE), JWT-based session management, and dynamic, conditional pricing for API endpoints using x402 payments. It includes a Hono backend server and a separate client script to simulate user interactions.
+
+## Core Concepts
+
+1.  **Wallet Authentication (SIWE)**:
+    *   Users prove ownership of a wallet address by signing a server-issued EIP-4361 compliant message.
+    *   The `siwe` library is used on both server and client for message creation and verification.
+
+2.  **JWT for Sessions**:
+    *   Upon successful SIWE message verification, the server issues a JSON Web Token (JWT).
+    *   This JWT is sent by the client in subsequent requests (in the `Authorization: Bearer <token>` header) to access protected or feature-enhanced endpoints.
+
+3.  **x402 Programmable Payments**:
+    *   API endpoints can require micropayments for access using the [x402 standard](https://x402.dev).
+    *   This demo shows manual x402 challenge/verification handling on the server for maximum control, inspired by the x402 SDK's advanced examples.
+
+4.  **Conditional x402 Pricing**:
+    *   The `/demo-weather` endpoint dynamically adjusts its price based on JWT authentication:
+        *   **Authenticated users (with JWT):** $0.01.
+        *   **Unauthenticated users (no JWT):** $0.10.
+
+## Project Structure
+
+```
+siwe-x402-jwt-demo/
+â”œâ”€â”€ .env-local        # Local environment variables (gitignored)
+â”œâ”€â”€ package.json      # Project dependencies and scripts
+â”œâ”€â”€ tsconfig.json     # TypeScript configuration
+â”œâ”€â”€ README.md         # This file
+â”œâ”€â”€ backend.ts        # Hono server with SIWE auth and manual x402 logic
+â”œâ”€â”€ client.ts         # Script to simulate client login and API calls
+```
+
+## Prerequisites
+
+*   Node.js (v18+ recommended)
+*   npm or yarn
+*   A testnet wallet with some test ETH (e.g., on Base Sepolia) for `CLIENT_SIM_PRIVATE_KEY` to make x402 payments.
+
+## Setup
+
+1.  **Clone/Setup Files**: Ensure all project files are in place.
+
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+
+3.  **Set up environment variables**:
+    *   Create a file named `.env-local` in the project root.
+    *   Populate it with your secrets (refer to `.env.example` or previous instructions for required variables like `JWT_SECRET`, `DEMO_SERVER_PORT`, `CLIENT_SIM_PRIVATE_KEY`, `BUSINESS_WALLET_ADDRESS`, `FACILITATOR_URL`, `X402_NETWORK`).
+    *   **Crucially**, `CLIENT_SIM_PRIVATE_KEY` needs to be a funded testnet wallet private key.
+
+## Running the Demo
+
+You'll need two terminal windows:
+
+1.  **Terminal 1: Start the Backend Server**
+    *   For development with auto-reloading:
+        ```bash
+        npm run dev:server
+        ```
+    *   Or, to run the built version (after `npm run build`):
+        ```bash
+        npm run start:server
+        ```
+    *   The server will start (default: `http://localhost:3000`).
+
+2.  **Terminal 2: Run the Client Simulation**
+    *   Once the server is running, execute the client script:
+        *   For direct TypeScript execution:
+            ```bash
+            npm run dev:client
+            ```
+        *   Or, to run the built version (after `npm run build`):
+            ```bash
+            npm run start:client
+            ```
+
+## Expected Output & Flow
+
+*   **Server Terminal**: Shows server startup logs, SIWE nonce issuance, SIWE verification results, JWT pricing decisions, x402 payment verification, and settlement logs.
+*   **Client Terminal**: Shows the client simulation steps:
+    1.  Attempting SIWE login (requesting nonce, signing, verifying).
+    2.  Logging the received JWT upon successful login.
+    3.  Calling `/demo-weather` WITH the JWT:
+        *   Server should apply the $0.01 price.
+        *   Client handles the 402 challenge and pays $0.01.
+        *   Logs the weather data and the `x-payment-response` for the $0.01 payment.
+    4.  Calling `/demo-weather` WITHOUT the JWT:
+        *   Server should apply the $0.10 price.
+        *   Client handles the 402 challenge and pays $0.10.
+        *   Logs the weather data and the `x-payment-response` for the $0.10 payment.
+
+This demonstrates the end-to-end flow of wallet authentication, JWT-based sessions, and dynamic, conditional x402 payments.
+
+## Migrating to Base Mainnet with the CDP Facilitator
+
+To use x402 payments on Base mainnet (instead of Sepolia testnet), follow these steps:
+
+### 1. Environment Variable Changes
+
+- In your `.env` (or environment), set:
+  ```
+  X402_NETWORK=base
+  BUSINESS_WALLET_ADDRESS=<your mainnet address>
+  CLIENT_SIM_PRIVATE_KEY=<mainnet private key with USDC on Base>
+  ```
+- **Remove or ignore** any `FACILITATOR_URL` variable. The CDP facilitator is imported from `@coinbase/x402` in code.
+
+### 2. Code Changes in `backend.ts` (don't forget to run `npm run build`)
+
+- **Facilitator Import:**
+  ```ts
+  import { facilitator } from "@coinbase/x402";
+  const { verify: verifyX402Payment, settle: settleX402Payment } = useFacilitator(facilitator);
+  ```
+- **Network:**
+  Ensure `X402_NETWORK` is set to `'base'` (not `'base-sepolia'`).
+- **Asset:**
+  Make sure your price string (e.g., `$0.01`) maps to a supported asset on Base mainnet (typically USDC). The asset address is handled by the x402 SDK, but your wallet must have the correct token.
+- **Funding:**
+  Both `BUSINESS_WALLET_ADDRESS` and the client wallet must be funded with USDC on Base mainnet.
+
+### 3. Code Changes in `client.ts`
+
+- **Chain ID:**
+  ```ts
+  import { base } from 'viem/chains';
+  const chainId = base.id; // 8453 for Base mainnet
+  ```
+- **Private Key:**
+  The `CLIENT_SIM_PRIVATE_KEY` must be funded on Base mainnet with USDC.
+
+### 4. Troubleshooting 500 Errors
+
+- **Facilitator/Network Mismatch:**
+  - Ensure you are using the mainnet facilitator from `@coinbase/x402` and not a testnet URL.
+  - `X402_NETWORK` must be `'base'`.
+- **Asset Issues:**
+  - If your price string or asset is not supported on Base, payments will fail.
+- **Wallet Funding:**
+  - Both business and client wallets must have USDC on Base mainnet.
+- **Error Logging:**
+  - Check server logs for error details. Add more logging in `backend.ts` if needed.
+- **Client Chain ID:**
+  - Ensure the client uses the correct chain ID (8453 for Base mainnet).
+
+If you encounter persistent 500 errors, check the logs for messages from the facilitator or asset processing functions. Most issues are due to misconfiguration of environment variables, unsupported assets, or lack of wallet funding.
+
+## Notes & Further Development
+
+*   **Nonce Store**: The server's nonce store is in-memory. For production, use a persistent, time-to-live (TTL) store like Redis.
+*   **SIWE Message Fields**: The client constructs a SIWE message with basic fields. Ensure `domain`, `uri`, `chainId`, `issuedAt`, and `expirationTime` (optional) are robustly handled and verified by the server in a production setting according to EIP-4361 best practices.
+*   **Error Handling**: The demo has basic error logging. Production systems need comprehensive error handling and user feedback.
+*   **Security**: `JWT_SECRET` must be strong and kept confidential. Private keys should never be hardcoded directly in client-side code for real applications; use browser wallet extensions. `CLIENT_SIM_PRIVATE_KEY` is for this demo's automation only.
+*   **x402 SDKs**: Ensure you are using compatible versions of `x402`, `x402-fetch`, and any Hono-specific x402 integrations if you deviate from this demo's manual server-side handling.
+
+# fullstack/auth_based_pricing/.gitignore
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# TypeScript
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env*.local
+.env.*.local
+!.env.example
+!.env.production.local
+# If you want to commit .env.production.local, specify it here.
+
+# Logs
+logs
+*.log
+*.log.[0-9]
+*.log.[0-9][0-9]
+*.log.[0-9][0-9][0-9]
+*.log.[0-9][0-9][0-9][0-9]
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+._*
+
+# Editor directories and files
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Optional: IntelliJ IDEA
+# .idea/ 
+# fullstack/auth_based_pricing/package.json
+{
+  "name": "auth-based-pricing",
+  "version": "1.0.0",
+  "description": "Demo of Sign-In with Ethereum (SIWE), JWT authentication, and conditional x402 payments.",
+  "main": "dist/backend.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start:server": "node dist/backend.js",
+    "dev:server": "tsx watch backend.ts",
+    "start:client": "node dist/client.js",
+    "dev:client": "tsx client.ts",
+    "dev": "npm run dev:server"
+  },
+  "keywords": [
+    "siwe",
+    "jwt",
+    "x402",
+    "hono",
+    "web3",
+    "auth"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@coinbase/x402": "^0.3.3",
+    "@hono/node-server": "^1.11.2",
+    "dotenv": "^16.4.5",
+    "hono": "^4.4.0",
+    "node-fetch": "^3.3.2",
+    "siwe": "^2.3.2",
+    "viem": "^2.13.8",
+    "x402": "^0.3.2",
+    "x402-fetch": "^0.3.2",
+    "x402-hono": "^0.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.2",
+    "@types/node-fetch": "^2.6.11",
+    "tsx": "^4.11.0",
+    "typescript": "^5.4.5"
+  }
+}
+# fullstack/auth_based_pricing/client.ts
+import { config } from 'dotenv';
+import { Hex, PrivateKeyAccount } from 'viem'; // Removed createWalletClient, http as not directly used here
+import { privateKeyToAccount } from 'viem/accounts';
+import { baseSepolia, base } from 'viem/chains';
+import { SiweMessage } from 'siwe';
+import _fetch from 'node-fetch'; // Using ESM-compatible import for node-fetch
+import { wrapFetchWithPayment, decodeXPaymentResponse } from 'x402-fetch';
+import { fileURLToPath } from 'url';
+
+// --- Environment Variable Loading ---
+config(); // Load .env-local or .env
+
+// --- Configuration Constants ---
+const DEMO_SERVER_PORT = parseInt(process.env.DEMO_SERVER_PORT || '3000', 10);
+const CLIENT_SIM_PRIVATE_KEY = process.env.CLIENT_SIM_PRIVATE_KEY as Hex;
+
+// Validate essential client configuration
+if (!CLIENT_SIM_PRIVATE_KEY) {
+  console.error('CRITICAL ERROR: Missing CLIENT_SIM_PRIVATE_KEY environment variable for client simulation. Check .env-local or .env file.');
+  process.exit(1);
+}
+
+// --- Main Client Simulation Function ---
+async function runClientDemo() {
+  console.log('\nğŸš€ --- Starting Client Simulation --- ğŸš€');
+  
+  // Setup client wallet from private key (for demo purposes)
+  // In a real app, this would come from a browser wallet extension (e.g., MetaMask)
+  const clientWalletAccount = privateKeyToAccount(CLIENT_SIM_PRIVATE_KEY);
+  const clientWalletAddress = clientWalletAccount.address;
+  console.log(`[ClientSim] Using wallet address for simulation: ${clientWalletAddress}`);
+
+  const serverBaseUrl = `http://localhost:${DEMO_SERVER_PORT}`;
+  const chainId = baseSepolia.id; // Chain ID for SIWE message (must match server if verified strictly)
+  let jwtToken: string | null = null;
+
+  // --- Step 1: SIWE Login Flow ---
+  console.log('\nğŸ”„ [ClientSim] Step 1: Attempting SIWE Login...');
+  try {
+    // 1a. Request nonce from the server
+    console.log(`[ClientSim]   Requesting nonce from ${serverBaseUrl}/auth/nonce...`);
+    const nonceResponse = await _fetch(`${serverBaseUrl}/auth/nonce`);
+    if (!nonceResponse.ok) {
+      throw new Error(`Nonce request failed: ${nonceResponse.status} ${await nonceResponse.text()}`);
+    }
+    const nonce = await nonceResponse.text();
+    console.log(`[ClientSim]   âœ… Received SIWE nonce: ${nonce}`);
+
+    // 1b. Client constructs the SIWE message parameters
+    const siweMessageParams = {
+      domain: 'localhost', // IMPORTANT: Should match the domain the server expects/verifies
+      address: clientWalletAddress,
+      statement: 'Sign in with Ethereum to the demo app.', 
+      uri: serverBaseUrl, // The URI a user is logging into
+      version: '1', // SIWE version
+      chainId: chainId, // Chain ID
+      nonce: nonce, // Server-issued nonce
+      issuedAt: new Date().toISOString(), // Current time
+      // expirationTime: new Date(Date.now() + NONCE_EXPIRATION_TIME_MS).toISOString(), // Optional: if server checks it
+    };
+    const siweMessage = new SiweMessage(siweMessageParams);
+    const messageToSign = siweMessage.prepareMessage(); // Formats the EIP-4361 message string
+    console.log(`[ClientSim]   Prepared SIWE message to sign:\n${messageToSign}`);
+
+    // 1c. Client signs the SIWE message (simulating wallet interaction)
+    const signature = await clientWalletAccount.signMessage({ message: messageToSign });
+    console.log(`[ClientSim]   âœ… SIWE Message signed. Signature: ${signature.substring(0,10)}...`);
+
+    // 1d. Client sends the SIWE message and signature to the server for verification
+    console.log(`[ClientSim]   Verifying signature with server at ${serverBaseUrl}/auth/verify-siwe...`);
+    const verifyResponse = await _fetch(`${serverBaseUrl}/auth/verify-siwe`, {
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: messageToSign, signature }), // Send the message string client signed
+    });
+    const loginData = await verifyResponse.json() as { success?: boolean; token?: string; error?: string, message?: string, details?: string };
+    if (!verifyResponse.ok || !loginData.success || !loginData.token) {
+      throw new Error(`SIWE Login failed: ${loginData.error || loginData.message || loginData.details || 'Unknown SIWE login error'} (Status: ${verifyResponse.status})`);
+    }
+    jwtToken = loginData.token;
+    console.log('[ClientSim]   âœ… SIWE Login successful! JWT obtained.');
+    // console.log('[ClientSim] JWT:', jwtToken); // Optionally log the full JWT for debugging
+  } catch (error) {
+    console.error('[ClientSim] âŒ SIWE Login flow error:', error);
+    // If login fails, we might not want to proceed with x402 calls that rely on JWT for discount
+  }
+
+  // --- Setup x402-fetch for subsequent calls ---
+  // This wraps the standard fetch with x402 payment handling capabilities using the client's wallet.
+  const fetchWithClientPayment = wrapFetchWithPayment(_fetch as any, clientWalletAccount);
+
+  // --- Step 2: Call /demo-weather WITH JWT (Authenticated - Expecting Discounted Price) ---
+  if (jwtToken) {
+    console.log('\nğŸ”„ [ClientSim] Step 2: Calling /demo-weather WITH JWT (expecting $0.01 price from server)...');
+    try {
+      const response = await fetchWithClientPayment(`${serverBaseUrl}/demo-weather`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${jwtToken}` }, // Include JWT for authentication
+      });
+      
+      const x402RespHeader = response.headers.get('x-payment-response');
+      
+      if (!response.ok) {
+        // This block might be hit if x402-fetch fails to handle the 402 automatically, or for other errors.
+        const errText = await response.text();
+        console.error(`[ClientSim]   âŒ Error from server (authenticated call): ${response.status} - ${errText}`);
+        // Log x-payment-response even on error, if present, for debugging x402 client issues
+        if (x402RespHeader) console.error('[ClientSim]   x-payment-response (on error):', decodeXPaymentResponse(x402RespHeader));
+        throw new Error(`Authenticated /demo-weather call failed: ${response.status}`);
+      }
+      
+      const weatherData = await response.json();
+      console.log('[ClientSim]   âœ… Weather data (authenticated):', weatherData);
+      if (x402RespHeader) {
+        console.log('[ClientSim]   âœ… x-payment-response (authenticated):', decodeXPaymentResponse(x402RespHeader));
+      }
+    } catch (error: any) {
+      console.error('[ClientSim]   âŒ Error during authenticated /demo-weather call:', error.message);
+    }
+  } else {
+    console.warn('\n[ClientSim] Skipping authenticated /demo-weather call because JWT was not obtained.');
+  }
+
+  // --- Step 3: Call /demo-weather WITHOUT JWT (Unauthenticated - Expecting Regular Price) ---
+  console.log('\nğŸ”„ [ClientSim] Step 3: Calling /demo-weather WITHOUT JWT (expecting $0.10 price from server)...');
+  try {
+    const response = await fetchWithClientPayment(`${serverBaseUrl}/demo-weather`, { method: 'GET' });
+    
+    const x402RespHeader = response.headers.get('x-payment-response');
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`[ClientSim]   âŒ Error from server (unauthenticated call): ${response.status} - ${errText}`);
+      if (x402RespHeader) console.error('[ClientSim]   x-payment-response (on error):', decodeXPaymentResponse(x402RespHeader));
+      throw new Error(`Unauthenticated /demo-weather call failed: ${response.status}`);
+    }
+    
+    const weatherData = await response.json();
+    console.log('[ClientSim]   âœ… Weather data (unauthenticated):', weatherData);
+    if (x402RespHeader) {
+      console.log('[ClientSim]   âœ… x-payment-response (unauthenticated):', decodeXPaymentResponse(x402RespHeader));
+    }
+  } catch (error: any) {
+    console.error('[ClientSim]   âŒ Error during unauthenticated /demo-weather call:', error.message);
+  }
+  console.log('\nğŸ --- Client Simulation Ended --- ğŸ');
+}
+
+// --- Script Execution Check (ESM Compatible) ---
+// This ensures runClientDemo() is called only when the script is executed directly.
+const currentFilePath = fileURLToPath(import.meta.url);
+// In Node.js ESM, `process.argv[1]` should be the path to the executed script file.
+// For `node dist/client.js`, `process.argv[1]` is `.../dist/client.js`
+// For `tsx src/client.ts`, `tsx` might make `process.argv[1]` point to `.../src/client.ts` or the tsx shim.
+// A more robust check might involve `endsWith` if paths differ slightly during dev (tsx) vs prod (node).
+if (process.argv[1] && fileURLToPath(`file://${process.argv[1]}`) === currentFilePath) {
+    runClientDemo().catch(err => {
+        console.error("ğŸ’¥ Client Simulation CRASHED:", err);
+        process.exit(1); // Exit with error code if client demo crashes
+    });
+} 
+# fullstack/auth_based_pricing/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "types": ["node"]
+  },
+  "include": ["*.ts", "src/**/*"],
+  "exclude": ["node_modules", "dist"]
+} 
+# fullstack/auth_based_pricing/backend.ts
+import { Hono, Context as HonoContext } from 'hono';
+import { serve } from '@hono/node-server';
+import { sign, verify as verifyJwtSignature } from 'hono/jwt';
+import { config } from 'dotenv';
+import { Hex } from 'viem';
+import { SiweMessage, generateNonce } from 'siwe';
+
+import { 
+  PaymentRequirements, 
+  Price as X402Price,
+  Network as X402Network, 
+  Resource as X402Resource,
+  PaymentPayload,
+  settleResponseHeader
+} from 'x402/types';
+import { useFacilitator } from 'x402/verify';
+import { exact } from 'x402/schemes';
+import { processPriceToAtomicAmount } from 'x402/shared';
+// uncomment to use the CDP Base mainnet facilitator
+//import { facilitator } from "@coinbase/x402"; 
+
+
+// --- Environment Variable Loading ---
+config(); // Load .env or .env-local
+
+// --- Configuration Constants ---
+const JWT_SECRET = process.env.JWT_SECRET as string;
+const DEMO_SERVER_PORT = parseInt(process.env.DEMO_SERVER_PORT || '3000', 10);
+const BUSINESS_WALLET_ADDRESS = process.env.BUSINESS_WALLET_ADDRESS as Hex; // Wallet to receive payments
+const FACILITATOR_URL = 'https://x402.org/facilitator'; // x402 Sepolia Facilitator
+const X402_NETWORK = process.env.X402_NETWORK as X402Network; // Network for x402 payments (e.g., 'base-sepolia', 'base')
+const X402_VERSION = 1; // Standard x402 version
+
+// Validate essential configuration
+if (!JWT_SECRET || !BUSINESS_WALLET_ADDRESS || !FACILITATOR_URL || !X402_NETWORK) {
+  console.error('CRITICAL ERROR: Missing essential server environment variables. Check .env-local or .env file.');
+  process.exit(1);
+}
+
+// --- Hono App & x402 Facilitator Setup ---
+const app = new Hono();
+// Initialize x402 facilitator client for payment verification and settlement
+// for mainnet, use the CDP Base mainnet facilitator as follows:
+// const { verify: verifyX402Payment, settle: settleX402Payment } = useFacilitator(facilitator);
+const { verify: verifyX402Payment, settle: settleX402Payment } = useFacilitator({ url: FACILITATOR_URL });
+
+// --- SIWE Nonce Store (In-Memory for Demo) ---
+// IMPORTANT: For production, use a persistent store (e.g., Redis, DB) with proper TTL management for nonces.
+const issuedNonces = new Set<string>();
+const NONCE_EXPIRATION_TIME_MS = 5 * 60 * 1000; // Nonces expire after 5 minutes
+
+// --- Helper: Create x402 Exact Payment Requirements ---
+/**
+ * Constructs the payment requirements object for an x402 payment.
+ * @param price The price for the resource (e.g., '$0.10').
+ * @param network The blockchain network for the payment.
+ * @param resource The URL or identifier of the resource being accessed.
+ * @param description A description for the payment.
+ * @returns PaymentRequirements object for the x402 challenge.
+ */
+function createExactPaymentRequirements(
+  price: X402Price,
+  network: X402Network,
+  resource: X402Resource,
+  description = "",
+): PaymentRequirements {
+  const atomicAmountForAsset = processPriceToAtomicAmount(price, network);
+  if ("error" in atomicAmountForAsset) {
+    console.error("[X402Svc] Error processing price to atomic amount:", atomicAmountForAsset.error);
+    throw new Error(`Failed to process price: ${atomicAmountForAsset.error}`);
+  }
+  const { maxAmountRequired, asset } = atomicAmountForAsset;
+  return {
+    scheme: "exact", 
+    network, 
+    maxAmountRequired, 
+    resource, 
+    description,
+    mimeType: "application/json", // Content type of the protected resource
+    payTo: BUSINESS_WALLET_ADDRESS,
+    maxTimeoutSeconds: 60, // Client has 60s to complete payment after challenge
+    asset: asset.address, // e.g., USDC contract address on the specified network
+    outputSchema: undefined, // Optional: JSON schema for the expected response after payment
+    extra: { name: asset.eip712.name, version: asset.eip712.version }, // EIP-712 domain info for the payment asset
+  };
+}
+
+// --- Helper: Handle x402 Payment Flow (Verification & Challenge Response) ---
+interface X402HandlingResult {
+  success: boolean;
+  response?: Response; // Pre-formatted Hono Response for 402 challenges or errors
+  decodedPayment?: PaymentPayload; // Validated and decoded payment from X-PAYMENT header
+  verifiedPayer?: Hex; // Wallet address of the payer, verified by facilitator
+}
+
+/**
+ * Handles the x402 payment verification logic.
+ * Checks for X-PAYMENT header, decodes it, verifies with facilitator.
+ * Returns a success status or a pre-formatted 402 Hono Response object.
+ */
+async function handleX402PaymentVerification(
+  c: HonoContext,
+  paymentRequirements: PaymentRequirements[],
+): Promise<X402HandlingResult> {
+  const paymentHeader = c.req.header('X-PAYMENT');
+
+  // If no payment header, issue a 402 challenge with payment requirements
+  if (!paymentHeader) {
+    console.log('[X402Svc] No X-PAYMENT header. Responding with 402 challenge.');
+    return {
+      success: false,
+      response: c.json({ 
+        x402Version: X402_VERSION, 
+        error: "X-PAYMENT header is required", 
+        accepts: paymentRequirements 
+      }, 402)
+    };
+  }
+
+  // Decode the payment header
+  let decodedPayment: PaymentPayload;
+  try {
+    decodedPayment = exact.evm.decodePayment(paymentHeader);
+  } catch (error: any) {
+    console.error('[X402Svc] Error decoding X-PAYMENT header:', error.message);
+    return {
+      success: false,
+      response: c.json({ 
+        x402Version: X402_VERSION, 
+        error: error.message || "Invalid or malformed X-PAYMENT header", 
+        accepts: paymentRequirements 
+      }, 402)
+    };
+  }
+
+  // Verify the decoded payment with the facilitator
+  try {
+    const verificationResponse = await verifyX402Payment(decodedPayment, paymentRequirements[0]);
+    if (!verificationResponse.isValid) {
+      console.warn('[X402Svc] Payment verification failed by facilitator:', verificationResponse.invalidReason);
+      return {
+        success: false,
+        response: c.json({ 
+          x402Version: X402_VERSION, 
+          error: verificationResponse.invalidReason, 
+          accepts: paymentRequirements, 
+          payer: verificationResponse.payer 
+        }, 402)
+      };
+    }
+    console.log('[X402Svc] Payment verified successfully by facilitator for payer:', verificationResponse.payer);
+    return {
+      success: true,
+      decodedPayment: decodedPayment,
+      verifiedPayer: verificationResponse.payer as Hex
+    };
+  } catch (error: any) {
+    console.error('[X402Svc] Critical error during facilitator payment verification process:', error.message);
+    return {
+      success: false,
+      response: c.json({ 
+        x402Version: X402_VERSION, 
+        error: error.message || "Facilitator verification process failed", 
+        accepts: paymentRequirements 
+      }, 500) // Use 500 for server-side errors with facilitator
+    };
+  }
+}
+
+// --- SIWE Authentication Endpoints ---
+
+// Endpoint for clients to request a unique nonce for SIWE message construction
+app.get('/auth/nonce', async (c) => {
+  const nonce = generateNonce(); // Generate a cryptographically secure nonce
+  issuedNonces.add(nonce); 
+  // Schedule nonce removal to prevent store bloat and enforce expiration
+  setTimeout(() => issuedNonces.delete(nonce), NONCE_EXPIRATION_TIME_MS);
+  console.log(`[AuthSvc] SIWE Nonce issued: ${nonce}`);
+  return c.text(nonce); // Return nonce as plain text
+});
+
+// Endpoint for clients to submit a signed SIWE message for verification
+app.post('/auth/verify-siwe', async (c) => {
+  const { message, signature } = await c.req.json<{ message: string; signature: Hex }>();
+  if (!message || !signature) return c.json({ error: 'SIWE message and signature are required' }, 400);
+
+  try {
+    const siweMessage = new SiweMessage(message); // Parse the client-provided EIP-4361 message
+    
+    // Validate nonce: ensure it was issued by this server and hasn't expired/been used
+    if (!issuedNonces.has(siweMessage.nonce)) {
+      console.warn(`[AuthSvc] Attempt to use invalid, expired, or already used SIWE nonce: ${siweMessage.nonce}`);
+      return c.json({ error: 'Invalid, expired, or already used nonce. Please request a new one.' }, 403);
+    }
+
+    // Verify the SIWE message (checks signature, nonce against message, domain, time constraints, etc.)
+    const { success: verificationSuccess, error: verificationError, data: verifiedSiweMessage } = await siweMessage.verify({
+       signature, 
+       nonce: siweMessage.nonce, // Crucial: ensure nonce being verified is the one from the message body
+      // domain: 'expected.domain.com', // Optional: verify against expected domain
+      // time: new Date() // Optional: verify against current time for issuedAt, expirationTime, notBefore
+    });
+    
+    if (!verificationSuccess) {
+      console.warn(`[AuthSvc] SIWE message verification failed for address ${siweMessage.address}:`, verificationError);
+      return c.json({ error: 'SIWE message verification failed.', details: verificationError?.type || 'Unknown SIWE error' }, 401);
+    }
+
+    // SIWE verification successful, invalidate the nonce immediately to prevent replay attacks
+    issuedNonces.delete(siweMessage.nonce);
+    const walletAddress = verifiedSiweMessage.address as Hex; // Use address from verified data
+    console.log(`[AuthSvc] Successful SIWE verification for ${walletAddress}`);
+    
+    // Issue JWT for session management
+    const payload = { 
+      sub: walletAddress.toLowerCase(), // Subject: user's wallet address
+      iat: Math.floor(Date.now() / 1000), // Issued At: current time
+      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24), // Expiration Time: 24 hours
+    };
+    const token = await sign(payload, JWT_SECRET);
+    
+    return c.json({ success: true, message: 'Login successful via SIWE', token });
+
+  } catch (error: any) {
+    console.error('[AuthSvc] Critical error during SIWE verification process:', error);
+    return c.json({ error: 'SIWE verification process failed due to a server error.', details: error.message }, 500);
+  }
+});
+
+// --- x402 Gated Demo Endpoint (/demo-weather) with Conditional Pricing ---
+app.get('/demo-weather', async (c: HonoContext) => {
+  // 1. Determine Price Conditionally based on JWT authentication
+  const authHeader = c.req.header('Authorization');
+  let isAuthenticated = false;
+  let priceString: X402Price = '$0.10'; // Default price for unauthenticated users
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    try {
+      const payload = await verifyJwtSignature(token, JWT_SECRET); // Verify the JWT
+      if (payload && payload.sub) { // Check for subject (wallet address) in JWT
+        isAuthenticated = true;
+        priceString = '$0.01'; // Discounted price for authenticated users
+        console.log(`[X402Svc] User ${payload.sub} is authenticated via JWT. Applying discounted price: ${priceString}`);
+      }
+    } catch (err) {
+      // JWT invalid or expired, treat as unauthenticated for pricing
+      console.log('[X402Svc] JWT verification failed for pricing. Applying default price.');
+    }
+  }
+  if (!isAuthenticated) {
+    console.log(`[X402Svc] User not authenticated via JWT. Applying default price: ${priceString}`);
+  }
+
+  // 2. Construct Payment Requirements for the determined price
+  const resourceUrl = c.req.url as X402Resource; // The resource being accessed
+  let paymentRequirements: PaymentRequirements[];
+  try {
+    paymentRequirements = [createExactPaymentRequirements(priceString, X402_NETWORK, resourceUrl, 'Access to premium demo weather forecast')];
+  } catch (error: any) {
+    console.error('[X402Svc] Error creating payment requirements for /demo-weather:', error.message);
+    return c.json({ error: 'Server error: Could not create payment requirements.' }, 500);
+  }
+  
+  // 3. Handle x402 Payment Flow (Verification/Challenge)
+  const x402Result = await handleX402PaymentVerification(c, paymentRequirements);
+
+  // If payment verification failed or a challenge was issued, return the 402 response
+  if (!x402Result.success || !x402Result.decodedPayment || !x402Result.verifiedPayer) {
+    return x402Result.response!;
+  }
+
+  // 4. Settle Payment (Good practice after successful verification)
+  try {
+    const settlement = await settleX402Payment(x402Result.decodedPayment, paymentRequirements[0]);
+    const paymentResponseHeaderVal = settleResponseHeader(settlement);
+    c.header('X-PAYMENT-RESPONSE', paymentResponseHeaderVal); // Send settlement confirmation to client
+    console.log('[X402Svc] /demo-weather: Payment settled. X-PAYMENT-RESPONSE header set.');
+  } catch (error: any) {
+    console.error('[X402Svc] /demo-weather: Payment settlement failed (after verification). This is a server-side issue:', error.message);
+    // Note: Content is still served as payment was verified. Settlement failure is logged.
+  }
+
+  // 5. Return Resource (Weather Data)
+  console.log('[DemoSvc] /demo-weather: Access granted. Payment successful.');
+  const weatherReport = {
+    location: 'Demo City', 
+    temperature: '72Â°F', 
+    condition: 'Sunny with x402 skies!',
+    message: 'This is a mock weather report. Payment was successful!',
+    pricePaid: priceString, // Reflect the price that was required for this access
+    payer: x402Result.verifiedPayer // The verified wallet address that paid
+  };
+  return c.json(weatherReport);
+});
+
+// --- Main Server Start Function ---
+async function main() {
+  serve({
+    fetch: app.fetch,
+    port: DEMO_SERVER_PORT,
+  }, (info) => {
+    console.log(`ğŸš€ SIWE-JWT-x402 Demo Server running on http://localhost:${info.port}`);
+    console.log('----------------------------------------------------------------------');
+    console.log('ğŸ”‘ JWT Secret:', JWT_SECRET ? 'LOADED' : 'MISSING - Server will fail!');
+    console.log('ğŸ’¼ Business Wallet:', BUSINESS_WALLET_ADDRESS || 'MISSING - Payments will fail!');
+    console.log('ğŸŒ x402 Network:', X402_NETWORK || 'MISSING - Payments will fail!');
+    console.log('----------------------------------------------------------------------');
+    console.log('ğŸ’¡ To test, run the client script in a separate terminal: npm run dev:client');
+    console.log('----------------------------------------------------------------------');
+  });
+}
+
+main().catch(err => {
+  console.error('ğŸ’¥ Failed to start server:', err);
+  process.exit(1);
+}); 
+# fullstack/auth_based_pricing/.env-local
+# Server Configuration
+JWT_SECRET="your-super-secret-jwt-key-at-least-32-characters-long-CHANGE-THIS"
+DEMO_SERVER_PORT="4021"
+
+# Wallet that will pay for the x402 calls in the client simulation part of the demo
+# IMPORTANT: Use a testnet private key with test funds only for this demo.
+# This represents the "user's" wallet in a scripted scenario.
+CLIENT_SIM_PRIVATE_KEY="0xyour_client_private_key_for_signing_and_x402_payments_CHANGE_THIS"
+
+# Business details for receiving x402 payments
+# This is the wallet address your server/business will receive payments to.
+BUSINESS_WALLET_ADDRESS="0xyour_business_wallet_address_to_receive_payments_CHANGE_THIS"
+
+# Network for x402 payments (must match what your facilitator & business wallet support)
+# e.g., "base-sepolia", "base"
+X402_NETWORK="base-sepolia"
+
+# (Optional) If your x402 facilitator requires an API key for your business to register resources
+## TODO fix and change to CDP_API_KEY_NAME and CDP_API_KEY_SECRET 
+# CDP_API_KEY_ID="your_facilitator_api_key_name_if_needed"
+# CDP_API_KEY_SECRET="your_facilitator_api_key_secret_if_needed"
+
+# servers/advanced/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# servers/advanced/README.md
+# x402 Advanced Resource Server Example
+
+This is an advanced example of an Express.js server that demonstrates how to implement paywall functionality without using middleware. This approach is useful for more complex scenarios, such as:
+
+- Asynchronous payment settlement
+- Custom payment validation logic
+- Complex routing requirements
+- Integration with existing authentication systems
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A valid Ethereum address for receiving payments
+
+## Setup
+
+1. Copy `.env-local` to `.env` and add your Ethereum address:
+
+```bash
+cp .env-local .env
+```
+
+2. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd servers/advanced
+```
+
+3. Run the server
+```bash
+pnpm install
+pnpm dev
+```
+
+## Implementation Overview
+
+This advanced implementation provides a structured approach to handling payments with:
+
+1. Helper functions for creating payment requirements and verifying payments
+2. Support for delayed payment settlement
+3. Dynamic pricing capabilities
+4. Multiple payment requirement options
+5. Proper error handling and response formatting
+6. Integration with the x402 facilitator service
+
+## Testing the Server
+
+You can test the server using one of the example clients:
+
+### Using the Fetch Client
+```bash
+cd ../../clients/fetch
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+### Using the Axios Client
+```bash
+cd ../../clients/axios
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+## Example Endpoints
+
+The server includes example endpoints that demonstrate different payment scenarios:
+
+### Delayed Settlement
+- `/delayed-settlement` - Demonstrates asynchronous payment processing
+- Returns the weather data immediately without waiting for payment settlement
+- Processes payment asynchronously in the background
+- Useful for scenarios where immediate response is critical and payment settlement can be handled later
+
+### Dynamic Pricing
+- `/dynamic-price` - Shows how to implement variable pricing based on request parameters
+- Accepts a `multiplier` query parameter to adjust the base price
+- Demonstrates how to calculate and validate payments with dynamic amounts
+- Useful for implementing tiered pricing or demand-based pricing models
+
+### Multiple Payment Requirements
+- `/multiple-payment-requirements` - Illustrates how to accept multiple payment options
+- Allows clients to pay using different assets (e.g., USDC or USDT)
+- Supports multiple networks (e.g., Base and Base Sepolia)
+- Useful for providing flexibility in payment methods and networks
+
+## Response Format
+
+### Payment Required (402)
+```json
+{
+  "x402Version": 1,
+  "error": "X-PAYMENT header is required",
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "base-sepolia",
+      "maxAmountRequired": "1000",
+      "resource": "http://localhost:3001/weather",
+      "description": "Access to weather data",
+      "mimeType": "",
+      "payTo": "0xYourAddress",
+      "maxTimeoutSeconds": 60,
+      "asset": "0x...",
+      "outputSchema": null,
+      "extra": {
+        "name": "USD Coin",
+        "version": "1"
+      }
+    }
+  ]
+}
+```
+
+### Successful Response
+```json
+// Body
+{
+  "report": {
+    "weather": "sunny",
+    "temperature": 70
+  }
+}
+// Headers
+{
+  "X-PAYMENT-RESPONSE": "..." // Encoded response object
+}
+```
+
+## Extending the Example
+
+To add more paid endpoints with delayed payment settlement, you can follow this pattern:
+
+```typescript
+app.get("/your-endpoint", async (req, res) => {
+  const resource = `${req.protocol}://${req.headers.host}${req.originalUrl}` as Resource;
+  const paymentRequirements = [createExactPaymentRequirements(
+    "$0.001", // Your price
+    "base-sepolia", // Your network
+    resource,
+    "Description of your resource"
+  )];
+
+  const isValid = await verifyPayment(req, res, paymentRequirements);
+  if (!isValid) return;
+
+  // Return your protected resource immediately
+  res.json({
+    // Your response data
+  });
+
+  // Process payment asynchronously
+  try {
+    const settleResponse = await settle(
+      exact.evm.decodePayment(req.header("X-PAYMENT")!),
+      paymentRequirements[0]
+    );
+    const responseHeader = settleResponseHeader(settleResponse);
+    // In a real application, you would store this response header
+    // and associate it with the payment for later verification
+    console.log("Payment settled:", responseHeader);
+  } catch (error) {
+    console.error("Payment settlement failed:", error);
+    // In a real application, you would handle the failed payment
+    // by marking it for retry or notifying the user
+  }
+});
+```
+
+For dynamic pricing or multiple payment requirements, refer to the `/dynamic-price` and `/multiple-payment-requirements` endpoints in the example code for implementation details.
+
+# servers/advanced/package.json
+{
+  "name": "advanced-server-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.18.2",
+    "x402": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "eslint": "^9.24.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint-plugin-import": "^2.31.0",
+    "prettier": "3.5.2",
+    "tsup": "^7.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/express": "^5.0.1"
+  }
+}
+
+# servers/advanced/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# servers/advanced/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# servers/advanced/index.ts
+import { config } from "dotenv";
+import express from "express";
+import { exact } from "x402/schemes";
+import {
+  Network,
+  PaymentPayload,
+  PaymentRequirements,
+  Price,
+  Resource,
+  settleResponseHeader,
+} from "x402/types";
+import { useFacilitator } from "x402/verify";
+import { processPriceToAtomicAmount } from "x402/shared";
+
+config();
+
+const facilitatorUrl = process.env.FACILITATOR_URL as Resource;
+const payTo = process.env.ADDRESS as `0x${string}`;
+
+if (!facilitatorUrl || !payTo) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const app = express();
+const { verify, settle } = useFacilitator({ url: facilitatorUrl });
+const x402Version = 1;
+
+/**
+ * Creates payment requirements for a given price and network
+ *
+ * @param price - The price to be paid for the resource
+ * @param network - The blockchain network to use for payment
+ * @param resource - The resource being accessed
+ * @param description - Optional description of the payment
+ * @returns An array of payment requirements
+ */
+function createExactPaymentRequirements(
+  price: Price,
+  network: Network,
+  resource: Resource,
+  description = "",
+): PaymentRequirements {
+  const atomicAmountForAsset = processPriceToAtomicAmount(price, network);
+  if ("error" in atomicAmountForAsset) {
+    throw new Error(atomicAmountForAsset.error);
+  }
+  const { maxAmountRequired, asset } = atomicAmountForAsset;
+
+  return {
+    scheme: "exact",
+    network,
+    maxAmountRequired,
+    resource,
+    description,
+    mimeType: "",
+    payTo: payTo,
+    maxTimeoutSeconds: 60,
+    asset: asset.address,
+    outputSchema: undefined,
+    extra: {
+      name: asset.eip712.name,
+      version: asset.eip712.version,
+    },
+  };
+}
+
+/**
+ * Verifies a payment and handles the response
+ *
+ * @param req - The Express request object
+ * @param res - The Express response object
+ * @param paymentRequirements - The payment requirements to verify against
+ * @returns A promise that resolves to true if payment is valid, false otherwise
+ */
+async function verifyPayment(
+  req: express.Request,
+  res: express.Response,
+  paymentRequirements: PaymentRequirements[],
+): Promise<boolean> {
+  const payment = req.header("X-PAYMENT");
+  if (!payment) {
+    res.status(402).json({
+      x402Version,
+      error: "X-PAYMENT header is required",
+      accepts: paymentRequirements,
+    });
+    return false;
+  }
+
+  let decodedPayment: PaymentPayload;
+  try {
+    decodedPayment = exact.evm.decodePayment(payment);
+    decodedPayment.x402Version = x402Version;
+  } catch (error) {
+    res.status(402).json({
+      x402Version,
+      error: error || "Invalid or malformed payment header",
+      accepts: paymentRequirements,
+    });
+    return false;
+  }
+
+  try {
+    const response = await verify(decodedPayment, paymentRequirements[0]);
+    if (!response.isValid) {
+      res.status(402).json({
+        x402Version,
+        error: response.invalidReason,
+        accepts: paymentRequirements,
+        payer: response.payer,
+      });
+      return false;
+    }
+  } catch (error) {
+    res.status(402).json({
+      x402Version,
+      error,
+      accepts: paymentRequirements,
+    });
+    return false;
+  }
+
+  return true;
+}
+
+// Delayed settlement example endpoint
+app.get("/delayed-settlement", async (req, res) => {
+  const resource = `${req.protocol}://${req.headers.host}${req.originalUrl}` as Resource;
+  const paymentRequirements = [
+    createExactPaymentRequirements(
+      "$0.001",
+      "base-sepolia",
+      resource,
+      "Access to weather data (async)",
+    ),
+  ];
+
+  const isValid = await verifyPayment(req, res, paymentRequirements);
+  if (!isValid) return;
+
+  // Return weather data immediately
+  res.json({
+    report: {
+      weather: "sunny",
+      temperature: 70,
+    },
+  });
+
+  // Process payment asynchronously
+  try {
+    const settleResponse = await settle(
+      exact.evm.decodePayment(req.header("X-PAYMENT")!),
+      paymentRequirements[0],
+    );
+    const responseHeader = settleResponseHeader(settleResponse);
+    // In a real application, you would store this response header
+    // and associate it with the payment for later verification
+    console.log("Payment settled:", responseHeader);
+  } catch (error) {
+    console.error("Payment settlement failed:", error);
+    // In a real application, you would handle the failed payment
+    // by marking it for retry or notifying the user
+  }
+});
+
+// Dynamic price example endpoint
+app.get("/dynamic-price", async (req, res) => {
+  // Use query params, body, or external factors to determine if price is impacted
+  const multiplier = parseInt((req.query.multiplier as string) ?? "1");
+  // Adjust pricing based on impact from inputs
+  const price = 0.001 * multiplier;
+
+  const resource = `${req.protocol}://${req.headers.host}${req.originalUrl}` as Resource;
+  const paymentRequirements = [
+    createExactPaymentRequirements(
+      price, // Expect dynamic pricing
+      "base-sepolia",
+      resource,
+      "Access to weather data",
+    ),
+  ];
+
+  const isValid = await verifyPayment(req, res, paymentRequirements);
+  if (!isValid) return;
+
+  try {
+    // Process payment synchronously
+    const settleResponse = await settle(
+      exact.evm.decodePayment(req.header("X-PAYMENT")!),
+      paymentRequirements[0],
+    );
+    const responseHeader = settleResponseHeader(settleResponse);
+    res.setHeader("X-PAYMENT-RESPONSE", responseHeader);
+
+    // Return the weather data
+    res.json({
+      report: {
+        success: "sunny",
+        temperature: 70,
+      },
+    });
+  } catch (error) {
+    res.status(402).json({
+      x402Version,
+      error,
+      accepts: paymentRequirements,
+    });
+  }
+});
+
+// Multiple payment requirements example endpoint
+app.get("/multiple-payment-requirements", async (req, res) => {
+  const resource = `${req.protocol}://${req.headers.host}${req.originalUrl}` as Resource;
+
+  // Payment requirements is an array. You can mix and match tokens, prices, and networks.
+  const paymentRequirements = [
+    createExactPaymentRequirements("$0.001", "base", resource),
+    createExactPaymentRequirements(
+      {
+        amount: "1000",
+        asset: {
+          address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          decimals: 6,
+          eip712: {
+            name: "USDC",
+            version: "2",
+          },
+        },
+      },
+      "base-sepolia",
+      resource,
+    ),
+  ];
+
+  const isValid = await verifyPayment(req, res, paymentRequirements);
+  if (!isValid) return;
+
+  try {
+    // Process payment synchronously
+    const settleResponse = await settle(
+      exact.evm.decodePayment(req.header("X-PAYMENT")!),
+      paymentRequirements[0],
+    );
+    const responseHeader = settleResponseHeader(settleResponse);
+    res.setHeader("X-PAYMENT-RESPONSE", responseHeader);
+
+    // Return the weather data
+    res.json({
+      report: {
+        success: "sunny",
+        temperature: 70,
+      },
+    });
+  } catch (error) {
+    res.status(402).json({
+      x402Version,
+      error,
+      accepts: paymentRequirements,
+    });
+  }
+});
+
+app.listen(4021, () => {
+  console.log(`Server listening at http://localhost:4021`);
+});
+
+# servers/advanced/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# servers/advanced/.env-local
+FACILITATOR_URL=https://x402.org/facilitator
+NETWORK=base-sepolia
+ADDRESS=
+# servers/express/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# servers/express/README.md
+# x402-express Example Server
+
+This is an example Express.js server that demonstrates how to use the `x402-express` middleware to implement paywall functionality in your API endpoints.
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A valid Ethereum address for receiving payments
+
+## Setup
+
+1. Copy `.env-local` to `.env` and add your Ethereum address to receive payments:
+
+```bash
+cp .env-local .env
+```
+
+2. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd servers/express
+```
+
+3. Run the server
+```bash
+pnpm install
+pnpm dev
+```
+
+## Testing the Server
+
+You can test the server using one of the example clients:
+
+### Using the Fetch Client
+```bash
+cd ../clients/fetch
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+### Using the Axios Client
+```bash
+cd ../clients/axios
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+These clients will demonstrate how to:
+1. Make an initial request to get payment requirements
+2. Process the payment requirements
+3. Make a second request with the payment token
+
+## Example Endpoint
+
+The server includes a single example endpoint at `/weather` that requires a payment of $0.001 to access. The endpoint returns a simple weather report.
+
+## Response Format
+
+### Payment Required (402)
+```json
+{
+  "error": "X-PAYMENT header is required",
+  "paymentRequirements": {
+    "scheme": "exact",
+    "network": "base",
+    "maxAmountRequired": "1000",
+    "resource": "http://localhost:4021/weather",
+    "description": "",
+    "mimeType": "",
+    "payTo": "0xYourAddress",
+    "maxTimeoutSeconds": 60,
+    "asset": "0x...",
+    "outputSchema": null,
+    "extra": null
+  }
+}
+```
+
+### Successful Response
+```ts
+// Body
+{
+  "report": {
+    "weather": "sunny",
+    "temperature": 70
+  }
+}
+// Headers
+{
+  "X-PAYMENT-RESPONSE": "..." // Encoded response object
+}
+```
+
+## Extending the Example
+
+To add more paid endpoints, follow this pattern:
+
+```typescript
+// First, configure the payment middleware with your routes
+app.use(
+  paymentMiddleware(
+    payTo,
+    {
+      // Define your routes and their payment requirements
+      "GET /your-endpoint": {
+        price: "$0.10",
+        network: "base-sepolia",
+      },
+      "/premium/*": {
+        price: {
+          amount: "100000",
+          asset: {
+            address: "0xabc",
+            decimals: 18,
+            eip712: {
+              name: "WETH",
+              version: "1",
+            },
+          },
+        },
+        network: "base-sepolia",
+      },
+    },
+  ),
+);
+
+// Then define your routes as normal
+app.get("/your-endpoint", (req, res) => {
+  res.json({
+    // Your response data
+  });
+});
+
+app.get("/premium/content", (req, res) => {
+  res.json({
+    content: "This is premium content",
+  });
+});
+```
+
+# servers/express/package.json
+{
+  "name": "express-server-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.18.2",
+    "x402-express": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "eslint": "^9.24.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint-plugin-import": "^2.31.0",
+    "prettier": "3.5.2",
+    "tsup": "^7.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/express": "^5.0.1"
+  }
+}
+
+# servers/express/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# servers/express/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# servers/express/index.ts
+import { config } from "dotenv";
+import express from "express";
+import { paymentMiddleware, Resource } from "x402-express";
+config();
+
+const facilitatorUrl = process.env.FACILITATOR_URL as Resource;
+const payTo = process.env.ADDRESS as `0x${string}`;
+
+if (!facilitatorUrl || !payTo) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const app = express();
+
+app.use(
+  paymentMiddleware(
+    payTo,
+    {
+      "GET /weather": {
+        // USDC amount in dollars
+        price: "$0.001",
+        network: "base-sepolia",
+      },
+      "/premium/*": {
+        // Define atomic amounts in any EIP-3009 token
+        price: {
+          amount: "100000",
+          asset: {
+            address: "0xabc",
+            decimals: 18,
+            eip712: {
+              name: "WETH",
+              version: "1",
+            },
+          },
+        },
+        network: "base-sepolia",
+      },
+    },
+    {
+      url: facilitatorUrl,
+    },
+  ),
+);
+
+app.get("/weather", (req, res) => {
+  res.send({
+    report: {
+      weather: "sunny",
+      temperature: 70,
+    },
+  });
+});
+
+app.get("/premium/content", (req, res) => {
+  res.send({
+    content: "This is premium content",
+  });
+});
+
+app.listen(4021, () => {
+  console.log(`Server listening at http://localhost:${4021}`);
+});
+
+# servers/express/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# servers/express/.env-local
+FACILITATOR_URL=https://x402.org/facilitator
+NETWORK=base-sepolia
+ADDRESS=
+# servers/hono/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# servers/hono/README.md
+# x402-hono Example Server
+
+This is an example Hono server that demonstrates how to use the `x402-hono` middleware to implement paywall functionality in your API endpoints.
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- A valid Ethereum address for receiving payments
+
+## Setup
+
+1. Copy `.env-local` to `.env` and add your Ethereum address to receive payments:
+
+```bash
+cp .env-local .env
+```
+
+2. Install and build all packages from the typescript examples root:
+
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd servers/hono
+```
+
+3. Run the server
+
+```bash
+pnpm install
+pnpm dev
+```
+
+## Testing the Server
+
+You can test the server using one of the example clients:
+
+### Using the Fetch Client
+
+```bash
+cd ../clients/fetch
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+### Using the Axios Client
+
+```bash
+cd ../clients/axios
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+These clients will demonstrate how to:
+
+1. Make an initial request to get payment requirements
+2. Process the payment requirements
+3. Make a second request with the payment token
+
+## Example Endpoint
+
+The server includes a single example endpoint at `/weather` that requires a payment of $0.001 to access. The endpoint returns a simple weather report.
+
+## Response Format
+
+### Payment Required (402)
+
+```json
+{
+  "error": "X-PAYMENT header is required",
+  "paymentRequirements": {
+    "scheme": "exact",
+    "network": "base",
+    "maxAmountRequired": "1000",
+    "resource": "http://localhost:4021/weather",
+    "description": "",
+    "mimeType": "",
+    "payTo": "0xYourAddress",
+    "maxTimeoutSeconds": 60,
+    "asset": "0x...",
+    "outputSchema": null,
+    "extra": null
+  }
+}
+```
+
+### Successful Response
+
+```ts
+// Body
+{
+  "report": {
+    "weather": "sunny",
+    "temperature": 70
+  }
+}
+// Headers
+{
+  "X-PAYMENT-RESPONSE": "..." // Encoded response object
+}
+```
+
+## Extending the Example
+
+To add more paid endpoints, follow this pattern:
+
+```typescript
+// First, configure the payment middleware with your routes
+app.use(
+  paymentMiddleware(payTo, {
+    // Define your routes and their payment requirements
+    "/your-endpoint": {
+      price: "$0.10",
+      network,
+    },
+    "/premium/*": {
+      price: {
+        amount: "100000",
+        asset: {
+          address: "0xabc",
+          decimals: 18,
+          eip712: {
+            name: "WETH",
+            version: "1",
+          },
+        },
+      },
+      network,
+    },
+  }),
+);
+
+// Then define your routes as normal
+app.get("/your-endpoint", c => {
+  return c.json({
+    // Your response data
+  });
+});
+
+app.get("/premium/content", c => {
+  return c.json({
+    content: "This is premium content",
+  });
+});
+```
+
+# servers/hono/package.json
+{
+  "name": "hono-server-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "dotenv": "^16.4.7",
+    "hono": "^4.7.1",
+    "x402-hono": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^7.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@eslint/js": "^9.24.0",
+    "eslint": "^9.24.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint-plugin-import": "^2.31.0",
+    "prettier": "3.5.2"
+  }
+}
+
+# servers/hono/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# servers/hono/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# servers/hono/index.ts
+import { config } from "dotenv";
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { paymentMiddleware, Network, Resource } from "x402-hono";
+
+config();
+
+const facilitatorUrl = process.env.FACILITATOR_URL as Resource;
+const payTo = process.env.ADDRESS as `0x${string}`;
+const network = process.env.NETWORK as Network;
+
+if (!facilitatorUrl || !payTo || !network) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const app = new Hono();
+
+console.log("Server is running");
+
+app.use(
+  paymentMiddleware(
+    payTo,
+    {
+      "/weather": {
+        price: "$0.001",
+        network,
+      },
+    },
+    {
+      url: facilitatorUrl,
+    },
+  ),
+);
+
+app.get("/weather", c => {
+  return c.json({
+    report: {
+      weather: "sunny",
+      temperature: 70,
+    },
+  });
+});
+
+serve({
+  fetch: app.fetch,
+  port: 4021,
+});
+
+# servers/hono/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# servers/hono/.env-local
+FACILITATOR_URL=https://x402.org/facilitator
+NETWORK=base-sepolia
+ADDRESS=
+# servers/mainnet/.prettierignore
+docs/
+dist/
+node_modules/
+coverage/
+.github/
+src/client
+**/**/*.json
+*.md
+# servers/mainnet/README.md
+# @coinbase/x402 Example Mainnet Server
+
+This example demonstrates how to accept real USDC payments on Base mainnet using Coinbase's [hosted x402 facilitator](https://docs.cdp.coinbase.com/x402/docs/welcome).
+
+## Prerequisites
+
+- Node.js v20+ (install via [nvm](https://github.com/nvm-sh/nvm))
+- pnpm v10 (install via [pnpm.io/installation](https://pnpm.io/installation))
+- CDP api keys (access via [Coinbase Developer Platform](https://docs.cdp.coinbase.com/))
+- A valid Ethereum address for receiving payments
+
+## Setup
+
+1. Copy `.env-local` to `.env` and add your Ethereum address to receive payments:
+
+```bash
+cp .env-local .env
+```
+
+2. Install and build all packages from the typescript examples root:
+```bash
+cd ../../
+pnpm install
+pnpm build
+cd servers/mainnet
+```
+
+3. Run the server
+```bash
+pnpm install
+pnpm dev
+```
+
+## Testing the Server
+
+You can test the server using one of the example clients:
+
+### Using the Fetch Client
+```bash
+cd ../clients/fetch
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+### Using the Axios Client
+```bash
+cd ../clients/axios
+# Ensure .env is setup
+pnpm install
+pnpm dev
+```
+
+# servers/mainnet/package.json
+{
+  "name": "mainnet-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx index.ts",
+    "format": "prettier -c .prettierrc --write \"**/*.{ts,js,cjs,json,md}\"",
+    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\"",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.18.2",
+    "@coinbase/x402": "workspace:*",
+    "x402-express": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "eslint": "^9.24.0",
+    "eslint-plugin-jsdoc": "^50.6.9",
+    "eslint-plugin-prettier": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^8.29.1",
+    "@typescript-eslint/parser": "^8.29.1",
+    "eslint-plugin-import": "^2.31.0",
+    "prettier": "3.5.2",
+    "tsup": "^7.2.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/express": "^5.0.1"
+  }
+}
+
+# servers/mainnet/.prettierrc
+{
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "avoid",
+  "printWidth": 100,
+  "proseWrap": "never"
+}
+
+# servers/mainnet/tsconfig.json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "types": ["node"]
+  },
+  "include": ["index.ts"]
+}
+
+# servers/mainnet/index.ts
+import { config } from "dotenv";
+import express from "express";
+import { paymentMiddleware } from "x402-express";
+// Import the facilitator from the x402 package to use the mainnet facilitator
+import { facilitator } from "@coinbase/x402";
+
+config();
+
+const payToAddress = process.env.ADDRESS as `0x${string}`;
+
+// The CDP API key ID and secret are required to use the mainnet facilitator
+if (!payToAddress || !process.env.CDP_API_KEY_ID || !process.env.CDP_API_KEY_SECRET) {
+  console.error("Missing required environment variables");
+  process.exit(1);
+}
+
+const app = express();
+
+app.use(
+  paymentMiddleware(
+    payToAddress,
+    {
+      "GET /weather": {
+        // USDC amount in dollars
+        price: "$0.001",
+        network: "base",
+      },
+    },
+    // Pass the mainnet facilitator to the payment middleware
+    facilitator,
+  ),
+);
+
+app.get("/weather", (req, res) => {
+  res.send({
+    report: {
+      weather: "sunny",
+      temperature: 70,
+    },
+  });
+});
+
+app.listen(4021, () => {
+  console.log(`Server listening at http://localhost:4021`);
+});
+
+# servers/mainnet/eslint.config.js
+import js from "@eslint/js";
+import ts from "@typescript-eslint/eslint-plugin";
+import tsParser from "@typescript-eslint/parser";
+import prettier from "eslint-plugin-prettier";
+import jsdoc from "eslint-plugin-jsdoc";
+import importPlugin from "eslint-plugin-import";
+
+export default [
+  {
+    ignores: ["dist/**", "node_modules/**"],
+  },
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      sourceType: "module",
+      ecmaVersion: 2020,
+      globals: {
+        process: "readonly",
+        __dirname: "readonly",
+        module: "readonly",
+        require: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        exports: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+      },
+    },
+    plugins: {
+      "@typescript-eslint": ts,
+      prettier: prettier,
+      jsdoc: jsdoc,
+      import: importPlugin,
+    },
+    rules: {
+      ...ts.configs.recommended.rules,
+      "import/first": "error",
+      "prettier/prettier": "error",
+      "@typescript-eslint/member-ordering": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_$" }],
+      "jsdoc/tag-lines": ["error", "any", { startLines: 1 }],
+      "jsdoc/check-alignment": "error",
+      "jsdoc/no-undefined-types": "off",
+      "jsdoc/check-param-names": "error",
+      "jsdoc/check-tag-names": "error",
+      "jsdoc/check-types": "error",
+      "jsdoc/implements-on-classes": "error",
+      "jsdoc/require-description": "error",
+      "jsdoc/require-jsdoc": [
+        "error",
+        {
+          require: {
+            FunctionDeclaration: true,
+            MethodDefinition: true,
+            ClassDeclaration: true,
+            ArrowFunctionExpression: false,
+            FunctionExpression: false,
+          },
+        },
+      ],
+      "jsdoc/require-param": "error",
+      "jsdoc/require-param-description": "error",
+      "jsdoc/require-param-type": "off",
+      "jsdoc/require-returns": "error",
+      "jsdoc/require-returns-description": "error",
+      "jsdoc/require-returns-type": "off",
+      "jsdoc/require-hyphen-before-param-description": ["error", "always"],
+    },
+  },
+];
+
+# servers/mainnet/.env-local
+ADDRESS=
+CDP_API_KEY_ID=
+CDP_API_KEY_SECRET=
+# pnpm-workspace.yaml
+packages:
+  - "facilitator"
+  - "servers/*"
+  - "clients/*"
+  - "fullstack/*"
+  - "dynamic_agent"
+  - "agent"
+  - "mpc"
+  - "../../typescript/packages/*"
+
+# schemes/exact/scheme_exact.md
+# Scheme: `exact`
+
+## Summary
+
+`exact` is a scheme that transfers a specific amount of funds from a client to a resource server. The resource server must know in advance the exact
+amount of funds they need to be transferred.
+
+## Example Use Cases
+
+- Paying to view an article
+- Purchasing digital credits
+- An LLM paying to use a tool
+
+## Appendix
+
+# schemes/exact/scheme_exact_evm.md
+# Scheme: `exact` on `EVM`
+
+## Summary
+
+The `exact` scheme on EVM chains uses `EIP-3009` to authorize a transfer of a specific amount of an `ERC20 token` from the payer to the resource server. The approach results in the facilitator having no ability to direct funds anywhere but the address specified by the resource server in paymentRequirements.
+
+## `X-Payment` header payload
+
+The `payload` field of the `X-PAYMENT` header must contain the following fields:
+
+- `signature`: The signature of the `EIP-3009` `transferWithAuthorization` operation.
+- `authorization`: parameters required to reconstruct the messaged signed for the `transferWithAuthorization` operation.
+
+Example:
+
+```json
+{
+  "signature": "0x2d6a7588d6acca505cbf0d9a4a227e0c52c6c34008c8e8986a1283259764173608a2ce6496642e377d6da8dbbf5836e9bd15092f9ecab05ded3d6293af148b571c",
+  "authorization": {
+    "from": "0x857b06519E91e3A54538791bDbb0E22373e36b66",
+    "to": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+    "value": "10000",
+    "validAfter": "1740672089",
+    "validBefore": "1740672154",
+    "nonce": "0xf3746613c2d920b5fdabc0856f2aeb2d4f88ee6037b8cc5d04a71a4462f13480"
+  }
+}
+```
+
+Full `X-PAYMENT` header:
+
+```json
+{
+  "x402Version": 1,
+  "scheme": "exact",
+  "network": "base-sepolia",
+  "payload": {
+    "signature": "0x2d6a7588d6acca505cbf0d9a4a227e0c52c6c34008c8e8986a1283259764173608a2ce6496642e377d6da8dbbf5836e9bd15092f9ecab05ded3d6293af148b571c",
+    "authorization": {
+      "from": "0x857b06519E91e3A54538791bDbb0E22373e36b66",
+      "to": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+      "value": "10000",
+      "validAfter": "1740672089",
+      "validBefore": "1740672154",
+      "nonce": "0xf3746613c2d920b5fdabc0856f2aeb2d4f88ee6037b8cc5d04a71a4462f13480"
+    }
+  }
+}
+```
+
+## Verification
+
+Steps to verify a payment for the `exact` scheme:
+
+1. Verify the signature is valid
+2. Verify the `client` has enough of the `asset` (ERC20 token) to cover `paymentRequirements.maxAmountRequired`
+3. Verify the value in the `payload.authorization` is enough to cover `paymentRequirements.maxAmountRequired`
+4. Verify the authorization parameters are within the valid time range
+5. Verify nonce is not used
+6. Verify the authorization parameters are for the agreed upon ERC20 contract and chain
+7. Simulate the `transferWithAuthorization` to ensure the transaction would succeed
+
+## Settlement
+
+Settlement is performed via the facilitator calling the `transferWithAuthorization` function on the `EIP-3009` compliant contract with the `payload.signature` and `payload.authorization` parameters from the `X-PAYMENT` header.
+
+## Appendix
+
+There are 2 standards that `usdc` supports on EVM chains that we can leverage for a payments protocol, `EIP-3009` and `EIP-2612`.
+
+**EIP-3009: Transfer with Authorization**: Allows for a signature to be used to authorize a transfer of a **specific amount** from one address to another in a single transaction.
+
+Pros:
+
+- CB can facilitate payments of specific amounts (broadcast transactions), meaning both the client and resource server do not need gas to settle payments.
+- No new contracts needed, we can facilitate this transaction without needing to deploy a contract to route or custody funds onchain.
+
+Cons:
+
+- The signature authorizing transfer includes the `amount` to be transferred, meaning a resource server needs to know exactly how much something should cost at the time of request. This means things like usage-based payments (ex: generate tokens from an LLM) are not possible.
+
+**EIP-2612: Permit**: Allows for a signature to be used to authorize usage of **up to an amount** funds from one address to another in a later transaction.
+
+Pros:
+
+- Because the permit signature gives permission for transfering up to an amount, it allows for usage-based payments.
+
+Cons:
+
+- Submitting the permit signature and then performing the `transferFrom` call are 2 separate function calls, meaning you need to either use `multicall` or deploy a contract (routing contract) that wraps the 2 functions. The permit signature would need to authorize the routing contract to transfer funds.
+
+- Leverages `ERC-20` `transferFrom` / `approve` / `transfer` functions, which have a hard dependency on `msg.sender`. This breaks the flow of performing the facilitator batching a `permit()` call and a `transferFrom()` call in a single multicall (`msg.sender` becomes the multicall contract address rather than the facilitator's address).
+
+### Recommendations
+
+- Use `EIP-3009` for the first version of the protocol and only support payments of specific amounts.
+- In follow up leverage `EIP-2612` + `routing contract` to support usage-based payments, and optionally bundle that with hard guarantees of payment by holding funds in escrow with the routing contract.
+
+# scheme_template.md
+# Scheme: `<name>`
+
+## Summary
+
+Summarize the purpose and behavior of your scheme here. Include example use cases.
+
+## Use Cases
+
+## Appendix
+
+# scheme_impl_template.md
+# Scheme: `<name>` `<network kind>`
+
+## Summary
+
+Summarize the purpose and behavior of your scheme here. Include example use cases.
+
+## `X-Payment` header payload
+
+Document how to construct the `X-Payment` header payload for your scheme, based on `paymentRequirements` returned in a `402` response.
+
+## Verification
+
+Document the steps needed to verify a payment for your scheme is valid.
+
+## Settlement
+
+Document how to settle a payment for your scheme.
+
+## Appendix
+

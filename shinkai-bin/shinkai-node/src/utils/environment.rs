@@ -16,14 +16,12 @@ pub struct NodeEnvironment {
     pub api_https_listen_address: SocketAddr,
     pub ws_address: Option<SocketAddr>,
     pub ping_interval: u64,
-    pub starting_num_qr_profiles: u32,
-    pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
     pub no_secrets_file: bool,
     pub node_storage_path: Option<String>,
     pub embeddings_server_url: Option<String>,
     pub embeddings_server_api_key: Option<String>,
-    pub auto_detect_local_llms: bool,
+    pub _auto_detect_local_llms: bool,
     pub proxy_identity: Option<String>,
     pub default_embedding_model: EmbeddingModelType,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
@@ -31,6 +29,7 @@ pub struct NodeEnvironment {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct StaticServerEnvironment {
     pub ip: IpAddr,
     pub port: u16,
@@ -97,7 +96,9 @@ pub fn fetch_llm_provider_env(global_identity: String) -> Vec<SerializedLLMProvi
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {
-    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.sep-shinkai".to_string());
+    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME")
+        .map(|val| if val.is_empty() { "@@localhost.sep-shinkai".to_string() } else { val })
+        .unwrap_or("@@localhost.sep-shinkai".to_string());
 
     // Fetch the environment variables for the IP and port, or use default values
     let ip: IpAddr = env::var("NODE_IP")
@@ -125,16 +126,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
 
     let ws_port: Option<u16> = env::var("NODE_WS_PORT").ok().and_then(|p| p.parse().ok());
 
-    // TODO: remove this and just assume one device per profile
-    let starting_num_qr_profiles: u32 = env::var("STARTING_NUM_QR_PROFILES")
-        .unwrap_or_else(|_| "0".to_string())
-        .parse()
-        .expect("Failed to parse starting number of QR profiles");
-
-    let starting_num_qr_devices: u32 = env::var("STARTING_NUM_QR_DEVICES")
-        .unwrap_or_else(|_| "1".to_string())
-        .parse()
-        .expect("Failed to parse starting number of QR devices");
 
     let first_device_needs_registration_code: bool = env::var("FIRST_DEVICE_NEEDS_REGISTRATION_CODE")
         .unwrap_or_else(|_| "true".to_string())
@@ -157,7 +148,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     };
 
     // Inside the fetch_node_environment function, add the following line to initialize auto_detect_local_llms
-    let auto_detect_local_llms: bool = env::var("AUTO_DETECT_LOCAL_LLMS")
+    let _auto_detect_local_llms: bool = env::var("AUTO_DETECT_LOCAL_LLMS")
         .unwrap_or_else(|_| "true".to_string())
         .parse()
         .expect("Failed to parse AUTO_DETECT_LOCAL_LLMS");
@@ -214,14 +205,12 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         api_listen_address,
         ws_address,
         ping_interval,
-        starting_num_qr_profiles,
-        starting_num_qr_devices,
         first_device_needs_registration_code,
         no_secrets_file,
         node_storage_path,
         embeddings_server_url,
         embeddings_server_api_key,
-        auto_detect_local_llms,
+        _auto_detect_local_llms,
         proxy_identity,
         default_embedding_model,
         supported_embedding_models,

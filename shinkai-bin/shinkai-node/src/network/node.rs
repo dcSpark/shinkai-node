@@ -15,20 +15,21 @@ use crate::network::ws_routes::run_ws_api;
 use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
-use chashmap::CHashMap;
+use base64::Engine;
 use chrono::Utc;
 use core::panic;
+use dashmap::DashMap;
 use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use reqwest::StatusCode;
-use shinkai_embedding::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider, ShinkaiBackend,
+    LLMProviderInterface, SerializedLLMProvider, ShinkaiBackend
 };
 use shinkai_message_primitives::schemas::retry::RetryMessage;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -36,7 +37,7 @@ use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
@@ -52,6 +53,7 @@ use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use tokio::time::Instant;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
@@ -88,7 +90,7 @@ pub struct Node {
     // Secrets file path
     pub secrets_file_path: String,
     // A map of known peer nodes.
-    pub peers: CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
+    pub peers: DashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
     // The interval at which this node pings all known peers.
     pub ping_interval_secs: u64,
     // The channel from which this node receives commands.
@@ -233,13 +235,27 @@ impl Node {
         ));
 
         // Initialize ProxyConnectionInfo if proxy_identity is provided
-        let proxy_connection_info = Arc::new(Mutex::new(proxy_identity.map(|proxy_identity| {
-            let proxy_identity = ShinkaiName::new(proxy_identity).expect("Invalid proxy identity name");
-            ProxyConnectionInfo {
-                proxy_identity,
-                tcp_connection: None,
-            }
-        })));
+        let proxy_connection_info: Option<ProxyConnectionInfo> = proxy_identity.and_then(|proxy_identity| {
+            ShinkaiName::new(proxy_identity.clone())
+                .inspect_err(|_| {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        format!("Invalid proxy identity name: {}", proxy_identity).as_str(),
+                    );
+                })
+                .map_or_else(
+                    |_| None,
+                    |proxy_identity| {
+                        Some(ProxyConnectionInfo {
+                            proxy_identity,
+                            tcp_connection: None,
+                        })
+                    },
+                )
+        });
+        let proxy_connection_info = Arc::new(Mutex::new(proxy_connection_info));
+
         let proxy_connection_info_weak = Arc::downgrade(&proxy_connection_info);
 
         let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>> = {
@@ -381,7 +397,7 @@ impl Node {
             encryption_public_key,
             private_https_certificate,
             public_https_certificate,
-            peers: CHashMap::new(),
+            peers: DashMap::new(),
             listen_address,
             secrets_file_path,
             ping_interval_secs,
@@ -477,31 +493,6 @@ impl Node {
             callback_manager.update_cron_manager(cron_manager.clone());
         }
 
-        // Check if we need to add default LLM providers
-        if std::env::var("IS_TEST").unwrap_or_default() != "true" && self.identity_manager.lock().await.is_ready {
-            // Create default providers
-            let default_providers = Self::create_default_llm_providers(&self.node_name);
-
-            // For each default provider, check if it exists and add if it doesn't
-            for provider in default_providers {
-                if !self.db.get_llm_provider(&provider.id, &self.node_name).is_ok() {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Info,
-                        &format!("Adding default LLM provider: {}", provider.id),
-                    );
-                    let profile = ShinkaiName::new(format!("{}/main", self.node_name.full_name)).unwrap();
-                    if let Err(e) = self.db.add_llm_provider(provider.clone(), &profile) {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to add default LLM provider {}: {}", provider.id, e),
-                        );
-                    }
-                }
-            }
-        }
-
         self.initialize_embedding_models().await?;
         {
             // Starting the WebSocket server
@@ -547,7 +538,7 @@ impl Node {
         pin_mut!(listen_future);
 
         let retry_interval_secs = 2;
-        let mut retry_interval = async_std::stream::interval(Duration::from_secs(retry_interval_secs));
+        let mut retry_interval = tokio::time::interval(Duration::from_secs(retry_interval_secs));
 
         let ping_interval_secs = if self.ping_interval_secs == 0 {
             315576000 * 10 // 10 years in seconds
@@ -560,23 +551,24 @@ impl Node {
             &format!("Automatic Ping interval set to {} seconds", ping_interval_secs),
         );
 
-        let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
+        let mut ping_interval = tokio::time::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
-        let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
+        let _check_peers_interval = tokio::time::interval(Duration::from_secs(check_peers_interval_secs));
 
         // Add 6-hour interval for periodic tasks
         let six_hours_in_secs = 6 * 60 * 60; // 6 hours in seconds
-        let mut six_hour_interval = async_std::stream::interval(Duration::from_secs(six_hours_in_secs));
+        let start = Instant::now() + Duration::from_secs(six_hours_in_secs);
+        let mut six_hour_interval = tokio::time::interval_at(start, Duration::from_secs(six_hours_in_secs));
 
         // TODO: implement a TCP connection here with a proxy if it's set
 
         loop {
-            let ping_future = ping_interval.next().fuse();
+            let ping_future = ping_interval.tick().fuse();
             let commands_future = commands_clone.next().fuse();
-            let retry_future = retry_interval.next().fuse();
-            let six_hour_future = six_hour_interval.next().fuse();
+            let retry_future = retry_interval.tick().fuse();
+            let six_hour_future = six_hour_interval.tick().fuse();
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
@@ -1126,12 +1118,6 @@ impl Node {
         Ok(())
     }
 
-    // indicates if the node is ready or not
-    pub async fn is_node_ready(&self) -> bool {
-        let identity_manager_guard = self.identity_manager.lock().await;
-        identity_manager_guard.is_ready
-    }
-
     // TODO: Add a new send that schedules messages to be sent at a later time.
     // It may be more complex than what it sounds because there could be a big backlog of messages to send which were
     // already generated and the time associated with the message may be too old to be recognized by the other node.
@@ -1586,7 +1572,7 @@ impl Node {
     fn generate_api_v2_key() -> String {
         let mut key = [0u8; 32]; // 256-bit key
         OsRng.fill_bytes(&mut key);
-        base64::encode(&key)
+        base64::engine::general_purpose::STANDARD.encode(&key)
     }
 
     pub fn generic_api_error(e: &str) -> APIError {
@@ -1597,37 +1583,8 @@ impl Node {
         }
     }
 
-    // Helper function to create default LLM providers
-    fn create_default_llm_providers(node_name: &ShinkaiName) -> Vec<SerializedLLMProvider> {
-        vec![
-            SerializedLLMProvider {
-                id: "shinkai_free_trial".to_string(),
-                name: Some("Shinkai Free Trial".to_string()),
-                description: Some("Shinkai Free Trial LLM Provider".to_string()),
-                full_identity_name: ShinkaiName::new(format!("{}/main/agent/shinkai_free_trial", node_name.full_name))
-                    .unwrap(),
-                external_url: Some("https://api.shinkai.com/inference".to_string()),
-                api_key: None,
-                model: LLMProviderInterface::ShinkaiBackend(ShinkaiBackend {
-                    model_type: "FREE_TEXT_INFERENCE".to_string(),
-                }),
-            },
-            SerializedLLMProvider {
-                id: "shinkai_code_generator".to_string(),
-                name: Some("Shinkai Code Generator".to_string()),
-                description: Some("Shinkai Code Generator LLM Provider".to_string()),
-                full_identity_name: ShinkaiName::new(format!(
-                    "{}/main/agent/shinkai_code_generator",
-                    node_name.full_name
-                ))
-                .unwrap(),
-                external_url: Some("https://api.shinkai.com/inference".to_string()),
-                api_key: None,
-                model: LLMProviderInterface::ShinkaiBackend(ShinkaiBackend {
-                    model_type: "CODE_GENERATOR".to_string(),
-                }),
-            },
-        ]
+    pub fn shinkai_free_provider_id() -> String {
+        "shinkai_free_trial".to_string()
     }
 }
 

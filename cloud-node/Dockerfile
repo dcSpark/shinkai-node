@@ -1,7 +1,7 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
 ARG BUILD_TYPE
-RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld protobuf-compiler
+RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld
 
 # Create a new directory for your app
 WORKDIR /app
@@ -28,6 +28,7 @@ WORKDIR /app
 COPY --from=builder /app/cloud-node/run_node.sh /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai_node /app/
 COPY --from=builder /app/target/${BUILD_TYPE:-debug}/shinkai-tools-runner-resources /app/shinkai-tools-runner-resources
+COPY --from=builder /app/pre-install /app/pre-install
 
 # Use environment variables if they exist, otherwise use default values
 ENV NODE_API_PORT=${NODE_API_PORT:-9550}

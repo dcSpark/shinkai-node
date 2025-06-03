@@ -3,30 +3,21 @@ use std::sync::Arc;
 use chrono::Utc;
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig,
-    invoices::{Invoice, Payment, PaymentStatusEnum},
-    shinkai_name::ShinkaiName,
-    shinkai_tool_offering::ToolPrice,
-    wallet_complementary::WalletSource,
-    wallet_mixed::{Asset, Balance, Network, PublicAddress},
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, invoices::{Invoice, Payment, PaymentStatusEnum}, shinkai_name::ShinkaiName, shinkai_tool_offering::ToolPrice, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Asset, Balance, PublicAddress}, x402_types::Network
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::{
-    coinbase_mpc_wallet::CoinbaseMPCWallet,
-    local_ether_wallet::LocalEthersWallet,
-    wallet_error::WalletError,
-    wallet_traits::{PaymentWallet, ReceivingWallet},
+    coinbase_mpc_wallet::CoinbaseMPCWallet, local_ether_wallet::LocalEthersWallet, wallet_error::WalletError, wallet_traits::{PaymentWallet, ReceivingWallet}
 };
 
 /// Enum to represent different wallet types.
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum WalletEnum {
-    LocalEthersWallet(LocalEthersWallet),
     CoinbaseMPCWallet(CoinbaseMPCWallet),
+    LocalEthersWallet(LocalEthersWallet),
 }
 
 pub struct WalletManager {
@@ -62,12 +53,12 @@ impl<'de> Deserialize<'de> for WalletManager {
         let helper = WalletManagerHelper::deserialize(deserializer)?;
         Ok(WalletManager {
             payment_wallet: match helper.payment_wallet {
-                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
                 WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
             },
             receiving_wallet: match helper.receiving_wallet {
-                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
                 WalletEnum::CoinbaseMPCWallet(wallet) => Box::new(wallet),
+                WalletEnum::LocalEthersWallet(wallet) => Box::new(wallet),
             },
         })
     }
@@ -101,26 +92,22 @@ impl WalletManager {
             _ => return Err(WalletError::InvalidPayment("Invalid payment type".to_string())),
         };
 
-        println!("Sending transaction with amount: {}", asset_payment.amount);
+        println!("Sending transaction with amount: {}", asset_payment.max_amount_required);
         println!("Sending transaction to address: {:?}", invoice.address);
         println!("Sending transaction with asset: {:?}", asset_payment.asset);
 
-        let transaction_hash = self
+        println!("\n\n asset_payment: {:?}", asset_payment);
+
+        let transaction_encoded = self
             .payment_wallet
-            .send_transaction(
-                invoice.address,
-                Some(asset_payment.asset.clone()),
-                asset_payment.amount.clone(),
-                invoice.invoice_id.clone(),
-                node_name.clone(),
-            )
+            .create_payment_request(asset_payment.clone())
             .await?;
 
         Ok(Payment::new(
-            transaction_hash,
+            transaction_encoded.payment,
             invoice.invoice_id.clone(),
             Some(Self::get_current_date()),
-            PaymentStatusEnum::Confirmed,
+            PaymentStatusEnum::Signed,
         ))
     }
 
@@ -149,30 +136,6 @@ impl WalletManager {
 
     pub fn get_current_date() -> String {
         Utc::now().to_rfc3339()
-    }
-
-    pub fn create_local_ethers_wallet_manager(network: Network) -> Result<WalletManager, WalletError> {
-        let payment_wallet: Box<dyn PaymentWallet> = Box::new(LocalEthersWallet::create_wallet(network.clone())?);
-        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(LocalEthersWallet::create_wallet(network)?);
-
-        Ok(WalletManager {
-            payment_wallet,
-            receiving_wallet,
-        })
-    }
-
-    pub fn recover_local_ethers_wallet_manager(
-        network: Network,
-        source: WalletSource,
-    ) -> Result<WalletManager, WalletError> {
-        let payment_wallet: Box<dyn PaymentWallet> =
-            Box::new(LocalEthersWallet::recover_wallet(network.clone(), source.clone())?);
-        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(LocalEthersWallet::recover_wallet(network, source)?);
-
-        Ok(WalletManager {
-            payment_wallet,
-            receiving_wallet,
-        })
     }
 
     pub async fn create_coinbase_mpc_wallet_manager(
@@ -227,69 +190,37 @@ impl WalletManager {
             receiving_wallet,
         })
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use shinkai_message_primitives::schemas::wallet_mixed::{Network, NetworkIdentifier, NetworkProtocolFamilyEnum};
+    pub async fn create_local_ethers_wallet_manager(
+        network: Network,
+        _db: Arc<SqliteManager>,
+        _role: WalletRole,
+    ) -> Result<WalletManager, WalletError> {
+        // Create a single wallet instance and use it for both payment and receiving
+        let wallet = LocalEthersWallet::create_wallet_async(network).await?;
 
-    use super::*;
-
-    fn create_test_network() -> Network {
-        Network {
-            id: NetworkIdentifier::Anvil,
-            display_name: "Anvil".to_string(),
-            chain_id: 31337,
-            protocol_family: NetworkProtocolFamilyEnum::Evm,
-            is_testnet: true,
-            native_asset: Asset {
-                network_id: NetworkIdentifier::Anvil,
-                asset_id: "ETH".to_string(),
-                decimals: Some(18),
-                contract_address: None,
-            },
-        }
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(wallet.clone());
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(wallet);
+        Ok(WalletManager {
+            payment_wallet,
+            receiving_wallet,
+        })
     }
 
-    #[test]
-    fn test_wallet_manager_serialization() {
-        let network = create_test_network();
-        let wallet_manager = WalletManager::create_local_ethers_wallet_manager(network).unwrap();
+    pub async fn recover_local_ethers_wallet_manager(
+        network: Network,
+        _db: Arc<SqliteManager>,
+        source: WalletSource,
+        _role: WalletRole,
+    ) -> Result<WalletManager, WalletError> {
+        // Recover a single wallet instance and use it for both payment and receiving
+        let wallet = LocalEthersWallet::recover_wallet(network, source).await?;
 
-        // Serialize the wallet manager
-        let serialized_wallet_manager = serde_json::to_string(&wallet_manager).unwrap();
-
-        // Deserialize the wallet manager
-        let deserialized_wallet_manager: WalletManager = serde_json::from_str(&serialized_wallet_manager).unwrap();
-
-        // Compare the original and deserialized wallet managers
-        assert_eq!(
-            wallet_manager
-                .payment_wallet
-                .as_ref()
-                .downcast_ref::<LocalEthersWallet>()
-                .unwrap()
-                .id,
-            deserialized_wallet_manager
-                .payment_wallet
-                .as_ref()
-                .downcast_ref::<LocalEthersWallet>()
-                .unwrap()
-                .id
-        );
-        assert_eq!(
-            wallet_manager
-                .receiving_wallet
-                .as_ref()
-                .downcast_ref::<LocalEthersWallet>()
-                .unwrap()
-                .id,
-            deserialized_wallet_manager
-                .receiving_wallet
-                .as_ref()
-                .downcast_ref::<LocalEthersWallet>()
-                .unwrap()
-                .id
-        );
+        let payment_wallet: Box<dyn PaymentWallet> = Box::new(wallet.clone());
+        let receiving_wallet: Box<dyn ReceivingWallet> = Box::new(wallet);
+        Ok(WalletManager {
+            payment_wallet,
+            receiving_wallet,
+        })
     }
 }

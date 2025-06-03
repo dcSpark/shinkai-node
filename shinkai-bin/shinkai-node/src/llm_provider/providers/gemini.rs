@@ -126,8 +126,8 @@ impl LLMService for Gemini {
         model: LLMProviderInterface,
         inbox_name: Option<InboxName>,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        config: Option<JobConfig>,
-        llm_stopper: Arc<LLMStopper>,
+        _config: Option<JobConfig>,
+        _llm_stopper: Arc<LLMStopper>,
         _db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {

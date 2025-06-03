@@ -70,7 +70,37 @@ impl ToolRouterKey {
         strings.serialize(serializer)
     }
 
-    fn sanitize(input: &str) -> String {
+    pub fn serialize_tool_router_key<S>(tool: &Option<ToolRouterKey>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if let Some(key) = &tool {
+            key.to_string_with_version().serialize(serializer)
+        } else {
+            None::<String>.serialize(serializer)
+        }
+    }
+
+    pub fn deserialize_tool_router_key<'de, D>(deserializer: D) -> Result<Option<ToolRouterKey>, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s: String = match String::deserialize(deserializer) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("Failed to deserialize string: {}", e);
+                return Err(e);
+            }
+        };
+
+        let tool = ToolRouterKey::from_string(&s).map_err(|e| {
+            println!("Failed to parse tool router key: {}", e);
+            serde::de::Error::custom(e)
+        })?;
+        Ok(Some(tool))
+    }
+
+    pub fn sanitize(input: &str) -> String {
         input
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })

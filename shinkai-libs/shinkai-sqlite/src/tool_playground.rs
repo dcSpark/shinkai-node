@@ -1,7 +1,11 @@
 use crate::{SqliteManager, SqliteManagerError};
 use rusqlite::{params, Result};
 use serde_json;
-use shinkai_message_primitives::schemas::{indexable_version::IndexableVersion, shinkai_tools::CodeLanguage};
+use shinkai_message_primitives::schemas::{
+    indexable_version::IndexableVersion, shinkai_tools::CodeLanguage,
+};
+#[cfg(test)]
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_primitives::tools::{
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType}
 };

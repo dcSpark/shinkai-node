@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::json;
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, ShinkaiBackend,
+    Exo, Gemini, Groq, LLMProviderInterface, Ollama, OpenAI, ShinkaiBackend
 };
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
@@ -16,20 +16,21 @@ use shinkai_message_primitives::shinkai_message::shinkai_message::{
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::{
-    schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider,
-    shinkai_message::shinkai_message_schemas::APIAddOllamaModels,
+    schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_message::shinkai_message_schemas::APIAddOllamaModels
 };
+use std::collections::HashMap;
 use utoipa::{OpenApi, ToSchema};
 use warp::filters::multipart::FormData;
 use warp::Filter;
-use std::collections::HashMap;
 
-use crate::api_v1::api_v1_handlers::APIUseRegistrationCodeSuccessResponse;
+use crate::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use crate::{
-    node_api_router::{APIError, GetPublicKeysResponse},
-    node_commands::NodeCommand,
+    node_api_router::{APIError, GetPublicKeysResponse}, node_commands::NodeCommand
 };
 
+use super::api_v2_handlers_mcp_servers::{
+    add_mcp_server_handler, get_all_mcp_server_tools_handler, list_mcp_servers_handler, GetAllMCPServerToolsRequest
+};
 use super::api_v2_router::{create_success_response, with_node_name, with_sender};
 
 pub fn general_routes(
@@ -125,7 +126,10 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::query::<HashMap<String, String>>())
         .and_then(|sender, auth, params: HashMap<String, String>| {
-            let model_type = params.get("model").cloned().unwrap_or_else(|| "FREE_TEXT_INFERENCE".to_string());
+            let model_type = params
+                .get("model")
+                .cloned()
+                .unwrap_or_else(|| "FREE_TEXT_INFERENCE".to_string());
             shinkai_backend_quota_handler(sender, auth, model_type)
         });
 
@@ -181,7 +185,8 @@ pub fn general_routes(
         .and(warp::get())
         .and(with_sender(node_commands_sender.clone()))
         .and(warp::header::<String>("authorization"))
-        .and_then(get_all_agents_handler);
+        .and(warp::query::<HashMap<String, String>>())
+        .and_then(|sender, auth, params| get_all_agents_handler(sender, auth, Some(params)));
 
     let export_agent_route = warp::path("export_agent")
         .and(warp::get())
@@ -251,6 +256,36 @@ pub fn general_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(get_preferences_handler);
 
+    let check_default_tools_sync_route = warp::path("check_default_tools_sync")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(check_default_tools_sync_handler);
+    let list_mcp_servers_route = warp::path("list_mcp_servers")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(list_mcp_servers_handler);
+
+    let add_mcp_server_route = warp::path("add_mcp_server")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_mcp_server_handler);
+
+    let get_all_mcp_server_tools_route = warp::path("get_all_mcp_server_tools")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetAllMCPServerToolsRequest>())
+        .and_then(get_all_mcp_server_tools_handler);
+
+    let docker_status_route = warp::path("docker_status")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and_then(docker_status_handler);
+
     public_keys_route
         .or(health_check_route)
         .or(initial_registration_route)
@@ -283,12 +318,22 @@ pub fn general_routes(
         .or(compute_and_send_quests_status_route)
         .or(set_preferences_route)
         .or(get_preferences_route)
+        .or(check_default_tools_sync_route)
+        .or(list_mcp_servers_route)
+        .or(add_mcp_server_route)
+        .or(get_all_mcp_server_tools_route)
+        .or(docker_status_route)
 }
 
 #[derive(Deserialize)]
 pub struct InitialRegistrationRequest {
     pub profile_encryption_pk: String,
     pub profile_identity_pk: String,
+}
+
+#[derive(Deserialize)]
+pub struct ChangeNodeNameRequest {
+    pub new_name: String,
 }
 
 #[utoipa::path(
@@ -324,8 +369,9 @@ pub async fn get_public_keys(sender: Sender<NodeCommand>) -> Result<impl warp::R
 )]
 pub async fn health_check(sender: Sender<NodeCommand>, node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
     let (res_sender, res_receiver) = async_channel::bounded(1);
+    println!("Health check route called");
 
-     // Send the APIHealthCheck command to retrieve the pristine state and public HTTPS certificate
+    // Send the APIHealthCheck command to retrieve the pristine state and public HTTPS certificate
     sender
         .send(NodeCommand::V2ApiHealthCheck { res: res_sender })
         .await
@@ -645,7 +691,7 @@ pub async fn modify_llm_provider_handler(
 #[utoipa::path(
     post,
     path = "/v2/change_node_name",
-    request_body = String,
+    request_body = ChangeNodeNameRequest,
     responses(
         (status = 200, description = "Successfully changed node name", body = String),
         (status = 500, description = "Internal server error", body = APIError)
@@ -654,14 +700,14 @@ pub async fn modify_llm_provider_handler(
 pub async fn change_node_name_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
-    new_name: String,
+    payload: ChangeNodeNameRequest,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiChangeNodesName {
             bearer,
-            new_name,
+            new_name: payload.new_name,
             res: res_sender,
         })
         .await
@@ -974,6 +1020,9 @@ pub async fn get_agent_handler(
 #[utoipa::path(
     get,
     path = "/v2/get_all_agents",
+    params(
+        ("filter" = Option<String>, Query, description = "Optional filter for agents, e.g., 'recently_used' to only return recently used agents.")
+    ),
     responses(
         (status = 200, description = "Successfully retrieved all agents", body = Vec<Agent>),
         (status = 500, description = "Internal server error", body = APIError)
@@ -982,12 +1031,15 @@ pub async fn get_agent_handler(
 pub async fn get_all_agents_handler(
     sender: Sender<NodeCommand>,
     authorization: String,
+    query_params: Option<HashMap<String, String>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let filter = query_params.as_ref().and_then(|q| q.get("filter").cloned());
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiGetAllAgents {
             bearer,
+            filter,
             res: res_sender,
         })
         .await
@@ -1031,7 +1083,7 @@ pub async fn export_agent_handler(
         .to_string();
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
+
     sender
         .send(NodeCommand::V2ApiExportAgent {
             bearer,
@@ -1055,11 +1107,11 @@ pub async fn export_agent_handler(
         Err(error) => Ok(warp::reply::with_header(
             warp::reply::with_status(
                 error.message.as_bytes().to_vec(),
-                StatusCode::from_u16(error.code).unwrap()
+                StatusCode::from_u16(error.code).unwrap(),
             ),
             "Content-Type",
             "text/plain",
-        ))
+        )),
     }
 }
 
@@ -1093,7 +1145,7 @@ pub async fn publish_agent_handler(
         .to_string();
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
+
     sender
         .send(NodeCommand::V2ApiPublishAgent {
             bearer,
@@ -1134,7 +1186,7 @@ pub async fn import_agent_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
     let url = payload.get("url").cloned().unwrap_or_default();
-    
+
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiImportAgent {
@@ -1177,7 +1229,7 @@ pub async fn import_agent_zip_handler(
             // Read file data with error handling
             let mut bytes = Vec::new();
             let mut stream = part.stream();
-            
+
             while let Ok(Some(chunk)) = stream.try_next().await {
                 if bytes.len() + chunk.chunk().len() > 50 * 1024 * 1024 {
                     return Ok(warp::reply::with_status(
@@ -1191,7 +1243,7 @@ pub async fn import_agent_zip_handler(
                 }
                 bytes.extend_from_slice(chunk.chunk());
             }
-            
+
             if bytes.is_empty() {
                 return Ok(warp::reply::with_status(
                     warp::reply::json(&APIError {
@@ -1202,7 +1254,7 @@ pub async fn import_agent_zip_handler(
                     StatusCode::BAD_REQUEST,
                 ));
             }
-            
+
             file_data = Some(bytes);
         }
     }
@@ -1223,26 +1275,27 @@ pub async fn import_agent_zip_handler(
     };
 
     let (res_sender, res_receiver) = async_channel::bounded(1);
-    
+
     match sender
         .send(NodeCommand::V2ApiImportAgentZip {
             bearer,
             file_data,
             res: res_sender,
         })
-        .await {
-            Ok(_) => (),
-            Err(_) => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&APIError {
-                        code: 500,
-                        error: "Internal server error".to_string(),
-                        message: "Failed to process the request".to_string(),
-                    }),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                ))
-            }
-        };
+        .await
+    {
+        Ok(_) => (),
+        Err(_) => {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&APIError {
+                    code: 500,
+                    error: "Internal server error".to_string(),
+                    message: "Failed to process the request".to_string(),
+                }),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    };
 
     let result = match res_receiver.recv().await {
         Ok(result) => result,
@@ -1479,6 +1532,72 @@ pub async fn get_preferences_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/check_default_tools_sync",
+    responses(
+        (status = 200, description = "Default tools sync status retrieved successfully", body = HashMap<String, Value>),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    ),
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn check_default_tools_sync_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    sender
+        .send(NodeCommand::V2ApiCheckDefaultToolsSync {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(is_synced) => {
+            let response = json!({
+                "status": "success",
+                "is_synced": is_synced,
+                "message": if is_synced { "Default tools and agents are synchronized" } else { "Default tools and agents are not synchronized" }
+            });
+            Ok(warp::reply::json(&response))
+        }
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/docker_status",
+    responses(
+        (status = 200, description = "Docker status retrieved successfully", body = HashMap<String, Value>),
+        (status = 401, description = "Unauthorized", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn docker_status_handler(sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiDockerStatus { res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -1505,7 +1624,7 @@ pub async fn get_preferences_handler(
         update_agent_handler,
         import_agent_handler,
         import_agent_zip_handler,
-        export_agent_handler,        
+        export_agent_handler,
         get_agent_handler,
         get_all_agents_handler,
         test_llm_provider_handler,
@@ -1514,11 +1633,13 @@ pub async fn get_preferences_handler(
         compute_and_send_quests_status_handler,
         set_preferences_handler,
         get_preferences_handler,
+        check_default_tools_sync_handler,
+        docker_status_handler,
     ),
     components(
         schemas(APIAddOllamaModels, SerializedLLMProvider, ShinkaiName, LLMProviderInterface,
             ShinkaiMessage, MessageBody, EncryptionMethod, ExternalMetadata, ShinkaiVersion,
-            OpenAI, Ollama, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody, 
+            OpenAI, Ollama, Groq, Gemini, Exo, EncryptedShinkaiBody, ShinkaiBody,
             ShinkaiSubidentityType, ShinkaiBackend, InternalMetadata, MessageData, StopLLMRequest,
             NodeApiData, EncryptedShinkaiData, ShinkaiData, MessageSchemaType,
             APIUseRegistrationCodeSuccessResponse, GetPublicKeysResponse, APIError, Agent,

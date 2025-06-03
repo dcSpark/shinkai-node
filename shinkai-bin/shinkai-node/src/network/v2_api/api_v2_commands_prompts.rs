@@ -6,7 +6,6 @@ use reqwest::StatusCode;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::custom_prompt::CustomPrompt;
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::RwLock;
 
 use crate::network::{node_error::NodeError, Node};
 

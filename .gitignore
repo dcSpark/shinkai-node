@@ -19,8 +19,6 @@ bert.cpp/
 bert-cpp-server
 a.out
 tmp_*.js
-qr_code_profile_*.png
-qr_code_device_*.png
 .venv/
 shinkai-libs/shinkai-message-pyo3/tests/__pycache__
 output.wav
@@ -113,3 +111,9 @@ file_aggregator.sh
 shinkai-libs/shinkai-sqlite/dumped_prompts.rs
 storage_debug_localhost
 shinkai-libs/shinkai-fs/internal_tools_storage
+shinkai-libs/shinkai-crypto-identities/internal_tools_storage
+shinkai-bin/shinkai-node/internal_tools_storage
+shinkai-libs/shinkai-tcp-relayer/internal_tools_storage
+pre-install/
+shinkai-libs/shinkai-non-rust-code/internal_tools_storage
+shinkai-bin/shinkai-node/storage_test_node

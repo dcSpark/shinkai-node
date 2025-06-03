@@ -11,7 +11,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
@@ -25,8 +25,10 @@ use super::utils::node_test_api::api_registration_device_node_profile_main;
 fn node_retrying_test() {
     utils::db_handlers::setup();
     let rt = Runtime::new().unwrap();
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
-    rt.block_on(async {
+    let e = rt.block_on(async {
         // Node 1
         let node1_identity_name = "@@node1_test.sep-shinkai";
 
@@ -65,7 +67,7 @@ fn node_retrying_test() {
         let node2_identity_name = "@@node2_test.sep-shinkai";
         let _node2_profile_name = "main_profile_node2";
 
-        let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (node2_identity_sk, _node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         // eprintln!("node2_identity_pk: {:?}", signature_public_key_to_string(node2_identity_pk.clone()));
         // eprintln!("node2_encryption_pk: {:?}", encryption_public_key_to_string(node2_encryption_pk.clone()));
@@ -79,7 +81,16 @@ fn node_retrying_test() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
+        fn port_is_available(port: u16) -> bool {
+            match TcpListener::bind(("127.0.0.1", port)) {
+                Ok(_) => true,
+                Err(_) => false,
+            }
+        }
+
         // Create node1 and node2
+        assert!(port_is_available(8080), "Port 8080 is not available");
+        assert!(port_is_available(8081), "Port 8081 is not available");
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(
             node1_identity_name.to_string(),
@@ -95,7 +106,6 @@ fn node_retrying_test() {
             None,
             true,
             vec![],
-            
             None,
             None,
             default_embedding_model(),
@@ -119,7 +129,6 @@ fn node_retrying_test() {
             None,
             true,
             vec![],
-            
             None,
             None,
             default_embedding_model(),
@@ -262,18 +271,22 @@ fn node_retrying_test() {
         let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
 
         match result {
-            Ok(_) => {}
+            Ok(_) => Ok(()),
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
                     println!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
                 } else {
                     // If the error is not due to an abort, then it's unexpected
-                    panic!("An unexpected error occurred: {:?}", e);
+                    Err(e)
                 }
             }
         }
     });
 
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 }

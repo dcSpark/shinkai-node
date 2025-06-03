@@ -16,7 +16,6 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::IdentityManager;
-use crate::network::Node;
 use crate::tools::tool_execution::execution_header_generator::generate_execution_environment;
 use crate::tools::tool_implementation::tool_traits::ToolExecutor;
 
@@ -29,7 +28,7 @@ use std::{env, fs};
 // LLM Tool
 pub struct TypescriptUnsafeProcessorTool {
     pub tool: ShinkaiToolHeader,
-    pub tool_embedding: Option<Vec<f32>>,
+    pub _tool_embedding: Option<Vec<f32>>,
 }
 
 impl TypescriptUnsafeProcessorTool {
@@ -50,25 +49,29 @@ impl TypescriptUnsafeProcessorTool {
                     let mut params = Parameters::new();
                     params.properties.insert(
                         "code".to_string(),
-                        Property::new("string".to_string(), "The TypeScript code to execute".to_string()),
+                        Property::new("string".to_string(), "The TypeScript code to execute".to_string(), None),
                     );
                     params.required.push("code".to_string());
 
                     params.properties.insert(
                         "package".to_string(),
-                        Property::new("string".to_string(), "The package.json contents".to_string()),
+                        Property::new("string".to_string(), "The package.json contents".to_string(), None),
                     );
                     params.required.push("package".to_string());
 
                     params.properties.insert(
                         "parameters".to_string(),
-                        Property::new("object".to_string(), "Parameters to pass to the code".to_string()),
+                        Property::new("object".to_string(), "Parameters to pass to the code".to_string(), None),
                     );
                     params.required.push("parameters".to_string());
 
                     params.properties.insert(
                         "config".to_string(),
-                        Property::new("object".to_string(), "Configuration for the code execution".to_string()),
+                        Property::new(
+                            "object".to_string(),
+                            "Configuration for the code execution".to_string(),
+                            None,
+                        ),
                     );
                     params.required.push("config".to_string());
                     params
@@ -80,7 +83,7 @@ impl TypescriptUnsafeProcessorTool {
                 usage_type: None,
                 tool_offering: None,
             },
-            tool_embedding: None,
+            _tool_embedding: None,
         }
     }
 
@@ -145,7 +148,7 @@ impl TypescriptUnsafeProcessorTool {
                         ToolError::ExecutionError(format!("Failed to run npm install: {}", e))
                     }
                 })?;
-            let npm_output_string = String::from_utf8_lossy(&npm_output.stdout).to_string();
+            let _npm_output_string = String::from_utf8_lossy(&npm_output.stdout).to_string();
 
             if !npm_output.status.success() {
                 return Err(ToolError::ExecutionError(format!(
