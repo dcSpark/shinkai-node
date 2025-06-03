@@ -14,6 +14,8 @@ shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 [features]
 default = []
 console = ["console-subscriber"]
+# Enable additional debug output when this feature is selected
+debug = []
 # Enable ngrok support when the `ngrok` feature is selected
 ngrok = ["dep:ngrok"]
 # Enable swagger-ui when this feature is selected
@@ -27,12 +29,9 @@ doctest = false
 # libp2p dependencies for peer-to-peer networking
 libp2p = { version = "0.53", features = [
     "gossipsub",
-    "mdns",
     "noise",
     "yamux",
     "tcp",
-    "kad",
-    "relay",
     "dcutr",
     "identify",
     "ping",
