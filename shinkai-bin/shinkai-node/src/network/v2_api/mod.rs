@@ -13,7 +13,5 @@ pub mod api_v2_commands_tools;
 pub mod api_v2_commands_vecfs;
 pub mod api_v2_commands_wallets;
 
-#[cfg(feature = "ngrok")]
-pub use api_v2_commands_ngrok;
 #[cfg(not(feature = "ngrok"))]
 pub use api_v2_commands_ngrok_disabled as api_v2_commands_ngrok;
