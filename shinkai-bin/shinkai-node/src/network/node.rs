@@ -1013,21 +1013,6 @@ impl Node {
             } else {
                 eprintln!(">> DEBUG: libp2p_event_sender is None, skipping LibP2P");
             }
-
-            eprintln!(">> DEBUG: Falling back to TCP");
-            // Fallback to TCP implementation
-            Node::send_via_tcp(
-                message,
-                my_encryption_sk,
-                peer,
-                proxy_connection_info,
-                db,
-                maybe_identity_manager,
-                ws_manager,
-                save_to_db_flag,
-                retry,
-            )
-            .await;
         });
     }
 
@@ -1092,102 +1077,6 @@ impl Node {
 
         eprintln!(">> DEBUG: send_via_libp2p completed successfully");
         Ok(())
-    }
-
-    // Send a message via TCP (original implementation) - now handles LibP2P fallback
-    #[allow(clippy::too_many_arguments)]
-    async fn send_via_tcp(
-        message: ShinkaiMessage,
-        my_encryption_sk: Arc<EncryptionStaticKey>,
-        peer: (SocketAddr, ProfileName),
-        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        db: Arc<SqliteManager>,
-        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-        save_to_db_flag: bool,
-        retry: Option<u32>,
-    ) {
-        let start_time = Utc::now();
-        let message = Arc::new(message);
-
-        // Check if we have a proxy (LibP2P) configured
-        let has_proxy = {
-            let proxy_info = proxy_connection_info.lock().await;
-            proxy_info.is_some()
-        };
-
-        if has_proxy {
-            // For LibP2P proxy, we don't send via TCP - the message should have been sent via LibP2P
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                "LibP2P proxy configured - TCP fallback not needed",
-            );
-
-            if save_to_db_flag {
-                let _ = Node::save_to_db(
-                    true,
-                    &message,
-                    Arc::clone(&my_encryption_sk).as_ref().clone(),
-                    db.clone(),
-                    maybe_identity_manager.clone(),
-                    ws_manager,
-                )
-                .await;
-            }
-        } else {
-            // No proxy configured - use direct TCP networking (for backward compatibility)
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                "No proxy configured - using direct TCP networking",
-            );
-
-            // Add to retry queue with appropriate delay
-            let retry_count = retry.unwrap_or(0) + 1;
-            let retry_message = RetryMessage {
-                retry_count,
-                message: message.as_ref().clone(),
-                peer: peer.clone(),
-                save_to_db_flag,
-            };
-            let delay_seconds = 4_u64.pow(retry_count - 1);
-            let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
-            let _ = db.add_message_to_retry(&retry_message, retry_time);
-        }
-
-        let end_time = Utc::now();
-        let duration = end_time - start_time;
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!("Finished handling message send in {:?}", duration),
-        );
-    }
-
-    /// Function to get the writer for LibP2P networking
-    async fn get_writer(
-        _address: SocketAddr,
-        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-    ) -> Option<()> {
-        let proxy_connection = proxy_connection_info.lock().await;
-        if proxy_connection.is_some() {
-            // For LibP2P, we don't use direct TCP connections
-            // The message routing is handled by the LibP2P layer
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Debug,
-                "LibP2P proxy configured - message routing handled by LibP2P layer",
-            );
-            Some(())
-        } else {
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                "No proxy configured - LibP2P networking requires a proxy identity",
-            );
-            None
-        }
     }
 
     pub async fn save_to_db(

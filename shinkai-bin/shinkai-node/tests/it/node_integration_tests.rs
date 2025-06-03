@@ -49,7 +49,7 @@ fn subidentity_registration() {
         let node2_identity_name = NODE2_IDENTITY_NAME;
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
-        let node2_profile_name = "main_profile_node2";
+        let node2_profile_name = "main";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -754,16 +754,24 @@ fn test_relay_server_communication() {
 
         eprintln!(">> Starting relay test with real identities and relay server");
         
-        // Start nodes
+        eprintln!("Starting nodes");
+        // Start node1 and node2
         let node1_clone = Arc::clone(&node1);
         let node1_handler = tokio::spawn(async move {
+            eprintln!("\n\n");
+            eprintln!("Starting node 1");
             let _ = node1_clone.lock().await.start().await;
         });
 
+        let node1_abort_handler = node1_handler.abort_handle();
+
         let node2_clone = Arc::clone(&node2);
         let node2_handler = tokio::spawn(async move {
+            eprintln!("\n\n");
+            eprintln!("Starting node 2");
             let _ = node2_clone.lock().await.start().await;
         });
+        let node2_abort_handler = node2_handler.abort_handle();
 
         // Wait a bit for nodes to start
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -780,30 +788,24 @@ fn test_relay_server_communication() {
             
             let (profile1_sk, profile1_pk) = unsafe_deterministic_signature_keypair(100);
             let (profile1_encryption_sk, profile1_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
-            
-            let (device1_sk, _device1_pk) = unsafe_deterministic_signature_keypair(200);
-            let (device1_encryption_sk, _device1_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
-            // Register main profile with device for node1
-            let registration_result1 = api_registration_device_node_profile_main(
+            let _registration_result1 = local_registration_profile_node(
                 node1_commands_sender.clone(),
                 "main",
                 node1_identity_name,
-                node1_encryption_pk,
-                device1_encryption_sk,
-                clone_signature_secret_key(&device1_sk),
                 profile1_encryption_sk.clone(),
+                node1_encryption_pk,
                 clone_signature_secret_key(&profile1_sk),
-                "device1",
+                1,
             ).await;
             eprintln!(">> Node 1 ({}) profile registration completed", NODE1_IDENTITY_NAME);
 
             let (profile2_sk, profile2_pk) = unsafe_deterministic_signature_keypair(101);
             let (profile2_encryption_sk, profile2_encryption_pk) = unsafe_deterministic_encryption_keypair(101);
 
-            let registration_result2 = local_registration_profile_node(
+            let _registration_result2 = local_registration_profile_node(
                 node2_commands_sender.clone(),
-                "main_profile_node2",
+                "main",
                 node2_identity_name,
                 profile2_encryption_sk.clone(),
                 node2_encryption_pk,
@@ -811,6 +813,17 @@ fn test_relay_server_communication() {
                 1,
             ).await;
             eprintln!(">> Node 2 ({}) profile registration completed", NODE2_IDENTITY_NAME);
+
+            eprintln!("=== NODE KEYS ===");
+            eprintln!("Node 1 Identity Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&node1_identity_sk)));
+            eprintln!("Node 1 Identity Public Key:  {}", signature_public_key_to_string(node1_identity_pk));
+            eprintln!("Node 2 Identity Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&node2_identity_sk)));
+            eprintln!("Node 2 Identity Public Key:  {}", signature_public_key_to_string(node2_identity_pk));
+            eprintln!("=== PROFILE KEYS ===");
+            eprintln!("Profile 1 Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&profile1_sk)));
+            eprintln!("Profile 1 Public Key: {}", signature_public_key_to_string(profile1_pk));
+            eprintln!("Profile 2 Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&profile2_sk)));
+            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));               
 
             // Wait for tools to be ready
             let tools_ready1 = wait_for_default_tools(
@@ -906,12 +919,8 @@ fn test_relay_server_communication() {
             eprintln!(">> Node 1 to Node 2 send result: {:?}", send_result_1to2.is_ok());
             eprintln!(">> Node 2 to Node 1 send result: {:?}", send_result_2to1.is_ok());
 
-            if send_result_1to2.is_err() {
-                eprintln!(">> Node 1 to Node 2 send error: {:?}", send_result_1to2);
-            }
-            if send_result_2to1.is_err() {
-                eprintln!(">> Node 2 to Node 1 send error: {:?}", send_result_2to1);
-            }
+            assert_eq!(send_result_1to2.is_ok(), true, "Node 1 to Node 2 send should be successful");
+            assert_eq!(send_result_2to1.is_ok(), true, "Node 2 to Node 1 send should be successful");
 
             // Wait longer for messages to potentially be delivered via relay
             eprintln!(">> Waiting for relay message delivery...");
@@ -989,19 +998,32 @@ fn test_relay_server_communication() {
             eprintln!(">> Node 1 → Node 2: '{}'", message_content_1to2);
             eprintln!(">> Node 2 → Node 1: '{}'", message_content_2to1);
 
+            assert_eq!(node2_messages.len(), 2, "Node 2 should have two messages.");
+            assert_eq!(node1_messages.len(), 2, "Node 1 should have two messages.");
+
             eprintln!(">> Relay messaging test completed with real identities");
+            node1_abort_handler.abort();
+            node2_abort_handler.abort();
         });
 
-        // Wait for messaging test to complete
-        let _ = messaging_test.await;
-
-        eprintln!(">> Relay test completed - real nodes can communicate via relay server");
-
-        // Abort the tasks
-        node1_handler.abort();
-        node2_handler.abort();
-
-        Ok(())
+        // Wait for all tasks to complete
+        let result = tokio::try_join!(node1_handler, node2_handler, messaging_test);
+        match result {
+            Ok(_) => {
+                eprintln!(">> Relay test completed - nodes can communicate via relay server");
+                Ok(())
+            },
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    eprintln!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    Err(e)
+                }
+            }
+        }
     });
 
     rt.shutdown_timeout(Duration::from_secs(10));
