@@ -222,7 +222,7 @@ impl CommonActions for LocalEthersWallet {
             let rpc_url = Self::rpc_url_for_network(&asset.network_id);
             let token_address = asset.contract_address.clone().unwrap_or_else(|| asset.asset_id.clone());
             let input = get_balance::Input {
-                token_address,
+                token_address: Some(token_address),
                 wallet_address: public_address.address_id.clone(),
                 rpc_url,
             };
