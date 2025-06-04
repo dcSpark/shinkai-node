@@ -115,7 +115,7 @@ impl MCPServerTool {
             "no content returned from MCP server".to_string(),
         ))?;
         Ok(RunResult {
-            data: serde_json::to_value(data).map_err(|e| ToolError::FailedJSONParsing)?,
+            data: serde_json::to_value(data).map_err(|_| ToolError::FailedJSONParsing)?,
         })
     }
 

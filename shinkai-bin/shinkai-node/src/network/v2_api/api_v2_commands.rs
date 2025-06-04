@@ -2335,15 +2335,6 @@ impl Node {
                     return Ok(());
                 }
             }
-            _ => {
-                log::warn!(
-                    "MCP Server type not yet fully implemented or recognized: {:?}",
-                    mcp_server.r#type
-                );
-                // For now, we allow adding other types to the DB but won't attempt to spawn them.
-                // If a type is strictly unsupported, this block could return an error.
-                // The current logic proceeds to add to DB, which is fine.
-            }
         }
 
         let exists = db.check_if_server_exists(
@@ -2555,12 +2546,6 @@ impl Node {
                     return Ok(());
                 }
             }
-            _ => {
-                log::warn!(
-                    "MCP Server type not yet fully implemented or recognized: {:?}",
-                    mcp_server.r#type
-                );
-            }
         }
         let mcp_server_found = db.get_mcp_server(mcp_server.id)?;
         if mcp_server_found.is_none() {
@@ -2684,22 +2669,6 @@ impl Node {
                                 }
                             }
                         }
-                    }
-                    _ => {
-                        log::warn!(
-                            "MCP Server type not yet fully implemented or recognized: {:?}",
-                            updated_mcp_server.r#type
-                        );
-                        let _ = res
-                            .send(Err(APIError {
-                                code: StatusCode::BAD_REQUEST.as_u16(),
-                                error: "Invalid MCP Server Configuration".to_string(),
-                                message: format!(
-                                    "MCP Server type not yet fully implemented or recognized: {:?}",
-                                    updated_mcp_server.r#type
-                                ),
-                            }))
-                            .await;
                     }
                 }
                 let _ = res.send(Ok(updated_mcp_server)).await;

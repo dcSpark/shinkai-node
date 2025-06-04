@@ -26,10 +26,9 @@ pub struct ShinkaiToolOffering {
 }
 
 impl ShinkaiToolOffering {
-    pub fn get_price_for_usage(&self, usage_type_inquiry: &UsageTypeInquiry) -> Option<&ToolPrice> {
-        match (usage_type_inquiry, &self.usage_type) {
-            (UsageTypeInquiry::PerUse, UsageType::PerUse(price)) => Some(price),
-            _ => None,
+    pub fn get_price_for_usage(&self, _usage_type_inquiry: &UsageTypeInquiry) -> Option<&ToolPrice> {
+        match &self.usage_type {
+            UsageType::PerUse(price) => Some(price),
         }
     }
 

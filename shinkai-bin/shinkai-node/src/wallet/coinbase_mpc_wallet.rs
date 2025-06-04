@@ -122,7 +122,6 @@ impl CoinbaseMPCWallet {
                                 }
                                 _ => {}
                             },
-                            _ => {}
                         }
                     }
                 } else {
@@ -228,8 +227,7 @@ impl CoinbaseMPCWallet {
                                     }
                                 }
                                 _ => {}
-                            },
-                            _ => {}
+                            }
                         }
                     }
                 } else {

@@ -72,7 +72,7 @@ impl WalletManager {
         }
     }
 
-    pub async fn pay_invoice(&self, invoice: Invoice, node_name: ShinkaiName) -> Result<Payment, WalletError> {
+    pub async fn pay_invoice(&self, invoice: Invoice, _node_name: ShinkaiName) -> Result<Payment, WalletError> {
         // Check if the invoice network matches the wallet network
         let public_address = self.payment_wallet.get_payment_address();
         if invoice.address.network_id != public_address.network_id {
@@ -115,10 +115,10 @@ impl WalletManager {
         &self,
         public_address: PublicAddress,
         asset: Asset,
-        node_name: ShinkaiName,
+        _node_name: ShinkaiName,
     ) -> Result<Balance, WalletError> {
         self.payment_wallet
-            .check_asset_balance(public_address, asset, node_name)
+            .check_asset_balance(public_address, asset, _node_name)
             .await
     }
 

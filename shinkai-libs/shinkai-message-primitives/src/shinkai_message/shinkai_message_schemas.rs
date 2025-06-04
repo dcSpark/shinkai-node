@@ -5,7 +5,6 @@ use crate::shinkai_utils::job_scope::MinimalJobScope;
 use crate::shinkai_utils::shinkai_path::ShinkaiPath;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::collections::HashMap;
 use std::fmt;
 use utoipa::ToSchema;
 
