@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::utils::github_mcp::{
-    extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme,
-    fetch_github_file, parse_github_url, GitHubRepo, GitHubMcpError,
+    extract_env_vars_from_smithery_yaml, extract_mcp_env_vars_from_readme, fetch_github_file, parse_github_url, GitHubMcpError, GitHubRepo
 };
 use reqwest::Client;
 use rmcp::model::Tool;
@@ -19,6 +18,7 @@ pub fn convert_to_shinkai_tool(
     tool: &Tool,
     server_name: &str,
     server_id: &str,
+    server_command_hash: &str,
     node_name: &str,
     tools_config: Vec<ToolConfig>,
 ) -> ShinkaiTool {
@@ -42,7 +42,7 @@ pub fn convert_to_shinkai_tool(
         .to_lowercase()
         .replace(|c: char| !c.is_alphanumeric() && c != '_', "_");
     let tool_router_key =
-        MCPServerTool::create_tool_router_key(node_name.to_string(), server_id.to_string(), tool_name.to_string());
+        MCPServerTool::create_tool_router_key(Some(server_command_hash.to_string()), tool_name.to_string());
     let mcp_tool = MCPServerTool {
         name: format!("{} - {}", server_name, tool_name),
         author: node_name.to_string(),
@@ -65,6 +65,7 @@ pub fn convert_to_shinkai_tool(
         embedding: None,
         mcp_enabled: Some(false),
         mcp_server_ref: server_id.to_string(),
+        mcp_server_command_hash: Some(server_command_hash.to_string()),
         mcp_server_tool: tool.name.to_string(),
         mcp_server_url: "".to_string(),
         output_arg: ToolOutputArg::empty(),
@@ -174,8 +175,7 @@ async fn process_nodejs_mcp_project(
     env_vars: HashSet<String>,
 ) -> Result<AddMCPServerRequest, GitHubMcpError> {
     // Parse package.json
-    let package_json: Value =
-        serde_json::from_str(&package_json_content).map_err(GitHubMcpError::JsonError)?;
+    let package_json: Value = serde_json::from_str(&package_json_content).map_err(GitHubMcpError::JsonError)?;
 
     // Extract package name
     let package_name = package_json
@@ -209,24 +209,20 @@ async fn process_nodejs_mcp_project(
     Ok(request)
 }
 
-pub async fn import_mcp_server_from_github_url(
-    github_url: String,
-) -> Result<AddMCPServerRequest, GitHubMcpError> {
+pub async fn import_mcp_server_from_github_url(github_url: String) -> Result<AddMCPServerRequest, GitHubMcpError> {
     let repo_info = parse_github_url(&github_url)?;
 
     let client = Client::builder().build().map_err(GitHubMcpError::RequestError)?;
 
     // Try to fetch smithery.yaml first for environment variables
     let mut env_vars = HashSet::new();
-    let smithery_result =
-        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "smithery.yaml").await;
+    let smithery_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "smithery.yaml").await;
 
     if let Ok(smithery_content) = smithery_result {
         env_vars = extract_env_vars_from_smithery_yaml(&smithery_content);
     } else {
         // Fallback to README.md regex extraction
-        let readme_result =
-            fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
+        let readme_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "README.md").await;
 
         if let Ok(readme_content) = readme_result {
             env_vars = extract_mcp_env_vars_from_readme(&readme_content);
@@ -236,8 +232,7 @@ pub async fn import_mcp_server_from_github_url(
     }
 
     // Try to fetch package.json first (Node.js project)
-    let package_json_result =
-        fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
+    let package_json_result = fetch_github_file(&client, &repo_info.owner, &repo_info.repo, "package.json").await;
 
     if let Ok(package_json_content) = package_json_result {
         return process_nodejs_mcp_project(package_json_content, &repo_info, env_vars).await;
@@ -324,6 +319,7 @@ pub mod tests_mcp_manager {
         let tool = mock_tools_vec.first().unwrap();
         let server_name = "test_server";
         let server_id = "test_server_123";
+        let server_command_hash = "abcdef012345";
         let node_name = "test_node";
         let tools_config = vec![ToolConfig::BasicConfig(BasicConfig {
             key_name: "api_key".to_string(),
@@ -333,7 +329,14 @@ pub mod tests_mcp_manager {
             key_value: Some(serde_json::Value::String("test_key".to_string())),
         })];
 
-        let shinkai_tool = convert_to_shinkai_tool(tool, server_name, server_id, node_name, tools_config);
+        let shinkai_tool = convert_to_shinkai_tool(
+            tool,
+            server_name,
+            server_id,
+            server_command_hash,
+            node_name,
+            tools_config,
+        );
 
         if let ShinkaiTool::MCPServer(mcp_tool, enabled) = shinkai_tool {
             assert_eq!(mcp_tool.name, "test_server - get_info");
