@@ -1,7 +1,7 @@
 use ed25519_dalek::SigningKey;
 use futures::prelude::*;
 use libp2p::{
-    dcutr, gossipsub, identify, noise, ping,
+    dcutr, gossipsub, identify, noise, ping, quic,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
@@ -73,12 +73,21 @@ impl LibP2PManager {
             &format!("Local peer id: {}", local_peer_id),
         );
 
-        // Create transport
-        let transport = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
+        // Create transport with QUIC and TCP fallback
+        let tcp_transport = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
             .upgrade(libp2p::core::upgrade::Version::V1)
             .authenticate(noise::Config::new(&local_key)?)
             .multiplex(yamux::Config::default())
             .timeout(Duration::from_secs(20))
+            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
+
+        let quic_transport = quic::tokio::Transport::new(quic::Config::new(&local_key))
+            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
+
+        // Combine QUIC and TCP transports - QUIC will be preferred, TCP as fallback
+        let transport = quic_transport
+            .or_transport(tcp_transport)
+            .map(|either_output, _| either_output.into_inner())
             .boxed();
 
         // Create GossipSub behavior with simple default configuration
@@ -153,25 +162,34 @@ impl LibP2PManager {
         let swarm_config = libp2p::swarm::Config::with_tokio_executor();
         let mut swarm = Swarm::new(transport, behaviour, local_peer_id, swarm_config);
 
-        // Always listen on local port - relay networking still requires listening to connect to/from relay
-        let listen_addr = if let Some(port) = listen_port {
-            format!("/ip4/0.0.0.0/tcp/{}", port)
+        // Listen on both QUIC and TCP ports - relay networking still requires listening to connect to/from relay
+        let (tcp_listen_addr, quic_listen_addr) = if let Some(port) = listen_port {
+            (
+                format!("/ip4/0.0.0.0/tcp/{}", port),
+                format!("/ip4/0.0.0.0/udp/{}/quic-v1", port + 1), // QUIC on port + 1
+            )
         } else {
-            "/ip4/0.0.0.0/tcp/0".to_string()
+            (
+                "/ip4/0.0.0.0/tcp/0".to_string(),
+                "/ip4/0.0.0.0/udp/0/quic-v1".to_string(),
+            )
         };
-        swarm.listen_on(listen_addr.parse()?)?;
+
+        // Listen on both TCP and QUIC
+        swarm.listen_on(tcp_listen_addr.parse()?)?;
+        swarm.listen_on(quic_listen_addr.parse()?)?;
         
         if relay_address.is_some() {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
-                &format!("Listening on {} (relay mode - for relay connections)", listen_addr),
+                &format!("Listening on {} and {} (relay mode - for relay connections)", tcp_listen_addr, quic_listen_addr),
             );
         } else {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
-                &format!("Listening on {} (direct mode)", listen_addr),
+                &format!("Listening on {} and {} (direct mode)", tcp_listen_addr, quic_listen_addr),
             );
         }
 
@@ -548,11 +566,19 @@ impl LibP2PManager {
     }
 }
 
-/// Convert SocketAddr to Multiaddr
+/// Convert SocketAddr to Multiaddr (TCP)
 pub fn socket_addr_to_multiaddr(addr: SocketAddr) -> Multiaddr {
     match addr {
         SocketAddr::V4(addr) => format!("/ip4/{}/tcp/{}", addr.ip(), addr.port()).parse().unwrap(),
         SocketAddr::V6(addr) => format!("/ip6/{}/tcp/{}", addr.ip(), addr.port()).parse().unwrap(),
+    }
+}
+
+/// Convert SocketAddr to QUIC Multiaddr
+pub fn socket_addr_to_quic_multiaddr(addr: SocketAddr) -> Multiaddr {
+    match addr {
+        SocketAddr::V4(addr) => format!("/ip4/{}/udp/{}/quic-v1", addr.ip(), addr.port()).parse().unwrap(),
+        SocketAddr::V6(addr) => format!("/ip6/{}/udp/{}/quic-v1", addr.ip(), addr.port()).parse().unwrap(),
     }
 }
 

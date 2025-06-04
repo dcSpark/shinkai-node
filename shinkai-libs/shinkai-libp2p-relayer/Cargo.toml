@@ -22,12 +22,13 @@ uuid = { workspace = true, features = ["v4"] }
 thiserror = "1.0"
 
 # LibP2P dependencies
-libp2p = { version = "0.53", features = [
+libp2p = { version = "0.55.0", features = [
     "gossipsub",
     "mdns",
     "noise",
     "yamux",
     "tcp",
+    "quic",
     "identify",
     "ping",
     "tokio",

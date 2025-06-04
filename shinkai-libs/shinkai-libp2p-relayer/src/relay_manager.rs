@@ -4,7 +4,7 @@ use libp2p::{
     gossipsub::{self, Event as GossipsubEvent, MessageAuthenticity, ValidationMode, MessageId},
     identify::{self, Event as IdentifyEvent},
     kad,
-    noise, ping,
+    noise, ping, quic,
     relay::{self, Event as RelayEvent},
     swarm::{NetworkBehaviour, SwarmEvent, Config},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
@@ -49,11 +49,20 @@ impl RelayManager {
             .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to create keypair: {}", e)))?;
         let local_peer_id = PeerId::from(local_key.public());
 
-        // Configure transport with relay support
-        let transport = tcp::tokio::Transport::new(tcp::Config::default())
+        // Configure transport with QUIC and TCP fallback support
+        let tcp_transport = tcp::tokio::Transport::new(tcp::Config::default())
             .upgrade(libp2p::core::upgrade::Version::V1)
             .authenticate(noise::Config::new(&local_key)?)
             .multiplex(yamux::Config::default())
+            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
+
+        let quic_transport = quic::tokio::Transport::new(quic::Config::new(&local_key))
+            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
+
+        // Combine QUIC and TCP transports - QUIC will be preferred, TCP as fallback
+        let transport = quic_transport
+            .or_transport(tcp_transport)
+            .map(|either_output, _| either_output.into_inner())
             .boxed();
 
         // Configure gossipsub
@@ -119,20 +128,29 @@ impl RelayManager {
         // Create swarm with proper configuration
         let mut swarm = Swarm::new(transport, behaviour, local_peer_id, Config::with_tokio_executor());
 
-        // Listen on the specified port
-        let listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", listen_port)
+        // Listen on both TCP and QUIC ports
+        let tcp_listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", listen_port)
             .parse()
-            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid listen address: {}", e)))?;
+            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid TCP listen address: {}", e)))?;
+
+        let quic_listen_addr: Multiaddr = format!("/ip4/0.0.0.0/udp/{}/quic-v1", listen_port + 1)
+            .parse()
+            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid QUIC listen address: {}", e)))?;
 
         swarm
-            .listen_on(listen_addr)
-            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to listen: {}", e)))?;
+            .listen_on(tcp_listen_addr.clone())
+            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to listen on TCP: {}", e)))?;
+
+        swarm
+            .listen_on(quic_listen_addr.clone())
+            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to listen on QUIC: {}", e)))?;
 
         // Create message channel
         let (message_sender, message_receiver) = mpsc::unbounded_channel();
 
         println!("LibP2P Relay initialized with PeerId: {}", local_peer_id);
         println!("Relay node name: {}", relay_node_name);
+        println!("Listening on TCP: {} and QUIC: {}", tcp_listen_addr, quic_listen_addr);
 
         Ok(RelayManager {
             swarm,
