@@ -29,11 +29,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
-  /v2/get_all_network_tools_with_offering:
+  /v2/get_tools_with_offerings:
     get:
       tags:
       - crate
-      operationId: get_all_network_tools_with_offering_handler
+      operationId: get_tools_with_offerings_handler
       responses:
         '200':
           description: Successfully retrieved all network tools and offerings

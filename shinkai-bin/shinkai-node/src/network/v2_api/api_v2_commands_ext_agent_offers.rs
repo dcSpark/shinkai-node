@@ -204,7 +204,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_api_get_network_tool_with_offering(
+    pub async fn v2_api_get_tool_with_offering(
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         bearer: String,
@@ -277,7 +277,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn v2_api_get_all_network_tools_with_offering(
+    pub async fn v2_api_get_tools_with_offerings(
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         bearer: String,

@@ -1068,12 +1068,12 @@ pub enum NodeCommand {
         tool_router_key: String,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiGetNetworkToolWithOffering {
+    V2ApiGetToolWithOffering {
         bearer: String,
         tool_key_name: String,
         res: Sender<Result<Value, APIError>>,
     },
-    V2ApiGetAllNetworkToolsWithOffering {
+    V2ApiGetToolsWithOfferings {
         bearer: String,
         res: Sender<Result<Value, APIError>>,
     },
