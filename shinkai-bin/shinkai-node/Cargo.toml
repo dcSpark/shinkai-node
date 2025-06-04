@@ -92,6 +92,7 @@ zip = "2.2.1"
 open = "5.3.2"
 sha2 = "0.10"
 toml = "0.8.22"
+rustls = { workspace = true }
 ngrok = { version = "0.15.0", features = ["hyper"], optional = true }
 url = "2.5.0"
 serde_yaml = { workspace = true }
@@ -103,3 +104,5 @@ tokio-tungstenite = { workspace = true }
 tempfile = { workspace = true }
 fs_extra = "1.2.0"
 utoipa = { workspace = true, features = ["yaml"] }
+shinkai_test_framework = { path = "../../shinkai-test-framework" }
+shinkai_test_macro = { path = "../../shinkai-test-macro" }
