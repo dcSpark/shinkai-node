@@ -9,7 +9,7 @@ const ERC20_ABI = [
 ];
 
 type Parameters = {
-  tokenAddress: string;
+  tokenAddress?: string;
   walletAddress: string;
   rpcUrl: string;
 };
@@ -32,35 +32,56 @@ export async function run(
 ): Promise<Output> {
   const provider = new JsonRpcProvider(parameters.rpcUrl);
 
-  const contract = new Contract(parameters.tokenAddress, ERC20_ABI, provider);
-
   console.log("getting balance of ", parameters.walletAddress);
-  // Get token info using Promise.all for parallel execution
-  const [balance, decimals, symbol, name] = await Promise.all([
-    contract.balanceOf(parameters.walletAddress),
-    contract.decimals(),
-    contract.symbol(),
-    contract.name(),
-  ]);
-  provider.destroy();
 
-  // Format the balance using the token's decimals
-  const formattedBalance = formatUnits(balance, decimals);
+  if (parameters.tokenAddress) {
+    const contract = new Contract(parameters.tokenAddress, ERC20_ABI, provider);
+    // Get token info using Promise.all for parallel execution
+    const [balance, decimals, symbol, name] = await Promise.all([
+      contract.balanceOf(parameters.walletAddress),
+      contract.decimals(),
+      contract.symbol(),
+      contract.name(),
+    ]);
+    provider.destroy();
 
-  console.log("balance", balance);
-  console.log("formattedBalance", formattedBalance);
-  console.log("tokenInfo", {
-    name,
-    symbol,
-    decimals: Number(decimals),
-  });
-  return {
-    balance: balance.toString(),
-    formattedBalance,
-    tokenInfo: {
+    // Format the balance using the token's decimals
+    const formattedBalance = formatUnits(balance, decimals);
+
+    console.log("balance", balance);
+    console.log("formattedBalance", formattedBalance);
+    console.log("tokenInfo", {
       name,
       symbol,
       decimals: Number(decimals),
-    },
-  };
+    });
+    return {
+      balance: balance.toString(),
+      formattedBalance,
+      tokenInfo: {
+        name,
+        symbol,
+        decimals: Number(decimals),
+      },
+    };
+  } else {
+    const balance = await provider.getBalance(parameters.walletAddress);
+    provider.destroy();
+    const decimals = 18;
+    const symbol = "ETH";
+    const name = "Ether";
+    const formattedBalance = formatUnits(balance, decimals);
+    console.log("balance", balance);
+    console.log("formattedBalance", formattedBalance);
+    console.log("tokenInfo", { name, symbol, decimals });
+    return {
+      balance: balance.toString(),
+      formattedBalance,
+      tokenInfo: {
+        name,
+        symbol,
+        decimals,
+      },
+    };
+  }
 }

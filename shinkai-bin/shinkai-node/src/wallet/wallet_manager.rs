@@ -122,6 +122,13 @@ impl WalletManager {
             .await
     }
 
+    pub async fn check_balances_payment_wallet(
+        &self,
+        node_name: ShinkaiName,
+    ) -> Result<shinkai_message_primitives::schemas::wallet_mixed::AddressBalanceList, WalletError> {
+        self.payment_wallet.check_balances(node_name).await
+    }
+
     pub fn update_payment_wallet(&mut self, new_payment_wallet: Box<dyn PaymentWallet>) {
         self.payment_wallet = new_payment_wallet;
     }
