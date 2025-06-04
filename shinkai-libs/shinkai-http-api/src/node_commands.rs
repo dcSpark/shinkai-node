@@ -653,6 +653,11 @@ pub enum NodeCommand {
         message_id: String,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiGetMessageTraces {
+        bearer: String,
+        message_id: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiExecuteTool {
         bearer: String,
         tool_router_key: String,

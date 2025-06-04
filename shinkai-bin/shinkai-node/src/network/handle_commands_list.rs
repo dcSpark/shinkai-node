@@ -1639,6 +1639,12 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
+            NodeCommand::V2ApiGetMessageTraces { bearer, message_id, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_message_traces(db_clone, bearer, message_id, res).await;
+                });
+            }
             // NodeCommand::V2ApiGetToolingLogs {
             //     bearer,
             //     message_id,
