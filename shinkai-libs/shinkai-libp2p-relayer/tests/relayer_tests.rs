@@ -1,6 +1,5 @@
-use shinkai_libp2p_relayer::{LibP2PProxy, RelayMessage, LibP2PRelayError};
+use shinkai_libp2p_relayer::RelayMessage;
 use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
-use tokio::time::{timeout, Duration};
 
 #[tokio::test]
 async fn test_relay_message_serialization() {
@@ -27,7 +26,3 @@ async fn test_proxy_message_creation() {
     assert!(message.payload.is_empty());
     assert!(message.target_peer.is_none());
 }
-
-// Note: Full integration tests would require setting up actual libp2p nodes
-// and network connections, which is complex for a unit test environment.
-// These tests focus on the core message handling functionality. 
