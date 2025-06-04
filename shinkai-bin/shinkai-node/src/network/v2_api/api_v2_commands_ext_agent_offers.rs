@@ -6,7 +6,8 @@ use reqwest::StatusCode;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::ShinkaiToolOffering;
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
-use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiToolHeader;
+use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
+use serde_json::{Value, json};
 
 use crate::network::{node_error::NodeError, Node};
 
@@ -193,6 +194,72 @@ impl Node {
                 let _ = res.send(Err(api_error)).await;
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn v2_api_get_network_tool_with_offering(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_key_name: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tool = match db.get_tool_by_key(&tool_key_name) {
+            Ok(tool) => tool,
+            Err(SqliteManagerError::ToolNotFound(_)) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: "Tool not found".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to get tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let network_tool = if let ShinkaiTool::Network(net_tool, _) = tool {
+            net_tool
+        } else {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "Invalid Tool".to_string(),
+                message: "Requested tool is not a network tool".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        };
+
+        let tool_offering = match db.get_tool_offering(&tool_key_name) {
+            Ok(offering) => offering,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::NOT_FOUND.as_u16(),
+                    error: "Not Found".to_string(),
+                    message: format!("Tool offering not found: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let response = json!({
+            "network_tool": network_tool,
+            "tool_offering": tool_offering
+        });
+        let _ = res.send(Ok(response)).await;
 
         Ok(())
     }

@@ -30,6 +30,13 @@ pub fn ext_agent_offers_routes(
         .and(warp::body::json())
         .and_then(get_tool_offering_handler);
 
+    let get_network_tool_route = warp::path("get_network_tool_with_offering")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(get_network_tool_with_offering_handler);
+
     let remove_tool_offering_route = warp::path("remove_tool_offering")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -47,6 +54,7 @@ pub fn ext_agent_offers_routes(
         .or(get_tool_offering_route)
         .or(remove_tool_offering_route)
         .or(get_all_tool_offerings_route)
+        .or(get_network_tool_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -61,6 +69,11 @@ pub struct GetToolOfferingRequest {
 
 #[derive(Deserialize, ToSchema)]
 pub struct RemoveToolOfferingRequest {
+    pub tool_key_name: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct GetNetworkToolRequest {
     pub tool_key_name: String,
 }
 
@@ -222,17 +235,59 @@ pub async fn get_all_tool_offerings_handler(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/v2/get_network_tool_with_offering",
+    request_body = GetNetworkToolRequest,
+    responses(
+        (status = 200, description = "Successfully retrieved network tool and offering", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 404, description = "Not found", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_network_tool_with_offering_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: GetNetworkToolRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetNetworkToolWithOffering {
+            bearer,
+            tool_key_name: payload.tool_key_name,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(info) => Ok(warp::reply::with_status(
+            warp::reply::json(&info),
+            StatusCode::OK,
+        )),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
         set_tool_offering_handler,
         get_tool_offering_handler,
         remove_tool_offering_handler,
-        get_all_tool_offerings_handler
+        get_all_tool_offerings_handler,
+        get_network_tool_with_offering_handler
     ),
     components(
         schemas(ShinkaiToolOffering, APIError, GetToolOfferingRequest, UsageType, ToolPrice, PaymentRequirements, Asset, NetworkIdentifier,
-            RemoveToolOfferingRequest, SetToolOfferingRequest)
+            RemoveToolOfferingRequest, SetToolOfferingRequest, GetNetworkToolRequest)
     ),
     tags(
         (name = "tool_offerings", description = "Tool Offering API endpoints")
