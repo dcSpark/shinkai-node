@@ -43,6 +43,10 @@ pub enum NetworkEvent {
         peer_id: PeerId,
         address: Multiaddr,
     },
+    /// Ping a specific peer using libp2p ping
+    PingPeer {
+        peer_id: PeerId,
+    },
 }
 
 /// The main libp2p network manager
@@ -418,6 +422,15 @@ impl LibP2PManager {
                                 );
                             }
                         }
+                        Some(NetworkEvent::PingPeer { peer_id }) => {
+                            if let Err(e) = self.ensure_peer_connected(peer_id).await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to check connection to peer {}: {}", peer_id, e),
+                                );
+                            }
+                        }
                         None => break, // Channel closed
                     }
                 }
@@ -514,6 +527,39 @@ impl LibP2PManager {
                     &format!("Peer {} does not support Gossipsub", peer_id),
                 );
             }
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Ping(ping_event)) => {
+                let ping::Event { peer, connection: _, result } = ping_event;
+                match result {
+                    Ok(rtt) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            &format!("Successfully pinged peer {} in {:?}", peer, rtt),
+                        );
+                    }
+                    Err(ping::Failure::Timeout) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            &format!("Ping timeout to peer {}", peer),
+                        );
+                    }
+                    Err(ping::Failure::Unsupported) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            &format!("Ping unsupported by peer {}", peer),
+                        );
+                    }
+                    Err(ping::Failure::Other { error }) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            &format!("Ping error to peer {}: {}", peer, error),
+                        );
+                    }
+                }
+            }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
@@ -564,6 +610,35 @@ impl LibP2PManager {
         }
         Ok(())
     }
+
+    /// Check if a peer is connected (libp2p ping is automatic)
+    async fn ensure_peer_connected(&mut self, peer_id: PeerId) -> Result<(), Box<dyn std::error::Error>> {
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Checking connection to peer {}", peer_id),
+        );
+        
+        // Check if we're already connected to this peer
+        if self.swarm.is_connected(&peer_id) {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("Already connected to peer {}", peer_id),
+            );
+            return Ok(());
+        }
+        
+        // libp2p ping behavior is automatic - we just need to ensure connection
+        // The ping events will be automatically generated when connected
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Not currently connected to peer {} - ping results will be available once connected", peer_id),
+        );
+        
+        Ok(())
+    }
 }
 
 /// Convert SocketAddr to Multiaddr (TCP)
@@ -585,4 +660,12 @@ pub fn socket_addr_to_quic_multiaddr(addr: SocketAddr) -> Multiaddr {
 /// Convert PeerId and SocketAddr to a format similar to the current peer tuple
 pub fn peer_id_to_profile_name(peer_id: PeerId) -> String {
     format!("peer_{}", peer_id.to_string()[..8].to_lowercase())
+}
+
+/// Convert an ed25519 verifying key to a libp2p PeerId
+pub fn verifying_key_to_peer_id(verifying_key: ed25519_dalek::VerifyingKey) -> Result<PeerId, Box<dyn std::error::Error>> {
+    // Convert ed25519_dalek::VerifyingKey to libp2p::identity::PublicKey using the ed25519 module
+    let ed25519_public_key = libp2p::identity::ed25519::PublicKey::try_from_bytes(verifying_key.as_bytes())?;
+    let libp2p_public_key = libp2p::identity::PublicKey::from(ed25519_public_key);
+    Ok(PeerId::from(libp2p_public_key))
 } 

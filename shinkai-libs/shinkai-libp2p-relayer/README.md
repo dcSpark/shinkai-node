@@ -1,167 +1,203 @@
-# Shinkai LibP2P Relayer
+# Shinkai LibP2P Relay Manager
 
-A peer-to-peer relay server built with libp2p that enables Shinkai nodes to communicate through a decentralized relay infrastructure. This relay server provides an alternative to the TCP-based relay system, offering better NAT traversal, peer discovery, and decentralized messaging capabilities.
+A LibP2P relay server implementation for the Shinkai network with automatic external IP detection for cloud deployments.
 
 ## Features
 
-- **Decentralized Relay**: Uses libp2p's gossipsub protocol for message broadcasting and routing
-- **NAT Traversal**: Built-in support for DCUtR (Direct Connection Upgrade through Relay) protocol
-- **Peer Discovery**: Automatic peer discovery through mDNS and identity protocol
-- **Message Routing**: Intelligent message routing between registered Shinkai nodes
-- **Registry Integration**: Validates node identities against the Shinkai blockchain registry
-- **Connection Management**: Efficient connection pooling and rate limiting
-- **Monitoring**: Real-time statistics and peer management
+- 🌐 **Automatic External IP Detection**: Detects public IP addresses for proper external peer connectivity
+- 🔄 **Multi-transport Support**: Both TCP and QUIC protocols with fallback support
+- 📡 **Gossipsub Messaging**: Efficient peer-to-peer message propagation
+- 🔍 **Kademlia DHT**: Distributed peer discovery and routing
+- 🛡️ **Relay Protocol**: Allows peers to connect through the relay server
+- ☁️ **Cloud-Ready**: Optimized for Google Cloud Platform and other cloud providers
 
-## Architecture
+## Google Cloud Deployment
 
-The LibP2P Relayer consists of several key components:
+### Problem Solved
 
-### Core Components
+When deploying LibP2P relay servers on Google Cloud Platform using Container-Optimized OS with `--network="host"`, the container cannot automatically detect the VM's public IP address. This prevents external peers from connecting to the relay server.
 
-1. **RelayManager**: Manages the libp2p swarm and handles network events
-2. **LibP2PProxy**: Main relay server that coordinates peer registration and message routing
-3. **RelayMessage**: Protocol for wrapping Shinkai messages for relay transmission
-4. **RelayBehaviour**: Custom NetworkBehaviour combining gossipsub, identify, ping, and relay protocols
+This implementation solves the problem by:
 
-### Protocols Used
+1. **External IP Detection**: Automatically detects the Google Cloud VM's public IP using multiple fallback services
+2. **Address Advertisement**: Properly advertises external addresses to the LibP2P network
+3. **Cloud Integration**: Seamless operation with Google Cloud's networking model
 
-- **GossipSub**: For broadcasting and routing messages between peers
-- **Identify**: For peer identification and protocol negotiation
-- **Ping**: For connection health monitoring
-- **Relay**: For NAT traversal and connection relay
-- **Noise**: For secure transport encryption
-- **Yamux**: For stream multiplexing
+### Deployment Example
 
-## Configuration
+```dockerfile
+# Dockerfile for Google Cloud deployment
+FROM rust:1.75 as builder
 
-The relay server can be configured through environment variables or command-line arguments:
+WORKDIR /app
+COPY . .
+RUN cargo build --release --bin shinkai-libp2p-relayer
 
-### Required Parameters
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/shinkai-libp2p-relayer /usr/local/bin/
 
-- `IDENTITY_SECRET_KEY`: Ed25519 private key for relay identity (hex format)
-- `ENCRYPTION_SECRET_KEY`: X25519 private key for message encryption (hex format)
-- `NODE_NAME`: Shinkai node name for the relay (e.g., "@@relay.shinkai")
+EXPOSE 9090
 
-### Optional Parameters
+CMD ["shinkai-libp2p-relayer"]
+```
 
-- `PORT`: Listen port for the relay server (default: 8080)
-- `RPC_URL`: Blockchain RPC URL for registry validation (default: Sepolia Base)
-- `CONTRACT_ADDRESS`: Shinkai registry contract address
-- `MAX_CONNECTIONS`: Maximum concurrent connections (default: 20)
+```bash
+# Deploy to Google Cloud with host networking
+docker run -d \
+  --name shinkai-relay \
+  --network="host" \
+  -e RELAY_PORT=9090 \
+  -e NODE_NAME="@@my-relay.sep-shinkai" \
+  your-relay-image:latest
+```
 
 ## Usage
 
-### Starting the Relay Server
-
-```bash
-# Using environment variables
-export IDENTITY_SECRET_KEY="your_identity_key_here"
-export ENCRYPTION_SECRET_KEY="your_encryption_key_here"
-export NODE_NAME="@@relay.shinkai"
-export PORT="8080"
-
-cargo run --bin shinkai_libp2p_relayer
-
-# Using command line arguments
-cargo run --bin shinkai_libp2p_relayer -- \
-  --identity-secret-key "your_identity_key_here" \
-  --encryption-secret-key "your_encryption_key_here" \
-  --node-name "@@relay.shinkai" \
-  --port 8080
-```
-
-### Docker Usage
-
-```bash
-docker build -t shinkai-libp2p-relayer .
-docker run -e IDENTITY_SECRET_KEY="your_key" \
-           -e ENCRYPTION_SECRET_KEY="your_key" \
-           -e NODE_NAME="@@relay.shinkai" \
-           -p 8080:8080 \
-           shinkai-libp2p-relayer
-```
-
-## Integration with Shinkai Nodes
-
-Shinkai nodes can connect to the libp2p relay by configuring their libp2p manager to use the relay's multiaddr as a relay server:
+### Basic Setup
 
 ```rust
-// In shinkai-node configuration
-let relay_address = "/ip4/relay.example.com/tcp/8080/p2p/12D3KooW...";
-let libp2p_manager = LibP2PManager::new(
-    node_name,
-    listen_port,
-    message_handler,
-    Some(relay_address.parse().unwrap()),
-).await?;
+use shinkai_libp2p_relayer::RelayManager;
+use ed25519_dalek::SigningKey;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let identity_secret_key = SigningKey::generate(&mut rand::rngs::OsRng);
+    
+    let mut relay_manager = RelayManager::new(
+        9090, // Listen port
+        "@@my-relay.sep-shinkai".to_string(),
+        identity_secret_key,
+    ).await?;
+    
+    // Check if external IP was detected
+    if let Some(external_ip) = relay_manager.get_external_ip() {
+        println!("External IP detected: {}", external_ip);
+        
+        // Get external addresses for advertising
+        let addresses = relay_manager.get_external_addresses(9090);
+        for addr in addresses {
+            println!("External address: {}", addr);
+        }
+    }
+    
+    // Start the relay manager
+    relay_manager.run().await?;
+    
+    Ok(())
+}
 ```
 
-## Message Flow
+### Environment Variables
 
-1. **Registration**: Shinkai nodes connect to the relay and register their identity
-2. **Authentication**: The relay validates node identities against the blockchain registry  
-3. **Message Routing**: Messages are routed through gossipsub topics based on target identity
-4. **Delivery**: Messages are delivered to target peers through the relay network
+- `RELAY_PORT`: Port to listen on (default: 9090)
+- `NODE_NAME`: Identity name for the relay server
+- `IDENTITY_SECRET_KEY`: Ed25519 private key for node identity
 
-## Security
+## External IP Detection
 
-- **Identity Validation**: All connecting nodes must have valid registry entries
-- **Encrypted Transport**: All communications use Noise protocol encryption
-- **Rate Limiting**: Built-in connection and message rate limiting
-- **Signature Verification**: Messages are cryptographically signed and verified
+The relay manager automatically detects external IP addresses using multiple services for reliability:
 
-## Monitoring
+1. **httpbin.org/ip** - Primary service (JSON response)
+2. **api.ipify.org** - Fallback service (plain text)
+3. **ifconfig.me/ip** - Secondary fallback
+4. **icanhazip.com** - Tertiary fallback
 
-The relay provides several monitoring capabilities:
+### Detection Process
 
-- Connection statistics (active peers, connection limits)
-- Message routing metrics
-- Peer registry and health status
-- LibP2P swarm diagnostics
+1. Attempts each service with a 5-second timeout
+2. Parses response format (JSON or plain text)
+3. Validates IP address format
+4. Returns first successful detection
+5. Gracefully handles failures and continues without external IP if all services fail
 
-## Differences from TCP Relayer
+## Network Architecture
 
-| Feature | TCP Relayer | LibP2P Relayer |
-|---------|-------------|----------------|
-| Protocol | TCP | LibP2P (multiple protocols) |
-| NAT Traversal | Limited | Built-in DCUtR support |
-| Peer Discovery | Manual | Automatic (mDNS, DHT) |
-| Message Routing | Direct TCP | GossipSub pub/sub |
-| Scalability | Connection-based | Topic-based |
-| Resilience | Single point of failure | Distributed relay network |
-
-## Development
-
-### Building
-
-```bash
-cd shinkai-libs/shinkai-libp2p-relayer
-cargo build --release
+```
+┌─────────────────────────────────────────────────────────┐
+│                Google Cloud VM                          │
+│  ┌─────────────────────────────────────────────────────┐│
+│  │              Container (--network=host)             ││
+│  │  ┌─────────────────────────────────────────────────┐││
+│  │  │           LibP2P Relay Manager                  │││
+│  │  │                                                 │││
+│  │  │  • Binds to 0.0.0.0:9090 (all interfaces)      │││
+│  │  │  • Detects external IP: 203.0.113.42           │││
+│  │  │  • Advertises: /ip4/203.0.113.42/tcp/9090      │││
+│  │  │                /ip4/203.0.113.42/udp/9090/quic │││
+│  │  └─────────────────────────────────────────────────┘││
+│  └─────────────────────────────────────────────────────┘│
+│                                                         │
+│  Internal IP: 10.128.0.42                              │
+│  External IP: 203.0.113.42                              │
+└─────────────────────────────────────────────────────────┘
+                           │
+                           │ Firewall allows :9090
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                  Internet Peers                         │
+│                                                         │
+│  Connect to: /ip4/203.0.113.42/tcp/9090                │
+│             /ip4/203.0.113.42/udp/9090/quic-v1         │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Testing
+## Logging and Monitoring
 
-```bash
-cargo test
+The relay manager provides detailed logging for monitoring:
+
+```
+🌐 External address confirmed and advertised: /ip4/203.0.113.42/tcp/9090
+📍 Connection established with peer: 12D3KooW...
+⚠️  External address expired: /ip4/203.0.113.42/tcp/9090
 ```
 
-### Dependencies
+Key log messages:
+- External IP detection attempts and results
+- Address advertisement confirmations
+- Peer connection events
+- Relay reservation acceptances
+- Kademlia DHT updates
 
-The relayer depends on:
-- `libp2p` 0.53 with gossipsub, relay, and other protocols
-- `shinkai-message-primitives` for message handling
-- `shinkai-crypto-identities` for registry integration
-- Standard async runtime (`tokio`)
+## Security Considerations
 
-## Future Enhancements
+- Uses Ed25519 signatures for peer authentication
+- Supports TLS encryption through QUIC transport
+- Validates all incoming peer connections
+- Implements rate limiting through connection limits
 
-- **Multi-relay Networks**: Support for connecting multiple relay servers
-- **Advanced Routing**: Content-based routing and message filtering
-- **Metrics Export**: Prometheus metrics for monitoring
-- **Load Balancing**: Intelligent load distribution across relay nodes
-- **Circuit Relay v2**: Upgrade to latest libp2p relay protocol
-- **WebRTC Support**: Browser-based peer connections
+## Troubleshooting
+
+### External IP Detection Fails
+
+If external IP detection fails:
+
+1. Check internet connectivity from the container
+2. Verify firewall allows outbound HTTPS (ports 80/443)
+3. Check if IP detection services are accessible
+4. The relay will still function with local addresses only
+
+### Google Cloud Specific Issues
+
+1. **Firewall Rules**: Ensure the relay port is open:
+   ```bash
+   gcloud compute firewall-rules create allow-shinkai-relay \
+     --allow tcp:9090,udp:9090 \
+     --source-ranges 0.0.0.0/0
+   ```
+
+2. **Container-Optimized OS**: Use `--network="host"` for direct IP access
+
+3. **External IP Assignment**: Ensure the VM has an external IP assigned
+
+## Dependencies
+
+- `libp2p` 0.55.0+ - Core LibP2P networking
+- `reqwest` 0.11+ - HTTP client for IP detection
+- `tokio` - Async runtime
+- `serde_json` - JSON parsing for IP detection services
 
 ## License
 
-This project is licensed under the same terms as the main Shinkai project. 
+This project is licensed under the same terms as the main Shinkai Node project. 

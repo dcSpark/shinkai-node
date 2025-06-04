@@ -36,14 +36,79 @@ pub struct RelayManager {
     peer_identities: HashMap<PeerId, String>,  // peer_id -> identity
     message_sender: mpsc::UnboundedSender<RelayMessage>,
     message_receiver: mpsc::UnboundedReceiver<RelayMessage>,
+    external_ip: Option<std::net::IpAddr>, // Store detected external IP
 }
 
 impl RelayManager {
+    /// Detect the external IP address using multiple services as fallback
+    async fn detect_external_ip() -> Option<std::net::IpAddr> {
+        // List of external IP detection services
+        let services = [
+            "https://httpbin.org/ip",
+            "https://api.ipify.org",
+            "https://ifconfig.me/ip",
+            "https://icanhazip.com",
+        ];
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .ok()?;
+
+        for service in &services {
+            println!("Attempting to detect external IP using: {}", service);
+            
+            match tokio::time::timeout(Duration::from_secs(5), client.get(*service).send()).await {
+                Ok(Ok(response)) => {
+                    if let Ok(body) = response.text().await {
+                        let ip_str = if service.contains("httpbin.org") {
+                            // httpbin.org returns JSON: {"origin": "IP"}
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                                if let Some(origin) = json.get("origin").and_then(|v| v.as_str()) {
+                                    origin.split(',').next().unwrap_or("").trim().to_string()
+                                } else {
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            // Other services return plain text IP
+                            body.trim().to_string()
+                        };
+
+                        if let Ok(ip) = ip_str.parse::<std::net::IpAddr>() {
+                            println!("Successfully detected external IP: {} using {}", ip, service);
+                            return Some(ip);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    println!("HTTP error from {}: {}", service, e);
+                }
+                Err(_) => {
+                    println!("Timeout detecting IP from: {}", service);
+                }
+            }
+        }
+
+        println!("Failed to detect external IP from all services");
+        None
+    }
+
     pub async fn new(
         listen_port: u16,
         relay_node_name: String,
         identity_secret_key: SigningKey,
     ) -> Result<Self, LibP2PRelayError> {
+        // Detect external IP address first
+        let external_ip = Self::detect_external_ip().await;
+        if let Some(ip) = external_ip {
+            println!("Detected external IP address: {}", ip);
+        } else {
+            println!("Warning: Could not detect external IP address. External connectivity may be limited.");
+        }
+
         // Generate deterministic PeerId from relay name
         let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())
             .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to create keypair: {}", e)))?;
@@ -128,7 +193,7 @@ impl RelayManager {
         // Create swarm with proper configuration
         let mut swarm = Swarm::new(transport, behaviour, local_peer_id, Config::with_tokio_executor());
 
-        // Listen on both TCP and QUIC ports
+        // Listen on both TCP and QUIC ports - bind to all interfaces
         let tcp_listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", listen_port)
             .parse()
             .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid TCP listen address: {}", e)))?;
@@ -145,12 +210,36 @@ impl RelayManager {
             .listen_on(quic_listen_addr.clone())
             .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to listen on QUIC: {}", e)))?;
 
+        // If we detected an external IP, also add external addresses to help with connectivity
+        if let Some(external_ip) = external_ip {
+            let external_tcp_addr: Multiaddr = format!("/ip4/{}/tcp/{}", external_ip, listen_port)
+                .parse()
+                .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid external TCP address: {}", e)))?;
+            
+            let external_quic_addr: Multiaddr = format!("/ip4/{}/udp/{}/quic-v1", external_ip, listen_port)
+                .parse()
+                .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid external QUIC address: {}", e)))?;
+            
+            // Add external addresses for advertisement
+            swarm.add_external_address(external_tcp_addr.clone());
+            swarm.add_external_address(external_quic_addr.clone());
+            
+            println!("Added external addresses for advertisement:");
+            println!("  TCP: {}", external_tcp_addr);
+            println!("  QUIC: {}", external_quic_addr);
+        }
+
         // Create message channel
         let (message_sender, message_receiver) = mpsc::unbounded_channel();
 
         println!("LibP2P Relay initialized with PeerId: {}", local_peer_id);
         println!("Relay node name: {}", relay_node_name);
         println!("Listening on TCP: {} and QUIC: {}", tcp_listen_addr, quic_listen_addr);
+        
+        if let Some(external_ip) = external_ip {
+            println!("External IP detected: {} - peers can connect via /ip4/{}/tcp/{} or /ip4/{}/udp/{}/quic-v1", 
+                external_ip, external_ip, listen_port, external_ip, listen_port);
+        }
 
         Ok(RelayManager {
             swarm,
@@ -158,7 +247,29 @@ impl RelayManager {
             peer_identities: HashMap::new(),
             message_sender,
             message_receiver,
+            external_ip,
         })
+    }
+
+    /// Get the external IP address if detected
+    pub fn get_external_ip(&self) -> Option<std::net::IpAddr> {
+        self.external_ip
+    }
+
+    /// Get external addresses for this relay
+    pub fn get_external_addresses(&self, listen_port: u16) -> Vec<Multiaddr> {
+        let mut addresses = Vec::new();
+        
+        if let Some(external_ip) = self.external_ip {
+            if let Ok(tcp_addr) = format!("/ip4/{}/tcp/{}", external_ip, listen_port).parse::<Multiaddr>() {
+                addresses.push(tcp_addr);
+            }
+            if let Ok(quic_addr) = format!("/ip4/{}/udp/{}/quic-v1", external_ip, listen_port).parse::<Multiaddr>() {
+                addresses.push(quic_addr);
+            }
+        }
+        
+        addresses
     }
 
     pub fn local_peer_id(&self) -> PeerId {
@@ -233,6 +344,20 @@ impl RelayManager {
         match event {
             SwarmEvent::NewListenAddr { address, .. } => {
                 println!("Relay listening on {}", address);
+                
+                // If this is an external address, log it prominently
+                if let Some(external_ip) = self.external_ip {
+                    let addr_str = address.to_string();
+                    if addr_str.contains(&external_ip.to_string()) {
+                        println!("🌐 External address ready for peer connections: {}", address);
+                    }
+                }
+            }
+            SwarmEvent::ExternalAddrConfirmed { address } => {
+                println!("🌐 External address confirmed and advertised: {}", address);
+            }
+            SwarmEvent::ExternalAddrExpired { address } => {
+                println!("⚠️  External address expired: {}", address);
             }
             SwarmEvent::Behaviour(RelayBehaviourEvent::Gossipsub(GossipsubEvent::Message {
                 propagation_source,

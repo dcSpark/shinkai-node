@@ -760,28 +760,16 @@ impl Node {
                     _listen = listen_future => unreachable!(),
                     _ping = ping_future => {
                         // Clone the necessary variables for `ping_all`
-                        let node_name_clone = self.node_name.clone();
-                        let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                        let identity_secret_key_clone = self.identity_secret_key.clone();
                         let peers_clone = self.peers.clone();
-                        let db_clone = Arc::clone(&self.db);
                         let identity_manager_clone = Arc::clone(&self.identity_manager);
                         let listen_address_clone = self.listen_address;
-                        let proxy_connection_info = self.proxy_connection_info.clone();
-                        let ws_manager_trait = self.ws_manager_trait.clone();
-
-                        // Spawn a new task to call `ping_all` asynchronously
+                        let libp2p_manager_clone = self.libp2p_manager.clone();
                         tokio::spawn(async move {
                             let _ = Self::ping_all(
-                                node_name_clone,
-                                encryption_secret_key_clone,
-                                identity_secret_key_clone,
                                 peers_clone,
-                                db_clone,
                                 identity_manager_clone,
                                 listen_address_clone,
-                                proxy_connection_info,
-                                ws_manager_trait,
+                                libp2p_manager_clone,
                             ).await;
                         });
                     },

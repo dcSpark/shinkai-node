@@ -1,8 +1,6 @@
 use crate::llm_provider::job_manager::JobManager;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::IdentityManager;
-use crate::network::network_manager::network_handlers::{ping_pong, PingPong};
-use crate::network::node::ProxyConnectionInfo;
 use crate::network::node_error::NodeError;
 use crate::network::Node;
 
@@ -27,7 +25,7 @@ use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName, llm_providers::serialized_llm_provider::{LLMProviderInterface, Ollama, SerializedLLMProvider}, shinkai_name::ShinkaiName
     }, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{
-        encryption::clone_static_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::clone_signature_secret_key
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, signatures::clone_signature_secret_key
     }
 };
 use shinkai_sqlite::errors::SqliteManagerError;
@@ -35,7 +33,7 @@ use shinkai_sqlite::SqliteManager;
 use std::{io::Error, net::SocketAddr};
 use std::{str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 
 impl Node {
     pub async fn send_peer_addresses(
@@ -565,46 +563,73 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub async fn ping_all(
-        node_name: ShinkaiName,
-        encryption_secret_key: EncryptionStaticKey,
-        identity_secret_key: SigningKey,
         peers: DashMap<(SocketAddr, String), chrono::DateTime<Utc>>,
-        db: Arc<SqliteManager>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         listen_address: SocketAddr,
-        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        libp2p_manager: Option<Arc<Mutex<crate::network::libp2p_manager::LibP2PManager>>>,
     ) -> Result<(), NodeError> {
-        info!("{} > Pinging all peers {} ", listen_address, peers.len());
+        info!("{} > Checking connectivity to {} peers using libp2p ping", listen_address, peers.len());
+
+        // If no libp2p manager is available, skip the ping check
+        let Some(libp2p_manager) = libp2p_manager else {
+            info!("{} > No libp2p manager available, skipping connectivity check", listen_address);
+            return Ok(());
+        };
+
+        let event_sender = {
+            let manager = libp2p_manager.lock().await;
+            manager.event_sender()
+        };
+
+        let mut successful_pings = 0;
+        let mut failed_pings = 0;
 
         for (peer, _) in peers.clone() {
-            let sender = node_name.get_node_name_string();
-            let receiver_profile_identity = identity_manager
+            let profile_name = &peer.1;
+            
+            // Get the identity for this peer
+            match identity_manager
                 .lock()
                 .await
-                .external_profile_to_global_identity(&peer.1.clone(), None)
+                .external_profile_to_global_identity(profile_name, None)
                 .await
-                .unwrap();
-            let receiver = receiver_profile_identity.full_identity_name.get_node_name_string();
-            let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
-
-            // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the
-            // connection
-            let _ = ping_pong(
-                peer,
-                PingPong::Ping,
-                clone_static_secret_key(&encryption_secret_key),
-                clone_signature_secret_key(&identity_secret_key),
-                receiver_public_key,
-                sender,
-                receiver,
-                Arc::clone(&db),
-                identity_manager.clone(),
-                proxy_connection_info.clone(),
-                ws_manager.clone(),
-            )
-            .await;
+            {
+                Ok(receiver_identity) => {
+                    // Extract the signature verifying key and convert to PeerId
+                    if let Some(signature_key) = receiver_identity.profile_signature_public_key {
+                        match crate::network::libp2p_manager::verifying_key_to_peer_id(signature_key) {
+                            Ok(peer_id) => {
+                                                                 // Send connectivity check event to libp2p manager
+                                 if let Err(e) = event_sender.send(crate::network::libp2p_manager::NetworkEvent::PingPeer { peer_id }) {
+                                     error!("Failed to send connectivity check event for peer {}: {}", profile_name, e);
+                                     failed_pings += 1;
+                                 } else {
+                                     info!("Checking connectivity to peer {} (PeerId: {}) - libp2p will automatically ping once connected", profile_name, peer_id);
+                                     successful_pings += 1;
+                                 }
+                            }
+                            Err(e) => {
+                                error!("Failed to convert signature key to PeerId for peer {}: {}", profile_name, e);
+                                failed_pings += 1;
+                            }
+                        }
+                    } else {
+                        error!("No signature key available for peer {}", profile_name);
+                        failed_pings += 1;
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to get identity for peer {}: {}", profile_name, e);
+                    failed_pings += 1;
+                }
+            }
         }
+
+        info!(
+            "{} > Connectivity check summary: {} peers queued for monitoring, {} failed to queue",
+            listen_address, successful_pings, failed_pings
+        );
+
         Ok(())
     }
 
