@@ -12,7 +12,7 @@ use super::api_v2_handlers_swagger_ui::swagger_ui_routes;
 use super::api_v2_handlers_tools::tool_routes;
 use super::api_v2_handlers_vecfs::vecfs_routes;
 use super::api_v2_handlers_wallets::wallet_routes;
-use super::{api_v2_handlers_cron::cron_routes, api_v2_handlers_mcp_servers::add_mcp_server_handler};
+use super::api_v2_handlers_cron::cron_routes;
 use async_channel::Sender;
 use serde::Serialize;
 use serde_json::{json, Value};

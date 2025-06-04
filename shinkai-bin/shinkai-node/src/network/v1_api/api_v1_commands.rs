@@ -718,7 +718,7 @@ impl Node {
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
         first_device_needs_registration_code: bool,
-        embedding_generator: Arc<RemoteEmbeddingGenerator>,
+        _embedding_generator: Arc<RemoteEmbeddingGenerator>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
         encryption_public_key: EncryptionPublicKey,

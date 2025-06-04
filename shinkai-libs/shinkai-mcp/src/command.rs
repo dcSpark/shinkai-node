@@ -123,12 +123,14 @@ fn default_shell() -> String {
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct CommandWrappedInShellBuilder {
     program: String,
     args: Option<Vec<String>>,
     envs: Option<HashMap<String, String>>,
 }
 
+#[allow(dead_code)]
 impl CommandWrappedInShellBuilder {
     pub fn new<S: AsRef<OsStr>>(program: S) -> Self {
         Self {

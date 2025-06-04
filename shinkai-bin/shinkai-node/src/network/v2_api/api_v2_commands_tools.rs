@@ -3572,7 +3572,7 @@ impl Node {
 
         println!("[Step 5] Removing folder based on language");
         // Remove folder based on language
-        let mut env_language = "";
+        let env_language;
         match language {
             CodeLanguage::Python => {
                 env_language = "Python";

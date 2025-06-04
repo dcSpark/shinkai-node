@@ -43,10 +43,9 @@ use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::{
-    agent_tool_wrapper::AgentToolWrapper, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::{BasicConfig, ToolConfig}, tool_output_arg::ToolOutputArg, tool_types::ToolResult
+    agent_tool_wrapper::AgentToolWrapper, shinkai_tool::ShinkaiTool, tool_config::{BasicConfig, ToolConfig}
 };
 use std::collections::HashMap;
-use std::process::Command;
 use std::time::Instant;
 use std::{env, sync::Arc};
 use tokio::sync::Mutex;

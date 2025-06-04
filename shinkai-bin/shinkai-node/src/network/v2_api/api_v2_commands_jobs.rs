@@ -329,7 +329,7 @@ impl Node {
         };
 
         // Convert the retrieved messages to V2ChatMessage
-        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+        let _v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
             Ok(v2_messages) => v2_messages.into_iter().filter_map(|msg| msg.first().cloned()).collect(),
             Err(err) => {
                 let api_error = APIError {
@@ -343,7 +343,7 @@ impl Node {
         };
 
         // Send the converted messages back to the requester
-        if let Err(_) = res.send(Ok(v2_chat_messages)).await {
+        if let Err(_) = res.send(Ok(_v2_chat_messages)).await {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
@@ -383,7 +383,7 @@ impl Node {
         };
 
         // Convert the retrieved messages to Vec<Vec<V2ChatMessage>>
-        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+        let _v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
             Ok(v2_messages) => v2_messages,
             Err(err) => {
                 let api_error = APIError {
@@ -397,7 +397,7 @@ impl Node {
         };
 
         // Send the converted messages back to the requester
-        if let Err(_) = res.send(Ok(v2_chat_messages)).await {
+        if let Err(_) = res.send(Ok(_v2_chat_messages)).await {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                 error: "Internal Server Error".to_string(),
@@ -1529,7 +1529,7 @@ impl Node {
         };
 
         // Convert the retrieved messages to Vec<V2ChatMessage>
-        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+        let _v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
             Ok(v2_messages) => v2_messages,
             Err(err) => {
                 let api_error = APIError {
@@ -1610,7 +1610,7 @@ impl Node {
         };
 
         // Convert the retrieved messages to Vec<V2ChatMessage>
-        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+        let _v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
             Ok(v2_messages) => v2_messages,
             Err(err) => {
                 let api_error = APIError {
@@ -1626,7 +1626,7 @@ impl Node {
         // TODO: Review and fix this
 
         // Retrieve the filenames in the inboxes
-        let _file_inboxes = v2_chat_messages
+        let _file_inboxes = _v2_chat_messages
             .iter()
             .flatten()
             .map(|message| message.job_message.fs_files_paths.clone())
@@ -1651,7 +1651,7 @@ impl Node {
                     }
                 }
 
-                for message in v2_chat_messages.into_iter().flatten() {
+                for message in _v2_chat_messages.into_iter().flatten() {
                     let timestamp = message.node_api_data.node_timestamp;
                     let sender = message.sender_subidentity;
                     let receiver = message.receiver_subidentity;
@@ -1706,7 +1706,7 @@ impl Node {
                 let _ = res.send(Ok(json!(csv_data))).await;
             }
             ExportInboxMessagesFormat::JSON => {
-                let result_messages = v2_chat_messages
+                let result_messages = _v2_chat_messages
                     .into_iter()
                     .map(|messages| {
                         messages
@@ -1746,7 +1746,7 @@ impl Node {
             ExportInboxMessagesFormat::TXT => {
                 let mut result_messages = String::new();
 
-                for messages in v2_chat_messages {
+                for messages in _v2_chat_messages {
                     for message in messages {
                         let role = if message
                             .sender_subidentity

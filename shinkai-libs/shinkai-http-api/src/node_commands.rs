@@ -20,10 +20,9 @@ use shinkai_message_primitives::{
         shinkai_name::ShinkaiName,
         shinkai_tool_offering::{ShinkaiToolOffering, UsageTypeInquiry},
         shinkai_tools::{CodeLanguage, DynamicToolType},
-        smart_inbox::{SmartInbox, V2SmartInbox},
+        smart_inbox::V2SmartInbox,
         tool_router_key::ToolRouterKey,
         wallet_complementary::{WalletRole, WalletSource},
-        wallet_mixed::NetworkIdentifier,
         x402_types::Network
     }, shinkai_message::{
         shinkai_message::ShinkaiMessage, shinkai_message_schemas::{

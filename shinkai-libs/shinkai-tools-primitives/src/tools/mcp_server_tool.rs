@@ -148,17 +148,16 @@ impl MCPServerTool {
     pub fn tool_config_to_env_vars(configs: Vec<ToolConfig>) -> HashMap<String, String> {
         let configs = configs
             .iter()
-            .filter_map(|c| {
-                if let ToolConfig::BasicConfig(c) = c {
-                    if let Some(value) = &c.key_value {
-                        let mut parsed_value = value.to_string();
-                        if let Some(value) = value.as_str() {
-                            parsed_value = value.to_string();
-                        }
-                        Some((c.key_name.clone(), parsed_value))
-                    } else {
-                        None
+            .filter_map(|cfg| {
+                let c = match cfg {
+                    ToolConfig::BasicConfig(c) => c,
+                };
+                if let Some(value) = &c.key_value {
+                    let mut parsed_value = value.to_string();
+                    if let Some(value) = value.as_str() {
+                        parsed_value = value.to_string();
                     }
+                    Some((c.key_name.clone(), parsed_value))
                 } else {
                     None
                 }

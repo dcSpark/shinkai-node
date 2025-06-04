@@ -261,7 +261,7 @@ impl JobManager {
                         let in_progress = processing_jobs.clone();
 
                         tokio::spawn(async move {
-                            (job_processing_fn)(
+                            let _ = (job_processing_fn)(
                                 job,
                                 db_clone,
                                 node_profile_name,
@@ -360,7 +360,7 @@ impl JobManager {
                                     let in_progress = processing_jobs.clone();
 
                                     tokio::spawn(async move {
-                                        (job_processing_fn)(
+                                        let _ = (job_processing_fn)(
                                             job,
                                             db_clone,
                                             node_profile_name,
@@ -412,7 +412,7 @@ impl JobManager {
                                         let in_progress = processing_jobs.clone();
 
                                         tokio::spawn(async move {
-                                            (job_processing_fn)(
+                                            let _ = (job_processing_fn)(
                                                 imm_job,
                                                 db_clone,
                                                 node_profile_name,

@@ -4,7 +4,6 @@ use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
-use shinkai_message_primitives::schemas::mcp_server::MCPServer;
 use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
