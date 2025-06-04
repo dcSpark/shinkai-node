@@ -8,8 +8,8 @@ Deno.test(
     const result = await run(
       {
         rpc_urls: [
-          "https://base-sepolia.blockpi.network/v1/rpc/public",
           "https://sepolia.base.org",
+          "https://base-sepolia.blockpi.network/v1/rpc/public",
           "https://base-sepolia-rpc.publicnode.com",
           "https://base-sepolia.gateway.tenderly.co",
         ],
