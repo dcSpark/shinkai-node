@@ -6,7 +6,7 @@ use crate::{NonRustCodeRunnerFactory, NonRustRuntime, RunError};
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Input {
-    pub token_address: String,
+    pub token_address: Option<String>,
     pub wallet_address: String,
     pub rpc_url: String,
 }
@@ -47,8 +47,8 @@ mod tests {
 
         // Using real USDC contract address on Ethereum mainnet
         let input = Input {
-            token_address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(), // USDC on Ethereum
-            wallet_address: "0x0000000000000000000000000000000000000000".to_string(), // Burn address
+            token_address: Some("0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string()), // USDC on Ethereum
+            wallet_address: "0x0000000000000000000000000000000000000000".to_string(),      // Burn address
             rpc_url: "https://sepolia.base.org".to_string(),
         };
 

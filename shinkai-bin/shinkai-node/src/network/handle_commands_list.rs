@@ -1454,6 +1454,21 @@ impl Node {
                     let _ = Node::v2_api_list_wallets(db_clone, wallet_manager_clone, bearer, res).await;
                 });
             }
+            NodeCommand::V2ApiGetWalletBalance { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let wallet_manager_clone = self.wallet_manager.clone();
+                let node_name = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_wallet_balance(
+                        db_clone,
+                        wallet_manager_clone,
+                        bearer,
+                        node_name,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiGetStorageLocation { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {

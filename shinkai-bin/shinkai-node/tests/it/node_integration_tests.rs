@@ -279,7 +279,11 @@ fn subidentity_registration() {
             )
             .await
             .expect("Failed to check for default tools");
-            assert!(tools_ready, "Default tools should be ready within 30 seconds");
+            assert!(
+                tools_ready,
+                "Default tools for Node 1should be ready within 120 seconds"
+            );
+
             // Wait for default tools to be ready
             let tools_ready = wait_for_default_tools(
                 node2_commands_sender.clone(),
@@ -288,7 +292,10 @@ fn subidentity_registration() {
             )
             .await
             .expect("Failed to check for default tools");
-            assert!(tools_ready, "Default tools should be ready within 30 seconds");
+            assert!(
+                tools_ready,
+                "Default tools for Node 2 should be ready within 120 seconds"
+            );
 
             // Send message from Node 2 subidentity to Node 1
             {

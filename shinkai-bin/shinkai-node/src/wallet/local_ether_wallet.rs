@@ -202,14 +202,99 @@ impl CommonActions for LocalEthersWallet {
         &self,
         _node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<f64, WalletError>> + Send + 'static>> {
-        unimplemented!()
+        let address_id = self.address.address_id.clone();
+        let network = self.network.clone();
+
+        Box::pin(async move {
+            let rpc_url = Self::rpc_url_for_network(&network);
+            let input = get_balance::Input {
+                token_address: None,
+                wallet_address: address_id,
+                rpc_url,
+            };
+
+            let result = get_balance::get_balance(input)
+                .await
+                .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
+
+            // formatted_balance is already adjusted for decimals
+            let balance: f64 = result
+                .formatted_balance
+                .as_str()
+                .parse::<f64>()
+                .map_err(|e: std::num::ParseFloatError| WalletError::ConversionError(e.to_string()))?;
+
+            Ok(balance)
+        })
     }
 
     fn check_balances(
         &self,
         _node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
-        unimplemented!()
+        let address_id = self.address.address_id.clone();
+        let network = self.network.clone();
+
+        Box::pin(async move {
+            let rpc_url = Self::rpc_url_for_network(&network);
+            let mut data: Vec<Balance> = Vec::new();
+
+            // Main token balance (ETH)
+            let eth_asset = Asset::new(
+                shinkai_message_primitives::schemas::wallet_mixed::AssetType::ETH,
+                &network,
+            )
+            .ok_or_else(|| WalletError::UnsupportedAsset("ETH".to_string()))?;
+
+            let eth_input = get_balance::Input {
+                token_address: None,
+                wallet_address: address_id.clone(),
+                rpc_url: rpc_url.clone(),
+            };
+            let eth_result = get_balance::get_balance(eth_input)
+                .await
+                .map_err(|e| WalletError::FunctionExecutionError(e.to_string()))?;
+
+            data.push(Balance {
+                amount: eth_result.balance,
+                decimals: Some(eth_result.token_info.decimals as u32),
+                asset: eth_asset,
+            });
+
+            // USDC token balance if available on this network
+            if let Some(usdc_asset) = Asset::new(
+                shinkai_message_primitives::schemas::wallet_mixed::AssetType::USDC,
+                &network,
+            ) {
+                let token_address = usdc_asset
+                    .contract_address
+                    .clone()
+                    .unwrap_or_else(|| usdc_asset.asset_id.clone());
+
+                let usdc_input = get_balance::Input {
+                    token_address: Some(token_address),
+                    wallet_address: address_id,
+                    rpc_url,
+                };
+
+                if let Ok(usdc_result) = get_balance::get_balance(usdc_input).await {
+                    data.push(Balance {
+                        amount: usdc_result.balance,
+                        decimals: Some(usdc_result.token_info.decimals as u32),
+                        asset: usdc_asset,
+                    });
+                }
+            }
+
+            let address_balance_list = AddressBalanceList {
+                total_count: data.len() as u32,
+                data,
+                has_more: false,
+                next_page: String::new(),
+            };
+
+            Ok(address_balance_list)
+        })
     }
 
     fn check_asset_balance(
@@ -222,7 +307,7 @@ impl CommonActions for LocalEthersWallet {
             let rpc_url = Self::rpc_url_for_network(&asset.network_id);
             let token_address = asset.contract_address.clone().unwrap_or_else(|| asset.asset_id.clone());
             let input = get_balance::Input {
-                token_address,
+                token_address: Some(token_address),
                 wallet_address: public_address.address_id.clone(),
                 rpc_url,
             };

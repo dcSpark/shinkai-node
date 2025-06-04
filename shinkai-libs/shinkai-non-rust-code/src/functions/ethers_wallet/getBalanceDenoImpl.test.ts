@@ -66,3 +66,29 @@ Deno.test("get balance - invalid wallet address", async () => {
 
   await assertRejects(() => run({}, parameters), Error, "could not decode result data");
 });
+
+Deno.test("get balance - native ETH (no tokenAddress)", async () => {
+  const parameters = {
+    walletAddress: "0x82e2b407E93F63D103C162e36519cC05CeCB979E", // Binance wallet
+    rpcUrl: "https://sepolia.base.org",
+    // no tokenAddress
+  };
+
+  const result = await run({}, parameters);
+
+  // Check that all fields are present
+  assertEquals(typeof result.balance, "string");
+  assertEquals(typeof result.formattedBalance, "string");
+  assertEquals(typeof result.tokenInfo.name, "string");
+  assertEquals(typeof result.tokenInfo.symbol, "string");
+  assertEquals(typeof result.tokenInfo.decimals, "number");
+
+  // Should be ETH info
+  assertEquals(result.tokenInfo.symbol, "ETH");
+  assertEquals(result.tokenInfo.name, "Ether");
+  assertEquals(result.tokenInfo.decimals, 18);
+
+  // Balance should be numeric strings
+  BigInt(result.balance); // Should not throw
+  parseFloat(result.formattedBalance); // Should not throw
+});

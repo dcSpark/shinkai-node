@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::WalletRole, wallet_complementary::WalletSource, x402_types::Network
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, shinkai_name::ShinkaiName, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Asset, AssetType}, x402_types::Network
 };
 use shinkai_sqlite::SqliteManager;
 use tokio::sync::Mutex;
@@ -317,5 +317,65 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn v2_api_get_wallet_balance(
+        db: Arc<SqliteManager>,
+        wallet_manager: Arc<tokio::sync::Mutex<Option<WalletManager>>>,
+        bearer: String,
+        node_name: ShinkaiName,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let wallet_manager_lock = wallet_manager.lock().await;
+
+        if let Some(ref wallet_manager) = *wallet_manager_lock {
+            match wallet_manager.check_balances_payment_wallet(node_name.clone()).await {
+                Ok(address_balance_list) => {
+                    let mut balances_map = serde_json::Map::new();
+                    for balance_item in address_balance_list.data {
+                        match serde_json::to_value(balance_item.clone()) {
+                            Ok(value) => {
+                                balances_map.insert(balance_item.asset.asset_id.clone(), value);
+                            }
+                            Err(e) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!(
+                                        "Failed to serialize balance item {}: {}",
+                                        balance_item.asset.asset_id, e
+                                    ),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                    }
+                    let _ = res.send(Ok(Value::Object(balances_map))).await;
+                }
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get wallet balances: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        } else {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Wallet manager not initialized".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+        }
+
+        Ok(())
     }
 }

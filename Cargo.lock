@@ -5912,7 +5912,7 @@ dependencies = [
  "rand 0.8.5",
  "reqwest 0.11.27",
  "rmcp",
- "rustls 0.20.9",
+ "rustls 0.23.27",
  "rustls-pemfile 1.0.4",
  "serde",
  "serde_json",
@@ -6061,6 +6061,7 @@ dependencies = [
  "rmcp",
  "rusqlite",
  "rust_decimal",
+ "rustls 0.23.27",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -6075,6 +6076,8 @@ dependencies = [
  "shinkai_message_primitives",
  "shinkai_non_rust_code",
  "shinkai_sqlite",
+ "shinkai_test_framework",
+ "shinkai_test_macro",
  "shinkai_tools_primitives",
  "shinkai_tools_runner",
  "tempfile",
@@ -6134,6 +6137,36 @@ dependencies = [
  "tokio",
  "x25519-dalek",
  "zerocopy",
+]
+
+[[package]]
+name = "shinkai_test_framework"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "ed25519-dalek",
+ "proc-macro2",
+ "quote",
+ "shinkai_embedding",
+ "shinkai_http_api",
+ "shinkai_message_primitives",
+ "shinkai_node",
+ "shinkai_sqlite",
+ "syn 2.0.101",
+ "tempfile",
+ "tokio",
+ "x25519-dalek",
+]
+
+[[package]]
+name = "shinkai_test_macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "shinkai_test_framework",
+ "syn 2.0.101",
 ]
 
 [[package]]
