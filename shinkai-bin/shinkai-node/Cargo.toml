@@ -92,6 +92,7 @@ zip = "2.2.1"
 open = "5.3.2"
 sha2 = "0.10"
 toml = "0.8.22"
+rustls = { workspace = true }
 ngrok = { version = "0.15.0", features = ["hyper"], optional = true }
 url = "2.5.0"
 serde_yaml = { workspace = true }
