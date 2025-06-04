@@ -12,7 +12,7 @@ shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 
 # Features
 [features]
-default = ["ngrok"]
+default = []
 console = ["console-subscriber"]
 # Enable ngrok support when the `ngrok` feature is selected
 ngrok = ["dep:ngrok"]
