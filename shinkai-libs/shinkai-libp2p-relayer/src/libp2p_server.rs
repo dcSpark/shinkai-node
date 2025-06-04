@@ -135,7 +135,7 @@ impl LibP2PProxy {
         }
 
         // Initialize the relay manager
-        let relay_manager = RelayManager::new(listen_port, node_name.to_string()).await?;
+        let relay_manager = RelayManager::new(listen_port, node_name.to_string(), identity_secret_key.clone()).await?;
         let message_sender = relay_manager.get_message_sender();
         let relay_manager = Arc::new(Mutex::new(relay_manager));
 

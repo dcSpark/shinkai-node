@@ -1,3 +1,4 @@
+use ed25519_dalek::SigningKey;
 use libp2p::{
     futures::StreamExt,
     gossipsub::{self, Event as GossipsubEvent, MessageAuthenticity, ValidationMode, MessageId},
@@ -41,9 +42,11 @@ impl RelayManager {
     pub async fn new(
         listen_port: u16,
         relay_node_name: String,
+        identity_secret_key: SigningKey,
     ) -> Result<Self, LibP2PRelayError> {
         // Generate deterministic PeerId from relay name
-        let local_key = libp2p::identity::Keypair::generate_ed25519();
+        let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())
+            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to create keypair: {}", e)))?;
         let local_peer_id = PeerId::from(local_key.public());
 
         // Configure transport with relay support
@@ -55,7 +58,7 @@ impl RelayManager {
 
         // Configure gossipsub
         let gossipsub_config = gossipsub::ConfigBuilder::default()
-            .heartbeat_interval(Duration::from_secs(1))
+            .heartbeat_interval(Duration::from_secs(10))
             .validation_mode(ValidationMode::Permissive)
             .mesh_outbound_min(0)      // Allow zero outbound connections
             .mesh_n_low(1)             // Allow single node mesh

@@ -1,3 +1,4 @@
+use ed25519_dalek::SigningKey;
 use futures::prelude::*;
 use libp2p::{
     dcutr, gossipsub, identify, noise, ping,
@@ -9,8 +10,6 @@ use shinkai_message_primitives::{
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
     net::SocketAddr,
     sync::Arc,
     time::Duration,
@@ -60,26 +59,12 @@ impl LibP2PManager {
     /// Create a new libp2p manager
     pub async fn new(
         node_name: String,
+        identity_secret_key: SigningKey,
         listen_port: Option<u16>,
         message_handler: ShinkaiMessageHandler,
         relay_address: Option<Multiaddr>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        // Generate a deterministic keypair based on node name
-        let local_key = {
-            let mut hasher = DefaultHasher::new();
-            node_name.hash(&mut hasher);
-            let hash = hasher.finish();
-            // Use a simple seed-based approach
-            let seed: [u8; 32] = {
-                let mut seed = [0u8; 32];
-                let hash_bytes = hash.to_be_bytes();
-                for i in 0..4 {
-                    seed[i * 8..(i + 1) * 8].copy_from_slice(&hash_bytes);
-                }
-                seed
-            };
-            libp2p::identity::Keypair::ed25519_from_bytes(seed).unwrap()
-        };
+        let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())?;
         let local_peer_id = PeerId::from(local_key.public());
 
         shinkai_log(
@@ -98,7 +83,7 @@ impl LibP2PManager {
 
         // Create GossipSub behavior with simple default configuration
         let gossipsub_config = gossipsub::ConfigBuilder::default()
-            .heartbeat_interval(Duration::from_secs(1))  // Fast heartbeat
+            .heartbeat_interval(Duration::from_secs(10))
             .validation_mode(gossipsub::ValidationMode::Permissive)
             .mesh_outbound_min(0)  // Allow zero outbound connections during startup
             .mesh_n_low(1)         // Minimum peers in mesh
