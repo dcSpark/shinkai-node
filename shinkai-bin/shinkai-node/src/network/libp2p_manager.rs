@@ -166,7 +166,7 @@ impl LibP2PManager {
         let (tcp_listen_addr, quic_listen_addr) = if let Some(port) = listen_port {
             (
                 format!("/ip4/0.0.0.0/tcp/{}", port),
-                format!("/ip4/0.0.0.0/udp/{}/quic-v1", port + 1), // QUIC on port + 1
+                format!("/ip4/0.0.0.0/udp/{}/quic-v1", port),
             )
         } else {
             (
