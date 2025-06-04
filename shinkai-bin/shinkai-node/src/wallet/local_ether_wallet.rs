@@ -220,8 +220,9 @@ impl CommonActions for LocalEthersWallet {
             // formatted_balance is already adjusted for decimals
             let balance: f64 = result
                 .formatted_balance
-                .parse()
-                .map_err(|e| WalletError::ConversionError(e.to_string()))?;
+                .as_str()
+                .parse::<f64>()
+                .map_err(|e: std::num::ParseFloatError| WalletError::ConversionError(e.to_string()))?;
 
             Ok(balance)
         })
@@ -239,8 +240,11 @@ impl CommonActions for LocalEthersWallet {
             let mut data: Vec<Balance> = Vec::new();
 
             // Main token balance (ETH)
-            let eth_asset = Asset::new(shinkai_message_primitives::schemas::wallet_mixed::AssetType::ETH, &network)
-                .ok_or_else(|| WalletError::UnsupportedAsset("ETH".to_string()))?;
+            let eth_asset = Asset::new(
+                shinkai_message_primitives::schemas::wallet_mixed::AssetType::ETH,
+                &network,
+            )
+            .ok_or_else(|| WalletError::UnsupportedAsset("ETH".to_string()))?;
 
             let eth_input = get_balance::Input {
                 token_address: None,
@@ -258,7 +262,10 @@ impl CommonActions for LocalEthersWallet {
             });
 
             // USDC token balance if available on this network
-            if let Some(usdc_asset) = Asset::new(shinkai_message_primitives::schemas::wallet_mixed::AssetType::USDC, &network) {
+            if let Some(usdc_asset) = Asset::new(
+                shinkai_message_primitives::schemas::wallet_mixed::AssetType::USDC,
+                &network,
+            ) {
                 let token_address = usdc_asset
                     .contract_address
                     .clone()

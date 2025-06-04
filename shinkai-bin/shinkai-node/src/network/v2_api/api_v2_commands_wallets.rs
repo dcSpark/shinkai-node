@@ -333,54 +333,40 @@ impl Node {
         let wallet_manager_lock = wallet_manager.lock().await;
 
         if let Some(ref wallet_manager) = *wallet_manager_lock {
-            let address = wallet_manager.payment_wallet.get_address();
-            let mut balances = serde_json::Map::new();
-
-            if let Some(asset) = Asset::new(AssetType::ETH, &address.network_id) {
-                match wallet_manager
-                    .check_balance_payment_wallet(address.clone().into(), asset.clone(), node_name.clone())
-                    .await
-                {
-                    Ok(balance) => {
-                        if let Ok(value) = serde_json::to_value(balance) {
-                            balances.insert("ETH".to_string(), value);
+            match wallet_manager.check_balances_payment_wallet(node_name.clone()).await {
+                Ok(address_balance_list) => {
+                    let mut balances_map = serde_json::Map::new();
+                    for balance_item in address_balance_list.data {
+                        match serde_json::to_value(balance_item.clone()) {
+                            Ok(value) => {
+                                balances_map.insert(balance_item.asset.asset_id.clone(), value);
+                            }
+                            Err(e) => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!(
+                                        "Failed to serialize balance item {}: {}",
+                                        balance_item.asset.asset_id, e
+                                    ),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
                         }
                     }
-                    Err(e) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to get ETH balance: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
+                    let _ = res.send(Ok(Value::Object(balances_map))).await;
+                }
+                Err(e) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get wallet balances: {}", e),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
                 }
             }
-
-            if let Some(asset) = Asset::new(AssetType::USDC, &address.network_id) {
-                match wallet_manager
-                    .check_balance_payment_wallet(address.clone().into(), asset.clone(), node_name)
-                    .await
-                {
-                    Ok(balance) => {
-                        if let Ok(value) = serde_json::to_value(balance) {
-                            balances.insert("USDC".to_string(), value);
-                        }
-                    }
-                    Err(e) => {
-                        let api_error = APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to get USDC balance: {}", e),
-                        };
-                        let _ = res.send(Err(api_error)).await;
-                        return Ok(());
-                    }
-                }
-            }
-
-            let _ = res.send(Ok(Value::Object(balances))).await;
         } else {
             let api_error = APIError {
                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
