@@ -263,4 +263,73 @@ impl Node {
 
         Ok(())
     }
+
+    pub async fn v2_api_get_all_network_tools_with_offering(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tool_offerings = match db.get_all_tool_offerings() {
+            Ok(offerings) => offerings,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve all tool offerings: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let mut results = Vec::new();
+        for offering in tool_offerings {
+            let tool = match db.get_tool_by_key(&offering.tool_key) {
+                Ok(tool) => tool,
+                Err(SqliteManagerError::ToolNotFound(_)) => {
+                    let api_error = APIError {
+                        code: StatusCode::NOT_FOUND.as_u16(),
+                        error: "Not Found".to_string(),
+                        message: format!("Tool not found for key {}", offering.tool_key),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to get tool: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
+
+            let network_tool = if let ShinkaiTool::Network(net_tool, _) = tool {
+                net_tool
+            } else {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Invalid Tool".to_string(),
+                    message: "Requested tool is not a network tool".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            };
+
+            results.push(json!({
+                "network_tool": network_tool,
+                "tool_offering": offering
+            }));
+        }
+
+        let _ = res.send(Ok(json!(results))).await;
+
+        Ok(())
+    }
 }

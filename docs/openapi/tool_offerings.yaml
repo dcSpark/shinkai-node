@@ -29,6 +29,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
+  /v2/get_all_network_tools_with_offering:
+    get:
+      tags:
+      - crate
+      operationId: get_all_network_tools_with_offering_handler
+      responses:
+        '200':
+          description: Successfully retrieved all network tools and offerings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
   /v2/get_tool_offering:
     post:
       tags:

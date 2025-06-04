@@ -1244,6 +1244,12 @@ impl Node {
                     let _ = Node::v2_api_get_network_tool_with_offering(db_clone, bearer, tool_key_name, res).await;
                 });
             }
+            NodeCommand::V2ApiGetAllNetworkToolsWithOffering { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_all_network_tools_with_offering(db_clone, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiSetShinkaiTool {
                 bearer,
                 tool_key,

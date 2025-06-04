@@ -37,6 +37,12 @@ pub fn ext_agent_offers_routes(
         .and(warp::body::json())
         .and_then(get_network_tool_with_offering_handler);
 
+    let get_all_network_tools_route = warp::path("get_all_network_tools_with_offering")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_all_network_tools_with_offering_handler);
+
     let remove_tool_offering_route = warp::path("remove_tool_offering")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -55,6 +61,7 @@ pub fn ext_agent_offers_routes(
         .or(remove_tool_offering_route)
         .or(get_all_tool_offerings_route)
         .or(get_network_tool_route)
+        .or(get_all_network_tools_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -276,6 +283,42 @@ pub async fn get_network_tool_with_offering_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/get_all_network_tools_with_offering",
+    responses(
+        (status = 200, description = "Successfully retrieved all network tools and offerings", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_all_network_tools_with_offering_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetAllNetworkToolsWithOffering {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(info) => Ok(warp::reply::with_status(
+            warp::reply::json(&info),
+            StatusCode::OK,
+        )),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -283,7 +326,8 @@ pub async fn get_network_tool_with_offering_handler(
         get_tool_offering_handler,
         remove_tool_offering_handler,
         get_all_tool_offerings_handler,
-        get_network_tool_with_offering_handler
+        get_network_tool_with_offering_handler,
+        get_all_network_tools_with_offering_handler
     ),
     components(
         schemas(ShinkaiToolOffering, APIError, GetToolOfferingRequest, UsageType, ToolPrice, PaymentRequirements, Asset, NetworkIdentifier,
