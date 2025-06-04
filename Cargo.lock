@@ -3143,6 +3143,7 @@ dependencies = [
  "libp2p-gossipsub 0.46.1",
  "libp2p-identify 0.44.2",
  "libp2p-identity",
+ "libp2p-kad 0.45.3",
  "libp2p-mdns 0.45.1",
  "libp2p-metrics 0.14.1",
  "libp2p-noise 0.44.0",
@@ -3177,7 +3178,7 @@ dependencies = [
  "libp2p-gossipsub 0.48.0",
  "libp2p-identify 0.46.0",
  "libp2p-identity",
- "libp2p-kad",
+ "libp2p-kad 0.47.0",
  "libp2p-mdns 0.47.0",
  "libp2p-metrics 0.16.0",
  "libp2p-noise 0.46.0",
@@ -3497,6 +3498,35 @@ dependencies = [
 
 [[package]]
 name = "libp2p-kad"
+version = "0.45.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5cc5767727d062c4eac74dd812c998f0e488008e82cce9c33b463d38423f9ad2"
+dependencies = [
+ "arrayvec",
+ "asynchronous-codec 0.7.0",
+ "bytes",
+ "either",
+ "fnv",
+ "futures",
+ "futures-bounded",
+ "futures-timer",
+ "instant",
+ "libp2p-core 0.41.3",
+ "libp2p-identity",
+ "libp2p-swarm 0.44.2",
+ "quick-protobuf",
+ "quick-protobuf-codec 0.3.1",
+ "rand 0.8.5",
+ "sha2",
+ "smallvec",
+ "thiserror 1.0.69",
+ "tracing",
+ "uint 0.9.5",
+ "void",
+]
+
+[[package]]
+name = "libp2p-kad"
 version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bab0466a27ebe955bcbc27328fae5429c5b48c915fd6174931414149802ec23"
@@ -3518,7 +3548,7 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.12",
  "tracing",
- "uint",
+ "uint 0.10.0",
  "web-time",
 ]
 
@@ -3575,6 +3605,7 @@ dependencies = [
  "libp2p-gossipsub 0.46.1",
  "libp2p-identify 0.44.2",
  "libp2p-identity",
+ "libp2p-kad 0.45.3",
  "libp2p-ping 0.44.1",
  "libp2p-swarm 0.44.2",
  "pin-project",
@@ -3593,7 +3624,7 @@ dependencies = [
  "libp2p-gossipsub 0.48.0",
  "libp2p-identify 0.46.0",
  "libp2p-identity",
- "libp2p-kad",
+ "libp2p-kad 0.47.0",
  "libp2p-ping 0.46.0",
  "libp2p-relay",
  "libp2p-swarm 0.46.0",
@@ -7791,6 +7822,18 @@ name = "typenum"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
+
+[[package]]
+name = "uint"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76f64bba2c53b04fcab63c01a7d7427eadc821e3bc48c34dc9ba29c501164b52"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "hex",
+ "static_assertions",
+]
 
 [[package]]
 name = "uint"

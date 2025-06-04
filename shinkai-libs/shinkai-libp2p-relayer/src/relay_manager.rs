@@ -1,10 +1,11 @@
 use ed25519_dalek::SigningKey;
 use libp2p::{
+    dcutr::{self, Event as DcutrEvent},
     futures::StreamExt,
     gossipsub::{self, Event as GossipsubEvent, MessageAuthenticity, ValidationMode, MessageId},
     identify::{self, Event as IdentifyEvent},
     kad,
-    noise, ping, quic,
+    noise, ping::{self, Event as PingEvent}, quic,
     relay::{self, Event as RelayEvent},
     swarm::{NetworkBehaviour, SwarmEvent, Config},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
@@ -28,6 +29,7 @@ pub struct RelayBehaviour {
     pub ping: ping::Behaviour,
     pub relay: relay::Behaviour,
     pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
+    pub dcutr: dcutr::Behaviour,
 }
 
 pub struct RelayManager {
@@ -162,9 +164,9 @@ impl RelayManager {
         gossipsub.subscribe(&shinkai_topic)
             .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to subscribe to shinkai-network: {}", e)))?;
 
-        // Configure identify protocol
+        // Configure identify protocol - use same protocol version as Shinkai nodes
         let identify = identify::Behaviour::new(identify::Config::new(
-            "/shinkai-relay/1.0.0".to_string(),
+            "/shinkai/1.0.0".to_string(),
             local_key.public(),
         ));
 
@@ -181,6 +183,9 @@ impl RelayManager {
         );
         kademlia.set_mode(Some(kad::Mode::Server));
 
+        // Configure DCUtR for hole punching through relay
+        let dcutr = dcutr::Behaviour::new(local_peer_id);
+
         // Create the behaviour
         let behaviour = RelayBehaviour {
             gossipsub,
@@ -188,6 +193,7 @@ impl RelayManager {
             ping,
             relay,
             kademlia,
+            dcutr,
         };
 
         // Create swarm with proper configuration
@@ -224,9 +230,10 @@ impl RelayManager {
             swarm.add_external_address(external_tcp_addr.clone());
             swarm.add_external_address(external_quic_addr.clone());
             
-            println!("Added external addresses for advertisement:");
-            println!("  TCP: {}", external_tcp_addr);
-            println!("  QUIC: {}", external_quic_addr);
+            println!("🌐 Added external addresses for advertisement:");
+            println!("🌐   TCP: {}", external_tcp_addr);
+            println!("🌐   QUIC: {}", external_quic_addr);
+            println!("🌐 Note: External addresses are advertised to peers but not locally bound");
         }
 
         // Create message channel
@@ -234,11 +241,17 @@ impl RelayManager {
 
         println!("LibP2P Relay initialized with PeerId: {}", local_peer_id);
         println!("Relay node name: {}", relay_node_name);
-        println!("Listening on TCP: {} and QUIC: {}", tcp_listen_addr, quic_listen_addr);
+        println!("🏠 Local binding addresses:");
+        println!("🏠   TCP: {}", tcp_listen_addr);
+        println!("🏠   QUIC: {}", quic_listen_addr);
         
         if let Some(external_ip) = external_ip {
-            println!("External IP detected: {} - peers can connect via /ip4/{}/tcp/{} or /ip4/{}/udp/{}/quic-v1", 
-                external_ip, external_ip, listen_port, external_ip, listen_port);
+            println!("🌐 External connectivity addresses (advertised to peers):");
+            println!("🌐   TCP: /ip4/{}/tcp/{}", external_ip, listen_port);
+            println!("🌐   QUIC: /ip4/{}/udp/{}/quic-v1", external_ip, listen_port);
+            println!("🌐 External peers should connect to: {}", external_ip);
+        } else {
+            println!("⚠️  No external IP detected - only local connectivity available");
         }
 
         Ok(RelayManager {
@@ -343,21 +356,25 @@ impl RelayManager {
     ) -> Result<(), LibP2PRelayError> {
         match event {
             SwarmEvent::NewListenAddr { address, .. } => {
-                println!("Relay listening on {}", address);
+                let addr_str = address.to_string();
                 
-                // If this is an external address, log it prominently
+                // Check if this is an external IP address
                 if let Some(external_ip) = self.external_ip {
-                    let addr_str = address.to_string();
                     if addr_str.contains(&external_ip.to_string()) {
-                        println!("🌐 External address ready for peer connections: {}", address);
+                        println!("🌐 Relay listening on EXTERNAL address: {}", address);
+                    } else {
+                        println!("🏠 Relay listening on LOCAL address: {}", address);
                     }
+                } else {
+                    println!("📡 Relay listening on: {}", address);
                 }
             }
             SwarmEvent::ExternalAddrConfirmed { address } => {
-                println!("🌐 External address confirmed and advertised: {}", address);
+                println!("✅ External address confirmed and advertised to network: {}", address);
+                println!("✅ Peers can now connect via: {}", address);
             }
             SwarmEvent::ExternalAddrExpired { address } => {
-                println!("⚠️  External address expired: {}", address);
+                println!("⚠️  External address expired and removed: {}", address);
             }
             SwarmEvent::Behaviour(RelayBehaviourEvent::Gossipsub(GossipsubEvent::Message {
                 propagation_source,
@@ -372,17 +389,71 @@ impl RelayManager {
                 ..
             })) => {
                 println!("Identified peer: {} with protocol version: {}", peer_id, info.protocol_version);
-                // Add peer addresses to Kademlia
-                for addr in info.listen_addrs {
-                    self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);
+                
+                // Check what protocols the peer supports before adding to Kademlia
+                let supports_kademlia = info.protocols.iter().any(|protocol| {
+                    protocol.to_string().contains("/kad/") || protocol.to_string().contains("/kademlia/")
+                });
+                
+                let supports_relay = info.protocols.iter().any(|protocol| {
+                    protocol.to_string().contains("/libp2p/circuit/relay/") 
+                });
+
+                if supports_kademlia {
+                    // Add peer addresses to Kademlia only if they support it
+                    for addr in &info.listen_addrs {
+                        self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+                    }
+                    println!("✅ Added peer {} to Kademlia DHT", peer_id);
+                } else {
+                    println!("ℹ️  Peer {} doesn't support Kademlia, skipping DHT registration", peer_id);
+                    println!("   This is normal for Shinkai nodes - they use gossipsub for discovery");
                 }
-                // We could use this to auto-register peers based on their identify info
+
+                if !supports_relay {
+                    println!("ℹ️  Peer {} doesn't support relay protocol, will use it as client only", peer_id);
+                    println!("   This is normal for Shinkai nodes - they connect via relay, don't act as relays");
+                }
+
+                // Store peer capability information to avoid future protocol negotiation attempts
+                if !supports_kademlia || !supports_relay {
+                    println!("📝 Peer {} will be treated as a Shinkai client node", peer_id);
+                }
+
+                // Log supported protocols for debugging (only in debug mode)
+                #[cfg(debug_assertions)]
+                println!("📋 Peer {} supports protocols: {:?}", peer_id, info.protocols);
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Ping(ping_event)) => {
+                match ping_event {
+                    PingEvent { peer, connection: _, result } => {
+                        match result {
+                            Ok(rtt) => {
+                                println!("📡 Ping to {} successful: RTT = {:?}", peer, rtt);
+                            }
+                            Err(ping::Failure::Timeout) => {
+                                println!("⚠️  Ping to {} timed out", peer);
+                            }
+                            Err(ping::Failure::Unsupported) => {
+                                println!("⚠️  Ping protocol unsupported by peer {}", peer);
+                            }
+                            Err(ping::Failure::Other { error }) => {
+                                println!("⚠️  Ping to {} failed: {}", peer, error);
+                            }
+                        }
+                    }
+                }
             }
             SwarmEvent::Behaviour(RelayBehaviourEvent::Relay(RelayEvent::ReservationReqAccepted {
                 src_peer_id,
                 ..
             })) => {
                 println!("Accepted relay reservation from: {}", src_peer_id);
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Dcutr(_dcutr_event)) => {
+                // DCUtR events handled silently for now - enables hole punching through relay
+                // This allows Shinkai nodes to upgrade their relayed connections to direct connections
+                println!("🔄 DCUtR: Direct connection upgrade event processed");
             }
             SwarmEvent::Behaviour(RelayBehaviourEvent::Kademlia(kad::Event::OutboundQueryProgressed {
                 id: _,

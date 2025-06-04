@@ -766,8 +766,6 @@ impl Node {
                         let libp2p_manager_clone = self.libp2p_manager.clone();
                         tokio::spawn(async move {
                             let _ = Self::ping_all(
-                                peers_clone,
-                                identity_manager_clone,
                                 listen_address_clone,
                                 libp2p_manager_clone,
                             ).await;

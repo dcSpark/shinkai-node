@@ -1,7 +1,7 @@
 use ed25519_dalek::SigningKey;
 use futures::prelude::*;
 use libp2p::{
-    dcutr, gossipsub, identify, noise, ping, quic,
+    dcutr, gossipsub, identify, kad, noise, ping, quic,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
@@ -17,12 +17,14 @@ use std::{
 use tokio::sync::mpsc;
 
 /// The libp2p network behavior combining all protocols
+/// Kademlia is always enabled for better peer discovery and protocol compatibility
 #[derive(NetworkBehaviour)]
 pub struct ShinkaiNetworkBehaviour {
     pub gossipsub: gossipsub::Behaviour,
     pub identify: identify::Behaviour,
     pub ping: ping::Behaviour,
     pub dcutr: dcutr::Behaviour,
+    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
 }
 
 /// Events that can be sent through the network
@@ -154,12 +156,25 @@ impl LibP2PManager {
         // Create DCUtR behavior for hole punching
         let dcutr = dcutr::Behaviour::new(local_peer_id);
 
-        // Combine all behaviors
+        // Create Kademlia behavior - always enabled for better protocol compatibility
+        let mut kademlia = kad::Behaviour::new(
+            local_peer_id,
+            kad::store::MemoryStore::new(local_peer_id),
+        );
+        kademlia.set_mode(Some(kad::Mode::Client)); // Start as client, can be promoted
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            "Kademlia protocol enabled for peer discovery and protocol compatibility",
+        );
+
         let behaviour = ShinkaiNetworkBehaviour {
             gossipsub,
             identify,
             ping,
             dcutr,
+            kademlia,
         };
 
         // Create swarm
@@ -231,6 +246,11 @@ impl LibP2PManager {
     /// Get listening addresses
     pub fn listeners(&self) -> impl Iterator<Item = &Multiaddr> {
         self.swarm.listeners()
+    }
+
+    /// Get all connected peers
+    pub fn connected_peers(&self) -> Vec<PeerId> {
+        self.swarm.connected_peers().cloned().collect()
     }
 
     /// Send a message to a specific peer
@@ -380,68 +400,46 @@ impl LibP2PManager {
         }
     }
 
-    /// Main event loop for processing libp2p events
+    /// Run the network manager
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Set up a timer for frequent peer discovery (every 10 seconds)
-        let mut discovery_interval = tokio::time::interval(Duration::from_secs(10));
+        let mut ping_timer = tokio::time::interval(Duration::from_secs(30));
+        let mut discovery_timer = tokio::time::interval(Duration::from_secs(60));
+        let mut kademlia_bootstrap_timer = tokio::time::interval(Duration::from_secs(120)); // Every 2 minutes
         
         loop {
             tokio::select! {
-                // Handle swarm events
                 event = self.swarm.select_next_some() => {
                     self.handle_swarm_event(event).await?;
                 }
-                
-                // Handle network events from other parts of the application
-                event = self.event_receiver.recv() => {
-                    match event {
-                        Some(NetworkEvent::SendMessage { peer_id, message }) => {
-                            if let Err(e) = self.send_message_to_peer(peer_id, message).await {
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Error,
-                                    &format!("Failed to send message to peer {}: {}", peer_id, e),
-                                );
-                            }
-                        }
-                        Some(NetworkEvent::BroadcastMessage { topic, message }) => {
-                            if let Err(e) = self.broadcast_message(&topic, message).await {
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Error,
-                                    &format!("Failed to broadcast message to topic {}: {}", topic, e),
-                                );
-                            }
-                        }
-                        Some(NetworkEvent::AddPeer { peer_id, address }) => {
-                            if let Err(e) = self.add_peer(peer_id, address.clone()) {
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Error,
-                                    &format!("Failed to add peer {} at {}: {}", peer_id, address, e),
-                                );
-                            }
-                        }
-                        Some(NetworkEvent::PingPeer { peer_id }) => {
-                            if let Err(e) = self.ensure_peer_connected(peer_id).await {
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Error,
-                                    &format!("Failed to check connection to peer {}: {}", peer_id, e),
-                                );
-                            }
-                        }
-                        None => break, // Channel closed
+                network_event = self.event_receiver.recv() => {
+                    if let Some(event) = network_event {
+                        self.handle_network_event(event).await?;
                     }
                 }
-                
-                // Periodic peer discovery
-                _ = discovery_interval.tick() => {
-                    self.force_peer_discovery();
+                _ = ping_timer.tick() => {
+                    self.send_ping().await?;
+                }
+                _ = discovery_timer.tick() => {
+                    self.send_discovery_message().await?;
+                }
+                _ = kademlia_bootstrap_timer.tick() => {
+                    // Bootstrap Kademlia for peer discovery
+                    if let Err(e) = self.swarm.behaviour_mut().bootstrap_kademlia() {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Debug,
+                            &format!("Kademlia bootstrap failed: {}", e),
+                        );
+                    } else {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Debug,
+                            "Initiated Kademlia bootstrap for peer discovery",
+                        );
+                    }
                 }
             }
         }
-        Ok(())
     }
 
     /// Handle individual swarm events
@@ -567,8 +565,61 @@ impl LibP2PManager {
                     &format!("Identified peer {} with protocol version {}", peer_id, info.protocol_version),
                 );
                 
-                // For relay scenarios, we don't add peers to Kademlia since it causes direct connections
-                // All peer discovery should happen through gossipsub via the relay
+                // Add peer to Kademlia for better peer discovery
+                for addr in &info.listen_addrs {
+                    self.swarm.behaviour_mut().add_peer_to_kademlia(peer_id, addr.clone());
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Added peer {} with address {} to Kademlia DHT", peer_id, addr),
+                    );
+                }
+            }
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Kademlia(kad_event)) => {
+                // Handle Kademlia events for peer discovery
+                match kad_event {
+                        kad::Event::OutboundQueryProgressed { id: _, result, .. } => {
+                            match result {
+                                kad::QueryResult::Bootstrap(Ok(kad::BootstrapOk { peer, num_remaining })) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Info,
+                                        &format!("Kademlia bootstrap progress: peer={}, remaining={}", peer, num_remaining),
+                                    );
+                                }
+                                kad::QueryResult::Bootstrap(Err(e)) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Kademlia bootstrap error: {:?}", e),
+                                    );
+                                }
+                                kad::QueryResult::GetClosestPeers(Ok(kad::GetClosestPeersOk { peers, .. })) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Debug,
+                                        &format!("Found {} close peers via Kademlia", peers.len()),
+                                    );
+                                }
+                                kad::QueryResult::GetClosestPeers(Err(e)) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Debug,
+                                        &format!("Kademlia get closest peers error: {:?}", e),
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                        kad::Event::RoutingUpdated { peer, is_new_peer, addresses, .. } => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Debug,
+                                &format!("Kademlia routing updated: peer={}, new={}, addresses={:?}", peer, is_new_peer, addresses),
+                            );
+                        }
+                        _ => {}
+                    }
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 shinkai_log(
@@ -606,6 +657,20 @@ impl LibP2PManager {
                     &format!("Disconnected from peer {}: {:?}", peer_id, cause),
                 );
             }
+            SwarmEvent::IncomingConnectionError { error, .. } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Incoming connection error: {}", error),
+                );
+            }
+            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Outgoing connection error to {:?}: {}", peer_id, error),
+                );
+            }
             _ => {}
         }
         Ok(())
@@ -639,6 +704,111 @@ impl LibP2PManager {
         
         Ok(())
     }
+
+    /// Send a discovery message to help with peer discovery  
+    async fn send_discovery_message(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let discovery_message = format!("{{\"type\":\"discovery\",\"peer_id\":\"{}\"}}",
+            self.swarm.local_peer_id());
+        
+        let topic = gossipsub::IdentTopic::new("shinkai-network");
+        
+        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, discovery_message.as_bytes()) {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Failed to send discovery message: {}", e),
+            );
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                "Sent discovery message to network",
+            );
+        }
+        
+        Ok(())
+    }
+
+    /// Send ping to all connected peers (handled automatically by libp2p)
+    async fn send_ping(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let known_peers: Vec<PeerId> = self.swarm.connected_peers().cloned().collect();
+        
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("Ping status check for {} connected peers (handled automatically by libp2p)", known_peers.len()),
+        );
+        
+        // libp2p ping behavior handles pinging automatically
+        // We just need to log that we have connections
+        for peer in &known_peers {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Connected to peer: {}", peer),
+            );
+        }
+        
+        Ok(())
+    }
+
+    /// Handle network events from the event channel
+    async fn handle_network_event(&mut self, event: NetworkEvent) -> Result<(), Box<dyn std::error::Error>> {
+        match event {
+            NetworkEvent::SendMessage { peer_id, message } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Sending message to peer {}", peer_id),
+                );
+                self.send_message_to_peer(peer_id, message).await?;
+            }
+            NetworkEvent::BroadcastMessage { topic, message } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Broadcasting message to topic {}", topic),
+                );
+                self.broadcast_message(&topic, message).await?;
+            }
+            NetworkEvent::AddPeer { peer_id, address } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Adding peer {} at address {}", peer_id, address),
+                );
+                self.add_peer(peer_id, address)?;
+            }
+            NetworkEvent::PingPeer { peer_id } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Ping request for peer {} - libp2p ping is automatic when connected", peer_id),
+                );
+                self.ensure_peer_connected(peer_id).await?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ShinkaiNetworkBehaviour {
+    /// Get mutable access to Kademlia
+    pub fn kademlia_mut(&mut self) -> &mut kad::Behaviour<kad::store::MemoryStore> {
+        &mut self.kademlia
+    }
+    
+    /// Bootstrap Kademlia
+    pub fn bootstrap_kademlia(&mut self) -> Result<(), String> {
+        self.kademlia.bootstrap()
+            .map(|_query_id| ()) // Ignore the query ID, just return success
+            .map_err(|e| format!("Kademlia bootstrap failed: {:?}", e))
+    }
+    
+    /// Add a peer to Kademlia
+    pub fn add_peer_to_kademlia(&mut self, peer_id: PeerId, address: Multiaddr) {
+        self.kademlia.add_address(&peer_id, address);
+    }
 }
 
 /// Convert SocketAddr to Multiaddr (TCP)
@@ -668,4 +838,6 @@ pub fn verifying_key_to_peer_id(verifying_key: ed25519_dalek::VerifyingKey) -> R
     let ed25519_public_key = libp2p::identity::ed25519::PublicKey::try_from_bytes(verifying_key.as_bytes())?;
     let libp2p_public_key = libp2p::identity::PublicKey::from(ed25519_public_key);
     Ok(PeerId::from(libp2p_public_key))
-} 
+}
+
+ 

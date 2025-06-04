@@ -36,6 +36,7 @@ libp2p = { version = "0.53", features = [
     "dcutr",
     "identify",
     "ping",
+    "kad",
     "tokio",
     "macros"
 ] }
