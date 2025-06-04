@@ -38,15 +38,21 @@ pub struct TestContext {
 #[derive(Clone, Default)]
 pub struct TestConfig {
     pub openai_url: Option<String>,
+    pub embeddings_url: Option<String>,
 }
 
 impl TestConfig {
     pub fn default() -> Self {
-        Self { openai_url: None }
+        Self { openai_url: None, embeddings_url: None }
     }
 
     pub fn with_mock_openai(mut self, url: impl Into<String>) -> Self {
         self.openai_url = Some(url.into());
+        self
+    }
+
+    pub fn with_mock_embeddings(mut self, url: impl Into<String>) -> Self {
+        self.embeddings_url = Some(url.into());
         self
     }
 }
@@ -91,6 +97,18 @@ where
 
         assert!(port_is_available(8080), "Port 8080 is not available");
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)), 8080);
+        let embedding_generator = if let Some(url) = &config.embeddings_url {
+            RemoteEmbeddingGenerator::new(
+                EmbeddingModelType::OllamaTextEmbeddingsInference(
+                    OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
+                ),
+                url,
+                None,
+            )
+        } else {
+            RemoteEmbeddingGenerator::new_default()
+        };
+
         let node = Node::new(
             identity_name.to_string(),
             addr,
@@ -105,7 +123,7 @@ where
             proxy_identity,
             false,
             vec![],
-            Some(RemoteEmbeddingGenerator::new_default()),
+            Some(embedding_generator),
             None,
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM),
             vec![EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)],
