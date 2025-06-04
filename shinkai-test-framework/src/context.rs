@@ -1,25 +1,28 @@
-use std::pin::Pin;
-use std::future::Future;
-use tokio::task::AbortHandle;
-use tokio::runtime::Runtime;
-use async_channel::{Sender, Receiver, bounded};
-use std::time::Duration;
-use std::net::{SocketAddr, IpAddr, Ipv4Addr, TcpListener};
+use async_channel::{bounded, Receiver, Sender};
+use ed25519_dalek::SigningKey;
 use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
-use shinkai_node::network::Node;
 use shinkai_http_api::node_commands::NodeCommand;
+use shinkai_message_primitives::schemas::identity::IdentityType;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
-use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
-use shinkai_message_primitives::shinkai_utils::signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair, hash_signature_public_key};
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-use ed25519_dalek::SigningKey;
-use x25519_dalek::{StaticSecret as EncryptionStaticKey, PublicKey as EncryptionPublicKey};
+use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
+use shinkai_message_primitives::shinkai_utils::signatures::{
+    clone_signature_secret_key, hash_signature_public_key, unsafe_deterministic_signature_keypair
+};
+use shinkai_node::network::Node;
 use std::env;
 use std::fs;
+use std::future::Future;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::time::Duration;
 use tempfile::NamedTempFile;
-use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
+use tokio::runtime::Runtime;
+use tokio::task::AbortHandle;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub struct TestContext {
     pub commands: Sender<NodeCommand>,
@@ -43,7 +46,10 @@ pub struct TestConfig {
 
 impl TestConfig {
     pub fn default() -> Self {
-        Self { openai_url: None, embeddings_url: None }
+        Self {
+            openai_url: None,
+            embeddings_url: None,
+        }
     }
 
     pub fn with_mock_openai(mut self, url: impl Into<String>) -> Self {
@@ -55,6 +61,28 @@ impl TestConfig {
         self.embeddings_url = Some(url.into());
         self
     }
+}
+
+pub fn default_embedding_model() -> EmbeddingModelType {
+    env::var("DEFAULT_EMBEDDING_MODEL")
+        .map(|s| EmbeddingModelType::from_string(&s).expect("Failed to parse DEFAULT_EMBEDDING_MODEL"))
+        .unwrap_or_else(|_| {
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)
+        })
+}
+
+pub fn supported_embedding_models() -> Vec<EmbeddingModelType> {
+    env::var("SUPPORTED_EMBEDDING_MODELS")
+        .map(|s| {
+            s.split(',')
+                .map(|s| EmbeddingModelType::from_string(s).expect("Failed to parse SUPPORTED_EMBEDDING_MODELS"))
+                .collect()
+        })
+        .unwrap_or_else(|_| {
+            vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
+                OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
+            )]
+        })
 }
 
 pub fn run_test_one_node_network<F>(config: TestConfig, test: F)
@@ -91,23 +119,11 @@ where
 
         let node_db_path = format!("db_tests/{}", hash_signature_public_key(&identity_pk));
 
-        let proxy_identity: Option<String> = env::var("PROXY_IDENTITY").ok().and_then(|addr| addr.parse().ok());
-
         let api_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
 
         assert!(port_is_available(8080), "Port 8080 is not available");
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127,0,0,1)), 8080);
-        let embedding_generator = if let Some(url) = &config.embeddings_url {
-            RemoteEmbeddingGenerator::new(
-                EmbeddingModelType::OllamaTextEmbeddingsInference(
-                    OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
-                ),
-                url,
-                None,
-            )
-        } else {
-            RemoteEmbeddingGenerator::new_default()
-        };
+
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
 
         let node = Node::new(
             identity_name.to_string(),
@@ -120,15 +136,16 @@ where
             commands_receiver.clone(),
             node_db_path,
             "".to_string(),
-            proxy_identity,
+            None,
             false,
             vec![],
-            Some(embedding_generator),
+            Some(RemoteEmbeddingGenerator::new_default()),
             None,
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM),
-            vec![EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM)],
+            default_embedding_model(),
+            supported_embedding_models(),
             Some(api_key.clone()),
-        ).await;
+        )
+        .await;
 
         let abort_handle;
         {
@@ -158,13 +175,20 @@ where
         Ok(())
     });
     rt.shutdown_timeout(Duration::from_secs(10));
-    if let Err(e) = status { panic!("{:?}", e); }
-    assert!(TcpListener::bind(("127.0.0.1", 8080)).is_ok(), "Port 8080 is not available");
+    if let Err(e) = status {
+        panic!("{:?}", e);
+    }
+    assert!(
+        TcpListener::bind(("127.0.0.1", 8080)).is_ok(),
+        "Port 8080 is not available"
+    );
 }
 
 impl TestContext {
     pub async fn register_device(&self) -> anyhow::Result<()> {
-        use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
+        use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+            IdentityPermissions, RegistrationCodeType
+        };
         use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 
         let (res_registration_sender, res_registration_receiver) = async_channel::bounded(1);
@@ -184,17 +208,21 @@ impl TestContext {
             clone_signature_secret_key(&self.profile_identity_sk),
             self.node_encryption_pk,
             code.to_string(),
-            RegistrationCodeType::Device("main".to_string()).to_string(),
+            IdentityType::Device.to_string(),
             IdentityPermissions::Admin.to_string(),
             self.device_name.clone(),
             "".to_string(),
             self.identity_name.clone(),
             self.identity_name.clone(),
-        ).map_err(|e| anyhow::anyhow!(e))?;
+        )
+        .map_err(|e| anyhow::anyhow!(e))?;
 
         let (res_use_sender, res_use_receiver) = async_channel::bounded(1);
         self.commands
-            .send(NodeCommand::APIUseRegistrationCode { msg, res: res_use_sender })
+            .send(NodeCommand::APIUseRegistrationCode {
+                msg,
+                res: res_use_sender,
+            })
             .await?;
         let result = res_use_receiver.recv().await?;
         result.map(|_| ()).map_err(|e| anyhow::anyhow!(format!("{:?}", e)))
@@ -212,11 +240,16 @@ impl TestContext {
             self.profile_name.clone(),
             self.identity_name.clone(),
             self.identity_name.clone(),
-        ).map_err(|e| anyhow::anyhow!(e))?;
+        )
+        .map_err(|e| anyhow::anyhow!(e))?;
         self.commands
             .send(NodeCommand::APIAddAgent { msg, res: res_sender })
             .await?;
-        res_receiver.recv().await?.map(|_| ()).map_err(|e| anyhow::anyhow!(format!("{:?}", e)))
+        res_receiver
+            .recv()
+            .await?
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!(format!("{:?}", e)))
     }
 
     pub async fn create_job(&self, agent_sub: &str) -> anyhow::Result<String> {
@@ -234,7 +267,8 @@ impl TestContext {
             self.profile_name.clone(),
             self.identity_name.clone(),
             agent_sub.to_string(),
-        ).map_err(|e| anyhow::anyhow!(e))?;
+        )
+        .map_err(|e| anyhow::anyhow!(e))?;
 
         let (res_sender, res_receiver) = async_channel::bounded(1);
         self.commands
@@ -259,19 +293,27 @@ impl TestContext {
             self.profile_name.clone(),
             self.identity_name.clone(),
             format!("{}/agent/{}", self.profile_name, self.device_name),
-        ).map_err(|e| anyhow::anyhow!(e))?;
+        )
+        .map_err(|e| anyhow::anyhow!(e))?;
 
         let (res_sender, res_receiver) = async_channel::bounded(1);
         self.commands
             .send(NodeCommand::APIJobMessage { msg, res: res_sender })
             .await?;
-        res_receiver.recv().await?.map(|_| ()).map_err(|e| anyhow::anyhow!(format!("{:?}", e)))
+        res_receiver
+            .recv()
+            .await?
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!(format!("{:?}", e)))
     }
 
     pub async fn wait_for_response(&self, timeout: Duration) -> anyhow::Result<String> {
         let (res_sender, res_receiver) = async_channel::bounded(1);
         self.commands
-            .send(NodeCommand::FetchLastMessages { limit: 1, res: res_sender })
+            .send(NodeCommand::FetchLastMessages {
+                limit: 1,
+                res: res_sender,
+            })
             .await?;
         let msgs = res_receiver.recv().await?;
         let msg_hash = msgs[0].calculate_message_hash_for_pagination();
@@ -279,7 +321,10 @@ impl TestContext {
         loop {
             let (res_sender, res_receiver) = async_channel::bounded(1);
             self.commands
-                .send(NodeCommand::FetchLastMessages { limit: 2, res: res_sender })
+                .send(NodeCommand::FetchLastMessages {
+                    limit: 2,
+                    res: res_sender,
+                })
                 .await?;
             let msgs = res_receiver.recv().await?;
             if msgs.len() == 2 && msgs[1].calculate_message_hash_for_pagination() == msg_hash {

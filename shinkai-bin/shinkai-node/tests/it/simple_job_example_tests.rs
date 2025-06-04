@@ -1,10 +1,10 @@
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, OpenAI, SerializedLLMProvider,
+    LLMProviderInterface, OpenAI, SerializedLLMProvider
 };
-use shinkai_test_framework::{run_test_one_node_network, TestContext, TestConfig};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_test_framework::{run_test_one_node_network, TestConfig, TestContext};
 use std::time::Duration;
 
 use super::utils::node_test_api::wait_for_default_tools;
@@ -62,37 +62,37 @@ fn simple_job_message_test() {
         .with_mock_openai(server_url.clone())
         .with_mock_embeddings(server_url.clone());
 
-    run_test_one_node_network(config, move |ctx: TestContext| Box::pin(async move {
+    run_test_one_node_network(config, move |ctx: TestContext| {
+        Box::pin(async move {
+            ctx.register_device().await.unwrap();
+            let tools_ready = wait_for_default_tools(ctx.commands.clone(), ctx.api_key.clone(), 120)
+                .await
+                .unwrap();
+            assert!(tools_ready);
 
-        ctx.register_device().await.unwrap();
-    let tools_ready = wait_for_default_tools(ctx.commands.clone(), ctx.api_key.clone(), 120)
-        .await
-        .unwrap();
-    assert!(tools_ready);
+            let agent_name =
+                ShinkaiName::new(format!("{}/{}/agent/test_agent", ctx.identity_name, ctx.profile_name).to_string())
+                    .unwrap();
 
-    let agent_name = ShinkaiName::new(
-        format!("{}/{}/agent/test_agent", ctx.identity_name, ctx.profile_name).to_string(),
-    )
-    .unwrap();
+            let open_ai = OpenAI {
+                model_type: "gpt-4-turbo".to_string(),
+            };
+            let agent = SerializedLLMProvider {
+                id: "test_agent".to_string(),
+                full_identity_name: agent_name,
+                name: Some("Test Agent".to_string()),
+                description: Some("Test Agent Description".to_string()),
+                external_url: Some(server_url.clone()),
+                api_key: Some("mockapikey".to_string()),
+                model: LLMProviderInterface::OpenAI(open_ai),
+            };
 
-    let open_ai = OpenAI { model_type: "gpt-4-turbo".to_string() };
-    let agent = SerializedLLMProvider {
-        id: "test_agent".to_string(),
-        full_identity_name: agent_name,
-        name: Some("Test Agent".to_string()),
-        description: Some("Test Agent Description".to_string()),
-        external_url: Some(server_url.clone()),
-        api_key: Some("mockapikey".to_string()),
-        model: LLMProviderInterface::OpenAI(open_ai),
-    };
+            ctx.register_llm_provider(agent).await.unwrap();
 
-        ctx.register_llm_provider(agent).await.unwrap();
+            let agent_sub = format!("{}/agent/test_agent", ctx.profile_name);
+            let job_id = ctx.create_job(&agent_sub).await.unwrap();
 
-    let agent_sub = format!("{}/agent/test_agent", ctx.profile_name);
-        let job_id = ctx.create_job(&agent_sub).await.unwrap();
-
-        ctx
-            .update_job_config(
+            ctx.update_job_config(
                 &job_id,
                 JobConfig {
                     stream: Some(false),
@@ -102,14 +102,12 @@ fn simple_job_message_test() {
             .await
             .unwrap();
 
-        ctx.send_job_message(&job_id, "This is a test message").await.unwrap();
+            ctx.send_job_message(&job_id, "This is a test message").await.unwrap();
 
-        let response = ctx
-            .wait_for_response(Duration::from_secs(10))
-            .await
-            .unwrap();
-        assert!(response.contains("This is a test response from the mock server"));
+            let response = ctx.wait_for_response(Duration::from_secs(10)).await.unwrap();
+            assert!(response.contains("This is a test response from the mock server"));
 
-        ctx.abort_handle.abort();
-    }));
+            ctx.abort_handle.abort();
+        })
+    });
 }
