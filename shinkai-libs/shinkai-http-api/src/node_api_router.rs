@@ -19,6 +19,7 @@ use tokio_rustls::rustls::{self, ServerConfig};
 use tokio_rustls::TlsAcceptor;
 use utoipa::ToSchema;
 use warp::Filter;
+use warp::filters::compression;
 
 #[derive(serde::Serialize, ToSchema, Debug, Clone)]
 pub struct SendResponseBodyData {
@@ -165,7 +166,12 @@ pub async fn run_api(
     );
 
     // Combine all routes
-    let routes = v2_routes.or(mcp_routes).or(ws_routes).with(log).with(cors);
+    let routes = v2_routes
+        .or(mcp_routes)
+        .or(ws_routes)
+        .with(log)
+        .with(cors)
+        .with(compression::gzip());
 
     // Wrap the HTTP server in an async block that returns a Result
     let http_server = async {
