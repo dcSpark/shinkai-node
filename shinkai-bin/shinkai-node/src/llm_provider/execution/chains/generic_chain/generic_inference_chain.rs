@@ -39,6 +39,7 @@ use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 use base64::Engine;
+use serde_json::json;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -670,11 +671,12 @@ impl GenericInferenceChain {
             let response_res = JobManager::inference_with_llm_provider(
                 llm_provider.clone(),
                 filled_prompt.clone(),
-                inbox_name,
+                inbox_name.clone(),
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
                 db.clone(),
+                message_hash_id.clone(),
             )
             .await;
 
@@ -736,6 +738,21 @@ impl GenericInferenceChain {
                     }
                     let shinkai_tool = shinkai_tool.unwrap();
 
+                    if let Some(ref msg_id) = message_hash_id {
+                        let trace_info = json!({
+                            "tool": shinkai_tool.tool_router_key().to_string_without_version(),
+                            "function": function_call.name
+                        });
+                        if let Err(e) = db.add_tracing(
+                            msg_id,
+                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                            "tool_call",
+                            &trace_info,
+                        ) {
+                            eprintln!("failed to add tool call trace: {:?}", e);
+                        }
+                    }
+
                     // Note: here we can add logic to handle the case that we have network tools
                     // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
                     let function_response = match tool_router
@@ -750,6 +767,22 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("Invalid function arguments") =>
                                 {
+
+                                    if let Some(ref msg_id) = message_hash_id {
+                                        let trace_info = json!({
+                                            "error": error_msg,
+                                            "function": function_call.name
+                                        });
+                                        if let Err(e) = db.add_tracing(
+                                            msg_id,
+                                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                                            "tool_error_invalid_arguments",
+                                            &trace_info,
+                                        ) {
+                                            eprintln!("failed to add tool error trace: {:?}", e);
+                                        }
+                                    }
+
                                     // For invalid arguments, we'll retry with the LLM by including the error
                                     // message in the next prompt to help it fix
                                     // the parameters
@@ -795,6 +828,21 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("MissingConfigError") =>
                                 {
+                                    if let Some(ref msg_id) = message_hash_id {
+                                        let trace_info = json!({
+                                            "error": error_msg,
+                                            "function": function_call.name
+                                        });
+                                        if let Err(e) = db.add_tracing(
+                                            msg_id,
+                                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                                            "tool_error_missing_config",
+                                            &trace_info,
+                                        ) {
+                                            eprintln!("failed to add tool error trace: {:?}", e);
+                                        }
+                                    }
+
                                     // For missing config, we'll pass through the error directly
                                     // This will show up in the UI prompting the user to update their config
                                     eprintln!("Missing config error: {:?}", error_msg);
@@ -807,6 +855,20 @@ impl GenericInferenceChain {
                             }
                         }
                     };
+                    if let Some(ref msg_id) = message_hash_id {
+                        let trace_info = json!({
+                            "response": function_response.response,
+                            "function": function_call.name
+                        });
+                        if let Err(e) = db.add_tracing(
+                            msg_id,
+                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                            "tool_response",
+                            &trace_info,
+                        ) {
+                            eprintln!("failed to add tool response trace: {:?}", e);
+                        }
+                    }
 
                     let mut function_call_with_router_key = function_call.clone();
                     function_call_with_router_key.tool_router_key =

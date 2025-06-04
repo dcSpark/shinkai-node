@@ -383,6 +383,7 @@ impl SqliteManager {
 mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
     use shinkai_tools_primitives::tools::{
         deno_tools::DenoTool, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_output_arg::ToolOutputArg, tool_types::{OperatingSystem, RunnerType, ToolResult}
     };

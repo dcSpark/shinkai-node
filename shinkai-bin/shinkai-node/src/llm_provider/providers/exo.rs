@@ -74,6 +74,7 @@ impl LLMService for Exo {
         _config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
         _db: Arc<SqliteManager>,
+        _tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {

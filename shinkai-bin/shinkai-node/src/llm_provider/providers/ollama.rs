@@ -63,6 +63,7 @@ impl LLMService for Ollama {
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
         _db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {

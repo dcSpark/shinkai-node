@@ -94,6 +94,7 @@ impl LLMProvider {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         // Merge config with agent's config, preferring the provided config
         let merged_config = if let Some(agent) = &self.agent {
@@ -123,6 +124,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -139,6 +141,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -155,6 +158,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -170,6 +174,7 @@ impl LLMProvider {
                     merged_config,
                     llm_stopper,
                     self.db.clone(),
+                    tracing_message_id,
                 )
                 .await
             }
@@ -186,6 +191,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -201,6 +207,7 @@ impl LLMProvider {
                     merged_config,
                     llm_stopper,
                     self.db.clone(),
+                    tracing_message_id,
                 )
                 .await
             }
@@ -217,6 +224,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -233,6 +241,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -249,6 +258,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -265,6 +275,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }
@@ -281,6 +292,7 @@ impl LLMProvider {
                         merged_config,
                         llm_stopper,
                         self.db.clone(),
+                        tracing_message_id,
                     )
                     .await
             }

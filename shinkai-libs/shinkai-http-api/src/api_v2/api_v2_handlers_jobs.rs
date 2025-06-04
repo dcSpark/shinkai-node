@@ -146,6 +146,13 @@ pub fn job_routes(
         .and(warp::query::<GetToolingLogsRequest>())
         .and_then(get_tooling_logs_handler);
 
+    let get_message_traces_route = warp::path("get_message_traces")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::query::<GetMessageTracesRequest>())
+        .and_then(get_message_traces_handler);
+
     let fork_job_messages_route = warp::path("fork_job_messages")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -198,6 +205,7 @@ pub fn job_routes(
         .or(update_job_scope_route)
         .or(get_job_scope_route)
         .or(get_tooling_logs_route)
+        .or(get_message_traces_route)
         .or(fork_job_messages_route)
         .or(remove_job_route)
         .or(export_messages_from_inbox_route)
@@ -1066,6 +1074,11 @@ pub struct GetToolingLogsRequest {
     pub message_id: String,
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct GetMessageTracesRequest {
+    pub message_id: String,
+}
+
 #[utoipa::path(
     get,
     path = "/v2/get_tooling_logs",
@@ -1087,6 +1100,47 @@ pub async fn get_tooling_logs_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::V2ApiGetToolingLogs {
+            bearer,
+            message_id: query.message_id,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/get_message_traces",
+    params(
+        ("message_id" = String, Query, description = "Message ID to retrieve traces for")
+    ),
+    responses(
+        (status = 200, description = "Successfully retrieved message traces", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_message_traces_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    query: GetMessageTracesRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetMessageTraces {
             bearer,
             message_id: query.message_id,
             res: res_sender,
@@ -1333,6 +1387,7 @@ pub async fn get_job_provider_handler(
         update_job_scope_handler,
         get_job_scope_handler,
         get_tooling_logs_handler,
+        get_message_traces_handler,
         fork_job_messages_handler,
         remove_job_handler,
     ),
@@ -1342,7 +1397,7 @@ pub async fn get_job_provider_handler(
             UpdateJobConfigRequest, UpdateSmartInboxNameRequest, SerializedLLMProvider, JobCreationInfo,
             JobMessage, NodeApiData, LLMProviderSubset, AssociatedUI, MinimalJobScope, CallbackAction, ShinkaiName,
             LLMProviderInterface, RetryMessageRequest, UpdateJobScopeRequest, ExportInboxMessagesFormat, ExportInboxMessagesRequest,
-            ShinkaiSubidentityType, OpenAI, Ollama, Groq, Gemini, Exo, ShinkaiBackend, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, ForkJobMessagesRequest, RemoveJobRequest)
+            ShinkaiSubidentityType, OpenAI, Ollama, Groq, Gemini, Exo, ShinkaiBackend, SendResponseBody, SendResponseBodyData, APIError, GetToolingLogsRequest, GetMessageTracesRequest, ForkJobMessagesRequest, RemoveJobRequest)
     ),
     tags(
         (name = "jobs", description = "Job API endpoints")
