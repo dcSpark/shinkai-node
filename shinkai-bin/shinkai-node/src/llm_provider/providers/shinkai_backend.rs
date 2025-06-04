@@ -43,7 +43,7 @@ impl LLMService for ShinkaiBackend {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
@@ -97,7 +97,7 @@ impl LLMService for ShinkaiBackend {
         let tools_json = result.functions.unwrap_or_else(Vec::new);
 
         // Get the node's signature public key from the database
-        let (node_name, node_signature_public_key) = _db
+        let (node_name, node_signature_public_key) = db
             .query_row(
                 "SELECT node_name, node_signature_public_key FROM local_node_keys LIMIT 1",
                 params![],
@@ -181,6 +181,17 @@ impl LLMService for ShinkaiBackend {
             ShinkaiLogLevel::Debug,
             format!("Call API Body: {:?}", payload_log).as_str(),
         );
+
+        if let Some(ref msg_id) = tracing_message_id {
+            if let Err(e) = db.add_tracing(
+                msg_id,
+                inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                "llm_payload",
+                &payload_log,
+            ) {
+                eprintln!("failed to add payload trace: {:?}", e);
+            }
+        }
 
         if is_stream {
             handle_streaming_response(
