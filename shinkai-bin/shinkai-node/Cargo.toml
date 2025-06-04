@@ -104,3 +104,5 @@ tokio-tungstenite = { workspace = true }
 tempfile = { workspace = true }
 fs_extra = "1.2.0"
 utoipa = { workspace = true, features = ["yaml"] }
+shinkai_test_framework = { path = "../../shinkai-test-framework" }
+shinkai_test_macro = { path = "../../shinkai-test-macro" }

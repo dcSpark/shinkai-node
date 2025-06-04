@@ -12,6 +12,8 @@ members = [
   "shinkai-libs/shinkai-sqlite",
   "shinkai-libs/shinkai-non-rust-code",
   "shinkai-libs/shinkai-mcp",
+  "shinkai-test-framework",
+  "shinkai-test-macro",
   "shinkai-bin/*",
 ]
 resolver = "2"

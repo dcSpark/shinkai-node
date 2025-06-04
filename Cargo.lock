@@ -4852,6 +4852,8 @@ dependencies = [
  "shinkai_non_rust_code",
  "shinkai_sqlite",
  "shinkai_tcp_relayer",
+ "shinkai_test_framework",
+ "shinkai_test_macro",
  "shinkai_tools_primitives",
  "shinkai_tools_runner",
  "tempfile",
@@ -4931,6 +4933,36 @@ dependencies = [
  "tokio",
  "uuid",
  "x25519-dalek",
+]
+
+[[package]]
+name = "shinkai_test_framework"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "ed25519-dalek",
+ "proc-macro2",
+ "quote",
+ "shinkai_embedding",
+ "shinkai_http_api",
+ "shinkai_message_primitives",
+ "shinkai_node",
+ "shinkai_sqlite",
+ "syn 2.0.101",
+ "tempfile",
+ "tokio",
+ "x25519-dalek",
+]
+
+[[package]]
+name = "shinkai_test_macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "shinkai_test_framework",
+ "syn 2.0.101",
 ]
 
 [[package]]
