@@ -1971,13 +1971,21 @@ mod tests {
             "Input args should contain 'Hello, world!' message"
         );
 
+        let provider = ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap();
+        let tool_router_key = ToolRouterKey::new(
+            provider.to_string(),
+            "Author 3".to_string(),
+            "Enabled Network Tool".to_string(),
+            None,
+        );
         let enabled_network_tool = NetworkTool {
             name: "Enabled Network Tool".to_string(),
             author: "Author 3".to_string(),
             description: "An enabled network tool".to_string(),
             version: "0.1".to_string(),
             mcp_enabled: Some(false),
-            provider: ShinkaiName::new("@@agent_provider.sep-shinkai".to_string()).unwrap(),
+            provider,
+            tool_router_key: tool_router_key.to_string_without_version(),
             usage_type: usage_type.clone(),
             activated: true,
             config: vec![],

@@ -1238,6 +1238,20 @@ impl Node {
                     let _ = Node::v2_api_get_shinkai_tool_metadata(db_clone, bearer, tool_router_key, res).await;
                 });
             }
+            NodeCommand::V2ApiGetToolWithOffering { bearer, tool_key_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tool_with_offering(db_clone, node_name_clone, bearer, tool_key_name, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetToolsWithOfferings { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tools_with_offerings(db_clone, node_name_clone, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiSetShinkaiTool {
                 bearer,
                 tool_key,
