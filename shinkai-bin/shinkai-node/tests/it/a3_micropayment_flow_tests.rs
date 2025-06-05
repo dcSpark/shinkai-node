@@ -410,7 +410,7 @@ fn micropayment_flow_test() {
             // node2 receives the result and stores it
             // done
 
-            let test_network_tool_name = "__node1_test_sep_shinkai:::__localhost_sep_shinkai:::echo_function";
+            let test_network_tool_name = "__node1_with_libp2p_relayer_sep_shinkai:::__localhost_sep_shinkai:::echo_function";
             let test_local_tool_key_name = "local:::__localhost_sep_shinkai:::echo_function";
 
             let shinkai_tool_offering = ShinkaiToolOffering {
