@@ -28,7 +28,6 @@ doctest = false
 [dependencies]
 # libp2p dependencies for peer-to-peer networking
 libp2p = { version = "0.53", features = [
-    "gossipsub",
     "noise",
     "yamux",
     "tcp",
@@ -36,7 +35,7 @@ libp2p = { version = "0.53", features = [
     "dcutr",
     "identify",
     "ping",
-    "kad",
+    "relay",
     "request-response",
     "json",
     "tokio",

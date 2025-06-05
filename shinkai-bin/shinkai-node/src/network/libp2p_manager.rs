@@ -1,7 +1,7 @@
 use ed25519_dalek::SigningKey;
 use futures::prelude::*;
 use libp2p::{
-    dcutr, gossipsub, identify, kad, noise, ping, quic, request_response,
+    dcutr, identify, noise, ping, relay, request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
@@ -12,18 +12,18 @@ use shinkai_message_primitives::{
 use std::{
     sync::Arc,
     time::Duration,
+    collections::HashMap,
 };
 use tokio::sync::mpsc;
 
 /// The libp2p network behavior combining all protocols
-/// Kademlia is always enabled for better peer discovery and protocol compatibility
+/// Includes relay client support for connecting through relay servers
 #[derive(NetworkBehaviour)]
 pub struct ShinkaiNetworkBehaviour {
-    pub gossipsub: gossipsub::Behaviour,
     pub identify: identify::Behaviour,
     pub ping: ping::Behaviour,
+    pub relay_client: relay::client::Behaviour,
     pub dcutr: dcutr::Behaviour,
-    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
     pub request_response: request_response::json::Behaviour<ShinkaiMessage, ShinkaiMessage>,
 }
 
@@ -33,12 +33,6 @@ pub enum NetworkEvent {
     /// A message to be sent directly to a specific peer using request-response
     SendDirectMessage {
         peer_id: PeerId,
-        message: ShinkaiMessage,
-    },
-    /// A message to be broadcast to all peers in a topic using gossipsub
-    #[allow(dead_code)]
-    BroadcastMessage {
-        topic: String,
         message: ShinkaiMessage,
     },
     /// Add a peer to connect to
@@ -51,6 +45,16 @@ pub enum NetworkEvent {
     PingPeer {
         peer_id: PeerId,
     },
+    /// Attempt to upgrade a relayed connection to direct using DCUtR
+    TryDirectConnectionUpgrade {
+        peer_id: PeerId,
+    },
+    /// Request peer discovery from relay
+    DiscoverPeers,
+    /// Connect to a specific discovered peer by identity
+    ConnectToDiscoveredPeer {
+        identity: String,
+    },
 }
 
 /// The main libp2p network manager
@@ -59,6 +63,15 @@ pub struct LibP2PManager {
     event_sender: mpsc::UnboundedSender<NetworkEvent>,
     event_receiver: mpsc::UnboundedReceiver<NetworkEvent>,
     message_handler: Arc<ShinkaiMessageHandler>,
+    relay_address: Option<Multiaddr>, // Store relay address for circuit listening
+    // Reconnection mechanism fields
+    relay_peer_id: Option<PeerId>, // Track the relay peer ID for reconnection
+    is_connected_to_relay: bool, // Track relay connection state
+    reconnection_attempts: u32, // Count reconnection attempts for backoff
+    last_disconnection_time: Option<std::time::Instant>, // Track when we disconnected
+    // Peer discovery fields
+    discovered_peers: HashMap<String, (PeerId, Multiaddr)>, // identity -> (peer_id, circuit_addr)
+    discovery_enabled: bool, // Enable/disable automatic peer discovery
 }
 
 use crate::network::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
@@ -82,97 +95,13 @@ impl LibP2PManager {
             &format!("Local peer id: {}", local_peer_id),
         );
 
-        // Create transport with QUIC and TCP fallback
-        let tcp_transport = tcp::tokio::Transport::new(tcp::Config::default().nodelay(true))
-            .upgrade(libp2p::core::upgrade::Version::V1)
-            .authenticate(noise::Config::new(&local_key)?)
-            .multiplex(yamux::Config::default())
-            .timeout(Duration::from_secs(20))
-            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
-
-        let quic_transport = quic::tokio::Transport::new(quic::Config::new(&local_key))
-            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
-
-        // Combine QUIC and TCP transports - QUIC will be preferred, TCP as fallback
-        let transport = quic_transport
-            .or_transport(tcp_transport)
-            .map(|either_output, _| either_output.into_inner())
-            .boxed();
-
-        // Create GossipSub behavior with simple default configuration
-        let gossipsub_config = gossipsub::ConfigBuilder::default()
-            .heartbeat_interval(Duration::from_secs(10))
-            .validation_mode(gossipsub::ValidationMode::Permissive)
-            .mesh_outbound_min(0)  // Allow zero outbound connections during startup
-            .mesh_n_low(1)         // Minimum peers in mesh
-            .mesh_n(3)             // Target mesh size
-            .mesh_n_high(5)        // Higher maximum for mesh
-            .gossip_lazy(3)        // Gossip settings
-            .fanout_ttl(Duration::from_secs(60))  // TTL for fanout
-            .gossip_retransimission(3)  // Retransmit important messages
-            .duplicate_cache_time(Duration::from_secs(60))  // Cache for deduplication
-            .max_transmit_size(262144) // 256KB max message size
-            .build()
-            .expect("Valid config");
-
-        let mut gossipsub = gossipsub::Behaviour::new(
-            gossipsub::MessageAuthenticity::Signed(local_key.clone()),
-            gossipsub_config,
-        )?;
-
-        // Subscribe only to discovery topic - no longer using gossipsub for direct messaging
-        let discovery_topic = gossipsub::IdentTopic::new("shinkai-network");
-        gossipsub.subscribe(&discovery_topic)?;
-
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Info,
-            "Subscribed to broadcasting topic: shinkai-network",
-        );
-
         // Create Identify behavior with compatible protocol and include node identity
         let mut identify_config = identify::Config::new(
             "/shinkai/1.0.0".to_string(),
             local_key.public(),
         );
-        // Include the node identity in the agent version for relay identification
         identify_config = identify_config.with_agent_version(format!("shinkai-node-{}", node_name));
         let identify = identify::Behaviour::new(identify_config);
-
-        // Create ping behavior
-        let ping = ping::Behaviour::new(ping::Config::new());
-
-        // Create DCUtR behavior for hole punching
-        let dcutr = dcutr::Behaviour::new(local_peer_id);
-
-        // Create Kademlia behavior with proper protocol configuration for relay compatibility
-        let mut kademlia_config = kad::Config::default();
-        kademlia_config.set_protocol_names(vec![
-            libp2p::StreamProtocol::new("/kad/1.0.0"),
-            libp2p::StreamProtocol::new("/kademlia/1.0.0"),
-            libp2p::StreamProtocol::new("/ipfs/kad/1.0.0"),
-        ]);
-        
-        let mut kademlia = kad::Behaviour::with_config(
-            local_peer_id,
-            kad::store::MemoryStore::new(local_peer_id),
-            kademlia_config,
-        );
-        
-        // Start as server mode to participate fully in DHT
-        kademlia.set_mode(Some(kad::Mode::Server));
-
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Info,
-            "Kademlia DHT enabled with multiple protocol versions for relay compatibility",
-        );
-
-        // Create request-response behavior for direct messaging using JSON codec
-        let request_response = request_response::json::Behaviour::new(
-            std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
-            request_response::Config::default(),
-        );
 
         shinkai_log(
             ShinkaiLogOption::Network,
@@ -180,18 +109,29 @@ impl LibP2PManager {
             "Request-Response protocol enabled for direct peer messaging",
         );
 
-        let behaviour = ShinkaiNetworkBehaviour {
-            gossipsub,
-            identify,
-            ping,
-            dcutr,
-            kademlia,
-            request_response,
-        };
-
         // Create swarm
-        let swarm_config = libp2p::swarm::Config::with_tokio_executor();
-        let mut swarm = Swarm::new(transport, behaviour, local_peer_id, swarm_config);
+        let mut swarm =
+        libp2p::SwarmBuilder::with_existing_identity(local_key)
+            .with_tokio()
+            .with_tcp(
+                tcp::Config::default().nodelay(true),
+                noise::Config::new,
+                yamux::Config::default,
+            )?
+            .with_quic()
+            // .with_dns()?
+            .with_relay_client(noise::Config::new, yamux::Config::default)?
+            .with_behaviour(|keypair, relay_behaviour| ShinkaiNetworkBehaviour {
+                relay_client: relay_behaviour,
+                ping: ping::Behaviour::new(ping::Config::new()),
+                identify: identify,
+                dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
+                request_response: request_response::json::Behaviour::new(
+                    std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
+                    request_response::Config::default(),
+                ),
+            })?
+            .build();
 
         // Listen on both QUIC and TCP ports - relay networking still requires listening to connect to/from relay
         let (tcp_listen_addr, quic_listen_addr) = if let Some(port) = listen_port {
@@ -236,13 +176,21 @@ impl LibP2PManager {
         }
 
         // Connect to relay if provided
-        if let Some(relay_addr) = relay_address {
+        if let Some(ref relay_addr) = relay_address {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
                 &format!("Connecting to relay at: {}", relay_addr),
             );
-            swarm.dial(relay_addr)?;
+            swarm.dial(relay_addr.clone())?;
+            
+            // Note: We will listen on the relay circuit after the identify protocol completes
+            // This is handled in the identify event handler below
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                "📡 Will request relay reservation after peer identification completes",
+            );
         }
 
         // Create event channel
@@ -253,6 +201,15 @@ impl LibP2PManager {
             event_sender,
             event_receiver,
             message_handler: Arc::new(message_handler),
+            relay_address: relay_address.clone(),
+            // Reconnection mechanism fields
+            relay_peer_id: None, // Track the relay peer ID for reconnection
+            is_connected_to_relay: false, // Track relay connection state
+            reconnection_attempts: 0, // Count reconnection attempts for backoff
+            last_disconnection_time: None, // Track when we disconnected
+            // Peer discovery fields
+            discovered_peers: HashMap::new(), // identity -> (peer_id, circuit_addr)
+            discovery_enabled: true, // Enable/disable automatic peer discovery
         })
     }
 
@@ -293,39 +250,31 @@ impl LibP2PManager {
         Ok(())
     }
 
-    /// Broadcast a message to all peers in a topic
-    pub async fn broadcast_message(
-        &mut self,
-        topic: &str,
-        message: ShinkaiMessage,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let serialized = serde_json::to_string(&message)?;
-        
-        // Always subscribe to the general shinkai-network topic for peer discovery
-        let general_topic = gossipsub::IdentTopic::new("shinkai-network");
-        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&general_topic);
-        
-        // Also subscribe to the specific topic
-        let specific_topic = gossipsub::IdentTopic::new(topic);
-        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&specific_topic);
-        
-        // Publish to both topics to ensure message delivery
-        self.swarm
-            .behaviour_mut()
-            .gossipsub
-            .publish(general_topic, serialized.as_bytes())?;
-            
-        self.swarm
-            .behaviour_mut()
-            .gossipsub
-            .publish(specific_topic, serialized.as_bytes())?;
-
+    /// Attempt to upgrade a relayed connection to a direct connection using DCUtR
+    pub fn try_direct_connection_upgrade(&mut self, peer_id: PeerId) -> Result<(), Box<dyn std::error::Error>> {
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
-            &format!("Broadcasted message to topics: shinkai-network"),
+            &format!("🔄 Attempting direct connection upgrade to peer {} via DCUtR", peer_id),
         );
-
+        
+        // Check if we're connected to this peer through a relay
+        if self.swarm.is_connected(&peer_id) {
+            // The DCUtR behaviour automatically handles the upgrade when both peers support it
+            // We just need to log that we're attempting it
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("   DCUtR will attempt hole punching for direct connection to {}", peer_id),
+            );
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("   Not connected to peer {} - cannot attempt direct upgrade", peer_id),
+            );
+        }
+        
         Ok(())
     }
 
@@ -354,8 +303,8 @@ impl LibP2PManager {
     /// Run the network manager
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut ping_timer = tokio::time::interval(Duration::from_secs(30));
-        let mut discovery_timer = tokio::time::interval(Duration::from_secs(60));
-        let mut kademlia_bootstrap_timer = tokio::time::interval(Duration::from_secs(120)); // Every 2 minutes
+        let mut reconnection_timer = tokio::time::interval(Duration::from_secs(5)); // Check reconnection every 5 seconds
+        let mut discovery_timer = tokio::time::interval(Duration::from_secs(60)); // Request peer discovery every 60 seconds
         
         loop {
             tokio::select! {
@@ -370,23 +319,12 @@ impl LibP2PManager {
                 _ = ping_timer.tick() => {
                     self.send_ping().await?;
                 }
-                _ = discovery_timer.tick() => {
-                    self.send_discovery_message().await?;
+                _ = reconnection_timer.tick() => {
+                    self.check_and_reconnect_to_relay().await?;
                 }
-                _ = kademlia_bootstrap_timer.tick() => {
-                    // Bootstrap Kademlia for peer discovery
-                    if let Err(e) = self.swarm.behaviour_mut().bootstrap_kademlia() {
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Debug,
-                            &format!("Kademlia bootstrap failed: {}", e),
-                        );
-                    } else {
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Debug,
-                            "Initiated Kademlia bootstrap for peer discovery",
-                        );
+                _ = discovery_timer.tick() => {
+                    if self.is_connected_to_relay {
+                        self.request_peer_discovery().await?;
                     }
                 }
             }
@@ -403,77 +341,86 @@ impl LibP2PManager {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
-                    &format!("Listening on {}", address),
+                                        &format!("Listening on {}", address),
                 );
             }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::Message {
-                propagation_source: _,
-                message_id: _,
-                message,
-            })) => {
-                // Handle incoming GossipSub messages
-                if let Ok(message_str) = String::from_utf8(message.data) {
-                    // Check if it's a discovery message
-                    if message_str.contains("\"type\":\"discovery\"") || message_str.contains("\"type\":\"peer_joined\"") {
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::RelayClient(relay_event)) => {
+                // Handle relay client events for maintaining relay connections
+                use libp2p::relay::client::Event as RelayClientEvent;
+                match relay_event {
+                    RelayClientEvent::ReservationReqAccepted { 
+                        relay_peer_id, 
+                        renewal, 
+                        limit 
+                    } => {
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Info,
-                            &format!("Received discovery message from peer {}", 
-                                message.source.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())),
+                            &format!("🎉 Relay reservation ACCEPTED by {} (renewal: {}, limit: {:?})", 
+                                relay_peer_id, renewal, limit),
+                        );
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            "   ✅ Relay connection established successfully - can now receive connections through relay",
                         );
                         
-                        // If we have a source peer, make sure they're in our Kademlia table
-                        if let Some(source_peer) = message.source {
+                        // Now we have a reservation, create and advertise our circuit address
+                        if let Some(circuit_addr) = Self::create_circuit_address_for_relay(&relay_peer_id) {
+                            self.swarm.add_external_address(circuit_addr.clone());
                             shinkai_log(
                                 ShinkaiLogOption::Network,
-                                ShinkaiLogLevel::Debug,
-                                &format!("Processing discovery from peer: {}", source_peer),
+                                ShinkaiLogLevel::Info,
+                                &format!("   📍 Added relay circuit address for discovery: {}", circuit_addr),
                             );
                         }
-                        return Ok(()); // Don't process discovery messages as regular Shinkai messages
                     }
-                    
-                    // Try to parse as a regular Shinkai message
-                    if let Ok(shinkai_message) = serde_json::from_str::<ShinkaiMessage>(&message_str) {
+                    RelayClientEvent::OutboundCircuitEstablished { 
+                        relay_peer_id, 
+                        limit 
+                    } => {
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Info,
-                            &format!("Received Shinkai message from peer {}", 
-                                message.source.map(|p| p.to_string()).unwrap_or_else(|| "unknown".to_string())),
+                            &format!("🔄 Outbound circuit established through {} (limit: {:?})", 
+                                relay_peer_id, limit),
                         );
-                        
-                        // Handle the message using the message handler
-                        if let Some(source) = message.source {
-                            self.message_handler.handle_message(source, shinkai_message).await;
-                        }
-                    } else {
                         shinkai_log(
                             ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Debug,
-                            &format!("Received non-Shinkai message: {}", message_str),
+                            ShinkaiLogLevel::Info,
+                            "   ✅ Can now connect to other peers through this relay",
+                        );
+                    }
+                    RelayClientEvent::InboundCircuitEstablished { 
+                        src_peer_id, 
+                        limit 
+                    } => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            &format!("🔄 Inbound circuit established from {} (limit: {:?})", 
+                                src_peer_id, limit),
+                        );
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            "   ✅ Peer connected to us through relay circuit",
                         );
                     }
                 }
             }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::Subscribed { peer_id, topic })) => {
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Dcutr(dcutr_event)) => {
+                // Handle DCUtR events for direct connection upgrades
+                // Enhanced DCUtR event handling for direct connection upgrades
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
-                    &format!("Peer {} subscribed to topic {}", peer_id, topic),
+                    &format!("🔄 DCUtR: Direct connection upgrade event: {:?}", dcutr_event),
                 );
-            }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::Unsubscribed { peer_id, topic })) => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
-                    &format!("Peer {} unsubscribed from topic {}", peer_id, topic),
-                );
-            }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Gossipsub(gossipsub::Event::GossipsubNotSupported { peer_id })) => {
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Error,
-                    &format!("Peer {} does not support Gossipsub", peer_id),
+                    "   Attempting to establish direct peer-to-peer connection",
                 );
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Ping(ping_event)) => {
@@ -516,57 +463,156 @@ impl LibP2PManager {
                     &format!("Identified peer {} with protocol version {}", peer_id, info.protocol_version),
                 );
                 
-                // Add peer to Kademlia for better peer discovery
-                // Prioritize circuit addresses for relay networking, then external addresses
+                // Check if this peer supports the relay protocol
+                let supports_relay = info.protocols.iter().any(|protocol| {
+                    protocol.to_string().contains("/libp2p/circuit/relay/")
+                });
+                
+                if supports_relay {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Peer {} supports relay protocol - ready to use as relay", peer_id),
+                    );
+                    
+                    // CRITICAL: Now that we've identified the relay, listen on the relay circuit
+                    // This is what actually establishes the relay reservation
+                    if let Some(relay_addr) = self.relay_address.clone() {
+                        if let Some(relay_peer_from_addr) = Self::extract_peer_id_from_address(&relay_addr) {
+                            if relay_peer_from_addr == peer_id {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Info,
+                                    "🔄 This is our configured relay - establishing circuit reservation",
+                                );
+                                
+                                // Mark as connected if not already marked
+                                if !self.is_connected_to_relay {
+                                    self.mark_relay_connected(peer_id);
+                                }
+                                
+                                // Create the circuit address with the correct format:
+                                // /ip4/{relay-ip}/tcp/{relay-port}/p2p/{relay-peer-id}/p2p-circuit
+                                let circuit_addr = relay_addr.clone()
+                                    .with(libp2p::multiaddr::Protocol::P2p(peer_id))
+                                    .with(libp2p::multiaddr::Protocol::P2pCircuit);
+                                    
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("📡 Listening on relay circuit: {}", circuit_addr),
+                                );
+                                
+                                if let Err(e) = self.swarm.listen_on(circuit_addr.clone()) {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Failed to listen on relay circuit {}: {}", circuit_addr, e),
+                                    );
+                                } else {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Info,
+                                        "✅ Successfully requested relay reservation - should prevent KeepAliveTimeout",
+                                    );
+                                }
+                            }
+                        } else {
+                            // If we can't extract peer ID from address, assume this might be our relay
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                "🔄 Identified relay server - attempting to establish circuit reservation",
+                            );
+                            
+                            // Mark as connected (this confirms our potential relay connection)
+                            if !self.is_connected_to_relay {
+                                self.mark_relay_connected(peer_id);
+                            }
+                            
+                            // Create circuit address with the identified peer ID
+                            let circuit_addr = relay_addr.clone()
+                                .with(libp2p::multiaddr::Protocol::P2p(peer_id))
+                                .with(libp2p::multiaddr::Protocol::P2pCircuit);
+                                
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                &format!("📡 Listening on relay circuit: {}", circuit_addr),
+                            );
+                            
+                            if let Err(e) = self.swarm.listen_on(circuit_addr.clone()) {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to listen on relay circuit {}: {}", circuit_addr, e),
+                                );
+                            } else {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Info,
+                                    "✅ Successfully requested relay reservation",
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Peer {} does not support relay protocol", peer_id),
+                    );
+                }
+                
+                // Check if this peer is connected through a relay and attempt direct connection upgrade
                 let mut circuit_addrs = Vec::new();
                 let mut external_addrs = Vec::new();
                 
                 for addr in &info.listen_addrs {
                     if Self::is_circuit_address(addr) {
                         circuit_addrs.push(addr.clone());
-                        self.swarm.behaviour_mut().add_peer_to_kademlia(peer_id, addr.clone());
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Info,
-                            &format!("Added peer {} with relay circuit address {} to Kademlia DHT", peer_id, addr),
+                            &format!("Peer {} has relay circuit address: {}", peer_id, addr),
                         );
                     } else if Self::is_external_address(addr) {
                         external_addrs.push(addr.clone());
-                        self.swarm.behaviour_mut().add_peer_to_kademlia(peer_id, addr.clone());
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Debug,
-                            &format!("Added peer {} with external address {} to Kademlia DHT", peer_id, addr),
-                        );
-                    } else {
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Debug,
-                            &format!("Skipped private address {} for peer {} in Kademlia DHT", addr, peer_id),
+                            &format!("Peer {} has external address: {}", peer_id, addr),
                         );
                     }
                 }
                 
-                // Log the addressing strategy
-                if !circuit_addrs.is_empty() {
+                // If peer is connected through relay and has external addresses, try direct connection upgrade
+                if !circuit_addrs.is_empty() && !external_addrs.is_empty() {
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Info,
-                        &format!("Peer {} using relay circuit addressing - {} circuit addresses available", 
+                        &format!("Peer {} connected via relay but has external addresses - attempting DCUtR upgrade", peer_id),
+                    );
+                    if let Err(e) = self.try_direct_connection_upgrade(peer_id) {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Debug,
+                            &format!("Failed to initiate DCUtR upgrade for peer {}: {}", peer_id, e),
+                        );
+                    }
+                } else if !circuit_addrs.is_empty() {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Peer {} using relay circuit addressing - {} circuit addresses", 
                             peer_id, circuit_addrs.len()),
                     );
                 } else if !external_addrs.is_empty() {
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Info,
-                        &format!("Peer {} using direct external addressing - {} external addresses available", 
+                        &format!("Peer {} using direct external addressing - {} external addresses", 
                             peer_id, external_addrs.len()),
-                    );
-                } else {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        &format!("Peer {} has no reachable addresses - DHT routing may be limited", peer_id),
                     );
                 }
             }
@@ -629,58 +675,48 @@ impl LibP2PManager {
                     }
                 }
             }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Kademlia(kad_event)) => {
-                // Handle Kademlia events for peer discovery
-                match kad_event {
-                        kad::Event::OutboundQueryProgressed { id: _, result, .. } => {
-                            match result {
-                                kad::QueryResult::Bootstrap(Ok(kad::BootstrapOk { peer, num_remaining })) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Network,
-                                        ShinkaiLogLevel::Info,
-                                        &format!("Kademlia bootstrap progress: peer={}, remaining={}", peer, num_remaining),
-                                    );
-                                }
-                                kad::QueryResult::Bootstrap(Err(e)) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Network,
-                                        ShinkaiLogLevel::Error,
-                                        &format!("Kademlia bootstrap error: {:?}", e),
-                                    );
-                                }
-                                kad::QueryResult::GetClosestPeers(Ok(kad::GetClosestPeersOk { peers, .. })) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Network,
-                                        ShinkaiLogLevel::Debug,
-                                        &format!("Found {} close peers via Kademlia", peers.len()),
-                                    );
-                                }
-                                kad::QueryResult::GetClosestPeers(Err(e)) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Network,
-                                        ShinkaiLogLevel::Debug,
-                                        &format!("Kademlia get closest peers error: {:?}", e),
-                                    );
-                                }
-                                _ => {}
-                            }
-                        }
-                        kad::Event::RoutingUpdated { peer, is_new_peer, addresses, .. } => {
-                            shinkai_log(
-                                ShinkaiLogOption::Network,
-                                ShinkaiLogLevel::Debug,
-                                &format!("Kademlia routing updated: peer={}, new={}, addresses={:?}", peer, is_new_peer, addresses),
-                            );
-                        }
-                        _ => {}
-                    }
-            }
+
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
                     &format!("Connected to peer {}", peer_id),
                 );
+                
+                // Check if this is a direct connection to a relay server (not through a circuit)
+                let is_direct_to_relay = Self::is_external_address(&endpoint.get_remote_address()) 
+                    && !Self::is_circuit_address(&endpoint.get_remote_address());
+                
+                if is_direct_to_relay {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Connected directly to potential relay server: {}", peer_id),
+                    );
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "   Will request relay reservation after peer identification",
+                    );
+                    
+                    // Check if this might be our configured relay
+                    if let Some(relay_addr) = self.relay_address.clone() {
+                        if let Some(relay_peer_from_addr) = Self::extract_peer_id_from_address(&relay_addr) {
+                            if relay_peer_from_addr == peer_id {
+                                // This is our configured relay - mark as connected
+                                self.mark_relay_connected(peer_id);
+                            }
+                        } else {
+                            // If we can't extract peer ID from address, assume this might be our relay
+                            // We'll confirm this during the identify protocol
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                "   Potential relay connection - will confirm during identification",
+                            );
+                        }
+                    }
+                }
                 
                 // Check if this connection is through a relay and create circuit address
                 if let Some(circuit_addr) = Self::extract_circuit_address(&endpoint.get_remote_address(), &peer_id) {
@@ -700,25 +736,12 @@ impl LibP2PManager {
                     );
                 }
                 
-                // When a new peer connects, try to add them to gossipsub
-                let topic = gossipsub::IdentTopic::new("shinkai-network");
-                if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
+                // When a new peer connects through relay, attempt direct connection upgrade
+                if Self::is_circuit_address(&endpoint.get_remote_address()) {
                     shinkai_log(
                         ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
-                        &format!("Already subscribed to topic: {}", e),
-                    );
-                }
-                
-                // Announce our presence to the new peer
-                let discovery_message = format!("{{\"type\":\"peer_joined\",\"peer_id\":\"{}\"}}",
-                    self.swarm.local_peer_id());
-                
-                if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, discovery_message.as_bytes()) {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
-                        &format!("Failed to announce presence: {}", e),
+                        ShinkaiLogLevel::Info,
+                        &format!("Peer {} connected via relay - will attempt DCUtR upgrade after identification", peer_id),
                     );
                 }
             }
@@ -728,6 +751,9 @@ impl LibP2PManager {
                     ShinkaiLogLevel::Info,
                     &format!("Disconnected from peer {}: {:?}", peer_id, cause),
                 );
+                
+                // Check if this was our relay connection and trigger reconnection
+                self.mark_relay_disconnected(peer_id);
             }
             SwarmEvent::IncomingConnectionError { error, .. } => {
                 shinkai_log(
@@ -773,30 +799,6 @@ impl LibP2PManager {
             ShinkaiLogLevel::Info,
             &format!("Not currently connected to peer {} - ping results will be available once connected", peer_id),
         );
-        
-        Ok(())
-    }
-
-    /// Send a discovery message to help with peer discovery  
-    async fn send_discovery_message(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let discovery_message = format!("{{\"type\":\"discovery\",\"peer_id\":\"{}\"}}",
-            self.swarm.local_peer_id());
-        
-        let topic = gossipsub::IdentTopic::new("shinkai-network");
-        
-        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, discovery_message.as_bytes()) {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Debug,
-                &format!("Failed to send discovery message: {}", e),
-            );
-        } else {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Debug,
-                "Sent discovery message to network",
-            );
-        }
         
         Ok(())
     }
@@ -929,6 +931,20 @@ impl LibP2PManager {
         addr.iter().any(|protocol| matches!(protocol, Protocol::P2pCircuit))
     }
 
+    /// Create a circuit address for a specific relay peer
+    /// This creates the address that other peers can use to reach us through the relay
+    fn create_circuit_address_for_relay(relay_peer_id: &PeerId) -> Option<Multiaddr> {
+        use libp2p::multiaddr::Protocol;
+        
+        // For now, we'll create a generic circuit address
+        // In a real implementation, you'd want to use the actual relay's listening address
+        let mut circuit_addr = Multiaddr::empty();
+        circuit_addr.push(Protocol::P2p(relay_peer_id.clone()));
+        circuit_addr.push(Protocol::P2pCircuit);
+        
+        Some(circuit_addr)
+    }
+
     /// Handle network events from the event channel
     async fn handle_network_event(&mut self, event: NetworkEvent) -> Result<(), Box<dyn std::error::Error>> {
         shinkai_log(
@@ -946,14 +962,6 @@ impl LibP2PManager {
                 );
                 self.send_direct_message_to_peer(peer_id, message).await?;
             }
-            NetworkEvent::BroadcastMessage { topic, message } => {
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Info,
-                    &format!("Broadcasting message to topic {}", topic),
-                );
-                self.broadcast_message(&topic, message).await?;
-            }
             NetworkEvent::AddPeer { peer_id, address } => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
@@ -970,22 +978,249 @@ impl LibP2PManager {
                 );
                 self.ensure_peer_connected(peer_id).await?;
             }
+            NetworkEvent::TryDirectConnectionUpgrade { peer_id } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Attempting direct connection upgrade to peer {}", peer_id),
+                );
+                self.try_direct_connection_upgrade(peer_id)?;
+            }
+            NetworkEvent::DiscoverPeers => {
+                self.request_peer_discovery().await?;
+            }
+            NetworkEvent::ConnectToDiscoveredPeer { identity } => {
+                self.connect_to_discovered_peer(&identity).await?;
+            }
         }
+        Ok(())
+    }
+
+    /// Extract the peer ID from a multiaddr if present
+    fn extract_peer_id_from_address(addr: &Multiaddr) -> Option<PeerId> {
+        use libp2p::multiaddr::Protocol;
+        
+        for protocol in addr.iter() {
+            if let Protocol::P2p(peer_id) = protocol {
+                return Some(peer_id);
+            }
+        }
+        None
+    }
+
+    /// Check if we need to reconnect to relay and attempt reconnection with exponential backoff
+    async fn check_and_reconnect_to_relay(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Only attempt reconnection if we have a relay address configured but are not connected
+        if let Some(ref relay_addr) = self.relay_address.clone() {
+            if !self.is_connected_to_relay {
+                // Check if enough time has passed since last disconnection for backoff
+                if let Some(last_disconnect) = self.last_disconnection_time {
+                    let backoff_duration = self.calculate_backoff_duration();
+                    if last_disconnect.elapsed() < backoff_duration {
+                        // Still in backoff period, don't reconnect yet
+                        return Ok(());
+                    }
+                }
+                
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("🔄 Attempting to reconnect to relay (attempt {}) at: {}", 
+                        self.reconnection_attempts + 1, relay_addr),
+                );
+                
+                // Attempt to reconnect
+                if let Err(e) = self.swarm.dial(relay_addr.clone()) {
+                    self.reconnection_attempts += 1;
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to reconnect to relay: {}", e),
+                    );
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "📡 Reconnection attempt initiated - waiting for connection establishment",
+                    );
+                    self.reconnection_attempts += 1;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Calculate exponential backoff duration for reconnection attempts
+    fn calculate_backoff_duration(&self) -> Duration {
+        // Exponential backoff: 5s, 10s, 20s, 40s, then max out at 60s
+        let base_delay = 5;
+        let max_delay = 60;
+        let delay_seconds = std::cmp::min(base_delay * (2_u32.saturating_pow(self.reconnection_attempts)), max_delay);
+        Duration::from_secs(delay_seconds as u64)
+    }
+
+    /// Mark relay as connected and reset reconnection state
+    fn mark_relay_connected(&mut self, peer_id: PeerId) {
+        self.is_connected_to_relay = true;
+        self.relay_peer_id = Some(peer_id);
+        self.reconnection_attempts = 0;
+        self.last_disconnection_time = None;
+        
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("✅ Relay connection established with {} - reconnection state reset", peer_id),
+        );
+    }
+
+    /// Mark relay as disconnected and start reconnection process
+    fn mark_relay_disconnected(&mut self, peer_id: PeerId) {
+        // Only mark as disconnected if this was our relay
+        if let Some(relay_peer) = self.relay_peer_id {
+            if relay_peer == peer_id {
+                self.is_connected_to_relay = false;
+                self.last_disconnection_time = Some(std::time::Instant::now());
+                
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("❌ Relay connection lost with {} - will attempt reconnection", peer_id),
+                );
+                
+                let next_attempt_in = self.calculate_backoff_duration();
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("🔄 Next reconnection attempt in {:?}", next_attempt_in),
+                );
+            }
+        }
+    }
+
+    /// Request peer list from relay for discovery
+    pub async fn request_peer_discovery(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.discovery_enabled {
+            return Ok(());
+        }
+
+        if let Some(relay_peer_id) = self.relay_peer_id {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                "🔍 Requesting peer discovery information from relay",
+            );
+            
+            // For now, we'll request discovery through a special ping
+            // In a more complete implementation, we'd send a specific discovery request
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("📡 Relay {} should broadcast peer information to us", relay_peer_id),
+            );
+        }
+        
+        Ok(())
+    }
+
+    /// Add a discovered peer to our peer list
+    pub fn add_discovered_peer(&mut self, identity: String, peer_id: PeerId, circuit_addr: Multiaddr) {
+        if self.discovered_peers.contains_key(&identity) {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Updating discovered peer: {} at {}", identity, circuit_addr),
+            );
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("🆕 Discovered new peer: {} at {}", identity, circuit_addr),
+            );
+        }
+        
+        self.discovered_peers.insert(identity, (peer_id, circuit_addr));
+    }
+
+    /// Connect to a discovered peer using their circuit address
+    pub async fn connect_to_discovered_peer(&mut self, identity: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some((peer_id, circuit_addr)) = self.discovered_peers.get(identity).cloned() {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("🔗 Connecting to discovered peer {} via circuit: {}", identity, circuit_addr),
+            );
+            
+            // Dial the peer through the circuit address
+            if let Err(e) = self.swarm.dial(circuit_addr.clone()) {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to connect to peer {} at {}: {}", identity, circuit_addr, e),
+                );
+                return Err(Box::new(e));
+            }
+            
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("✅ Initiated connection to peer {} - waiting for connection establishment", identity),
+            );
+        } else {
+            return Err(format!("Peer {} not found in discovered peers", identity).into());
+        }
+        
+        Ok(())
+    }
+
+    /// Get list of all discovered peers
+    pub fn get_discovered_peers(&self) -> Vec<(String, PeerId, Multiaddr)> {
+        self.discovered_peers.iter()
+            .map(|(identity, (peer_id, addr))| (identity.clone(), *peer_id, addr.clone()))
+            .collect()
+    }
+
+    /// Auto-connect to newly discovered peers (optional feature)
+    pub async fn auto_connect_to_discovered_peers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.discovery_enabled {
+            return Ok(());
+        }
+        
+        let peers_to_connect: Vec<String> = self.discovered_peers.keys()
+            .filter(|identity| !self.swarm.connected_peers().any(|connected_peer| {
+                // Check if we're already connected to this peer
+                if let Some((peer_id, _)) = self.discovered_peers.get(*identity) {
+                    connected_peer == peer_id
+                } else {
+                    false
+                }
+            }))
+            .cloned()
+            .collect();
+
+        for identity in peers_to_connect {
+            if let Err(e) = self.connect_to_discovered_peer(&identity).await {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Failed to auto-connect to peer {}: {}", identity, e),
+                );
+            }
+        }
+        
         Ok(())
     }
 }
 
 impl ShinkaiNetworkBehaviour {
-    /// Bootstrap Kademlia
-    pub fn bootstrap_kademlia(&mut self) -> Result<(), String> {
-        self.kademlia.bootstrap()
-            .map(|_query_id| ()) // Ignore the query ID, just return success
-            .map_err(|e| format!("Kademlia bootstrap failed: {:?}", e))
-    }
-    
-    /// Add a peer to Kademlia
-    pub fn add_peer_to_kademlia(&mut self, peer_id: PeerId, address: Multiaddr) {
-        self.kademlia.add_address(&peer_id, address);
+    /// Attempt to initiate a direct connection upgrade using DCUtR
+    pub fn initiate_dcutr_upgrade(&mut self, peer_id: PeerId) {
+        // DCUtR automatically handles the upgrade when both peers support it
+        // This is just a placeholder for any future manual triggering if needed
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("DCUtR upgrade for peer {} will be handled automatically", peer_id),
+        );
     }
 }
 

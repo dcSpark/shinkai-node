@@ -1,6 +1,5 @@
 use libp2p::{
     futures::StreamExt,
-    gossipsub::{self, Event as GossipsubEvent, MessageAuthenticity, ValidationMode},
     identify::{self, Event as IdentifyEvent},
     noise, ping, quic, tcp, yamux,
     swarm::{NetworkBehaviour, SwarmEvent, Config},
@@ -10,7 +9,6 @@ use std::time::Duration;
 
 #[derive(NetworkBehaviour)]
 struct ProtocolDebugBehaviour {
-    gossipsub: gossipsub::Behaviour,
     identify: identify::Behaviour,
     ping: ping::Behaviour,
 }
@@ -46,20 +44,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|either_output, _| either_output.into_inner())
         .boxed();
 
-    // Configure gossipsub
-    let gossipsub_config = gossipsub::ConfigBuilder::default()
-        .heartbeat_interval(Duration::from_secs(10))
-        .validation_mode(ValidationMode::Permissive)
-        .build()?;
-
-    let mut gossipsub = gossipsub::Behaviour::new(
-        MessageAuthenticity::Signed(local_key.clone()),
-        gossipsub_config,
-    )?;
-
-    let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
-    gossipsub.subscribe(&shinkai_topic)?;
-
     // Configure identify with the same protocol version as Shinkai nodes
     let identify = identify::Behaviour::new(identify::Config::new(
         "/shinkai/1.0.0".to_string(),
@@ -69,7 +53,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ping = ping::Behaviour::new(ping::Config::new());
 
     let behaviour = ProtocolDebugBehaviour {
-        gossipsub,
         identify,
         ping,
     };
