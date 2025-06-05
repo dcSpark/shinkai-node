@@ -630,7 +630,7 @@ impl Node {
                 &format!("Initializing LibP2P manager with node: {}, port: {:?}, relay: {:?}",
                     self.node_name, listen_port, relay_address),
             );
-            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address).await {
+            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address, None).await {
                 Ok(libp2p_manager) => {
                     let event_sender = libp2p_manager.event_sender();
                     let libp2p_manager_arc = Arc::new(Mutex::new(libp2p_manager));

@@ -297,6 +297,60 @@ impl RelayManager {
         addresses
     }
 
+    /// Check if a multiaddr represents an external/public address
+    /// Returns false for localhost, private networks, and other non-routable addresses
+    fn is_external_address(addr: &Multiaddr) -> bool {
+        use libp2p::multiaddr::Protocol;
+        
+        for protocol in addr.iter() {
+            match protocol {
+                Protocol::Ip4(ip) => {
+                    // Filter out private/local IP ranges
+                    if ip.is_loopback() ||        // 127.0.0.0/8
+                       ip.is_private() ||         // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                       ip.is_link_local() ||      // 169.254.0.0/16
+                       ip.is_documentation() ||   // Documentation IPs
+                       ip.is_multicast() ||       // Multicast
+                       ip.is_broadcast() ||       // Broadcast
+                       ip.is_unspecified() {      // 0.0.0.0
+                        return false;
+                    }
+                    
+                    // Additional private ranges not covered by is_private()
+                    let octets = ip.octets();
+                    match octets[0] {
+                        // Docker default bridge: 172.17.0.0/16
+                        172 if octets[1] == 17 => return false,
+                        // Additional private ranges
+                        100 if octets[1] >= 64 && octets[1] <= 127 => return false, // 100.64.0.0/10 (CGN)
+                        _ => {}
+                    }
+                }
+                Protocol::Ip6(ip) => {
+                    // Filter out IPv6 private/local ranges
+                    if ip.is_loopback() ||        // ::1
+                       ip.is_multicast() ||       // ff00::/8
+                       ip.is_unspecified() {      // ::
+                        return false;
+                    }
+                    
+                    // IPv6 link-local: fe80::/10
+                    if ip.segments()[0] & 0xffc0 == 0xfe80 {
+                        return false;
+                    }
+                    
+                    // IPv6 unique local: fc00::/7 (fd00::/8)
+                    if ip.segments()[0] & 0xfe00 == 0xfc00 {
+                        return false;
+                    }
+                }
+                _ => continue,
+            }
+        }
+        
+        true
+    }
+
     pub fn local_peer_id(&self) -> PeerId {
         *self.swarm.local_peer_id()
     }
@@ -468,6 +522,8 @@ impl RelayManager {
                             if let Some(identity) = possible_identity {
                                 println!("🔄 Fallback: registering peer {} with identity from agent version: {}", peer_id, identity);
                                 self.register_peer(identity, peer_id);
+                            } else {
+                                println!("❌ Could not parse identity from agent version: {}", info.agent_version);
                             }
                         }
                     } else {
@@ -488,10 +544,22 @@ impl RelayManager {
 
                 if supports_kademlia {
                     // Add peer addresses to Kademlia only if they support it
+                    // Filter out private/local addresses to only advertise reachable ones
+                    let mut external_addrs = Vec::new();
                     for addr in &info.listen_addrs {
-                        self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+                        if Self::is_external_address(addr) {
+                            external_addrs.push(addr.clone());
+                            self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
+                        }
                     }
-                    println!("✅ Added peer {} to Kademlia DHT", peer_id);
+                    
+                    if !external_addrs.is_empty() {
+                        println!("✅ Added peer {} to Kademlia DHT with {} external addresses: {:?}", 
+                            peer_id, external_addrs.len(), external_addrs);
+                    } else {
+                        println!("⚠️  Peer {} has no external addresses - not adding to Kademlia DHT", peer_id);
+                        println!("   Available addresses: {:?}", info.listen_addrs);
+                    }
                 } else {
                     println!("ℹ️  Peer {} doesn't support Kademlia, skipping DHT registration", peer_id);
                     println!("   This is normal for Shinkai nodes - they use gossipsub for discovery");

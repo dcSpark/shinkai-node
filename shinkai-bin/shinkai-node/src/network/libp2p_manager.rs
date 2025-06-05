@@ -71,6 +71,7 @@ impl LibP2PManager {
         listen_port: Option<u16>,
         message_handler: ShinkaiMessageHandler,
         relay_address: Option<Multiaddr>,
+        external_address: Option<Multiaddr>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())?;
         let local_peer_id = PeerId::from(local_key.public());
@@ -208,6 +209,17 @@ impl LibP2PManager {
         // Listen on both TCP and QUIC
         swarm.listen_on(tcp_listen_addr.parse()?)?;
         swarm.listen_on(quic_listen_addr.parse()?)?;
+        
+        // If external address is provided, add it as an external address
+        // This prevents private IP advertisement in Kademlia DHT
+        if let Some(ext_addr) = external_address {
+            swarm.add_external_address(ext_addr.clone());
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("Added external address for DHT advertisement: {}", ext_addr),
+            );
+        }
         
         if relay_address.is_some() {
             shinkai_log(
@@ -505,12 +517,56 @@ impl LibP2PManager {
                 );
                 
                 // Add peer to Kademlia for better peer discovery
+                // Prioritize circuit addresses for relay networking, then external addresses
+                let mut circuit_addrs = Vec::new();
+                let mut external_addrs = Vec::new();
+                
                 for addr in &info.listen_addrs {
-                    self.swarm.behaviour_mut().add_peer_to_kademlia(peer_id, addr.clone());
+                    if Self::is_circuit_address(addr) {
+                        circuit_addrs.push(addr.clone());
+                        self.swarm.behaviour_mut().add_peer_to_kademlia(peer_id, addr.clone());
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            &format!("Added peer {} with relay circuit address {} to Kademlia DHT", peer_id, addr),
+                        );
+                    } else if Self::is_external_address(addr) {
+                        external_addrs.push(addr.clone());
+                        self.swarm.behaviour_mut().add_peer_to_kademlia(peer_id, addr.clone());
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Debug,
+                            &format!("Added peer {} with external address {} to Kademlia DHT", peer_id, addr),
+                        );
+                    } else {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Debug,
+                            &format!("Skipped private address {} for peer {} in Kademlia DHT", addr, peer_id),
+                        );
+                    }
+                }
+                
+                // Log the addressing strategy
+                if !circuit_addrs.is_empty() {
                     shinkai_log(
                         ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
-                        &format!("Added peer {} with address {} to Kademlia DHT", peer_id, addr),
+                        ShinkaiLogLevel::Info,
+                        &format!("Peer {} using relay circuit addressing - {} circuit addresses available", 
+                            peer_id, circuit_addrs.len()),
+                    );
+                } else if !external_addrs.is_empty() {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Peer {} using direct external addressing - {} external addresses available", 
+                            peer_id, external_addrs.len()),
+                    );
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Peer {} has no reachable addresses - DHT routing may be limited", peer_id),
                     );
                 }
             }
@@ -619,12 +675,30 @@ impl LibP2PManager {
                         _ => {}
                     }
             }
-            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+            SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
                     &format!("Connected to peer {}", peer_id),
                 );
+                
+                // Check if this connection is through a relay and create circuit address
+                if let Some(circuit_addr) = Self::extract_circuit_address(&endpoint.get_remote_address(), &peer_id) {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Connected through relay, advertising circuit address: {}", circuit_addr),
+                    );
+                    
+                    // Add the circuit address as an external address so other peers know how to reach us
+                    self.swarm.add_external_address(circuit_addr.clone());
+                    
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Added relay circuit address for peer discovery: {}", circuit_addr),
+                    );
+                }
                 
                 // When a new peer connects, try to add them to gossipsub
                 let topic = gossipsub::IdentTopic::new("shinkai-network");
@@ -748,6 +822,111 @@ impl LibP2PManager {
         }
         
         Ok(())
+    }
+
+    /// Check if a multiaddr represents an external/public address
+    /// Returns false for localhost, private networks, and other non-routable addresses
+    fn is_external_address(addr: &Multiaddr) -> bool {
+        use libp2p::multiaddr::Protocol;
+        
+        for protocol in addr.iter() {
+            match protocol {
+                Protocol::Ip4(ip) => {
+                    // Filter out private/local IP ranges
+                    if ip.is_loopback() ||        // 127.0.0.0/8
+                       ip.is_private() ||         // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                       ip.is_link_local() ||      // 169.254.0.0/16
+                       ip.is_documentation() ||   // Documentation IPs
+                       ip.is_multicast() ||       // Multicast
+                       ip.is_broadcast() ||       // Broadcast
+                       ip.is_unspecified() {      // 0.0.0.0
+                        return false;
+                    }
+                    
+                    // Additional private ranges not covered by is_private()
+                    let octets = ip.octets();
+                    match octets[0] {
+                        // Docker default bridge: 172.17.0.0/16
+                        172 if octets[1] == 17 => return false,
+                        // Additional private ranges
+                        100 if octets[1] >= 64 && octets[1] <= 127 => return false, // 100.64.0.0/10 (CGN)
+                        _ => {}
+                    }
+                }
+                Protocol::Ip6(ip) => {
+                    // Filter out IPv6 private/local ranges
+                    if ip.is_loopback() ||        // ::1
+                       ip.is_multicast() ||       // ff00::/8
+                       ip.is_unspecified() {      // ::
+                        return false;
+                    }
+                    
+                    // IPv6 link-local: fe80::/10
+                    if ip.segments()[0] & 0xffc0 == 0xfe80 {
+                        return false;
+                    }
+                    
+                    // IPv6 unique local: fc00::/7 (fd00::/8)
+                    if ip.segments()[0] & 0xfe00 == 0xfc00 {
+                        return false;
+                    }
+                }
+                _ => continue,
+            }
+        }
+        
+        true
+    }
+
+    /// Extract a relay circuit address from a connection to a relay peer
+    /// Returns the circuit address that other peers can use to reach this node through the relay
+    fn extract_circuit_address(remote_addr: &Multiaddr, relay_peer_id: &PeerId) -> Option<Multiaddr> {
+        use libp2p::multiaddr::Protocol;
+        
+        // Check if this looks like a connection to a relay server
+        // We identify relay servers by checking if the remote address is external/public
+        if !Self::is_external_address(remote_addr) {
+            return None;
+        }
+        
+        // Build the circuit address that other peers can use to reach us through this relay
+        // Format: /ip4/{relay-ip}/tcp/{relay-port}/p2p/{relay-peer-id}/p2p-circuit
+        let mut circuit_addr = Multiaddr::empty();
+        
+        // Extract the network portion (IP and port) from the remote address
+        for protocol in remote_addr.iter() {
+            match protocol {
+                Protocol::Ip4(ip) => {
+                    circuit_addr.push(Protocol::Ip4(ip));
+                }
+                Protocol::Ip6(ip) => {
+                    circuit_addr.push(Protocol::Ip6(ip));
+                }
+                Protocol::Tcp(port) => {
+                    circuit_addr.push(Protocol::Tcp(port));
+                }
+                Protocol::Udp(port) => {
+                    circuit_addr.push(Protocol::Udp(port));
+                }
+                Protocol::QuicV1 => {
+                    circuit_addr.push(Protocol::QuicV1);
+                }
+                _ => continue,
+            }
+        }
+        
+        // Add the relay peer ID and circuit protocol
+        circuit_addr.push(Protocol::P2p(relay_peer_id.clone()));
+        circuit_addr.push(Protocol::P2pCircuit);
+        
+        Some(circuit_addr)
+    }
+
+    /// Check if an address is a relay circuit address
+    fn is_circuit_address(addr: &Multiaddr) -> bool {
+        use libp2p::multiaddr::Protocol;
+        
+        addr.iter().any(|protocol| matches!(protocol, Protocol::P2pCircuit))
     }
 
     /// Handle network events from the event channel
