@@ -130,11 +130,12 @@ fn micropayment_flow_test() {
     let rt = Runtime::new().unwrap();
 
     let e = rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sep-shinkai";
-        let node2_identity_name = "@@node2_test.sep-shinkai";
+        let node1_identity_name = "@@node1_with_libp2p_relayer.sep-shinkai";
+        let node2_identity_name = "@@node2_with_libp2p_relayer.sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main";
+        let relay_identity_name = "@@libp2p_relayer.sep-shinkai";
 
         let api_v2_key = "Human";
 
@@ -197,7 +198,7 @@ fn micropayment_flow_test() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
-            None,
+            Some(relay_identity_name.to_string()),
             true,
             vec![],
             None,
@@ -220,7 +221,7 @@ fn micropayment_flow_test() {
             node2_commands_receiver,
             node2_db_path,
             "".to_string(),
-            None,
+            Some(relay_identity_name.to_string()),
             true,
             vec![],
             None,

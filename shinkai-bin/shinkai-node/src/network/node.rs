@@ -2,7 +2,7 @@ use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOff
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::libp2p_manager::{LibP2PManager, NetworkEvent};
 use super::libp2p_message_handler::ShinkaiMessageHandler;
-use super::network_manager::network_job_manager::NetworkJobManager;
+
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -12,7 +12,7 @@ use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
-use crate::network::network_limiter::ConnectionLimiter;
+
 use crate::network::ws_routes::run_ws_api;
 use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
@@ -32,7 +32,7 @@ use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
-use shinkai_message_primitives::schemas::retry::RetryMessage;
+
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -102,10 +102,6 @@ pub struct Node {
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
-    /// Rate Limiter
-    pub conn_limiter: Arc<ConnectionLimiter>,
-    // Network Job Manager
-    pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
     pub proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     // Websocket Manager
@@ -231,12 +227,6 @@ impl Node {
             .try_into()
             .expect("BURST_ALLOWANCE value out of range");
 
-        let conn_limiter = Arc::new(ConnectionLimiter::new(
-            max_connections,
-            burst_allowance,
-            max_connections_per_ip.try_into().unwrap(),
-        ));
-
         // Initialize ProxyConnectionInfo if proxy_identity is provided
         let proxy_connection_info: Option<ProxyConnectionInfo> = proxy_identity.and_then(|proxy_identity| {
             ShinkaiName::new(proxy_identity.clone())
@@ -329,6 +319,7 @@ impl Node {
                 Arc::downgrade(&proxy_connection_info),
                 Arc::downgrade(&tool_router),
                 Arc::downgrade(&wallet_manager),
+                None,
             )
             .await,
         ));
@@ -343,23 +334,10 @@ impl Node {
                 Arc::downgrade(&proxy_connection_info),
                 Arc::downgrade(&tool_router),
                 Arc::downgrade(&wallet_manager),
+                None,
             )
             .await,
         ));
-
-        // Create NetworkJobManager with a weak reference to this node
-        let network_manager = NetworkJobManager::new(
-            Arc::downgrade(&db_arc),
-            node_name.clone(),
-            clone_static_secret_key(&encryption_secret_key),
-            clone_signature_secret_key(&identity_secret_key),
-            identity_manager.clone(),
-            Arc::downgrade(&my_agent_payments_manager),
-            Arc::downgrade(&ext_agent_payments_manager),
-            Arc::downgrade(&proxy_connection_info),
-            ws_manager_trait.clone(),
-        )
-        .await;
 
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
@@ -406,12 +384,10 @@ impl Node {
             first_device_needs_registration_code,
             initial_llm_providers,
             embedding_generator,
-            conn_limiter,
-            network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
             ws_manager,
-            ws_address,
             ws_manager_trait,
+            ws_address,
             ws_server: None,
             callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
             tool_router: Some(tool_router),
@@ -558,7 +534,18 @@ impl Node {
                 ShinkaiLogLevel::Debug,
                 "Creating ShinkaiMessageHandler",
             );
-            let message_handler = ShinkaiMessageHandler::new(self.network_job_manager.clone(), self.listen_address);
+            let message_handler = ShinkaiMessageHandler::new(
+                Arc::downgrade(&self.db),
+                self.node_name.clone(),
+                clone_static_secret_key(&self.encryption_secret_key),
+                clone_signature_secret_key(&self.identity_secret_key),
+                self.identity_manager.clone(),
+                Arc::downgrade(&self.my_agent_payments_manager),
+                Arc::downgrade(&self.ext_agent_payments_manager),
+                Arc::downgrade(&self.proxy_connection_info),
+                self.ws_manager_trait.clone(),
+                self.listen_address,
+            );
 
             // Extract port from listen_address for libp2p
             let listen_port = Some(self.listen_address.port());
@@ -630,6 +617,8 @@ impl Node {
                 &format!("Initializing LibP2P manager with node: {}, port: {:?}, relay: {:?}",
                     self.node_name, listen_port, relay_address),
             );
+            let mut libp2p_event_sender_for_update: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>> = None;
+            
             match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address, None).await {
                 Ok(libp2p_manager) => {
                     let event_sender = libp2p_manager.event_sender();
@@ -653,8 +642,10 @@ impl Node {
                     });
 
                     self.libp2p_manager = Some(libp2p_manager_arc);
-                    self.libp2p_event_sender = Some(event_sender);
+                    self.libp2p_event_sender = Some(event_sender.clone());
                     self.libp2p_task = Some(libp2p_task);
+                    libp2p_event_sender_for_update = Some(event_sender);
+                    
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Info,
@@ -668,6 +659,11 @@ impl Node {
                         &format!("Failed to initialize LibP2P: {}", e),
                     );
                 }
+            }
+            
+            // Update the offerings managers with the libp2p event sender if initialized
+            if let Some(event_sender) = libp2p_event_sender_for_update {
+                self.update_offerings_managers_with_libp2p(event_sender).await;
             }
         }
         shinkai_log(
@@ -776,6 +772,25 @@ impl Node {
                     }
             };
         }
+    }
+
+    /// Update offerings managers with libp2p event sender
+    async fn update_offerings_managers_with_libp2p(&self, event_sender: tokio::sync::mpsc::UnboundedSender<NetworkEvent>) {
+        // Update the offerings managers with the libp2p event sender
+        {
+            let mut my_offerings_manager = self.my_agent_payments_manager.lock().await;
+            my_offerings_manager.update_libp2p_event_sender(event_sender.clone());
+        }
+        {
+            let mut ext_offerings_manager = self.ext_agent_payments_manager.lock().await;
+            ext_offerings_manager.update_libp2p_event_sender(event_sender);
+        }
+        
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            "Offerings managers updated with LibP2P event sender",
+        );
     }
 
     // A function that initializes the embedding models from the database
