@@ -1,6 +1,8 @@
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
-use super::network_manager::network_job_manager::{NetworkJobManager, NetworkJobQueue};
+use super::libp2p_manager::{LibP2PManager, NetworkEvent};
+use super::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
+
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
 use crate::cron_tasks::cron_manager::CronManager;
@@ -10,17 +12,16 @@ use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
-use crate::network::network_limiter::ConnectionLimiter;
+
 use crate::network::ws_routes::run_ws_api;
 use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
 use base64::Engine;
-use chrono::Utc;
 use core::panic;
-use dashmap::DashMap;
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
+use libp2p::Multiaddr;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use reqwest::StatusCode;
@@ -28,45 +29,34 @@ use shinkai_embedding::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_embedding::model_type::EmbeddingModelType;
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
-    LLMProviderInterface, SerializedLLMProvider, ShinkaiBackend
-};
-use shinkai_message_primitives::schemas::retry::RetryMessage;
+use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
+
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use shinkai_tcp_relayer::NetworkMessage;
-use std::convert::TryInto;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
-use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
-pub type TcpReadHalf = Arc<Mutex<ReadHalf<TcpStream>>>;
-pub type TcpWriteHalf = Arc<Mutex<WriteHalf<TcpStream>>>;
-pub type TcpConnection = Option<(TcpReadHalf, TcpWriteHalf)>;
 
-// Define the ConnectionInfo struct
+// Define the ConnectionInfo struct for LibP2P proxy
 #[derive(Clone, Debug)]
 pub struct ProxyConnectionInfo {
     pub proxy_identity: ShinkaiName,
-    pub tcp_connection: TcpConnection,
 }
 
 // The `Node` struct represents a single node in the network.
@@ -81,17 +71,15 @@ pub struct Node {
     pub encryption_secret_key: EncryptionStaticKey,
     // The public key corresponding to `encryption_secret_key`.
     pub encryption_public_key: EncryptionPublicKey,
-    // The address this node is listening on.
+    // The address this node uses for LibP2P networking configuration.
     pub listen_address: SocketAddr,
-    // The HTTPS certificate in PEM format
-    pub private_https_certificate: Option<String>,
     // The HTTPS private key in PEM format
     pub public_https_certificate: Option<String>,
+    // The HTTPS public key in PEM format
+    pub private_https_certificate: Option<String>,
     // Secrets file path
     pub secrets_file_path: String,
-    // A map of known peer nodes.
-    pub peers: DashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
-    // The interval at which this node pings all known peers.
+    // The interval at which this node performs connectivity checks (LibP2P handles automatic pinging).
     pub ping_interval_secs: u64,
     // The channel from which this node receives commands.
     pub commands: Receiver<NodeCommand>,
@@ -109,10 +97,6 @@ pub struct Node {
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // An EmbeddingGenerator initialized with the Node's default embedding model + server info
     pub embedding_generator: RemoteEmbeddingGenerator,
-    /// Rate Limiter
-    pub conn_limiter: Arc<ConnectionLimiter>,
-    // Network Job Manager
-    pub network_job_manager: Arc<Mutex<NetworkJobManager>>,
     // Proxy Address
     pub proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     // Websocket Manager
@@ -142,6 +126,12 @@ pub struct Node {
     pub ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
     // LLM Stopper
     pub llm_stopper: Arc<LLMStopper>,
+    // LibP2P Manager for peer-to-peer networking
+    pub libp2p_manager: Option<Arc<Mutex<LibP2PManager>>>,
+    // LibP2P event sender for sending network events
+    pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    // LibP2P task handle
+    pub libp2p_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Node {
@@ -182,7 +172,11 @@ impl Node {
         let db_arc = Arc::new(
             SqliteManager::new(main_db_path.clone(), embedding_api_url, default_embedding_model.clone())
                 .unwrap_or_else(|e| {
-                    eprintln!("Error: {:?}", e);
+                    shinkai_log(
+                        ShinkaiLogOption::Database,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to open database {main_db_path}: {e:?}"),
+                    );
                     panic!("Failed to open database: {}", main_db_path)
                 }),
         );
@@ -207,33 +201,6 @@ impl Node {
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
-        let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
-            .unwrap_or_else(|_| "5".to_string())
-            .parse::<usize>()
-            .expect("Failed to parse MAX_CONNECTIONS")
-            .try_into()
-            .expect("MAX_CONNECTIONS value out of range");
-
-        let max_connections_per_ip: u32 = std::env::var("MAX_CONNECTIONS_PER_IP")
-            .unwrap_or_else(|_| "10".to_string())
-            .parse::<usize>()
-            .expect("Failed to parse MAX_CONNECTIONS_PER_IP")
-            .try_into()
-            .expect("MAX_CONNECTIONS_PER_IP value out of range");
-
-        let burst_allowance: u32 = std::env::var("BURST_ALLOWANCE")
-            .unwrap_or_else(|_| "3".to_string())
-            .parse::<usize>()
-            .expect("Failed to parse BURST_ALLOWANCE")
-            .try_into()
-            .expect("BURST_ALLOWANCE value out of range");
-
-        let conn_limiter = Arc::new(ConnectionLimiter::new(
-            max_connections,
-            burst_allowance,
-            max_connections_per_ip.try_into().unwrap(),
-        ));
-
         // Initialize ProxyConnectionInfo if proxy_identity is provided
         let proxy_connection_info: Option<ProxyConnectionInfo> = proxy_identity.and_then(|proxy_identity| {
             ShinkaiName::new(proxy_identity.clone())
@@ -244,19 +211,9 @@ impl Node {
                         format!("Invalid proxy identity name: {}", proxy_identity).as_str(),
                     );
                 })
-                .map_or_else(
-                    |_| None,
-                    |proxy_identity| {
-                        Some(ProxyConnectionInfo {
-                            proxy_identity,
-                            tcp_connection: None,
-                        })
-                    },
-                )
+                .map_or_else(|_| None, |proxy_identity| Some(ProxyConnectionInfo { proxy_identity }))
         });
         let proxy_connection_info = Arc::new(Mutex::new(proxy_connection_info));
-
-        let proxy_connection_info_weak = Arc::downgrade(&proxy_connection_info);
 
         let identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>> = {
             // Convert the Arc<Mutex<IdentityManager>> to Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>
@@ -296,7 +253,11 @@ impl Node {
             Ok(manager_value) => match serde_json::from_value::<WalletManager>(manager_value) {
                 Ok(manager) => Some(manager),
                 Err(e) => {
-                    eprintln!("Failed to deserialize WalletManager: {}", e);
+                    shinkai_log(
+                        ShinkaiLogOption::Database,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to deserialize WalletManager: {e}"),
+                    );
                     None
                 }
             },
@@ -329,9 +290,10 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
-                proxy_connection_info_weak.clone(),
+                Arc::downgrade(&proxy_connection_info),
                 Arc::downgrade(&tool_router),
                 Arc::downgrade(&wallet_manager),
+                None,
             )
             .await,
         ));
@@ -343,26 +305,13 @@ impl Node {
                 node_name.clone(),
                 clone_signature_secret_key(&identity_secret_key),
                 clone_static_secret_key(&encryption_secret_key),
-                proxy_connection_info_weak.clone(),
+                Arc::downgrade(&proxy_connection_info),
                 Arc::downgrade(&tool_router),
                 Arc::downgrade(&wallet_manager),
+                None,
             )
             .await,
         ));
-
-        // Create NetworkJobManager with a weak reference to this node
-        let network_manager = NetworkJobManager::new(
-            Arc::downgrade(&db_arc),
-            node_name.clone(),
-            clone_static_secret_key(&encryption_secret_key),
-            clone_signature_secret_key(&identity_secret_key),
-            identity_manager.clone(),
-            Arc::downgrade(&my_agent_payments_manager),
-            Arc::downgrade(&ext_agent_payments_manager),
-            proxy_connection_info_weak.clone(),
-            ws_manager_trait.clone(),
-        )
-        .await;
 
         let default_embedding_model = Arc::new(Mutex::new(default_embedding_model));
         let supported_embedding_models = Arc::new(Mutex::new(supported_embedding_models));
@@ -395,9 +344,8 @@ impl Node {
             identity_public_key,
             encryption_secret_key: clone_static_secret_key(&encryption_secret_key),
             encryption_public_key,
-            private_https_certificate,
             public_https_certificate,
-            peers: DashMap::new(),
+            private_https_certificate,
             listen_address,
             secrets_file_path,
             ping_interval_secs,
@@ -409,12 +357,10 @@ impl Node {
             first_device_needs_registration_code,
             initial_llm_providers,
             embedding_generator,
-            conn_limiter,
-            network_job_manager: Arc::new(Mutex::new(network_manager)),
             proxy_connection_info,
             ws_manager,
-            ws_address,
             ws_manager_trait,
+            ws_address,
             ws_server: None,
             callback_manager: Arc::new(Mutex::new(JobCallbackManager::new())),
             tool_router: Some(tool_router),
@@ -425,6 +371,9 @@ impl Node {
             my_agent_payments_manager,
             ext_agent_payments_manager,
             llm_stopper,
+            libp2p_manager: None,
+            libp2p_event_sender: None,
+            libp2p_task: None,
         }))
     }
 
@@ -523,16 +472,179 @@ impl Node {
             tokio::spawn(async move {
                 if reinstall_tools {
                     if let Err(e) = tool_router.force_reinstall_all(Arc::new(generator.clone())).await {
-                        eprintln!("ToolRouter force reinstall failed: {:?}", e);
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("ToolRouter force reinstall failed: {e:?}"),
+                        );
                     }
                 } else {
                     if let Err(e) = tool_router.initialization(Arc::new(generator.clone())).await {
-                        eprintln!("ToolRouter initialization failed: {:?}", e);
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("ToolRouter initialization failed: {e:?}"),
+                        );
                     }
                 }
             });
         }
-        eprintln!(">> Node start set variables successfully");
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            "Node start set variables successfully",
+        );
+
+        // Initialize LibP2P networking
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            "About to enter LibP2P initialization block",
+        );
+        {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                "Creating ShinkaiMessageHandler",
+            );
+            let message_handler = ShinkaiMessageHandler::new(
+                Arc::downgrade(&self.db),
+                self.node_name.clone(),
+                clone_static_secret_key(&self.encryption_secret_key),
+                clone_signature_secret_key(&self.identity_secret_key),
+                self.identity_manager.clone(),
+                Arc::downgrade(&self.my_agent_payments_manager),
+                Arc::downgrade(&self.ext_agent_payments_manager),
+                Arc::downgrade(&self.proxy_connection_info),
+                self.ws_manager_trait.clone(),
+                self.listen_address,
+                self.libp2p_event_sender.clone(),
+            );
+
+            // Extract port from listen_address for libp2p
+            let listen_port = Some(self.listen_address.port());
+            // Get relay address from proxy connection if available
+            let relay_address = {
+                let proxy_info = self.proxy_connection_info.lock().await;
+                if let Some(proxy) = proxy_info.as_ref() {
+
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        &format!("Setting up LibP2P with relay: {}", proxy.proxy_identity),
+                    );
+                    // Try to resolve proxy identity to address
+                    // Add a small random delay to avoid simultaneous requests from multiple test nodes
+                    let delay_ms = rand::RngCore::next_u32(&mut rand::rngs::OsRng) % 1000; // 0-1000ms
+                    tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
+
+                    // Add timeout to prevent hanging on identity resolution
+                    let resolution_timeout = Duration::from_secs(30);
+                    match tokio::time::timeout(
+                        resolution_timeout,
+                        Node::get_address_from_identity(
+                            self.identity_manager.clone(),
+                            &proxy.proxy_identity.get_node_name_string(),
+                        )
+                    )
+                    .await
+                    {
+                        Ok(Ok(addr)) => {
+                            let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                &format!("Connecting to LibP2P relay at: {}", multiaddr_str),
+                            );
+                            multiaddr_str.parse::<Multiaddr>().ok()
+                        }
+                        Ok(Err(e)) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("Failed to resolve relay address: {}", e),
+                            );
+                            None
+                        }
+                        Err(_) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("Timeout while resolving relay address after {}s", resolution_timeout.as_secs()),
+                            );
+                            None
+                        }
+                    }
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "No relay configured for LibP2P",
+                    );
+                    None
+                }
+            };
+
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("Initializing LibP2P manager with node: {}, port: {:?}, relay: {:?}",
+                    self.node_name, listen_port, relay_address),
+            );
+            let mut libp2p_event_sender_for_update: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>> = None;
+            
+            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address, None).await {
+                Ok(libp2p_manager) => {
+                    let event_sender = libp2p_manager.event_sender();
+                    let libp2p_manager_arc = Arc::new(Mutex::new(libp2p_manager));
+                    // Spawn the libp2p task
+                    let manager_clone = libp2p_manager_arc.clone();
+                    let libp2p_task = tokio::spawn(async move {
+                        let mut manager = manager_clone.lock().await;
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            "Starting LibP2P manager event loop",
+                        );
+                        if let Err(e) = manager.run().await {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Error,
+                                &format!("LibP2P manager error: {}", e),
+                            );
+                        }
+                    });
+
+                    self.libp2p_manager = Some(libp2p_manager_arc);
+                    self.libp2p_event_sender = Some(event_sender.clone());
+                    self.libp2p_task = Some(libp2p_task);
+                    libp2p_event_sender_for_update = Some(event_sender);
+                    
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "LibP2P networking initialized successfully",
+                    );
+                }
+                Err(e) => {
+                    shinkai_log( // we'll show an error but not stop node initialization.
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to initialize LibP2P: {}", e),
+                    );
+                }
+            }
+            
+            // Update the offerings managers with the libp2p event sender if initialized
+            if let Some(event_sender) = libp2p_event_sender_for_update {
+                self.update_offerings_managers_with_libp2p(event_sender).await;
+            }
+        }
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            "Exited LibP2P initialization block",
+        );
 
         let listen_future = self.listen_and_reconnect(self.proxy_connection_info.clone()).fuse();
         pin_mut!(listen_future);
@@ -582,6 +694,7 @@ impl Node {
                         let identity_manager_clone = self.identity_manager.clone();
                         let proxy_connection_info = self.proxy_connection_info.clone();
                         let ws_manager_trait = self.ws_manager_trait.clone();
+                        let libp2p_event_sender = self.libp2p_event_sender.clone();
 
                         // Spawn a new task to call `retry_messages` asynchronously
                         tokio::spawn(async move {
@@ -591,6 +704,7 @@ impl Node {
                                 identity_manager_clone,
                                 proxy_connection_info,
                                 ws_manager_trait,
+                                libp2p_event_sender,
                             ).await;
                         });
                     },
@@ -615,28 +729,12 @@ impl Node {
                     _listen = listen_future => unreachable!(),
                     _ping = ping_future => {
                         // Clone the necessary variables for `ping_all`
-                        let node_name_clone = self.node_name.clone();
-                        let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                        let identity_secret_key_clone = self.identity_secret_key.clone();
-                        let peers_clone = self.peers.clone();
-                        let db_clone = Arc::clone(&self.db);
-                        let identity_manager_clone = Arc::clone(&self.identity_manager);
                         let listen_address_clone = self.listen_address;
-                        let proxy_connection_info = self.proxy_connection_info.clone();
-                        let ws_manager_trait = self.ws_manager_trait.clone();
-
-                        // Spawn a new task to call `ping_all` asynchronously
+                        let libp2p_manager_clone = self.libp2p_manager.clone();
                         tokio::spawn(async move {
                             let _ = Self::ping_all(
-                                node_name_clone,
-                                encryption_secret_key_clone,
-                                identity_secret_key_clone,
-                                peers_clone,
-                                db_clone,
-                                identity_manager_clone,
                                 listen_address_clone,
-                                proxy_connection_info,
-                                ws_manager_trait,
+                                libp2p_manager_clone,
                             ).await;
                         });
                     },
@@ -648,6 +746,25 @@ impl Node {
                     }
             };
         }
+    }
+
+    /// Update offerings managers with libp2p event sender
+    async fn update_offerings_managers_with_libp2p(&self, event_sender: tokio::sync::mpsc::UnboundedSender<NetworkEvent>) {
+        // Update the offerings managers with the libp2p event sender
+        {
+            let mut my_offerings_manager = self.my_agent_payments_manager.lock().await;
+            my_offerings_manager.update_libp2p_event_sender(event_sender.clone());
+        }
+        {
+            let mut ext_offerings_manager = self.ext_agent_payments_manager.lock().await;
+            ext_offerings_manager.update_libp2p_event_sender(event_sender);
+        }
+        
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            "Offerings managers updated with LibP2P event sender",
+        );
     }
 
     // A function that initializes the embedding models from the database
@@ -699,278 +816,35 @@ impl Node {
         Ok(())
     }
 
-    // A function that listens for incoming connections and tries to reconnect if a connection is lost.
+    // A function that handles LibP2P networking
     async fn listen_and_reconnect(&self, proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>) {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("{} > TCP: Starting listen and reconnect loop.", self.listen_address),
+            &format!("{} > Starting networking with LibP2P.", self.listen_address),
         );
 
-        let mut retry_count = 0;
-
-        loop {
-            // let listen_address = self.listen_address;
-            let identity_manager = self.identity_manager.clone();
-            let network_job_manager = self.network_job_manager.clone();
-            // let conn_limiter = self.conn_limiter.clone();
-            let node_name = self.node_name.clone();
-            let identity_secret_key = self.identity_secret_key.clone();
-
-            let proxy_info = {
-                let proxy_info_lock = proxy_connection_info.lock().await;
-                proxy_info_lock.clone()
-            };
-
-            if let Some(proxy_info) = proxy_info {
-                let connection_result = Node::establish_proxy_connection(
-                    identity_manager.clone(),
-                    &proxy_info,
-                    node_name,
-                    identity_secret_key,
-                )
-                .await;
-
-                match connection_result {
-                    Ok(Some((reader, writer))) => {
-                        let _ = Self::handle_proxy_listen_connection(
-                            reader,
-                            writer,
-                            proxy_info.proxy_identity.clone(),
-                            proxy_connection_info.clone(),
-                            network_job_manager.clone(),
-                            identity_manager.clone(),
-                        )
-                        .await;
-                    }
-                    Ok(None) | Err(_) => {
-                        // Increment retry count and determine sleep duration
-                        retry_count += 1;
-                        let sleep_duration = match retry_count {
-                            1 => Duration::from_secs(5),
-                            2 => Duration::from_secs(10),
-                            3 => Duration::from_secs(30),
-                            _ => Duration::from_secs(300), // 5 minutes
-                        };
-
-                        tokio::time::sleep(sleep_duration).await;
-                    }
-                };
-            } else {
-                break;
-            }
-        }
-
-        // Execute direct listening if no proxy was ever connected
-        let result = Self::handle_listen_connection(
-            self.listen_address,
-            self.network_job_manager.clone(),
-            self.conn_limiter.clone(),
-            self.node_name.clone(),
-        )
-        .await;
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Error,
-            &format!("{} > TCP: Listening error {:?}", self.listen_address, result),
-        );
-    }
-
-    async fn establish_proxy_connection(
-        identity_manager: Arc<Mutex<IdentityManager>>,
-        proxy_info: &ProxyConnectionInfo,
-        node_name: ShinkaiName,
-        identity_secret_key: SigningKey,
-    ) -> io::Result<
-        Option<(
-            Arc<Mutex<ReadHalf<tokio::net::TcpStream>>>,
-            Arc<Mutex<WriteHalf<tokio::net::TcpStream>>>,
-        )>,
-    > {
-        // If proxy connection info is provided, connect to the proxy
-        let proxy_addr = Node::get_address_from_identity(
-            identity_manager.clone(),
-            &proxy_info.proxy_identity.get_node_name_string(),
-        )
-        .await;
-
-        let proxy_addr = match proxy_addr {
-            Ok(addr) => addr,
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed to get proxy address: {}", e),
-                );
-                return Err(io::Error::new(io::ErrorKind::Other, e));
-            }
+        let proxy_info = {
+            let proxy_info_lock = proxy_connection_info.lock().await;
+            proxy_info_lock.clone()
         };
 
-        let node_name = node_name.clone();
-        let signing_sk = identity_secret_key.clone();
-
-        match TcpStream::connect(proxy_addr).await {
-            Ok(proxy_stream) => {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Info,
-                    &format!("Connected to proxy at {}", proxy_addr),
-                );
-
-                // Split the socket into reader and writer
-                let (reader, writer) = tokio::io::split(proxy_stream);
-                let reader = Arc::new(Mutex::new(reader));
-                let writer = Arc::new(Mutex::new(writer));
-
-                // Send the initial connection message
-                let identity_msg = NetworkMessage {
-                    identity: node_name.to_string(),
-                    message_type: NetworkMessageType::ProxyMessage,
-                    payload: Vec::new(),
-                };
-                Self::send_network_message(writer.clone(), &identity_msg).await;
-
-                // Authenticate identity or localhost
-                Self::authenticate_identity_or_localhost(reader.clone(), writer.clone(), &signing_sk).await;
-
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Info,
-                    &format!("Authenticated identity or localhost at {}", proxy_addr),
-                );
-
-                // Return the reader and writer so they can be handled
-                Ok(Some((reader, writer)))
-            }
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed to connect to proxy {}: {}", proxy_addr, e),
-                );
-                Err(e)
-            }
-        }
-    }
-
-    async fn handle_proxy_listen_connection(
-        reader: Arc<Mutex<ReadHalf<tokio::net::TcpStream>>>,
-        writer: Arc<Mutex<WriteHalf<tokio::net::TcpStream>>>,
-        proxy_identity: ShinkaiName,
-        proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-        network_job_manager: Arc<Mutex<NetworkJobManager>>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-    ) -> io::Result<()> {
-        eprintln!("handle_proxy_listen_connection");
-        // Store the tcp_connection in proxy_connection_info
-        {
-            let mut proxy_info_lock = proxy_connection_info.lock().await;
-            if let Some(ref mut proxy_info) = *proxy_info_lock {
-                proxy_info.tcp_connection = Some((reader.clone(), writer.clone()));
-            }
-        }
-
-        // Handle the connection
-        loop {
-            let reader_clone = Arc::clone(&reader);
-            let network_job_manager_clone = Arc::clone(&network_job_manager);
-            let identity_manager = identity_manager.clone();
-            let proxy_identity = proxy_identity.clone();
-
-            let handle = tokio::spawn(async move {
-                // If proxy connection info is provided, connect to the proxy
-                let proxy_addr = Node::get_address_from_identity(
-                    identity_manager.clone(),
-                    &proxy_identity.clone().get_node_name_string(),
-                )
-                .await;
-
-                let proxy_addr = match proxy_addr {
-                    Ok(addr) => addr,
-                    Err(e) => {
-                        eprintln!("Failed to get proxy address: {}", e);
-                        return Err(io::Error::new(io::ErrorKind::Other, e));
-                    }
-                };
-                Self::handle_connection(reader_clone, proxy_addr, network_job_manager_clone)
-                    .await
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{:?}", e)))?;
-                Ok::<(), std::io::Error>(())
-            });
-
-            // Await the task's completion
-            match handle.await {
-                Ok(Ok(())) => {
-                    // Connection handled successfully, continue the loop
-                }
-                Ok(Err(e)) => {
-                    eprintln!("Task failed: {:?}", e);
-                    return Err(e); // Return error to trigger reconnection
-                }
-                Err(e) => {
-                    eprintln!("Task panicked: {:?}", e);
-                    return Err(io::Error::new(io::ErrorKind::Other, format!("{:?}", e)));
-                    // Return error to trigger reconnection
-                }
-            }
-        }
-    }
-
-    async fn handle_listen_connection(
-        listen_address: SocketAddr,
-        network_job_manager: Arc<Mutex<NetworkJobManager>>,
-        conn_limiter: Arc<ConnectionLimiter>,
-        _node_name: ShinkaiName,
-    ) -> io::Result<()> {
-        let listener = TcpListener::bind(&listen_address).await?;
-
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!("{} > TCP: Listening on {} (Direct)", listen_address, listen_address),
-        );
-
-        // Initialize your connection limiter
-        loop {
-            let (socket, addr) = listener.accept().await?;
-
-            // Too many requests by IP protection
-            let ip = addr.ip().to_string();
-            let conn_limiter_clone = conn_limiter.clone();
-
-            if !conn_limiter_clone.check_rate_limit(&ip).await {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Info,
-                    &format!("Rate limit exceeded for IP: {}", ip),
-                );
-                continue;
-            }
-
-            if !conn_limiter_clone.increment_connection(&ip).await {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Info,
-                    &format!("Too many connections from IP: {}", ip),
-                );
-                continue;
-            }
-
-            let network_job_manager = Arc::clone(&network_job_manager);
-            let conn_limiter_clone = conn_limiter.clone();
-
+        if let Some(proxy_info) = proxy_info {
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Info,
-                &format!("Spawning task to handle connection from {}", ip),
+                &format!("Proxy configured: {} - using LibP2P relay", proxy_info.proxy_identity),
             );
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Info,
+                "No proxy configured - using direct LibP2P networking",
+            );
+        }
 
-            tokio::spawn(async move {
-                let (reader, _writer) = tokio::io::split(socket);
-                let reader = Arc::new(Mutex::new(reader));
-                let _ = Self::handle_connection(reader, addr, network_job_manager).await;
-                conn_limiter_clone.decrement_connection(&ip).await;
-            });
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
         }
     }
 
@@ -995,90 +869,13 @@ impl Node {
         }
     }
 
-    async fn handle_connection(
-        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
-        addr: SocketAddr,
-        network_job_manager: Arc<Mutex<NetworkJobManager>>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let start_time = Utc::now();
-        let mut length_bytes = [0u8; 4];
-        {
-            let mut reader = reader.lock().await;
-            reader.read_exact(&mut length_bytes).await?;
-            let total_length = u32::from_be_bytes(length_bytes) as usize;
-
-            // Read the identity length
-            let mut identity_length_bytes = [0u8; 4];
-            reader.read_exact(&mut identity_length_bytes).await?;
-            let identity_length = u32::from_be_bytes(identity_length_bytes) as usize;
-
-            // Read the identity bytes
-            let mut identity_bytes = vec![0u8; identity_length];
-            reader.read_exact(&mut identity_bytes).await?;
-
-            // Calculate the message length excluding the identity length and the identity itself
-            let msg_length = total_length - 1 - 4 - identity_length; // Subtract 1 for the header and 4 for the identity length bytes
-
-            // Read the header byte to determine the message type
-            let mut header_byte = [0u8; 1];
-            reader.read_exact(&mut header_byte).await?;
-            let message_type = match header_byte[0] {
-                0x01 => NetworkMessageType::ShinkaiMessage,
-                0x03 => NetworkMessageType::ProxyMessage,
-                _ => {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        "Received message with unknown type identifier",
-                    );
-                    return Err("Unknown message type".into());
-                }
-            };
-
-            if msg_length == 0 {
-                return Ok(()); // Exit, unless there is a message_type without body
-            }
-
-            // Initialize buffer to fit the message
-            let mut buffer = vec![0u8; msg_length];
-
-            // Read the rest of the message into the buffer
-            reader.read_exact(&mut buffer).await?;
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                &format!("Received message of type {:?} from: {:?}", message_type, addr),
-            );
-
-            let network_job = NetworkJobQueue {
-                receiver_address: addr, // TODO: this should be my socketaddr!
-                unsafe_sender_address: addr,
-                message_type,
-                content: buffer.clone(), // Now buffer does not include the header
-                date_created: Utc::now(),
-            };
-
-            let mut network_job_manager = network_job_manager.lock().await;
-            network_job_manager.add_network_job_to_queue(&network_job).await?;
-        }
-
-        let end_time = Utc::now();
-        let duration = end_time - start_time;
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!("Finished handling connection from {:?} in {:?}", addr, duration),
-        );
-
-        Ok(())
-    }
-
     async fn retry_messages(
         db: Arc<SqliteManager>,
         encryption_secret_key: EncryptionStaticKey,
         identity_manager: Arc<Mutex<IdentityManager>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     ) -> Result<(), NodeError> {
         let messages_to_retry = db
             .get_messages_to_retry_before(None)
@@ -1112,19 +909,14 @@ impl Node {
                 ws_manager.clone(),
                 save_to_db_flag,
                 retry,
+                libp2p_event_sender.clone(),
             );
         }
 
         Ok(())
     }
 
-    // TODO: Add a new send that schedules messages to be sent at a later time.
-    // It may be more complex than what it sounds because there could be a big backlog of messages to send which were
-    // already generated and the time associated with the message may be too old to be recognized by the other node.
-    // so most likely we need a way to update the messages (they are signed by this node after all) so it can update the
-    // time to the current time
-
-    // Send a message to a peer.
+    // Send a message to a peer using libp2p only
     #[allow(clippy::too_many_arguments)]
     pub fn send(
         message: ShinkaiMessage,
@@ -1136,124 +928,216 @@ impl Node {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         save_to_db_flag: bool,
         retry: Option<u32>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     ) {
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!(
-                "Sending Msg with External Metadata {:?} to {:?}",
-                message.external_metadata, peer
-            ),
-        );
-        let address = peer.0;
-        let message = Arc::new(message);
-
         tokio::spawn(async move {
-            let start_time = Utc::now();
-            let writer_start_time = Utc::now();
-            let writer = Node::get_writer(address, proxy_connection_info).await;
-            let writer_end_time = Utc::now(); // End time for get_writer
-            let writer_duration = writer_end_time - writer_start_time;
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                &format!("Time taken to get_writer: {:?}", writer_duration),
-            );
+            // Check if we have LibP2P available
+            let has_proxy = {
+                let proxy_info = proxy_connection_info.lock().await;
+                proxy_info.is_some()
+            };
 
-            if let Some(writer) = writer {
-                let encoded_msg = message.encode_message().unwrap();
-                let identity = &message.external_metadata.recipient;
-                let identity_bytes = identity.as_bytes();
-                let identity_length = (identity_bytes.len() as u32).to_be_bytes();
+            // Use LibP2P only - no TCP fallback
+            if let Some(sender) = libp2p_event_sender {
+                let use_libp2p_reason = if has_proxy {
+                    "proxy configured"
+                } else {
+                    "direct networking"
+                };
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Info,
+                    &format!("Using LibP2P for message sending ({})", use_libp2p_reason),
+                );
 
-                // Prepare the message with a length prefix and identity length
-                let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes(); // Convert the total length to bytes, adding 1 for the header and 4 for the identity length
-
-                let mut data_to_send = Vec::new();
-                let header_data_to_send = vec![0x01]; // Message type identifier for ShinkaiMessage
-                data_to_send.extend_from_slice(&total_length);
-                data_to_send.extend_from_slice(&identity_length);
-                data_to_send.extend(identity_bytes);
-                data_to_send.extend(header_data_to_send);
-                data_to_send.extend_from_slice(&encoded_msg);
-
+                let profile_name = &peer.1;
+                match Node::send_via_libp2p(
+                    message.clone(),
+                    &sender,
+                    profile_name,
+                    save_to_db_flag,
+                    my_encryption_sk.clone(),
+                    db.clone(),
+                    maybe_identity_manager.clone(),
+                    ws_manager.clone(),
+                    proxy_connection_info.clone(),
+                )
+                .await
                 {
-                    let mut writer = writer.lock().await;
-                    let _ = writer.write_all(&data_to_send).await;
-                    let _ = writer.flush().await;
-                }
-
-                if save_to_db_flag {
-                    let _ = Node::save_to_db(
-                        true,
-                        &message,
-                        Arc::clone(&my_encryption_sk).as_ref().clone(),
-                        db.clone(),
-                        maybe_identity_manager.clone(),
-                        ws_manager,
-                    )
-                    .await;
+                    Ok(_) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Info,
+                            "Message sent successfully via LibP2P",
+                        );
+                    }
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("LibP2P sending failed: {}", e),
+                        );
+                    }
                 }
             } else {
-                // If retry is enabled, add the message to retry list on failure
-                let retry_count = retry.unwrap_or(0) + 1;
-                let retry_message = RetryMessage {
-                    retry_count,
-                    message: message.as_ref().clone(),
-                    peer: peer.clone(),
-                    save_to_db_flag,
-                };
-                // Calculate the delay for the next retry
-                let delay_seconds = 4_u64.pow(retry_count - 1);
-                let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
-                db.add_message_to_retry(&retry_message, retry_time).unwrap();
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    "LibP2P event sender not available - cannot send message",
+                );
             }
-            let end_time = Utc::now();
-            let duration = end_time - start_time;
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Info,
-                &format!("Finished sending message to {:?} in {:?}", address, duration),
-            );
         });
     }
 
-    /// Function to get the writer, either directly or through a proxy
-    async fn get_writer(
-        address: SocketAddr,
+    // Send a message via libp2p
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_via_libp2p(
+        message: ShinkaiMessage,
+        libp2p_event_sender: &tokio::sync::mpsc::UnboundedSender<NetworkEvent>,
+        _profile_name: &str, // Keep parameter for compatibility but don't use it
+        save_to_db_flag: bool,
+        my_encryption_sk: Arc<EncryptionStaticKey>,
+        db: Arc<SqliteManager>,
+        maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
+        ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-    ) -> Option<Arc<Mutex<WriteHalf<TcpStream>>>> {
-        let proxy_connection = proxy_connection_info.lock().await;
-        if let Some(proxy_info) = proxy_connection.as_ref() {
-            if let Some((_, writer)) = &proxy_info.tcp_connection {
-                Some(writer.clone())
-            } else {
-                None
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        use crate::network::libp2p_manager::verifying_key_to_peer_id;
+        
+        let recipient_node_name = message.external_metadata.recipient.clone();
+
+        // Check if we have a relay configured by looking up the proxy connection
+        let (target_peer_id, use_relay) = {
+            let proxy_info = proxy_connection_info.lock().await;
+            let identity_manager = maybe_identity_manager.lock().await;
+            
+            // Try to get the identity record for the recipient node
+            match identity_manager.external_profile_to_global_identity(&recipient_node_name, None).await {
+                Ok(identity) => {
+                    // Check if we have a relay configured in proxy_connection_info
+                    if let Some(ref proxy_info) = *proxy_info {
+                        // We have a relay configured - route through the relay
+                        let relay_identity_name = proxy_info.proxy_identity.get_node_name_string();
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            &format!("Relay configured ({}), routing message for {} through relay server", relay_identity_name, recipient_node_name),
+                        );
+                        
+                        match identity_manager.external_profile_to_global_identity(&relay_identity_name, None).await {
+                            Ok(relay_identity) => {
+                                match verifying_key_to_peer_id(relay_identity.node_signature_public_key) {
+                                    Ok(relay_peer_id) => {
+                                        shinkai_log(
+                                            ShinkaiLogOption::Network,
+                                            ShinkaiLogLevel::Info,
+                                            &format!("Sending message to relay PeerId: {}", relay_peer_id),
+                                        );
+                                        (relay_peer_id, true)
+                                    }
+                                    Err(e) => {
+                                        return Err(Box::new(std::io::Error::new(
+                                            std::io::ErrorKind::Other,
+                                            format!("Failed to convert relay identity public key to PeerId: {}", e),
+                                        )));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                return Err(Box::new(std::io::Error::new(
+                                    std::io::ErrorKind::NotFound,
+                                    format!("Cannot resolve relay identity {}: {}", relay_identity_name, e),
+                                )));
+                            }
+                        }
+                    } else {
+                        // No relay configured - send directly to the recipient
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            &format!("No relay configured, sending direct message to {}", recipient_node_name),
+                        );
+                        
+                        match verifying_key_to_peer_id(identity.node_signature_public_key) {
+                            Ok(peer_id) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Sending direct message to recipient PeerId: {}", peer_id),
+                                );
+                                (peer_id, false)
+                            }
+                            Err(e) => {
+                                return Err(Box::new(std::io::Error::new(
+                                    std::io::ErrorKind::Other,
+                                    format!("Failed to convert recipient identity public key to PeerId: {}", e),
+                                )));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Cannot resolve {} to identity: {}", recipient_node_name, e),
+                    )));
+                }
             }
+        };
+
+        let message_type = if use_relay {
+            format!("relay message to {}", recipient_node_name)
         } else {
-            match tokio::time::timeout(Duration::from_secs(4), TcpStream::connect(address)).await {
-                Ok(Ok(stream)) => {
-                    let (_, writer) = tokio::io::split(stream);
-                    Some(Arc::new(Mutex::new(writer)))
-                }
-                Ok(Err(e)) => {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to connect to {}: {}", address, e),
-                    );
-                    None
-                }
-                Err(_) => {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Connection to {} timed out", address),
-                    );
-                    None
-                }
-            }
+            format!("direct message to {}", recipient_node_name)
+        };
+        
+        let network_event = NetworkEvent::SendDirectMessage {
+            peer_id: target_peer_id,
+            message: message.clone(),
+        };
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
+                if use_relay { "relay" } else { "direct peer" }, target_peer_id),
+        );
+        
+        if let Err(e) = libp2p_event_sender.send(network_event) {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Failed to send via libp2p: {}", e),
+            )));
         }
+        
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("Successfully sent NetworkEvent::SendDirectMessage to {} for {}", 
+                if use_relay { "relay" } else { "direct peer" }, target_peer_id),
+        );
+
+        // Save to database if requested
+        if save_to_db_flag {
+            Node::save_to_db(
+                true,
+                &message,
+                my_encryption_sk.as_ref().clone(),
+                db,
+                maybe_identity_manager,
+                ws_manager,
+            )
+            .await?;
+        } else {
+        }
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Message sent via LibP2P as {}", message_type),
+        );
+
+        Ok(())
     }
 
     pub async fn save_to_db(
@@ -1360,215 +1244,6 @@ impl Node {
         Ok(())
     }
 
-    async fn send_network_message(writer: Arc<Mutex<WriteHalf<TcpStream>>>, msg: &NetworkMessage) {
-        eprintln!("send_network_message> Sending message: {:?}", msg);
-        let encoded_msg = msg.payload.clone();
-        let identity = &msg.identity;
-        let identity_bytes = identity.as_bytes();
-        let identity_length = (identity_bytes.len() as u32).to_be_bytes();
-
-        // Prepare the message with a length prefix and identity length
-        let total_length = (encoded_msg.len() as u32 + 1 + identity_bytes.len() as u32 + 4).to_be_bytes();
-
-        let mut data_to_send = Vec::new();
-        let header_data_to_send = vec![match msg.message_type {
-            NetworkMessageType::ShinkaiMessage => 0x01,
-            NetworkMessageType::ProxyMessage => 0x03,
-        }];
-        data_to_send.extend_from_slice(&total_length);
-        data_to_send.extend_from_slice(&identity_length);
-        data_to_send.extend(identity_bytes);
-        data_to_send.extend(header_data_to_send);
-        data_to_send.extend_from_slice(&encoded_msg);
-
-        // Print the name and length of each component
-        let mut writer = writer.lock().await;
-        writer.write_all(&data_to_send).await.unwrap();
-        writer.flush().await.unwrap();
-    }
-
-    async fn authenticate_identity_or_localhost(
-        reader: Arc<Mutex<ReadHalf<TcpStream>>>,
-        writer: Arc<Mutex<WriteHalf<TcpStream>>>,
-        signing_key: &SigningKey,
-    ) {
-        // Handle validation
-        let mut len_buffer = [0u8; 4];
-        let read_result = {
-            let mut reader = reader.lock().await;
-            reader.read_exact(&mut len_buffer).await
-        };
-
-        if let Err(e) = read_result {
-            shinkai_log(
-                ShinkaiLogOption::Node,
-                ShinkaiLogLevel::Error,
-                &format!("Failed to read validation data length: {}", e),
-            );
-            return;
-        }
-
-        let validation_data_len = u32::from_be_bytes(len_buffer) as usize;
-
-        let mut buffer = vec![0u8; validation_data_len];
-        let res = {
-            let mut reader = reader.lock().await;
-            reader.read_exact(&mut buffer).await
-        };
-        match res {
-            Ok(_) => {
-                let validation_data = match String::from_utf8(buffer) {
-                    Ok(s) => s.trim().to_string(),
-                    Err(e) => {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to convert validation data to string: {}", e),
-                        );
-                        return;
-                    }
-                };
-
-                // Sign the validation data
-                let signature = signing_key.sign(validation_data.as_bytes());
-                let signature_hex = hex::encode(signature.to_bytes());
-
-                // Get the public key
-                let public_key = signing_key.verifying_key();
-                let public_key_bytes = public_key.to_bytes();
-                let public_key_hex = hex::encode(public_key_bytes);
-
-                // Send the length of the public key and signed validation data back to the server
-                let public_key_len = public_key_hex.len() as u32;
-                let signature_len = signature_hex.len() as u32;
-                let total_len = public_key_len + signature_len + 8; // 8 bytes for the lengths
-
-                let total_len_bytes = (total_len as u32).to_be_bytes();
-                {
-                    let mut writer = writer.lock().await;
-                    if let Err(e) = writer.write_all(&total_len_bytes).await {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to write total length: {}", e),
-                        );
-                        return;
-                    }
-
-                    // Send the length of the public key
-                    let public_key_len_bytes = public_key_len.to_be_bytes();
-                    if let Err(e) = writer.write_all(&public_key_len_bytes).await {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to write public key length: {}", e),
-                        );
-                        return;
-                    }
-
-                    // Send the public key
-                    if let Err(e) = writer.write_all(public_key_hex.as_bytes()).await {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to write public key: {}", e),
-                        );
-                        return;
-                    }
-
-                    // Send the length of the signed validation data
-                    let signature_len_bytes = signature_len.to_be_bytes();
-                    if let Err(e) = writer.write_all(&signature_len_bytes).await {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to write signature length: {}", e),
-                        );
-                        return;
-                    }
-
-                    // Send the signed validation data
-                    match writer.write_all(signature_hex.as_bytes()).await {
-                        Ok(_) => shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Info,
-                            "Sent signed validation data and public key back to server",
-                        ),
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                &format!("Failed to send signed validation data: {}", e),
-                            );
-                            return;
-                        }
-                    }
-                }
-
-                // Wait for the server to validate the signature
-                let mut len_buffer = [0u8; 4];
-                let read_result = {
-                    let mut reader = reader.lock().await;
-                    reader.read_exact(&mut len_buffer).await
-                };
-
-                if let Err(e) = read_result {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to read response length: {}", e),
-                    );
-                    return;
-                }
-
-                let response_len = u32::from_be_bytes(len_buffer) as usize;
-
-                let mut response_buffer = vec![0u8; response_len];
-                let read_result = {
-                    let mut reader = reader.lock().await;
-                    reader.read_exact(&mut response_buffer).await
-                };
-
-                if let Err(e) = read_result {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to read response: {}", e),
-                    );
-                    return;
-                }
-
-                let response = match String::from_utf8(response_buffer) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        shinkai_log(
-                            ShinkaiLogOption::Node,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to convert response to string: {}", e),
-                        );
-                        return;
-                    }
-                };
-
-                // Assert the validation response
-                if response != "Validation successful" {
-                    shinkai_log(
-                        ShinkaiLogOption::Node,
-                        ShinkaiLogLevel::Error,
-                        &format!("Failed to validate the identity: {}", response),
-                    );
-                }
-            }
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed to read validation data: {}", e),
-                );
-            }
-        }
-    }
-
     fn generate_api_v2_key() -> String {
         let mut key = [0u8; 32]; // 256-bit key
         OsRng.fill_bytes(&mut key);
@@ -1591,6 +1266,9 @@ impl Node {
 impl Drop for Node {
     fn drop(&mut self) {
         if let Some(handle) = self.ws_server.take() {
+            handle.abort();
+        }
+        if let Some(handle) = self.libp2p_task.take() {
             handle.abort();
         }
     }

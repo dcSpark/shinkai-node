@@ -1,14 +1,13 @@
 [package]
-name = "shinkai_tcp_relayer"
+name = "shinkai_libp2p_relayer"
 version = { workspace = true }
 edition = { workspace = true }
 authors = { workspace = true }
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 serde_json = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
 clap = { workspace = true, features = ["derive", "env"] }
 shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
@@ -20,6 +19,27 @@ chrono = { workspace = true }
 dotenv = "0.15.0"
 derivative = "2.2"
 uuid = { workspace = true, features = ["v4"] }
+thiserror = "1.0"
+reqwest = { workspace = true, features = ["json"] }
+
+# LibP2P dependencies
+libp2p = { version = "0.55.0", features = [
+    "gossipsub",
+    "mdns",
+    "noise",
+    "yamux",
+    "tcp",
+    "quic",
+    "identify",
+    "ping",
+    "tokio",
+    "macros",
+    "relay",
+    "dcutr",
+    "kad",
+    "request-response",
+    "json"
+]}
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile = { workspace = true } 
