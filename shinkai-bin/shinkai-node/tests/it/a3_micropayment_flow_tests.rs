@@ -676,7 +676,7 @@ fn micropayment_flow_test() {
                     version: shinkai_tool_header.version.clone(),
                     mcp_enabled: shinkai_tool_header.mcp_enabled.clone(),
                     provider,
-                    tool_router_key,
+                    tool_router_key: tool_router_key.to_string_without_version(),
                     usage_type: shinkai_tool_offering.usage_type.clone(),
                     activated: shinkai_tool_header.enabled,
                     config: shinkai_tool_header.config.clone().unwrap_or_default(),
