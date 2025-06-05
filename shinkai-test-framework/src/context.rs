@@ -121,9 +121,9 @@ where
 
         let api_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
 
-        assert!(port_is_available(8080), "Port 8080 is not available");
+        assert!(port_is_available(12012), "Port 12012 is not available");
 
-        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12012);
 
         let node = Node::new(
             identity_name.to_string(),
@@ -179,8 +179,8 @@ where
         panic!("{:?}", e);
     }
     assert!(
-        TcpListener::bind(("127.0.0.1", 8080)).is_ok(),
-        "Port 8080 is not available"
+        TcpListener::bind(("127.0.0.1", 12012)).is_ok(),
+        "Port 12012 is not available"
     );
 }
 

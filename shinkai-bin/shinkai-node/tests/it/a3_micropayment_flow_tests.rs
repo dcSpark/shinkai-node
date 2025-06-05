@@ -182,10 +182,10 @@ fn micropayment_flow_test() {
         }
 
         // Create node1 and node2
-        assert!(port_is_available(8080), "Port 8080 is not available");
-        assert!(port_is_available(8081), "Port 8081 is not available");
+        assert!(port_is_available(12000), "Port 12000 is not available");
+        assert!(port_is_available(12001), "Port 12001 is not available");
         
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12000);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -208,7 +208,7 @@ fn micropayment_flow_test() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12001);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,

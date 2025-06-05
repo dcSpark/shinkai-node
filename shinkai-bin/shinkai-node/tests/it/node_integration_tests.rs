@@ -93,10 +93,10 @@ fn subidentity_registration() {
             }
         }
 
-        assert!(port_is_available(8080), "Port 8080 is not available");
-        assert!(port_is_available(8081), "Port 8081 is not available");
+        assert!(port_is_available(12006), "Port 12006 is not available");
+        assert!(port_is_available(12007), "Port 12007 is not available");
         // Create node1 and node2
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12006);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -119,7 +119,7 @@ fn subidentity_registration() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12007);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,

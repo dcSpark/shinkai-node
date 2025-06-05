@@ -74,7 +74,7 @@ pub struct Node {
     pub encryption_secret_key: EncryptionStaticKey,
     // The public key corresponding to `encryption_secret_key`.
     pub encryption_public_key: EncryptionPublicKey,
-    // The address this node is listening on.
+    // The address this node uses for LibP2P networking configuration.
     pub listen_address: SocketAddr,
     // The HTTPS certificate in PEM format
     pub private_https_certificate: Option<String>,
@@ -82,9 +82,9 @@ pub struct Node {
     pub public_https_certificate: Option<String>,
     // Secrets file path
     pub secrets_file_path: String,
-    // A map of known peer nodes.
+    // A map of known peer nodes (kept for compatibility, LibP2P handles peer management).
     pub peers: DashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
-    // The interval at which this node pings all known peers.
+    // The interval at which this node performs connectivity checks (LibP2P handles automatic pinging).
     pub ping_interval_secs: u64,
     // The channel from which this node receives commands.
     pub commands: Receiver<NodeCommand>,
@@ -662,12 +662,11 @@ impl Node {
                     );
                 }
                 Err(e) => {
-                    shinkai_log(
+                    shinkai_log( // we'll show an error but not stop node initialization.
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Error,
                         &format!("Failed to initialize LibP2P: {}", e),
                     );
-                    // Continue without libp2p - fallback to TCP networking
                 }
             }
         }
@@ -828,12 +827,12 @@ impl Node {
         Ok(())
     }
 
-    // A function that handles LibP2P networking when a proxy is configured
+    // A function that handles LibP2P networking
     async fn listen_and_reconnect(&self, proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>) {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!("{} > Starting networking with LibP2P relay.", self.listen_address),
+            &format!("{} > Starting networking with LibP2P.", self.listen_address),
         );
 
         let proxy_info = {
@@ -851,7 +850,7 @@ impl Node {
             shinkai_log(
                 ShinkaiLogOption::Node,
                 ShinkaiLogLevel::Info,
-                "No proxy configured - running without LibP2P relay networking",
+                "No proxy configured - using direct LibP2P networking",
             );
         }
 
@@ -928,7 +927,7 @@ impl Node {
         Ok(())
     }
 
-    // Send a message to a peer using libp2p or TCP as fallback
+    // Send a message to a peer using libp2p only
     #[allow(clippy::too_many_arguments)]
     pub fn send(
         message: ShinkaiMessage,
@@ -943,15 +942,14 @@ impl Node {
         libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     ) {
         tokio::spawn(async move {
-            
-            // Check if we have LibP2P available (with or without proxy)
+            // Check if we have LibP2P available
             let has_proxy = {
                 let proxy_info = proxy_connection_info.lock().await;
                 proxy_info.is_some()
             };
 
-            // Try LibP2P first if available (either with proxy or direct networking)
-            if libp2p_event_sender.is_some() {
+            // Use LibP2P only - no TCP fallback
+            if let Some(sender) = libp2p_event_sender {
                 let use_libp2p_reason = if has_proxy {
                     "proxy configured"
                 } else {
@@ -964,37 +962,40 @@ impl Node {
                 );
 
                 let profile_name = &peer.1;
-                if let Some(sender) = libp2p_event_sender {
-                    match Node::send_via_libp2p(
-                        message.clone(),
-                        &sender,
-                        profile_name,
-                        save_to_db_flag,
-                        my_encryption_sk.clone(),
-                        db.clone(),
-                        maybe_identity_manager.clone(),
-                        ws_manager.clone(),
-                        proxy_connection_info.clone(),
-                    )
-                    .await
-                    {
-                        Ok(_) => {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Info,
-                                "Message sent successfully via LibP2P",
-                            );
-                            return; // Success, no need to fallback
-                        }
-                        Err(e) => {
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                &format!("LibP2P sending failed, falling back to TCP: {}", e),
-                            );
-                        }
+                match Node::send_via_libp2p(
+                    message.clone(),
+                    &sender,
+                    profile_name,
+                    save_to_db_flag,
+                    my_encryption_sk.clone(),
+                    db.clone(),
+                    maybe_identity_manager.clone(),
+                    ws_manager.clone(),
+                    proxy_connection_info.clone(),
+                )
+                .await
+                {
+                    Ok(_) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Info,
+                            "Message sent successfully via LibP2P",
+                        );
+                    }
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            &format!("LibP2P sending failed: {}", e),
+                        );
                     }
                 }
+            } else {
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    "LibP2P event sender not available - cannot send message",
+                );
             }
         });
     }

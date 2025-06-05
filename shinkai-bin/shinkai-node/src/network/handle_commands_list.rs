@@ -14,8 +14,6 @@ impl Node {
             // node.");     // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to
             // create a temporary database"))); },
             NodeCommand::PingAll => {
-                let peers_clone = self.peers.clone();
-                let identity_manager_clone = Arc::clone(&self.identity_manager);
                 let listen_address_clone = self.listen_address;
                 let libp2p_manager_clone = self.libp2p_manager.clone();
                 tokio::spawn(async move {
