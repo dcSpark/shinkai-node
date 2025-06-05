@@ -1,7 +1,10 @@
-use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType};
+use shinkai_message_primitives::schemas::{
+    shinkai_name::ShinkaiName, shinkai_tool_offering::UsageType,
+    tool_router_key::ToolRouterKey,
+};
 
 use super::{
-    error::ToolError, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::ToolConfig,
+    error::ToolError, parameters::Parameters, tool_config::ToolConfig,
     tool_output_arg::ToolOutputArg,
 };
 
@@ -13,6 +16,7 @@ pub struct NetworkTool {
     pub author: String,
     pub mcp_enabled: Option<bool>,
     pub provider: ShinkaiName,
+    pub tool_router_key: ToolRouterKey,
     pub usage_type: UsageType, // includes pricing
     pub activated: bool,
     pub config: Vec<ToolConfig>,
@@ -40,12 +44,20 @@ impl NetworkTool {
         embedding: Option<Vec<f32>>,
         restrictions: Option<String>,
     ) -> Self {
+        let tool_router_key = ToolRouterKey::new(
+            provider.to_string(),
+            author.clone(),
+            name.clone(),
+            None,
+        );
+
         Self {
             name,
             description,
             version,
             author,
             provider,
+            tool_router_key,
             usage_type,
             activated,
             config,
@@ -75,7 +87,6 @@ impl NetworkTool {
 
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
-        let shinkai_tool: ShinkaiTool = self.clone().into();
-        shinkai_tool.tool_router_key().to_string_without_version()
+        self.tool_router_key.to_string_without_version()
     }
 }

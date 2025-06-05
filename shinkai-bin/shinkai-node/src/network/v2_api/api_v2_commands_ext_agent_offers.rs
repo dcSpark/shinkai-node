@@ -7,6 +7,7 @@ use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName,
     shinkai_tool_offering::ShinkaiToolOffering,
+    tool_router_key::ToolRouterKey,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
@@ -252,6 +253,12 @@ impl Node {
 
         let mut header = tool.to_header();
         header.sanitize_config();
+        let tool_router_key = ToolRouterKey::new(
+            node_name.to_string(),
+            header.author.clone(),
+            header.name.clone(),
+            None,
+        );
         let network_tool = NetworkTool {
             name: header.name,
             description: header.description,
@@ -259,6 +266,7 @@ impl Node {
             author: header.author,
             mcp_enabled: header.mcp_enabled,
             provider: node_name,
+            tool_router_key,
             usage_type: tool_offering.usage_type.clone(),
             activated: header.enabled,
             config: header.config.unwrap_or_default(),
@@ -326,6 +334,12 @@ impl Node {
 
             let mut header = tool.to_header();
             header.sanitize_config();
+            let tool_router_key = ToolRouterKey::new(
+                node_name.to_string(),
+                header.author.clone(),
+                header.name.clone(),
+                None,
+            );
             let network_tool = NetworkTool {
                 name: header.name,
                 description: header.description,
@@ -333,6 +347,7 @@ impl Node {
                 author: header.author,
                 mcp_enabled: header.mcp_enabled,
                 provider: node_name.clone(),
+                tool_router_key,
                 usage_type: offering.usage_type.clone(),
                 activated: header.enabled,
                 config: header.config.unwrap_or_default(),

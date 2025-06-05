@@ -640,12 +640,20 @@ impl ToolRouter {
             }]));
 
             // Manually create NetworkTool
+            let provider = ShinkaiName::new("@@node1_test.sep-shinkai".to_string()).unwrap();
+            let tool_router_key = ToolRouterKey::new(
+                provider.to_string(),
+                "@@official.shinkai".to_string(),
+                "network__echo".to_string(),
+                None,
+            );
             let network_tool = NetworkTool {
                 name: "network__echo".to_string(),
                 description: "Echoes the input message".to_string(),
                 version: "0.1".to_string(),
                 mcp_enabled: Some(false),
-                provider: ShinkaiName::new("@@node1_test.sep-shinkai".to_string()).unwrap(),
+                provider,
+                tool_router_key,
                 author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,
