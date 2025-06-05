@@ -91,6 +91,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
+  /v2/list_all_network_tools:
+    get:
+      tags:
+      - crate
+      operationId: list_all_network_tools_handler
+      responses:
+        '200':
+          description: Successfully listed all Network tools
+          content:
+            application/json:
+              schema: {}
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
   /v2/search_shinkai_tool:
     get:
       tags:

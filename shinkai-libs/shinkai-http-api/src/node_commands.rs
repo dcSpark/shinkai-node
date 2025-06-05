@@ -382,6 +382,10 @@ pub enum NodeCommand {
         category: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiListAllNetworkTools {
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiListAllMcpShinkaiTools {
         category: Option<String>,
         res: Sender<Result<Value, APIError>>,

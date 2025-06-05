@@ -1207,6 +1207,12 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiListAllNetworkTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_all_network_tools(db_clone, bearer, res).await;
+                });
+            }
             NodeCommand::V2ApiListAllMcpShinkaiTools { category, res } => {
                 let db_clone = Arc::clone(&self.db);
                 let tool_router_clone = self.tool_router.clone();

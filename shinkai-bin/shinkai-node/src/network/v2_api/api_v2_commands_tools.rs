@@ -370,6 +370,37 @@ impl Node {
         }
     }
 
+    pub async fn v2_api_list_all_network_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                let network_tools: Vec<Value> = tools
+                    .into_iter()
+                    .filter(|tool| tool.tool_type.to_lowercase() == "network")
+                    .map(|tool| json!(tool))
+                    .collect();
+                let _ = res.send(Ok(network_tools)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
     pub async fn v2_api_list_all_mcp_shinkai_tools(
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,

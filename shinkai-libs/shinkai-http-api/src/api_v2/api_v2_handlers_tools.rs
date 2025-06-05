@@ -24,6 +24,12 @@ pub fn tool_routes(
         .and(warp::query::<HashMap<String, String>>())
         .and_then(list_all_shinkai_tools_handler);
 
+    let list_all_network_tools_route = warp::path("list_all_network_tools")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(list_all_network_tools_handler);
+
     let set_shinkai_tool_route = warp::path("set_shinkai_tool")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -319,6 +325,7 @@ pub fn tool_routes(
         .or(tool_implementation_route)
         .or(tool_metadata_implementation_route)
         .or(list_all_shinkai_tools_route)
+        .or(list_all_network_tools_route)
         .or(set_shinkai_tool_route)
         .or(get_shinkai_tool_route)
         .or(search_shinkai_tool_route)
@@ -737,6 +744,46 @@ pub async fn list_all_shinkai_tools_handler(
         Ok(response) => {
             let response = create_success_response(response);
             Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/v2/list_all_network_tools",
+    responses(
+        (status = 200, description = "Successfully listed all Network tools", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn list_all_network_tools_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiListAllNetworkTools {
+            bearer,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                StatusCode::OK,
+            ))
         }
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
