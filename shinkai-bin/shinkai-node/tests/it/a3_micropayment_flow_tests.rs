@@ -19,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
@@ -661,13 +662,21 @@ fn micropayment_flow_test() {
 
                 // Convert ShinkaiToolHeader to ShinkaiTool
                 // Manually create NetworkTool
+                let provider = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
+                let tool_router_key = ToolRouterKey::new(
+                    provider.to_string(),
+                    shinkai_tool_header.author.clone(),
+                    shinkai_tool_header.name.clone(),
+                    None,
+                );
                 let network_tool = NetworkTool {
                     name: shinkai_tool_header.name.clone(),
                     author: shinkai_tool_header.author.clone(),
                     description: shinkai_tool_header.description.clone(),
                     version: shinkai_tool_header.version.clone(),
                     mcp_enabled: shinkai_tool_header.mcp_enabled.clone(),
-                    provider: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+                    provider,
+                    tool_router_key: tool_router_key.to_string_without_version(),
                     usage_type: shinkai_tool_offering.usage_type.clone(),
                     activated: shinkai_tool_header.enabled,
                     config: shinkai_tool_header.config.clone().unwrap_or_default(),
