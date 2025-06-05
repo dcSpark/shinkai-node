@@ -2,7 +2,7 @@ use crate::{
     managers::IdentityManager, network::{
         agent_payments_manager::{
             external_agent_offerings_manager::ExtAgentOfferingsManager, my_agent_offerings_manager::MyAgentOfferingsManager
-        }, node::ProxyConnectionInfo, Node
+        }, libp2p_manager::NetworkEvent, node::ProxyConnectionInfo, Node
     }
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
@@ -47,6 +47,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
@@ -90,6 +91,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 external_agent_offering_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
             )
             .await
         }
@@ -115,6 +117,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 external_agent_offering_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
             )
             .await
         }
@@ -132,6 +135,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 maybe_identity_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
             )
             .await
         }
@@ -172,6 +176,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 external_agent_offering_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
             )
             .await
         }
@@ -237,6 +242,7 @@ pub async fn handle_ping(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
     shinkai_log(
@@ -259,6 +265,7 @@ pub async fn handle_ping(
         maybe_identity_manager,
         proxy_connection_info,
         ws_manager,
+        libp2p_event_sender,
     )
     .await
 }
@@ -280,6 +287,7 @@ pub async fn handle_default_encryption(
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
@@ -309,6 +317,7 @@ pub async fn handle_default_encryption(
                             external_agent_offering_manager,
                             proxy_connection_info,
                             ws_manager.clone(),
+                            libp2p_event_sender,
                         )
                         .await?;
                     }
@@ -337,6 +346,7 @@ pub async fn handle_default_encryption(
                         maybe_identity_manager,
                         proxy_connection_info,
                         ws_manager,
+                        libp2p_event_sender,
                     )
                     .await;
                 }
@@ -370,6 +380,7 @@ pub async fn handle_network_message_cases(
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!(
         "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
@@ -688,6 +699,7 @@ pub async fn handle_network_message_cases(
         maybe_identity_manager,
         proxy_connection_info,
         ws_manager,
+        libp2p_event_sender.clone(),
     )
     .await
 }
@@ -704,6 +716,7 @@ pub async fn send_ack(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
@@ -724,7 +737,7 @@ pub async fn send_ack(
         ws_manager,
         false,
         None,
-        None,
+        libp2p_event_sender,
     );
     Ok(())
 }
@@ -742,6 +755,7 @@ pub async fn ping_pong(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
@@ -767,7 +781,7 @@ pub async fn ping_pong(
         ws_manager,
         false,
         None,
-        None,
+        libp2p_event_sender,
     );
     Ok(())
 }

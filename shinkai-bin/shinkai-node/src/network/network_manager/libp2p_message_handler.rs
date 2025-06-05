@@ -8,6 +8,7 @@ use crate::network::{
         my_agent_offerings_manager::MyAgentOfferingsManager,
         external_agent_offerings_manager::ExtAgentOfferingsManager,
     },
+    libp2p_manager::NetworkEvent,
     node::ProxyConnectionInfo,
 };
 use crate::managers::{IdentityManager, identity_manager::IdentityManagerTrait};
@@ -37,6 +38,7 @@ pub struct ShinkaiMessageHandler {
     // We'll store a mapping of PeerId to SocketAddr for compatibility
     peer_addr_map: Arc<Mutex<std::collections::HashMap<PeerId, SocketAddr>>>,
     local_addr: SocketAddr,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 }
 
 impl ShinkaiMessageHandler {
@@ -52,6 +54,7 @@ impl ShinkaiMessageHandler {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         local_addr: SocketAddr,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     ) -> Self {
         Self {
             db,
@@ -65,6 +68,7 @@ impl ShinkaiMessageHandler {
             ws_manager,
             peer_addr_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
             local_addr,
+            libp2p_event_sender,
         }
     }
 
@@ -203,6 +207,7 @@ impl ShinkaiMessageHandler {
             self.ext_agent_offerings_manager.clone(),
             proxy_connection_info,
             self.ws_manager.clone(),
+            self.libp2p_event_sender.clone(),
         )
         .await
         .map_err(|e| format!("Message processing failed: {:?}", e))?;

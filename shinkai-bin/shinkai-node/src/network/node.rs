@@ -518,6 +518,7 @@ impl Node {
                 Arc::downgrade(&self.proxy_connection_info),
                 self.ws_manager_trait.clone(),
                 self.listen_address,
+                self.libp2p_event_sender.clone(),
             );
 
             // Extract port from listen_address for libp2p
