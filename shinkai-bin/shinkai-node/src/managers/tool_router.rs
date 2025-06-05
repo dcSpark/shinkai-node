@@ -653,7 +653,7 @@ impl ToolRouter {
                 version: "0.1".to_string(),
                 mcp_enabled: Some(false),
                 provider,
-                tool_router_key,
+                tool_router_key: tool_router_key.to_string_without_version(),
                 author: "@@official.shinkai".to_string(),
                 usage_type: usage_type.clone(),
                 activated: true,

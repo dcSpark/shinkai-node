@@ -3,18 +3,15 @@ use std::sync::Arc;
 use async_channel::Sender;
 use reqwest::StatusCode;
 
+use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName,
-    shinkai_tool_offering::ShinkaiToolOffering,
-    tool_router_key::ToolRouterKey,
+    shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    network_tool::NetworkTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}
 };
-use serde_json::{Value, json};
 
 use crate::network::{node_error::NodeError, Node};
 
@@ -253,12 +250,9 @@ impl Node {
 
         let mut header = tool.to_header();
         header.sanitize_config();
-        let tool_router_key = ToolRouterKey::new(
-            node_name.to_string(),
-            header.author.clone(),
-            header.name.clone(),
-            None,
-        );
+        let tool_router_key =
+            ToolRouterKey::new(node_name.to_string(), header.author.clone(), header.name.clone(), None);
+
         let network_tool = NetworkTool {
             name: header.name,
             description: header.description,
@@ -266,7 +260,7 @@ impl Node {
             author: header.author,
             mcp_enabled: header.mcp_enabled,
             provider: node_name,
-            tool_router_key,
+            tool_router_key: tool_router_key.to_string_without_version(),
             usage_type: tool_offering.usage_type.clone(),
             activated: header.enabled,
             config: header.config.unwrap_or_default(),
@@ -334,12 +328,9 @@ impl Node {
 
             let mut header = tool.to_header();
             header.sanitize_config();
-            let tool_router_key = ToolRouterKey::new(
-                node_name.to_string(),
-                header.author.clone(),
-                header.name.clone(),
-                None,
-            );
+            let tool_router_key =
+                ToolRouterKey::new(node_name.to_string(), header.author.clone(), header.name.clone(), None);
+
             let network_tool = NetworkTool {
                 name: header.name,
                 description: header.description,
@@ -347,7 +338,7 @@ impl Node {
                 author: header.author,
                 mcp_enabled: header.mcp_enabled,
                 provider: node_name.clone(),
-                tool_router_key,
+                tool_router_key: tool_router_key.to_string_without_version(),
                 usage_type: offering.usage_type.clone(),
                 activated: header.enabled,
                 config: header.config.unwrap_or_default(),
