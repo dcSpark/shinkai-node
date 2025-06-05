@@ -1222,6 +1222,21 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiListAllNetworkShinkaiTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let tool_router_clone = self.tool_router.clone();
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_all_network_shinkai_tools(
+                        db_clone,
+                        bearer,
+                        node_name_clone,
+                        tool_router_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiListAllShinkaiToolsVersions { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
@@ -1467,14 +1482,8 @@ impl Node {
                 let wallet_manager_clone = self.wallet_manager.clone();
                 let node_name = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_wallet_balance(
-                        db_clone,
-                        wallet_manager_clone,
-                        bearer,
-                        node_name,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_api_get_wallet_balance(db_clone, wallet_manager_clone, bearer, node_name, res).await;
                 });
             }
             NodeCommand::V2ApiGetStorageLocation { bearer, res } => {
@@ -2657,7 +2666,11 @@ impl Node {
                     let _ = Node::v2_api_docker_status(res).await;
                 });
             }
-            NodeCommand::V2ApiSetNgrokAuthToken { bearer, auth_token, res } => {
+            NodeCommand::V2ApiSetNgrokAuthToken {
+                bearer,
+                auth_token,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_ngrok_auth_token(db_clone, bearer, auth_token, res).await;
@@ -2673,7 +2686,8 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_ngrok_enabled(db_clone, bearer, enabled, node_env.api_listen_address, res).await;
+                    let _ = Node::v2_api_set_ngrok_enabled(db_clone, bearer, enabled, node_env.api_listen_address, res)
+                        .await;
                 });
             }
             NodeCommand::V2ApiGetNgrokStatus { bearer, res } => {
