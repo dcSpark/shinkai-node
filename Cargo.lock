@@ -3149,6 +3149,7 @@ dependencies = [
  "libp2p-noise 0.44.0",
  "libp2p-ping 0.44.1",
  "libp2p-quic 0.10.3",
+ "libp2p-request-response 0.26.3",
  "libp2p-swarm 0.44.2",
  "libp2p-tcp 0.41.0",
  "libp2p-upnp 0.2.2",
@@ -3185,6 +3186,7 @@ dependencies = [
  "libp2p-ping 0.46.0",
  "libp2p-quic 0.12.0",
  "libp2p-relay",
+ "libp2p-request-response 0.28.0",
  "libp2p-swarm 0.46.0",
  "libp2p-tcp 0.43.0",
  "libp2p-upnp 0.4.0",
@@ -3785,6 +3787,47 @@ dependencies = [
  "thiserror 2.0.12",
  "tracing",
  "web-time",
+]
+
+[[package]]
+name = "libp2p-request-response"
+version = "0.26.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c314fe28368da5e3a262553fb0ad575c1c8934c461e10de10265551478163836"
+dependencies = [
+ "async-trait",
+ "futures",
+ "futures-bounded",
+ "futures-timer",
+ "instant",
+ "libp2p-core 0.41.3",
+ "libp2p-identity",
+ "libp2p-swarm 0.44.2",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tracing",
+ "void",
+]
+
+[[package]]
+name = "libp2p-request-response"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "548fe44a80ff275d400f1b26b090d441d83ef73efabbeb6415f4ce37e5aed865"
+dependencies = [
+ "async-trait",
+ "futures",
+ "futures-bounded",
+ "libp2p-core 0.43.0",
+ "libp2p-identity",
+ "libp2p-swarm 0.46.0",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "tracing",
 ]
 
 [[package]]

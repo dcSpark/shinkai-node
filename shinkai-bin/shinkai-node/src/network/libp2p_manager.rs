@@ -1,7 +1,7 @@
 use ed25519_dalek::SigningKey;
 use futures::prelude::*;
 use libp2p::{
-    dcutr, gossipsub, identify, kad, noise, ping, quic,
+    dcutr, gossipsub, identify, kad, noise, ping, quic, request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
@@ -10,7 +10,6 @@ use shinkai_message_primitives::{
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 use std::{
-    net::SocketAddr,
     sync::Arc,
     time::Duration,
 };
@@ -25,26 +24,29 @@ pub struct ShinkaiNetworkBehaviour {
     pub ping: ping::Behaviour,
     pub dcutr: dcutr::Behaviour,
     pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
+    pub request_response: request_response::json::Behaviour<ShinkaiMessage, ShinkaiMessage>,
 }
 
 /// Events that can be sent through the network
 #[derive(Debug, Clone)]
 pub enum NetworkEvent {
-    /// A message to be sent to a specific peer
-    SendMessage {
+    /// A message to be sent directly to a specific peer using request-response
+    SendDirectMessage {
         peer_id: PeerId,
         message: ShinkaiMessage,
     },
-    /// A message to be broadcast to all peers in a topic
+    /// A message to be broadcast to all peers in a topic using gossipsub
+    #[allow(dead_code)]
     BroadcastMessage {
         topic: String,
         message: ShinkaiMessage,
     },
     /// Add a peer to connect to
+    #[allow(dead_code)]
     AddPeer {
         peer_id: PeerId,
         address: Multiaddr,
-    },
+    },    
     /// Ping a specific peer using libp2p ping
     PingPeer {
         peer_id: PeerId,
@@ -117,38 +119,24 @@ impl LibP2PManager {
             gossipsub_config,
         )?;
 
-        // Subscribe to default shinkai topic
-        let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
-        gossipsub.subscribe(&shinkai_topic)?;
-        #[cfg(feature = "debug")]
-        eprintln!(">> DEBUG: LibP2P {} subscribed to topic: 'shinkai-network'", node_name);
-
-        // Also subscribe to node-specific topics to receive messages addressed to this node
-        let node_topic = gossipsub::IdentTopic::new(format!("shinkai-{}", node_name));
-        gossipsub.subscribe(&node_topic)?;
-        #[cfg(feature = "debug")]
-        eprintln!(">> DEBUG: LibP2P {} subscribed to topic: 'shinkai-{}'", node_name, node_name);
-        
-        // Subscribe to the base node name (without subidentity) for broader message reception
-        if let Ok(parsed_name) = shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(node_name.clone()) {
-            let base_node_name = parsed_name.get_node_name_string();
-            let base_topic = gossipsub::IdentTopic::new(format!("shinkai-{}", base_node_name));
-            gossipsub.subscribe(&base_topic)?;
-            #[cfg(feature = "debug")]
-            eprintln!(">> DEBUG: LibP2P {} subscribed to base topic: 'shinkai-{}'", node_name, base_node_name);
-        }
+        // Subscribe only to discovery topic - no longer using gossipsub for direct messaging
+        let discovery_topic = gossipsub::IdentTopic::new("shinkai-network");
+        gossipsub.subscribe(&discovery_topic)?;
 
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
-            &format!("Subscribed to topics: shinkai-network, shinkai-{}", node_name),
+            "Subscribed to broadcasting topic: shinkai-network",
         );
 
-        // Create Identify behavior with compatible protocol
-        let identify = identify::Behaviour::new(identify::Config::new(
+        // Create Identify behavior with compatible protocol and include node identity
+        let mut identify_config = identify::Config::new(
             "/shinkai/1.0.0".to_string(),
             local_key.public(),
-        ));
+        );
+        // Include the node identity in the agent version for relay identification
+        identify_config = identify_config.with_agent_version(format!("shinkai-node-{}", node_name));
+        let identify = identify::Behaviour::new(identify_config);
 
         // Create ping behavior
         let ping = ping::Behaviour::new(ping::Config::new());
@@ -156,17 +144,39 @@ impl LibP2PManager {
         // Create DCUtR behavior for hole punching
         let dcutr = dcutr::Behaviour::new(local_peer_id);
 
-        // Create Kademlia behavior - always enabled for better protocol compatibility
-        let mut kademlia = kad::Behaviour::new(
+        // Create Kademlia behavior with proper protocol configuration for relay compatibility
+        let mut kademlia_config = kad::Config::default();
+        kademlia_config.set_protocol_names(vec![
+            libp2p::StreamProtocol::new("/kad/1.0.0"),
+            libp2p::StreamProtocol::new("/kademlia/1.0.0"),
+            libp2p::StreamProtocol::new("/ipfs/kad/1.0.0"),
+        ]);
+        
+        let mut kademlia = kad::Behaviour::with_config(
             local_peer_id,
             kad::store::MemoryStore::new(local_peer_id),
+            kademlia_config,
         );
-        kademlia.set_mode(Some(kad::Mode::Client)); // Start as client, can be promoted
+        
+        // Start as server mode to participate fully in DHT
+        kademlia.set_mode(Some(kad::Mode::Server));
 
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
-            "Kademlia protocol enabled for peer discovery and protocol compatibility",
+            "Kademlia DHT enabled with multiple protocol versions for relay compatibility",
+        );
+
+        // Create request-response behavior for direct messaging using JSON codec
+        let request_response = request_response::json::Behaviour::new(
+            std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
+            request_response::Config::default(),
+        );
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            "Request-Response protocol enabled for direct peer messaging",
         );
 
         let behaviour = ShinkaiNetworkBehaviour {
@@ -175,6 +185,7 @@ impl LibP2PManager {
             ping,
             dcutr,
             kademlia,
+            request_response,
         };
 
         // Create swarm
@@ -238,40 +249,26 @@ impl LibP2PManager {
         self.event_sender.clone()
     }
 
-    /// Get the local peer ID
-    pub fn local_peer_id(&self) -> PeerId {
-        *self.swarm.local_peer_id()
-    }
-
-    /// Get listening addresses
-    pub fn listeners(&self) -> impl Iterator<Item = &Multiaddr> {
-        self.swarm.listeners()
-    }
-
     /// Get all connected peers
     pub fn connected_peers(&self) -> Vec<PeerId> {
         self.swarm.connected_peers().cloned().collect()
     }
 
-    /// Send a message to a specific peer
-    pub async fn send_message_to_peer(
+    /// Send a direct message to a specific peer using request-response
+    pub async fn send_direct_message_to_peer(
         &mut self,
         peer_id: PeerId,
         message: ShinkaiMessage,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // For now, we'll use GossipSub to send messages
-        // In a more sophisticated implementation, you might use request-response
-        let serialized = serde_json::to_string(&message)?;
-        let topic = gossipsub::IdentTopic::new(format!("shinkai-direct-{}", peer_id));
-        
-        // Subscribe to the topic first if not already subscribed
-        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&topic);
-        
-        // Publish the message
-        self.swarm
+        eprintln!(">> DEBUG: Sending direct message to peer {} using request-response", peer_id);
+
+        // Send the message using request-response protocol
+        let _request_id = self.swarm
             .behaviour_mut()
-            .gossipsub
-            .publish(topic, serialized.as_bytes())?;
+            .request_response
+            .send_request(&peer_id, message);
+
+        eprintln!(">> DEBUG: Direct message request sent to peer {}", peer_id);
 
         Ok(())
     }
@@ -306,7 +303,7 @@ impl LibP2PManager {
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
-            &format!("Broadcasted message to topics: shinkai-network and {}", topic),
+            &format!("Broadcasted message to topics: shinkai-network"),
         );
 
         Ok(())
@@ -332,72 +329,6 @@ impl LibP2PManager {
         }
         
         Ok(())
-    }
-
-    /// Dial a peer directly by address
-    pub fn dial_peer(&mut self, address: Multiaddr) -> Result<(), Box<dyn std::error::Error>> {
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Info,
-            &format!("Dialing peer at {}", address),
-        );
-        
-        if let Err(e) = self.swarm.dial(address.clone()) {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Error,
-                &format!("Failed to dial peer at {}: {}", address, e),
-            );
-            return Err(Box::new(e));
-        }
-        
-        Ok(())
-    }
-
-    /// Force discovery of peers and mesh building
-    pub fn force_peer_discovery(&mut self) {
-        // For relay scenarios, we rely on gossipsub discovery through the relay
-        // instead of Kademlia DHT to avoid direct connection attempts
-        
-        let known_peers: Vec<PeerId> = self.swarm.connected_peers().cloned().collect();
-        
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Info,
-            &format!("Force discovery: found {} connected peers", known_peers.len()),
-        );
-        
-        // For each connected peer, ensure they're part of gossipsub
-        for peer_id in &known_peers {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Debug,
-                &format!("Adding peer {} to mesh consideration", peer_id),
-            );
-            
-            // Ensure we're subscribed to the main topic
-            let topic = gossipsub::IdentTopic::new("shinkai-network");
-            if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Debug,
-                    &format!("Already subscribed to topic: {}", e),
-                );
-            }
-        }
-        
-        // Publish a discovery message to announce our presence
-        let discovery_message = format!("{{\"type\":\"discovery\",\"peer_id\":\"{}\"}}",
-            self.swarm.local_peer_id());
-        let topic = gossipsub::IdentTopic::new("shinkai-network");
-        
-        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, discovery_message.as_bytes()) {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Debug,
-                &format!("Failed to publish discovery message: {}", e),
-            );
-        }
     }
 
     /// Run the network manager
@@ -573,6 +504,65 @@ impl LibP2PManager {
                         ShinkaiLogLevel::Debug,
                         &format!("Added peer {} with address {} to Kademlia DHT", peer_id, addr),
                     );
+                }
+            }
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::RequestResponse(req_resp_event)) => {
+                match req_resp_event {
+                    request_response::Event::Message { peer, message } => {
+                        match message {
+                            request_response::Message::Request { request, channel, .. } => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Received direct message request from peer {}", peer),
+                                );
+
+                                // Handle the incoming request message
+                                self.message_handler.handle_message(peer, request.clone()).await;
+
+                                // Send acknowledgment response
+                                let ack_response = request.clone(); // For now, echo back the message as acknowledgment
+                                if let Err(e) = self.swarm.behaviour_mut().request_response.send_response(channel, ack_response) {
+                                    shinkai_log(
+                                        ShinkaiLogOption::Network,
+                                        ShinkaiLogLevel::Error,
+                                        &format!("Failed to send response to peer {}: {:?}", peer, e),
+                                    );
+                                }
+                            }
+                            request_response::Message::Response { response, .. } => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Received direct message response from peer {}", peer),
+                                );
+                                
+                                // Handle the response (acknowledgment)
+                                self.message_handler.handle_message(peer, response).await;
+                            }
+                        }
+                    }
+                    request_response::Event::OutboundFailure { peer, error, .. } => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to send direct message to peer {}: {:?}", peer, error),
+                        );
+                    }
+                    request_response::Event::InboundFailure { peer, error, .. } => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to receive direct message from peer {}: {:?}", peer, error),
+                        );
+                    }
+                    request_response::Event::ResponseSent { peer, .. } => {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Debug,
+                            &format!("Successfully sent response to peer {}", peer),
+                        );
+                    }
                 }
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Kademlia(kad_event)) => {
@@ -754,14 +744,16 @@ impl LibP2PManager {
 
     /// Handle network events from the event channel
     async fn handle_network_event(&mut self, event: NetworkEvent) -> Result<(), Box<dyn std::error::Error>> {
+        eprintln!(">> DEBUG: LibP2P Manager received network event: {:?}", event);
+        
         match event {
-            NetworkEvent::SendMessage { peer_id, message } => {
+            NetworkEvent::SendDirectMessage { peer_id, message } => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
-                    &format!("Sending message to peer {}", peer_id),
+                    &format!("Sending direct message to peer {}", peer_id),
                 );
-                self.send_message_to_peer(peer_id, message).await?;
+                self.send_direct_message_to_peer(peer_id, message).await?;
             }
             NetworkEvent::BroadcastMessage { topic, message } => {
                 shinkai_log(
@@ -793,11 +785,6 @@ impl LibP2PManager {
 }
 
 impl ShinkaiNetworkBehaviour {
-    /// Get mutable access to Kademlia
-    pub fn kademlia_mut(&mut self) -> &mut kad::Behaviour<kad::store::MemoryStore> {
-        &mut self.kademlia
-    }
-    
     /// Bootstrap Kademlia
     pub fn bootstrap_kademlia(&mut self) -> Result<(), String> {
         self.kademlia.bootstrap()
@@ -811,27 +798,6 @@ impl ShinkaiNetworkBehaviour {
     }
 }
 
-/// Convert SocketAddr to Multiaddr (TCP)
-pub fn socket_addr_to_multiaddr(addr: SocketAddr) -> Multiaddr {
-    match addr {
-        SocketAddr::V4(addr) => format!("/ip4/{}/tcp/{}", addr.ip(), addr.port()).parse().unwrap(),
-        SocketAddr::V6(addr) => format!("/ip6/{}/tcp/{}", addr.ip(), addr.port()).parse().unwrap(),
-    }
-}
-
-/// Convert SocketAddr to QUIC Multiaddr
-pub fn socket_addr_to_quic_multiaddr(addr: SocketAddr) -> Multiaddr {
-    match addr {
-        SocketAddr::V4(addr) => format!("/ip4/{}/udp/{}/quic-v1", addr.ip(), addr.port()).parse().unwrap(),
-        SocketAddr::V6(addr) => format!("/ip6/{}/udp/{}/quic-v1", addr.ip(), addr.port()).parse().unwrap(),
-    }
-}
-
-/// Convert PeerId and SocketAddr to a format similar to the current peer tuple
-pub fn peer_id_to_profile_name(peer_id: PeerId) -> String {
-    format!("peer_{}", peer_id.to_string()[..8].to_lowercase())
-}
-
 /// Convert an ed25519 verifying key to a libp2p PeerId
 pub fn verifying_key_to_peer_id(verifying_key: ed25519_dalek::VerifyingKey) -> Result<PeerId, Box<dyn std::error::Error>> {
     // Convert ed25519_dalek::VerifyingKey to libp2p::identity::PublicKey using the ed25519 module
@@ -839,5 +805,3 @@ pub fn verifying_key_to_peer_id(verifying_key: ed25519_dalek::VerifyingKey) -> R
     let libp2p_public_key = libp2p::identity::PublicKey::from(ed25519_public_key);
     Ok(PeerId::from(libp2p_public_key))
 }
-
- 

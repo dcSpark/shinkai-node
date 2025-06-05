@@ -1012,22 +1012,78 @@ impl Node {
         maybe_identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Extract the recipient node name from the message itself for topic creation
+        use crate::network::libp2p_manager::verifying_key_to_peer_id;
+        
         let recipient_node_name = message.external_metadata.recipient.clone();
 
-        let topic = format!("shinkai-{}", recipient_node_name);
-
-        let network_event = NetworkEvent::BroadcastMessage {
-            topic: topic.clone(),
-            message: message.clone(),
+        // Attempt to resolve the recipient node identity to a PeerId for direct messaging
+        let peer_id_result = {
+            let identity_manager = maybe_identity_manager.lock().await;
+            
+            // Try to get the identity record for the recipient node
+            match identity_manager.external_profile_to_global_identity(&recipient_node_name, None).await {
+                Ok(identity) => {
+                                         // Extract the signature public key and convert to PeerId
+                     match verifying_key_to_peer_id(identity.node_signature_public_key) {
+                        Ok(peer_id) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                &format!("Resolved {} to PeerId: {}", recipient_node_name, peer_id),
+                            );
+                            Some(peer_id)
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Debug,
+                                &format!("Failed to convert identity public key to PeerId for {}: {}", recipient_node_name, e),
+                            );
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Failed to resolve identity for {}: {}", recipient_node_name, e),
+                    );
+                    None
+                }
+            }
         };
 
+        // Only use direct messaging - no more gossipsub fallback for peer-to-peer communication
+        let peer_id = peer_id_result.ok_or_else(|| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Cannot resolve {} to PeerId for direct messaging", recipient_node_name),
+            ))
+        })?;
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Using direct messaging to send to {} (PeerId: {})", recipient_node_name, peer_id),
+        );
+        
+        let network_event = NetworkEvent::SendDirectMessage {
+            peer_id,
+            message: message.clone(),
+        };
+        let message_type = format!("direct message to peer {}", peer_id);
+
+        eprintln!(">> DEBUG: About to send NetworkEvent::SendDirectMessage to LibP2P manager for peer {}", peer_id);
+        
         if let Err(e) = libp2p_event_sender.send(network_event) {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to send via libp2p: {}", e),
             )));
         }
+        
+        eprintln!(">> DEBUG: Successfully sent NetworkEvent::SendDirectMessage to LibP2P manager for peer {}", peer_id);
 
         // Save to database if requested
         if save_to_db_flag {
@@ -1046,7 +1102,7 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
-            &format!("Message sent via LibP2P to topic: {}", topic),
+            &format!("Message sent via LibP2P to {}", message_type),
         );
 
         Ok(())

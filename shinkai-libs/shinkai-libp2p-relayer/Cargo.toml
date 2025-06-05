@@ -36,7 +36,9 @@ libp2p = { version = "0.55.0", features = [
     "macros",
     "relay",
     "dcutr",
-    "kad"
+    "kad",
+    "request-response",
+    "json"
 ]}
 
 [dev-dependencies]
