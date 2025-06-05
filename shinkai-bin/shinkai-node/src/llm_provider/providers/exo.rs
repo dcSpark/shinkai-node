@@ -73,8 +73,8 @@ impl LLMService for Exo {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         _config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
-        _db: Arc<SqliteManager>,
-        _tracing_message_id: Option<String>,
+        db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
@@ -120,6 +120,17 @@ impl LLMService for Exo {
                 ShinkaiLogLevel::Debug,
                 format!("Call API Body: {:?}", payload_log).as_str(),
             );
+
+            if let Some(ref msg_id) = tracing_message_id {
+                if let Err(e) = db.add_tracing(
+                    msg_id,
+                    inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                    "llm_payload",
+                    &payload_log,
+                ) {
+                    eprintln!("failed to add payload trace: {:?}", e);
+                }
+            }
 
             let res = client.post(url).json(&payload).send().await?;
 

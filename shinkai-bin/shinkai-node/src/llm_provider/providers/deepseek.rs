@@ -111,6 +111,17 @@ impl LLMService for DeepSeek {
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
+                if let Some(ref msg_id) = tracing_message_id {
+                    if let Err(e) = db.add_tracing(
+                        msg_id,
+                        inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                        "llm_payload",
+                        &payload_log,
+                    ) {
+                        eprintln!("failed to add payload trace: {:?}", e);
+                    }
+                }
+
                 if is_stream {
                     handle_streaming_response(
                         client,
