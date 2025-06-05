@@ -18,6 +18,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
+use hex;
 
 use crate::it::utils::node_test_api::{
     api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node, wait_for_default_tools
@@ -1018,6 +1019,192 @@ fn test_relay_server_communication() {
         match result {
             Ok(_) => {
                 eprintln!(">> Relay test completed - nodes can communicate via relay server");
+                Ok(())
+            },
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    eprintln!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    Err(e)
+                }
+            }
+        }
+    });
+
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
+}
+
+#[test]
+fn test_send_message_to_remote_node() {
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
+
+    setup();
+    let rt = Runtime::new().unwrap();
+
+    let e: Result<(), tokio::task::JoinError> = rt.block_on(async {
+        let node1_identity_name = NODE1_IDENTITY_NAME;  
+        let remote_node_identity_name = "@@guillevalin.sep-shinkai";
+
+        let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
+            bounded(100);
+
+        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
+
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8084);
+        
+        let node1 = Node::new(
+            node1_identity_name.to_string(),
+            addr1,
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_sk.clone(),
+            None,
+            None,
+            0,
+            node1_commands_receiver,
+            node1_db_path,
+            "".to_string(),
+            Some(RELAY_IDENTITY_NAME.to_string()),  // Use real relay server
+            true,
+            vec![],
+            None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
+            Some("debug".to_string()),
+        )
+        .await;
+
+        eprintln!(">> Starting test to send message to remote node via relay");
+        
+        eprintln!("Starting local node");
+        // Start node1
+        let node1_clone = Arc::clone(&node1);
+        let node1_handler = tokio::spawn(async move {
+            eprintln!("\n\n");
+            eprintln!("Starting node 1");
+            let _ = node1_clone.lock().await.start().await;
+        });
+
+        let node1_abort_handler = node1_handler.abort_handle();
+
+        // Wait a bit for node to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        // Test sending message to remote node
+        let messaging_test = tokio::spawn(async move {
+            eprintln!(">> Testing message sending to remote node via relay");
+
+            // Wait a bit more for node to fully initialize
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            // Register profile on local node
+            eprintln!(">> Registering profile on local node");
+            
+            let (profile1_sk, profile1_pk) = unsafe_deterministic_signature_keypair(100);
+            let (profile1_encryption_sk, profile1_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
+
+            let _registration_result1 = local_registration_profile_node(
+                node1_commands_sender.clone(),
+                "main",
+                node1_identity_name,
+                profile1_encryption_sk.clone(),
+                node1_encryption_pk,
+                clone_signature_secret_key(&profile1_sk),
+                1,
+            ).await;
+            eprintln!(">> Node 1 ({}) profile registration completed", NODE1_IDENTITY_NAME);
+
+            // Remote node's encryption public key (provided by user)
+            let remote_profile2_encryption_pk_str = "8189f8180651333042cfcc62bfeda573f0764c289785a3e44ce44be502c7be79";
+            let remote_profile2_encryption_pk = shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&remote_profile2_encryption_pk_str)
+                .expect("Failed to create EncryptionPublicKey from bytes");
+
+            eprintln!("=== LOCAL NODE KEYS ===");
+            eprintln!("Node 1 Identity Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&node1_identity_sk)));
+            eprintln!("Node 1 Identity Public Key:  {}", signature_public_key_to_string(node1_identity_pk));
+            eprintln!("=== LOCAL PROFILE KEYS ===");
+            eprintln!("Profile 1 Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&profile1_sk)));
+            eprintln!("Profile 1 Public Key: {}", signature_public_key_to_string(profile1_pk));               
+            eprintln!("=== REMOTE NODE INFO ===");
+            eprintln!("Remote Node Identity: {}", remote_node_identity_name);
+            eprintln!("Remote Profile Encryption PK: {}", remote_profile2_encryption_pk_str);
+
+            // Wait for tools to be ready
+            let tools_ready1 = wait_for_default_tools(
+                node1_commands_sender.clone(),
+                "debug".to_string(),
+                60,
+            ).await.unwrap_or(false);
+
+            eprintln!(">> Tools ready - Node 1: {}", tools_ready1);
+
+            // Wait for LibP2P mesh to stabilize and relay connections
+            eprintln!(">> Waiting for relay connections to establish...");
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            // Test sending message from node1 to remote node
+            eprintln!(">> Sending message from Node 1 ({}) to Remote Node ({})", NODE1_IDENTITY_NAME, remote_node_identity_name);
+            let message_content_to_remote = "Hello from local node to remote node via relay!".to_string();
+            let message_to_remote = ShinkaiMessageBuilder::new(
+                profile1_encryption_sk.clone(),
+                clone_signature_secret_key(&profile1_sk),
+                remote_profile2_encryption_pk,
+            )
+            .message_raw_content(message_content_to_remote.clone())
+            .no_body_encryption()
+            .message_schema_type(MessageSchemaType::TextContent)
+            .internal_metadata(
+                "main".to_string(),
+                "main".to_string(),
+                EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                None,
+            )
+            .external_metadata_with_other(
+                remote_node_identity_name.to_string(),
+                node1_identity_name.to_string(),
+                encryption_public_key_to_string(profile1_encryption_pk),
+            )
+            .build()
+            .unwrap();
+
+            let (res_to_remote_sender, res_to_remote_receiver) = async_channel::bounded(1);
+            node1_commands_sender
+                .send(NodeCommand::SendOnionizedMessage {
+                    msg: message_to_remote,
+                    res: res_to_remote_sender,
+                })
+                .await
+                .unwrap();
+
+            // Wait for message sending attempt
+            let send_result_to_remote = res_to_remote_receiver.recv().await.unwrap();
+
+            eprintln!(">> Node 1 to Remote Node send result: {:?}", send_result_to_remote.is_ok());
+
+            // Only check that the send operation was successful
+            assert_eq!(send_result_to_remote.is_ok(), true, "Node 1 to Remote Node send should be successful");
+
+            eprintln!(">> Message sent to remote node: '{}'", message_content_to_remote);
+            eprintln!(">> Remote node messaging test completed successfully");
+            
+            node1_abort_handler.abort();
+        });
+
+        // Wait for all tasks to complete
+        let result = tokio::try_join!(node1_handler, messaging_test);
+        match result {
+            Ok(_) => {
+                eprintln!(">> Remote node messaging test completed - message sent successfully to remote node");
                 Ok(())
             },
             Err(e) => {

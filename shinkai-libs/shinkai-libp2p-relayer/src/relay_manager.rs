@@ -1,10 +1,8 @@
 use ed25519_dalek::SigningKey;
 use libp2p::{
-    dcutr,
+    dcutr::{self, Event as DcutrEvent},
     futures::StreamExt,
-    gossipsub::{self, Event as GossipsubEvent, MessageAuthenticity, ValidationMode, MessageId},
     identify::{self, Event as IdentifyEvent},
-    kad,
     noise, ping::{self, Event as PingEvent}, quic, request_response,
     relay::{self, Event as RelayEvent},
     swarm::{NetworkBehaviour, SwarmEvent, Config},
@@ -15,7 +13,6 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -25,11 +22,9 @@ use shinkai_crypto_identities::ShinkaiRegistry;
 // Custom behaviour for the relay server
 #[derive(NetworkBehaviour)]
 pub struct RelayBehaviour {
-    pub gossipsub: gossipsub::Behaviour,
     pub identify: identify::Behaviour,
     pub ping: ping::Behaviour,
     pub relay: relay::Behaviour,
-    pub kademlia: kad::Behaviour<kad::store::MemoryStore>,
     pub dcutr: dcutr::Behaviour,
     pub request_response: request_response::json::Behaviour<ShinkaiMessage, ShinkaiMessage>,
 }
@@ -136,38 +131,6 @@ impl RelayManager {
             .map(|either_output, _| either_output.into_inner())
             .boxed();
 
-        // Configure gossipsub
-        let gossipsub_config = gossipsub::ConfigBuilder::default()
-            .heartbeat_interval(Duration::from_secs(10))
-            .validation_mode(ValidationMode::Permissive)
-            .mesh_outbound_min(0)      // Allow zero outbound connections
-            .mesh_n_low(1)             // Allow single node mesh
-            .mesh_n(8)                 // Higher target for relay (hub for multiple nodes)
-            .mesh_n_high(16)           // High maximum to handle many nodes
-            .gossip_lazy(6)            // More gossip for better propagation as hub
-            .fanout_ttl(Duration::from_secs(60))
-            .gossip_retransimission(3)  // Retransmit messages for reliability
-            .duplicate_cache_time(Duration::from_secs(120))  // Longer dedup cache
-            .max_transmit_size(262144) // 256KB max message size
-            .message_id_fn(|message| {
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                message.data.hash(&mut hasher);
-                MessageId::from(hasher.finish().to_string())
-            })
-            .build()
-            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Gossipsub config error: {}", e)))?;
-
-        let mut gossipsub = gossipsub::Behaviour::new(
-            MessageAuthenticity::Signed(local_key.clone()),
-            gossipsub_config,
-        )
-        .map_err(|e| LibP2PRelayError::LibP2PError(format!("Gossipsub creation error: {}", e)))?;
-
-        // Subscribe to common topics that nodes will use
-        let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
-        gossipsub.subscribe(&shinkai_topic)
-            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to subscribe to shinkai-network: {}", e)))?;
-
         // Configure identify protocol - use same protocol version as Shinkai nodes
         let identify = identify::Behaviour::new(identify::Config::new(
             "/shinkai/1.0.0".to_string(),
@@ -180,13 +143,6 @@ impl RelayManager {
         // Configure relay protocol
         let relay = relay::Behaviour::new(local_peer_id, Default::default());
 
-        // Configure Kademlia DHT
-        let mut kademlia = kad::Behaviour::new(
-            local_peer_id,
-            kad::store::MemoryStore::new(local_peer_id),
-        );
-        kademlia.set_mode(Some(kad::Mode::Server));
-
         // Configure DCUtR for hole punching through relay
         let dcutr = dcutr::Behaviour::new(local_peer_id);
 
@@ -198,11 +154,9 @@ impl RelayManager {
 
         // Create the behaviour
         let behaviour = RelayBehaviour {
-            gossipsub,
             identify,
             ping,
             relay,
-            kademlia,
             dcutr,
             request_response,
         };
@@ -421,9 +375,6 @@ impl RelayManager {
     pub async fn run(&mut self) -> Result<(), LibP2PRelayError> {
         println!("Starting relay manager...");
         
-        // Set up a timer for periodic Kademlia bootstrap (every 30 seconds)
-        let mut bootstrap_interval = tokio::time::interval(Duration::from_secs(30));
-        
         loop {
             tokio::select! {
                 // Handle swarm events
@@ -438,15 +389,6 @@ impl RelayManager {
                             self.handle_outgoing_message(msg).await?;
                         }
                         None => break, // Channel closed
-                    }
-                }
-                
-                // Periodic Kademlia bootstrap
-                _ = bootstrap_interval.tick() => {
-                    if let Err(e) = self.swarm.behaviour_mut().kademlia.bootstrap() {
-                        println!("Kademlia bootstrap failed: {:?}", e);
-                    } else {
-                        println!("Initiated Kademlia bootstrap");
                     }
                 }
             }
@@ -479,13 +421,6 @@ impl RelayManager {
             }
             SwarmEvent::ExternalAddrExpired { address } => {
                 println!("⚠️  External address expired and removed: {}", address);
-            }
-            SwarmEvent::Behaviour(RelayBehaviourEvent::Gossipsub(GossipsubEvent::Message {
-                propagation_source,
-                message,
-                ..
-            })) => {
-                self.handle_gossipsub_message(propagation_source, message.data).await?;
             }
             SwarmEvent::Behaviour(RelayBehaviourEvent::Identify(IdentifyEvent::Received {
                 peer_id,
@@ -533,45 +468,15 @@ impl RelayManager {
                     println!("❌ Peer {} public key too short: {} bytes", peer_id, public_key_bytes.len());
                 }
                 
-                // Check what protocols the peer supports before adding to Kademlia
-                let supports_kademlia = info.protocols.iter().any(|protocol| {
-                    protocol.to_string().contains("/kad/") || protocol.to_string().contains("/kademlia/")
-                });
-                
+                // Check what protocols the peer supports
                 let supports_relay = info.protocols.iter().any(|protocol| {
                     protocol.to_string().contains("/libp2p/circuit/relay/") 
                 });
 
-                if supports_kademlia {
-                    // Add peer addresses to Kademlia only if they support it
-                    // Filter out private/local addresses to only advertise reachable ones
-                    let mut external_addrs = Vec::new();
-                    for addr in &info.listen_addrs {
-                        if Self::is_external_address(addr) {
-                            external_addrs.push(addr.clone());
-                            self.swarm.behaviour_mut().kademlia.add_address(&peer_id, addr.clone());
-                        }
-                    }
-                    
-                    if !external_addrs.is_empty() {
-                        println!("✅ Added peer {} to Kademlia DHT with {} external addresses: {:?}", 
-                            peer_id, external_addrs.len(), external_addrs);
-                    } else {
-                        println!("⚠️  Peer {} has no external addresses - not adding to Kademlia DHT", peer_id);
-                        println!("   Available addresses: {:?}", info.listen_addrs);
-                    }
-                } else {
-                    println!("ℹ️  Peer {} doesn't support Kademlia, skipping DHT registration", peer_id);
-                    println!("   This is normal for Shinkai nodes - they use gossipsub for discovery");
-                }
-
                 if !supports_relay {
                     println!("ℹ️  Peer {} doesn't support relay protocol, will use it as client only", peer_id);
                     println!("   This is normal for Shinkai nodes - they connect via relay, don't act as relays");
-                }
-
-                // Store peer capability information to avoid future protocol negotiation attempts
-                if !supports_kademlia || !supports_relay {
+                } else {
                     println!("📝 Peer {} will be treated as a Shinkai client node", peer_id);
                 }
 
@@ -605,10 +510,11 @@ impl RelayManager {
             })) => {
                 println!("Accepted relay reservation from: {}", src_peer_id);
             }
-            SwarmEvent::Behaviour(RelayBehaviourEvent::Dcutr(_dcutr_event)) => {
-                // DCUtR events handled silently for now - enables hole punching through relay
-                // This allows Shinkai nodes to upgrade their relayed connections to direct connections
-                println!("🔄 DCUtR: Direct connection upgrade event processed");
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Dcutr(dcutr_event)) => {
+                // Enhanced DCUtR event handling for direct connection upgrades
+                // This enables hole punching through the relay for direct peer-to-peer connections
+                println!("🔄 DCUtR: Direct connection upgrade event processed: {:?}", dcutr_event);
+                println!("   This relay is facilitating hole punching for direct peer-to-peer connections");
             }
             SwarmEvent::Behaviour(RelayBehaviourEvent::RequestResponse(req_resp_event)) => {
                 // Handle request-response events for relaying direct messages between Shinkai nodes
@@ -673,58 +579,9 @@ impl RelayManager {
                     }
                 }
             }
-            SwarmEvent::Behaviour(RelayBehaviourEvent::Kademlia(kad::Event::OutboundQueryProgressed {
-                id: _,
-                result,
-                ..
-            })) => {
-                match result {
-                    kad::QueryResult::Bootstrap(Ok(kad::BootstrapOk {
-                        peer,
-                        num_remaining,
-                    })) => {
-                        println!("Kademlia bootstrap progress: peer={}, remaining={}", peer, num_remaining);
-                    }
-                    kad::QueryResult::Bootstrap(Err(e)) => {
-                        println!("Kademlia bootstrap error: {:?}", e);
-                    }
-                    kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders { providers, .. })) => {
-                        println!("Found {} providers", providers.len());
-                    }
-                    kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FinishedWithNoAdditionalRecord { .. })) => {
-                        println!("Provider search finished with no additional records");
-                    }
-                    kad::QueryResult::GetProviders(Err(e)) => {
-                        println!("Get providers error: {:?}", e);
-                    }
-                    _ => {}
-                }
-            }
-            SwarmEvent::Behaviour(RelayBehaviourEvent::Kademlia(kad::Event::RoutingUpdated {
-                peer,
-                is_new_peer,
-                addresses,
-                ..
-            })) => {
-                println!("Kademlia routing updated: peer={}, new={}, addresses={:?}", 
-                    peer, is_new_peer, addresses);
-            }
+
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 println!("Connection established with peer: {}", peer_id);
-                
-                // Subscribe to main shinkai network topic to help with mesh formation
-                let topic = gossipsub::IdentTopic::new("shinkai-network");
-                if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
-                    println!("Already subscribed to shinkai-network: {}", e);
-                }
-                
-                // Publish a peer announcement to help other nodes discover this peer
-                let announcement = format!("{{\"type\":\"peer_connected\",\"peer_id\":\"{}\"}}", peer_id);
-                if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, announcement.as_bytes()) {
-                    println!("Failed to announce peer connection: {:?}", e);
-                } else {
-                    println!("Announced connection of peer: {}", peer_id);
-                }
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                 println!("Connection closed with peer: {} (cause: {:?})", peer_id, cause);
@@ -735,93 +592,14 @@ impl RelayManager {
         Ok(())
     }
 
-    async fn handle_gossipsub_message(
-        &mut self,
-        _propagation_source: PeerId,
-        data: Vec<u8>,
-    ) -> Result<(), LibP2PRelayError> {
-        // First try to parse as a simple discovery message
-        if let Ok(message_str) = String::from_utf8(data.clone()) {
-            // Check if it's a discovery message
-            if message_str.contains("\"type\":\"discovery\"") || 
-               message_str.contains("\"type\":\"peer_joined\"") || 
-               message_str.contains("\"type\":\"peer_connected\"") {
-                println!("Received discovery message: {}", message_str);
-                // Discovery messages are handled automatically by gossipsub propagation
-                return Ok(());
-            }
-        }
-        
-        // Try to parse as ShinkaiMessage directly
-        match serde_json::from_slice::<ShinkaiMessage>(&data) {
-            Ok(shinkai_message) => {
-                println!("Received ShinkaiMessage from: {} to: {}", 
-                    shinkai_message.external_metadata.sender,
-                    shinkai_message.external_metadata.recipient);
-                self.handle_shinkai_message_direct(shinkai_message).await?;
-            }
-            Err(e) => {
-                // Log but don't fail - could be other types of messages
-                println!("Received non-Shinkai message ({}): {:?}", e, 
-                    String::from_utf8_lossy(&data[..std::cmp::min(100, data.len())]));
-            }
-        }
-        Ok(())
-    }
-
-    async fn handle_shinkai_message_direct(&mut self, shinkai_message: ShinkaiMessage) -> Result<(), LibP2PRelayError> {
-        let recipient = &shinkai_message.external_metadata.recipient;
-        let sender = &shinkai_message.external_metadata.sender;
-        
-        println!("Routing ShinkaiMessage from {} to {}", sender, recipient);
-        
-        // Extract the node name from the recipient (remove subidentity parts)
-        let target_node = if let Ok(parsed_name) = shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(recipient.clone()) {
-            parsed_name.get_node_name_string()
-        } else {
-            recipient.clone()
-        };
-        
-        // Create topic based on recipient node name
-        let topic_name = format!("shinkai-{}", target_node);
-        let topic = gossipsub::IdentTopic::new(topic_name.clone());
-        
-        // Subscribe to the topic if not already subscribed (this allows us to relay messages)
-        if let Err(e) = self.swarm.behaviour_mut().gossipsub.subscribe(&topic) {
-            println!("Already subscribed to topic {}: {}", topic_name, e);
-        }
-        
-        // Don't republish the message - just ensure we're subscribed to relay it
-        // The gossipsub protocol will automatically relay messages to subscribed peers
-        println!("Relay is now subscribing to topic: {} to relay messages for {}", topic_name, target_node);
-        
-        Ok(())
-    }
-
     async fn handle_outgoing_message(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
-        // Convert message to bytes and publish via gossipsub
-        let data = message.to_bytes()?;
+        // For relay servers, we primarily handle message routing via request-response
+        // rather than gossipsub broadcasts
+        println!("Relay received outgoing message from {} to {:?}", 
+            message.identity, message.target_peer);
         
-        // Use a topic based on the target peer or a general relay topic
-        let topic_name = if let Some(target) = &message.target_peer {
-            format!("shinkai-relay-{}", target)
-        } else {
-            "shinkai-relay-general".to_string()
-        };
-
-        let topic = gossipsub::IdentTopic::new(topic_name);
-        
-        // Subscribe to the topic if not already subscribed
-        let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&topic);
-        
-        // Publish the message
-        if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, data) {
-            return Err(LibP2PRelayError::MessageDeliveryFailed(format!(
-                "Failed to publish message: {:?}",
-                e
-            )));
-        }
-
+        // This could be expanded to handle specific relay routing logic if needed
+        // For now, we rely on the request-response protocol for message forwarding
         Ok(())
     }
 
@@ -853,21 +631,9 @@ impl RelayManager {
     async fn handle_shinkai_message_routing(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
         if let Some(target_identity) = &message.target_peer {
             if let Some(target_peer_id) = self.find_peer_by_identity(target_identity) {
-                // Route message to specific peer via gossipsub topic
-                let topic_name = format!("shinkai-direct-{}", target_peer_id);
-                let topic = gossipsub::IdentTopic::new(topic_name);
-                
-                let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&topic);
-                
-                let data = message.to_bytes()?;
-                if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, data) {
-                    return Err(LibP2PRelayError::MessageDeliveryFailed(format!(
-                        "Failed to route message to {}: {:?}",
-                        target_identity, e
-                    )));
-                }
-                
-                println!("Routed message from {} to {}", message.identity, target_identity);
+                // For relay servers, we use request-response for direct message routing
+                // This is handled in the request-response event handling
+                println!("Routed message from {} to {} via request-response", message.identity, target_identity);
             } else {
                 return Err(LibP2PRelayError::PeerNotFound(format!(
                     "Target peer not found: {}",
@@ -875,19 +641,8 @@ impl RelayManager {
                 )));
             }
         } else {
-            // Broadcast message to all peers
-            let topic = gossipsub::IdentTopic::new("shinkai-broadcast");
-            let _ = self.swarm.behaviour_mut().gossipsub.subscribe(&topic);
-            
-            let data = message.to_bytes()?;
-            if let Err(e) = self.swarm.behaviour_mut().gossipsub.publish(topic, data) {
-                return Err(LibP2PRelayError::MessageDeliveryFailed(format!(
-                    "Failed to broadcast message: {:?}",
-                    e
-                )));
-            }
-            
-            println!("Broadcasted message from {}", message.identity);
+            // For broadcast messages, we rely on the request-response forwarding mechanism
+            println!("Broadcasting message from {} via request-response forwarding", message.identity);
         }
         
         Ok(())

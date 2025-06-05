@@ -24,10 +24,8 @@ reqwest = { workspace = true, features = ["json"] }
 
 # LibP2P dependencies
 libp2p = { version = "0.55.0", features = [
-    "gossipsub",
-    "mdns",
     "noise",
-    "yamux",
+    "yamux", 
     "tcp",
     "quic",
     "identify",
@@ -36,7 +34,6 @@ libp2p = { version = "0.55.0", features = [
     "macros",
     "relay",
     "dcutr",
-    "kad",
     "request-response",
     "json"
 ]}
