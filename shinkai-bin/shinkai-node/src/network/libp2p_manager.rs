@@ -61,7 +61,7 @@ pub struct LibP2PManager {
     message_handler: Arc<ShinkaiMessageHandler>,
 }
 
-use crate::network::libp2p_message_handler::ShinkaiMessageHandler;
+use crate::network::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
 
 impl LibP2PManager {
     /// Create a new libp2p manager

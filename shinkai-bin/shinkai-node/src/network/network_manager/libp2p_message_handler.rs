@@ -1,7 +1,9 @@
 use super::{
-    network_manager::network_handlers::{
+    network_handlers::{
         handle_based_on_message_content_and_encryption, verify_message_signature
     },
+};
+use crate::network::{
     agent_payments_manager::{
         my_agent_offerings_manager::MyAgentOfferingsManager,
         external_agent_offerings_manager::ExtAgentOfferingsManager,

@@ -23,7 +23,7 @@ use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::network_job_manager_error::NetworkJobQueueError;
+
 
 pub enum PingPong {
     Ping,
@@ -47,7 +47,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
         MessageBody::Encrypted(body) => &body.content,
@@ -237,13 +237,21 @@ pub async fn handle_ping(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
+    shinkai_log(
+        ShinkaiLogOption::Network,
+        ShinkaiLogLevel::Debug,
+        &format!(
+            "{} {} > Ping from {:?}",
+            my_node_profile_name, receiver_address, unsafe_sender_address
+        ),
+    );
     ping_pong(
         (sender_address, sender_profile_name.clone()),
         PingPong::Pong,
-        clone_static_secret_key(my_encryption_secret_key),
-        clone_signature_secret_key(my_signature_secret_key),
+        my_encryption_secret_key.clone(),
+        my_signature_secret_key.clone(),
         sender_encryption_pk,
         my_node_profile_name.to_string(),
         sender_profile_name,
@@ -272,7 +280,7 @@ pub async fn handle_default_encryption(
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
@@ -362,7 +370,7 @@ pub async fn handle_network_message_cases(
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!(
         "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
         my_node_full_name, receiver_address, unsafe_sender_address
@@ -454,7 +462,7 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade external_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
@@ -529,14 +537,20 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade my_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice) => {
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
-                            my_agent_offering_manager.store_invoice(&invoice).await?;
+                            if let Err(e) = my_agent_offering_manager.store_invoice(&invoice).await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to store invoice: {:?}", e),
+                                );
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -569,16 +583,22 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade external_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice) => {
                             let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
-                            ext_agent_offering_manager
+                            if let Err(e) = ext_agent_offering_manager
                                 .network_confirm_invoice_payment_and_process(requester, invoice)
-                                .await?;
+                                .await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to confirm invoice payment: {:?}", e),
+                                );
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -611,7 +631,7 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade my_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
@@ -619,7 +639,13 @@ pub async fn handle_network_message_cases(
                         Ok(invoice_result) => {
                             println!("Invoice result received: {:?}", invoice_result);
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
-                            my_agent_offering_manager.store_invoice_result(&invoice_result).await?;
+                            if let Err(e) = my_agent_offering_manager.store_invoice_result(&invoice_result).await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to store invoice result: {:?}", e),
+                                );
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -678,7 +704,7 @@ pub async fn send_ack(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
         signature_secret_key,
@@ -716,7 +742,7 @@ pub async fn ping_pong(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
         PingPong::Pong => "Pong",

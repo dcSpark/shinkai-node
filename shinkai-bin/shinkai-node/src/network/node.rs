@@ -1,7 +1,7 @@
 use super::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use super::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use super::libp2p_manager::{LibP2PManager, NetworkEvent};
-use super::libp2p_message_handler::ShinkaiMessageHandler;
+use super::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
 
 use super::node_error::NodeError;
 use super::ws_manager::WebSocketManager;
@@ -18,9 +18,7 @@ use crate::wallet::coinbase_mpc_wallet::CoinbaseMPCWallet;
 use crate::wallet::wallet_manager::WalletManager;
 use async_channel::Receiver;
 use base64::Engine;
-use chrono::Utc;
 use core::panic;
-use dashmap::DashMap;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use libp2p::Multiaddr;
@@ -44,7 +42,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::errors::SqliteManagerError;
 use shinkai_sqlite::SqliteManager;
-use std::convert::TryInto;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -76,14 +73,12 @@ pub struct Node {
     pub encryption_public_key: EncryptionPublicKey,
     // The address this node uses for LibP2P networking configuration.
     pub listen_address: SocketAddr,
-    // The HTTPS certificate in PEM format
-    pub private_https_certificate: Option<String>,
     // The HTTPS private key in PEM format
     pub public_https_certificate: Option<String>,
+    // The HTTPS public key in PEM format
+    pub private_https_certificate: Option<String>,
     // Secrets file path
     pub secrets_file_path: String,
-    // A map of known peer nodes (kept for compatibility, LibP2P handles peer management).
-    pub peers: DashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
     // The interval at which this node performs connectivity checks (LibP2P handles automatic pinging).
     pub ping_interval_secs: u64,
     // The channel from which this node receives commands.
@@ -205,27 +200,6 @@ impl Node {
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
-
-        let max_connections: u32 = std::env::var("MAX_CONNECTIONS")
-            .unwrap_or_else(|_| "5".to_string())
-            .parse::<usize>()
-            .expect("Failed to parse MAX_CONNECTIONS")
-            .try_into()
-            .expect("MAX_CONNECTIONS value out of range");
-
-        let max_connections_per_ip: u32 = std::env::var("MAX_CONNECTIONS_PER_IP")
-            .unwrap_or_else(|_| "10".to_string())
-            .parse::<usize>()
-            .expect("Failed to parse MAX_CONNECTIONS_PER_IP")
-            .try_into()
-            .expect("MAX_CONNECTIONS_PER_IP value out of range");
-
-        let burst_allowance: u32 = std::env::var("BURST_ALLOWANCE")
-            .unwrap_or_else(|_| "3".to_string())
-            .parse::<usize>()
-            .expect("Failed to parse BURST_ALLOWANCE")
-            .try_into()
-            .expect("BURST_ALLOWANCE value out of range");
 
         // Initialize ProxyConnectionInfo if proxy_identity is provided
         let proxy_connection_info: Option<ProxyConnectionInfo> = proxy_identity.and_then(|proxy_identity| {
@@ -370,9 +344,8 @@ impl Node {
             identity_public_key,
             encryption_secret_key: clone_static_secret_key(&encryption_secret_key),
             encryption_public_key,
-            private_https_certificate,
             public_https_certificate,
-            peers: DashMap::new(),
+            private_https_certificate,
             listen_address,
             secrets_file_path,
             ping_interval_secs,
