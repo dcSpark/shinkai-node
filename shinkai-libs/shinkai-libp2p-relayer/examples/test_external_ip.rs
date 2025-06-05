@@ -1,6 +1,7 @@
 use shinkai_libp2p_relayer::relay_manager::RelayManager;
 use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
+use shinkai_crypto_identities::shinkai_registry::ShinkaiRegistry;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,6 +12,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = OsRng;
     let identity_secret_key = SigningKey::generate(&mut rng);
     
+    // Create an empty registry for testing
+    let registry = ShinkaiRegistry::new(
+        "https://sepolia.base.org",
+        "0x363b0b0dCD8D9dcD0Ed5A8693a60cE4F4b3C1d35",
+        None,
+    ).await?;
+    
     println!("Creating RelayManager with external IP detection...");
     
     // Create the relay manager - this will automatically detect external IP
@@ -18,6 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         9999, // Test port
         "@@test-relay.sep-shinkai".to_string(),
         identity_secret_key,
+        registry,
     ).await?;
     
     // Check if external IP was detected
