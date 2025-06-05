@@ -1,32 +1,66 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{
-        node_error::NodeError, node_shareable_logic::{download_zip_from_url, ZipFileContents}, zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool}, Node
-    }, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::{tool_router::ToolRouter, IdentityManager},
+    network::{
+        node_error::NodeError,
+        node_shareable_logic::{download_zip_from_url, ZipFileContents},
+        zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool},
+        Node,
+    },
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 use async_channel::Sender;
 use base64::Engine;
 use chrono::Utc;
 use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use reqwest::StatusCode;
+use rusqlite::Error as RusqliteError;
 use serde_json::{json, Map, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiName, shinkai_name::ShinkaiSubidentityType, shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType}, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
-    }
+        inbox_name::InboxName,
+        indexable_version::IndexableVersion,
+        job::JobLike,
+        job_config::JobConfig,
+        shinkai_name::ShinkaiName,
+        shinkai_name::ShinkaiSubidentityType,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+        tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
-use rusqlite::Error as RusqliteError;
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::ShinkaiToolHeader, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
+    deno_tools::DenoTool,
+    error::ToolError,
+    parameters::Parameters,
+    python_tools::PythonTool,
+    shinkai_tool::ShinkaiToolHeader,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
+    tool_config::{OAuth, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
 use std::{
-    collections::HashMap, env, io::Read, path::{absolute, PathBuf}, sync::Arc, time::Instant
+    collections::HashMap,
+    env,
+    io::Read,
+    path::{absolute, PathBuf},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -505,6 +539,62 @@ impl Node {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
                     message: format!("Failed to list mcp tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_list_all_network_shinkai_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_name: ShinkaiName,
+        tool_router: Option<Arc<ToolRouter>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                use std::collections::HashMap;
+                let mut tool_groups: HashMap<String, Vec<ShinkaiToolHeader>> = HashMap::new();
+
+                for tool in tools {
+                    if tool.tool_type.to_lowercase() == "network" {
+                        let tool_router_key = tool.tool_router_key.clone();
+                        tool_groups.entry(tool_router_key).or_default().push(tool);
+                    }
+                }
+
+                let mut latest_tools = Vec::new();
+                for (_, mut group) in tool_groups {
+                    if group.len() == 1 {
+                        latest_tools.push(group.pop().unwrap());
+                    } else {
+                        group.sort_by(|a, b| {
+                            let a_version = IndexableVersion::from_string(&a.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            let b_version = IndexableVersion::from_string(&b.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            b_version.cmp(&a_version)
+                        });
+
+                        latest_tools.push(group.remove(0));
+                    }
+                }
+
+                let t = latest_tools.iter().map(|tool| json!(tool)).collect();
+                let _ = res.send(Ok(t)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list network tools: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
