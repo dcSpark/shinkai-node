@@ -12,6 +12,7 @@ use shinkai_message_primitives::{
 use std::{
     sync::Arc,
     time::Duration,
+    collections::HashMap,
 };
 use tokio::sync::mpsc;
 
@@ -48,6 +49,12 @@ pub enum NetworkEvent {
     TryDirectConnectionUpgrade {
         peer_id: PeerId,
     },
+    /// Request peer discovery from relay
+    DiscoverPeers,
+    /// Connect to a specific discovered peer by identity
+    ConnectToDiscoveredPeer {
+        identity: String,
+    },
 }
 
 /// The main libp2p network manager
@@ -57,6 +64,14 @@ pub struct LibP2PManager {
     event_receiver: mpsc::UnboundedReceiver<NetworkEvent>,
     message_handler: Arc<ShinkaiMessageHandler>,
     relay_address: Option<Multiaddr>, // Store relay address for circuit listening
+    // Reconnection mechanism fields
+    relay_peer_id: Option<PeerId>, // Track the relay peer ID for reconnection
+    is_connected_to_relay: bool, // Track relay connection state
+    reconnection_attempts: u32, // Count reconnection attempts for backoff
+    last_disconnection_time: Option<std::time::Instant>, // Track when we disconnected
+    // Peer discovery fields
+    discovered_peers: HashMap<String, (PeerId, Multiaddr)>, // identity -> (peer_id, circuit_addr)
+    discovery_enabled: bool, // Enable/disable automatic peer discovery
 }
 
 use crate::network::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
@@ -187,6 +202,14 @@ impl LibP2PManager {
             event_receiver,
             message_handler: Arc::new(message_handler),
             relay_address: relay_address.clone(),
+            // Reconnection mechanism fields
+            relay_peer_id: None, // Track the relay peer ID for reconnection
+            is_connected_to_relay: false, // Track relay connection state
+            reconnection_attempts: 0, // Count reconnection attempts for backoff
+            last_disconnection_time: None, // Track when we disconnected
+            // Peer discovery fields
+            discovered_peers: HashMap::new(), // identity -> (peer_id, circuit_addr)
+            discovery_enabled: true, // Enable/disable automatic peer discovery
         })
     }
 
@@ -280,6 +303,8 @@ impl LibP2PManager {
     /// Run the network manager
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut ping_timer = tokio::time::interval(Duration::from_secs(30));
+        let mut reconnection_timer = tokio::time::interval(Duration::from_secs(5)); // Check reconnection every 5 seconds
+        let mut discovery_timer = tokio::time::interval(Duration::from_secs(60)); // Request peer discovery every 60 seconds
         
         loop {
             tokio::select! {
@@ -293,6 +318,14 @@ impl LibP2PManager {
                 }
                 _ = ping_timer.tick() => {
                     self.send_ping().await?;
+                }
+                _ = reconnection_timer.tick() => {
+                    self.check_and_reconnect_to_relay().await?;
+                }
+                _ = discovery_timer.tick() => {
+                    if self.is_connected_to_relay {
+                        self.request_peer_discovery().await?;
+                    }
                 }
             }
         }
@@ -444,15 +477,19 @@ impl LibP2PManager {
                     
                     // CRITICAL: Now that we've identified the relay, listen on the relay circuit
                     // This is what actually establishes the relay reservation
-                    if let Some(ref relay_addr) = self.relay_address {
-                        // Check if this is the relay we connected to
-                        if let Some(relay_peer_from_addr) = Self::extract_peer_id_from_address(relay_addr) {
+                    if let Some(relay_addr) = self.relay_address.clone() {
+                        if let Some(relay_peer_from_addr) = Self::extract_peer_id_from_address(&relay_addr) {
                             if relay_peer_from_addr == peer_id {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Info,
                                     "🔄 This is our configured relay - establishing circuit reservation",
                                 );
+                                
+                                // Mark as connected if not already marked
+                                if !self.is_connected_to_relay {
+                                    self.mark_relay_connected(peer_id);
+                                }
                                 
                                 // Create the circuit address with the correct format:
                                 // /ip4/{relay-ip}/tcp/{relay-port}/p2p/{relay-peer-id}/p2p-circuit
@@ -487,6 +524,11 @@ impl LibP2PManager {
                                 ShinkaiLogLevel::Info,
                                 "🔄 Identified relay server - attempting to establish circuit reservation",
                             );
+                            
+                            // Mark as connected (this confirms our potential relay connection)
+                            if !self.is_connected_to_relay {
+                                self.mark_relay_connected(peer_id);
+                            }
                             
                             // Create circuit address with the identified peer ID
                             let circuit_addr = relay_addr.clone()
@@ -656,6 +698,24 @@ impl LibP2PManager {
                         ShinkaiLogLevel::Info,
                         "   Will request relay reservation after peer identification",
                     );
+                    
+                    // Check if this might be our configured relay
+                    if let Some(relay_addr) = self.relay_address.clone() {
+                        if let Some(relay_peer_from_addr) = Self::extract_peer_id_from_address(&relay_addr) {
+                            if relay_peer_from_addr == peer_id {
+                                // This is our configured relay - mark as connected
+                                self.mark_relay_connected(peer_id);
+                            }
+                        } else {
+                            // If we can't extract peer ID from address, assume this might be our relay
+                            // We'll confirm this during the identify protocol
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                "   Potential relay connection - will confirm during identification",
+                            );
+                        }
+                    }
                 }
                 
                 // Check if this connection is through a relay and create circuit address
@@ -691,6 +751,9 @@ impl LibP2PManager {
                     ShinkaiLogLevel::Info,
                     &format!("Disconnected from peer {}: {:?}", peer_id, cause),
                 );
+                
+                // Check if this was our relay connection and trigger reconnection
+                self.mark_relay_disconnected(peer_id);
             }
             SwarmEvent::IncomingConnectionError { error, .. } => {
                 shinkai_log(
@@ -739,8 +802,6 @@ impl LibP2PManager {
         
         Ok(())
     }
-
-
 
     /// Send ping to all connected peers (handled automatically by libp2p)
     async fn send_ping(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -925,6 +986,12 @@ impl LibP2PManager {
                 );
                 self.try_direct_connection_upgrade(peer_id)?;
             }
+            NetworkEvent::DiscoverPeers => {
+                self.request_peer_discovery().await?;
+            }
+            NetworkEvent::ConnectToDiscoveredPeer { identity } => {
+                self.connect_to_discovered_peer(&identity).await?;
+            }
         }
         Ok(())
     }
@@ -939,6 +1006,208 @@ impl LibP2PManager {
             }
         }
         None
+    }
+
+    /// Check if we need to reconnect to relay and attempt reconnection with exponential backoff
+    async fn check_and_reconnect_to_relay(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Only attempt reconnection if we have a relay address configured but are not connected
+        if let Some(ref relay_addr) = self.relay_address.clone() {
+            if !self.is_connected_to_relay {
+                // Check if enough time has passed since last disconnection for backoff
+                if let Some(last_disconnect) = self.last_disconnection_time {
+                    let backoff_duration = self.calculate_backoff_duration();
+                    if last_disconnect.elapsed() < backoff_duration {
+                        // Still in backoff period, don't reconnect yet
+                        return Ok(());
+                    }
+                }
+                
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("🔄 Attempting to reconnect to relay (attempt {}) at: {}", 
+                        self.reconnection_attempts + 1, relay_addr),
+                );
+                
+                // Attempt to reconnect
+                if let Err(e) = self.swarm.dial(relay_addr.clone()) {
+                    self.reconnection_attempts += 1;
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to reconnect to relay: {}", e),
+                    );
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Info,
+                        "📡 Reconnection attempt initiated - waiting for connection establishment",
+                    );
+                    self.reconnection_attempts += 1;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Calculate exponential backoff duration for reconnection attempts
+    fn calculate_backoff_duration(&self) -> Duration {
+        // Exponential backoff: 5s, 10s, 20s, 40s, then max out at 60s
+        let base_delay = 5;
+        let max_delay = 60;
+        let delay_seconds = std::cmp::min(base_delay * (2_u32.saturating_pow(self.reconnection_attempts)), max_delay);
+        Duration::from_secs(delay_seconds as u64)
+    }
+
+    /// Mark relay as connected and reset reconnection state
+    fn mark_relay_connected(&mut self, peer_id: PeerId) {
+        self.is_connected_to_relay = true;
+        self.relay_peer_id = Some(peer_id);
+        self.reconnection_attempts = 0;
+        self.last_disconnection_time = None;
+        
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("✅ Relay connection established with {} - reconnection state reset", peer_id),
+        );
+    }
+
+    /// Mark relay as disconnected and start reconnection process
+    fn mark_relay_disconnected(&mut self, peer_id: PeerId) {
+        // Only mark as disconnected if this was our relay
+        if let Some(relay_peer) = self.relay_peer_id {
+            if relay_peer == peer_id {
+                self.is_connected_to_relay = false;
+                self.last_disconnection_time = Some(std::time::Instant::now());
+                
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("❌ Relay connection lost with {} - will attempt reconnection", peer_id),
+                );
+                
+                let next_attempt_in = self.calculate_backoff_duration();
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("🔄 Next reconnection attempt in {:?}", next_attempt_in),
+                );
+            }
+        }
+    }
+
+    /// Request peer list from relay for discovery
+    pub async fn request_peer_discovery(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.discovery_enabled {
+            return Ok(());
+        }
+
+        if let Some(relay_peer_id) = self.relay_peer_id {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                "🔍 Requesting peer discovery information from relay",
+            );
+            
+            // For now, we'll request discovery through a special ping
+            // In a more complete implementation, we'd send a specific discovery request
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("📡 Relay {} should broadcast peer information to us", relay_peer_id),
+            );
+        }
+        
+        Ok(())
+    }
+
+    /// Add a discovered peer to our peer list
+    pub fn add_discovered_peer(&mut self, identity: String, peer_id: PeerId, circuit_addr: Multiaddr) {
+        if self.discovered_peers.contains_key(&identity) {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Updating discovered peer: {} at {}", identity, circuit_addr),
+            );
+        } else {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("🆕 Discovered new peer: {} at {}", identity, circuit_addr),
+            );
+        }
+        
+        self.discovered_peers.insert(identity, (peer_id, circuit_addr));
+    }
+
+    /// Connect to a discovered peer using their circuit address
+    pub async fn connect_to_discovered_peer(&mut self, identity: &str) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some((peer_id, circuit_addr)) = self.discovered_peers.get(identity).cloned() {
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("🔗 Connecting to discovered peer {} via circuit: {}", identity, circuit_addr),
+            );
+            
+            // Dial the peer through the circuit address
+            if let Err(e) = self.swarm.dial(circuit_addr.clone()) {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to connect to peer {} at {}: {}", identity, circuit_addr, e),
+                );
+                return Err(Box::new(e));
+            }
+            
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("✅ Initiated connection to peer {} - waiting for connection establishment", identity),
+            );
+        } else {
+            return Err(format!("Peer {} not found in discovered peers", identity).into());
+        }
+        
+        Ok(())
+    }
+
+    /// Get list of all discovered peers
+    pub fn get_discovered_peers(&self) -> Vec<(String, PeerId, Multiaddr)> {
+        self.discovered_peers.iter()
+            .map(|(identity, (peer_id, addr))| (identity.clone(), *peer_id, addr.clone()))
+            .collect()
+    }
+
+    /// Auto-connect to newly discovered peers (optional feature)
+    pub async fn auto_connect_to_discovered_peers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if !self.discovery_enabled {
+            return Ok(());
+        }
+        
+        let peers_to_connect: Vec<String> = self.discovered_peers.keys()
+            .filter(|identity| !self.swarm.connected_peers().any(|connected_peer| {
+                // Check if we're already connected to this peer
+                if let Some((peer_id, _)) = self.discovered_peers.get(*identity) {
+                    connected_peer == peer_id
+                } else {
+                    false
+                }
+            }))
+            .cloned()
+            .collect();
+
+        for identity in peers_to_connect {
+            if let Err(e) = self.connect_to_discovered_peer(&identity).await {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Failed to auto-connect to peer {}: {}", identity, e),
+                );
+            }
+        }
+        
+        Ok(())
     }
 }
 

@@ -1,6 +1,5 @@
 use libp2p::{
     futures::StreamExt,
-    gossipsub::{self, Event as GossipsubEvent, MessageAuthenticity, ValidationMode},
     identify::{self, Event as IdentifyEvent},
     noise, ping, quic, tcp, yamux,
     swarm::{NetworkBehaviour, SwarmEvent, Config},
@@ -10,7 +9,6 @@ use std::time::Duration;
 
 #[derive(NetworkBehaviour)]
 struct TestClientBehaviour {
-    gossipsub: gossipsub::Behaviour,
     identify: identify::Behaviour,
     ping: ping::Behaviour,
 }
@@ -46,26 +44,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|either_output, _| either_output.into_inner())
         .boxed();
 
-    // Configure gossipsub (same config as nodes)
-    let gossipsub_config = gossipsub::ConfigBuilder::default()
-        .heartbeat_interval(Duration::from_secs(10))
-        .validation_mode(ValidationMode::Permissive)
-        .mesh_outbound_min(0)
-        .mesh_n_low(1)
-        .mesh_n(6)
-        .mesh_n_high(12)
-        .build()?;
-
-    let mut gossipsub = gossipsub::Behaviour::new(
-        MessageAuthenticity::Signed(local_key.clone()),
-        gossipsub_config,
-    )?;
-
-    // Subscribe to the same topics as Shinkai nodes
-    let shinkai_topic = gossipsub::IdentTopic::new("shinkai-network");
-    gossipsub.subscribe(&shinkai_topic)?;
-    println!("📢 Subscribed to topic: shinkai-network");
-
     // Configure identify
     let identify = identify::Behaviour::new(identify::Config::new(
         "/shinkai-test-client/1.0.0".to_string(),
@@ -77,7 +55,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create behaviour
     let behaviour = TestClientBehaviour {
-        gossipsub,
         identify,
         ping,
     };
@@ -131,14 +108,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("   Endpoint: {:?}", endpoint);
                         connected = true;
                         peer_count += 1;
-                        
-                        // Test sending a discovery message
-                        let discovery_msg = r#"{"type":"discovery","peer_id":"test-client","timestamp":1234567890}"#;
-                        if let Err(e) = swarm.behaviour_mut().gossipsub.publish(shinkai_topic.clone(), discovery_msg.as_bytes()) {
-                            println!("❌ Failed to publish discovery message: {:?}", e);
-                        } else {
-                            println!("📨 Published discovery message");
-                        }
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                         println!("💔 Connection closed with peer: {} (cause: {:?})", peer_id, cause);
@@ -149,13 +118,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("   Protocol version: {}", info.protocol_version);
                         println!("   Agent version: {}", info.agent_version);
                         println!("   Listen addresses: {:?}", info.listen_addrs);
-                    }
-                    SwarmEvent::Behaviour(TestClientBehaviourEvent::Gossipsub(GossipsubEvent::Message { message, .. })) => {
-                        let msg_str = String::from_utf8_lossy(&message.data);
-                        println!("📩 Received gossipsub message: {}", msg_str);
-                    }
-                    SwarmEvent::Behaviour(TestClientBehaviourEvent::Gossipsub(GossipsubEvent::Subscribed { peer_id, topic })) => {
-                        println!("👥 Peer {} subscribed to topic: {}", peer_id, topic);
                     }
                     SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                         println!("❌ Outgoing connection error to {:?}: {}", peer_id, error);
