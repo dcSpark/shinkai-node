@@ -260,7 +260,11 @@ impl LibP2PManager {
         peer_id: PeerId,
         message: ShinkaiMessage,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        eprintln!(">> DEBUG: Sending direct message to peer {} using request-response", peer_id);
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("Sending direct message to peer {} using request-response", peer_id),
+        );
 
         // Send the message using request-response protocol
         let _request_id = self.swarm
@@ -268,7 +272,11 @@ impl LibP2PManager {
             .request_response
             .send_request(&peer_id, message);
 
-        eprintln!(">> DEBUG: Direct message request sent to peer {}", peer_id);
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("Direct message request sent to peer {}", peer_id),
+        );
 
         Ok(())
     }
@@ -744,7 +752,11 @@ impl LibP2PManager {
 
     /// Handle network events from the event channel
     async fn handle_network_event(&mut self, event: NetworkEvent) -> Result<(), Box<dyn std::error::Error>> {
-        eprintln!(">> DEBUG: LibP2P Manager received network event: {:?}", event);
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("LibP2P Manager received network event: {:?}", event),
+        );
         
         match event {
             NetworkEvent::SendDirectMessage { peer_id, message } => {
