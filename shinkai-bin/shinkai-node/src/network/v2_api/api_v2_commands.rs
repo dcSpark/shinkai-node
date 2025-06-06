@@ -2358,6 +2358,21 @@ impl Node {
                     return Ok(());
                 }
             }
+            MCPServerType::Http => {
+                if let Some(url) = &mcp_server.url {
+                    log::info!("MCP Server Type Http: URL='{}'", url);
+                } else {
+                    log::warn!("No URL provided for MCP Server: '{}'", mcp_server.name);
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!("No URL provided for MCP Server '{}' of type Http.", mcp_server.name),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
             _ => {
                 log::warn!(
                     "MCP Server type not yet fully implemented or recognized: {:?}",
@@ -2606,6 +2621,27 @@ impl Node {
                             error: "Invalid MCP Server Configuration".to_string(),
                             message: format!(
                                 "No URL provided for MCP Server '{}' of type Sse.",
+                                mcp_server.name.clone().unwrap_or_default()
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            MCPServerType::Http => {
+                if let Some(url) = &mcp_server.url {
+                    log::info!("MCP Server Type Http: URL='{}'", url);
+                } else {
+                    log::warn!(
+                        "No URL provided for MCP Server: '{}'",
+                        mcp_server.name.clone().unwrap_or_default()
+                    );
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!(
+                                "No URL provided for MCP Server '{}' of type Http.",
                                 mcp_server.name.clone().unwrap_or_default()
                             ),
                         }))
