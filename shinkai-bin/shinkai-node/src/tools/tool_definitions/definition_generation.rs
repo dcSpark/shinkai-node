@@ -140,7 +140,12 @@ pub async fn generate_tool_definitions(
             ShinkaiTool::Deno(deno_tool, _) => deno_tool.result,
             ShinkaiTool::Python(python_tool, _) => python_tool.result,
             ShinkaiTool::Rust(rust_tool, _) => {
-                let value = serde_json::from_str::<serde_json::Value>(&rust_tool.output_arg.json).unwrap();
+                let json_str = if rust_tool.output_arg.json.trim().is_empty() {
+                    "{}"
+                } else {
+                    &rust_tool.output_arg.json
+                };
+                let value = serde_json::from_str::<serde_json::Value>(json_str).unwrap();
                 let result_type = value["result_type"].as_str().unwrap_or("object");
                 let properties = value["properties"].clone();
                 let required = value["required"]
@@ -152,7 +157,13 @@ pub async fn generate_tool_definitions(
                 ToolResult::new(result_type.to_string(), properties, required)
             }
             ShinkaiTool::Network(network_tool, _) => {
-                let value = serde_json::from_str::<serde_json::Value>(&network_tool.output_arg.json).unwrap();
+                println!("network_tool.output_arg.json: {}", network_tool.output_arg.json);
+                let json_str = if network_tool.output_arg.json.trim().is_empty() {
+                    "{}"
+                } else {
+                    &network_tool.output_arg.json
+                };
+                let value = serde_json::from_str::<serde_json::Value>(json_str).unwrap();
                 let result_type = value["result_type"].as_str().unwrap_or("object");
                 let properties = value["properties"].clone();
                 let required = value["required"]
@@ -164,7 +175,12 @@ pub async fn generate_tool_definitions(
                 ToolResult::new(result_type.to_string(), properties, required)
             }
             ShinkaiTool::Agent(agent_tool, _) => {
-                let value = serde_json::from_str::<serde_json::Value>(&agent_tool.output_arg.json).unwrap();
+                let json_str = if agent_tool.output_arg.json.trim().is_empty() {
+                    "{}"
+                } else {
+                    &agent_tool.output_arg.json
+                };
+                let value = serde_json::from_str::<serde_json::Value>(json_str).unwrap();
                 let result_type = value["result_type"].as_str().unwrap_or("object");
                 let properties = value["properties"].clone();
                 let required = value["required"]
@@ -174,7 +190,7 @@ pub async fn generate_tool_definitions(
                     .map(|v| v.as_str().unwrap_or("").to_string())
                     .collect();
                 ToolResult::new(result_type.to_string(), properties, required)
-            },
+            }
             ShinkaiTool::MCPServer(mcp_server_tool, _) => {
                 println!("mcp_server_tool output_arg: {:?}", mcp_server_tool.output_arg.clone());
                 let value = serde_json::from_str::<serde_json::Value>("{}").unwrap();
@@ -187,7 +203,7 @@ pub async fn generate_tool_definitions(
                     .map(|v| v.as_str().unwrap_or("").to_string())
                     .collect();
                 ToolResult::new(result_type.to_string(), properties, required)
-            },
+            }
             _ => return Err(APIError::from("Unsupported tool type".to_string())),
         };
 
