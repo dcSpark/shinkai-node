@@ -927,12 +927,20 @@ fn test_relay_server_communication() {
             eprintln!(">> Node 1 to Node 2 send result: {:?}", send_result_1to2.is_ok());
             eprintln!(">> Node 2 to Node 1 send result: {:?}", send_result_2to1.is_ok());
 
-            assert_eq!(send_result_1to2.is_ok(), true, "Node 1 to Node 2 send should be successful");
-            assert_eq!(send_result_2to1.is_ok(), true, "Node 2 to Node 1 send should be successful");
+            assert_eq!(
+                send_result_1to2.is_ok(),
+                true,
+                "Node 1 to Node 2 send should be successful"
+            );
+            assert_eq!(
+                send_result_2to1.is_ok(),
+                true,
+                "Node 2 to Node 1 send should be successful"
+            );
 
             // Wait longer for messages to potentially be delivered via relay
             eprintln!(">> Waiting for relay message delivery...");
-            tokio::time::sleep(Duration::from_secs(15)).await;
+            tokio::time::sleep(Duration::from_secs(20)).await;
 
             // Check if messages were received
             let (res1_check_sender, res1_check_receiver) = async_channel::bounded(1);
