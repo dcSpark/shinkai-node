@@ -18,6 +18,8 @@ pub struct LLMProviderSubset {
     pub id: String,
     pub full_identity_name: ShinkaiName,
     pub model: LLMProviderInterface,
+    pub name: String,
+    pub description: String,
 }
 
 impl LLMProviderSubset {
@@ -26,6 +28,8 @@ impl LLMProviderSubset {
             id: serialized_llm_provider.id,
             full_identity_name: serialized_llm_provider.full_identity_name,
             model: serialized_llm_provider.model,
+            name: serialized_llm_provider.name.unwrap_or_default(),
+            description: serialized_llm_provider.description.unwrap_or_default(),
         }
     }
 
@@ -34,6 +38,8 @@ impl LLMProviderSubset {
             id: agent.agent_id,
             full_identity_name: agent.full_identity_name,
             model: serialized_llm_provider.model,
+            name: agent.name,
+            description: agent.ui_description,
         }
     }
 }
