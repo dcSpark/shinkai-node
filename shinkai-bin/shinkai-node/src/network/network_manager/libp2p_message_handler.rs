@@ -78,26 +78,6 @@ impl ShinkaiMessageHandler {
         map.insert(peer_id, addr);
     }
 
-    /// Get SocketAddr for a PeerId, or use a default if not found
-    async fn get_peer_addr(&self, peer_id: PeerId) -> SocketAddr {
-        let map = self.peer_addr_map.lock().await;
-        map.get(&peer_id)
-            .copied()
-            .unwrap_or_else(|| {
-                // Create a synthetic SocketAddr from PeerId
-                // This is a workaround for compatibility with existing code
-                let hash = peer_id.to_string().chars()
-                    .filter_map(|c| c.to_digit(16))
-                    .take(8)
-                    .fold(0u32, |acc, d| acc * 16 + d);
-                
-                let ip_bytes = hash.to_be_bytes();
-                let port = (hash % 50000 + 10000) as u16; // Port between 10000-60000
-                
-                SocketAddr::from(([127, ip_bytes[1], ip_bytes[2], ip_bytes[3]], port))
-            })
-    }
-
     /// Handle a message from a peer - this replaces the NetworkJobManager processing
     pub async fn handle_message(&self, peer_id: PeerId, message: ShinkaiMessage) {
         shinkai_log(
@@ -106,13 +86,10 @@ impl ShinkaiMessageHandler {
             &format!("Handling message from peer {} via libp2p", peer_id),
         );
 
-        // Get or create a SocketAddr for this peer
-        let unsafe_sender_address = self.get_peer_addr(peer_id).await;
-
         // Process the message directly using the existing network handlers
         if let Err(e) = self.handle_message_internode(
             self.local_addr,
-            unsafe_sender_address,
+            peer_id,
             &message,
         ).await {
             shinkai_log(
@@ -127,7 +104,7 @@ impl ShinkaiMessageHandler {
     async fn handle_message_internode(
         &self,
         receiver_address: SocketAddr,
-        unsafe_sender_address: SocketAddr,
+        sender_peer_id: PeerId,
         message: &ShinkaiMessage,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let maybe_db = self.db
@@ -139,7 +116,7 @@ impl ShinkaiMessageHandler {
             ShinkaiLogLevel::Info,
             &format!(
                 "{} {} > Network Job Got message from {:?}",
-                self.node_name.get_node_name_string(), receiver_address, unsafe_sender_address
+                self.node_name.get_node_name_string(), receiver_address, sender_peer_id
             ),
         );
 
@@ -202,7 +179,7 @@ impl ShinkaiMessageHandler {
             maybe_db,
             self.identity_manager.clone(),
             receiver_address,
-            unsafe_sender_address,
+            sender_peer_id,
             self.my_agent_offerings_manager.clone(),
             self.ext_agent_offerings_manager.clone(),
             proxy_connection_info,

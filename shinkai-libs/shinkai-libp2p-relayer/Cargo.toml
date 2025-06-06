@@ -21,6 +21,7 @@ derivative = "2.2"
 uuid = { workspace = true, features = ["v4"] }
 thiserror = "1.0"
 reqwest = { workspace = true, features = ["json"] }
+dashmap = { workspace = true }
 
 # LibP2P dependencies
 libp2p = { version = "0.55.0", features = [
