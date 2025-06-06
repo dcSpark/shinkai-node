@@ -14,6 +14,8 @@ shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
 [features]
 default = []
 console = ["console-subscriber"]
+# Enable additional debug output when this feature is selected
+debug = []
 # Enable ngrok support when the `ngrok` feature is selected
 ngrok = ["dep:ngrok"]
 # Enable swagger-ui when this feature is selected
@@ -24,6 +26,22 @@ swagger-ui = ["shinkai_http_api/swagger-ui"]
 doctest = false
 
 [dependencies]
+# libp2p dependencies for peer-to-peer networking
+libp2p = { version = "0.53", features = [
+    "noise",
+    "yamux",
+    "tcp",
+    "quic",
+    "dcutr",
+    "identify",
+    "ping",
+    "relay",
+    "request-response",
+    "json",
+    "tokio",
+    "macros"
+] }
+
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 log = { workspace = true }
@@ -60,7 +78,7 @@ shinkai_message_primitives = { workspace = true }
 shinkai_crypto_identities = { workspace = true }
 shinkai_job_queue_manager = { workspace = true }
 shinkai_tools_primitives = { workspace = true }
-shinkai_tcp_relayer = { workspace = true }
+shinkai_libp2p_relayer = { workspace = true }
 shinkai_http_api = { workspace = true }
 shinkai_sqlite = { workspace = true }
 shinkai_embedding = { workspace = true }

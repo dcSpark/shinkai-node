@@ -19,7 +19,7 @@ use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
     managers::{identity_manager::IdentityManagerTrait, tool_router::ToolRouter}, network::{
-        network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer}, node::ProxyConnectionInfo
+        libp2p_manager::NetworkEvent, network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer}, node::ProxyConnectionInfo
     }, wallet::wallet_manager::WalletManager
 };
 
@@ -40,6 +40,7 @@ pub struct MyAgentOfferingsManager {
     // Wallet manager
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
+    pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 }
 
 impl MyAgentOfferingsManager {
@@ -53,6 +54,7 @@ impl MyAgentOfferingsManager {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         tool_router: Weak<ToolRouter>,
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     ) -> Self {
         Self {
             db,
@@ -63,7 +65,13 @@ impl MyAgentOfferingsManager {
             identity_manager,
             tool_router,
             wallet_manager,
+            libp2p_event_sender,
         }
+    }
+
+    /// Update the libp2p event sender after initialization
+    pub fn update_libp2p_event_sender(&mut self, sender: tokio::sync::mpsc::UnboundedSender<NetworkEvent>) {
+        self.libp2p_event_sender = Some(sender);
     }
 
     // Notes:
@@ -169,6 +177,7 @@ impl MyAgentOfferingsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
             )
             .await?;
         }
@@ -522,6 +531,7 @@ impl MyAgentOfferingsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
             )
             .await?;
         }

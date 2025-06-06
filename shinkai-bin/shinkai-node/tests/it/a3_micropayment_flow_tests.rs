@@ -19,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::Node;
 use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::network_tool::NetworkTool;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_primitives::tools::parameters::Parameters;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader, ShinkaiToolWithAssets};
 use shinkai_tools_primitives::tools::tool_output_arg::ToolOutputArg;
@@ -129,11 +130,12 @@ fn micropayment_flow_test() {
     let rt = Runtime::new().unwrap();
 
     let e = rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sep-shinkai";
-        let node2_identity_name = "@@node2_test.sep-shinkai";
+        let node1_identity_name = "@@node1_with_libp2p_relayer.sep-shinkai";
+        let node2_identity_name = "@@node2_with_libp2p_relayer.sep-shinkai";
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node2_profile_name = "main";
+        let relay_identity_name = "@@libp2p_relayer.sep-shinkai";
 
         let api_v2_key = "Human";
 
@@ -181,10 +183,10 @@ fn micropayment_flow_test() {
         }
 
         // Create node1 and node2
-        assert!(port_is_available(8080), "Port 8080 is not available");
-        assert!(port_is_available(8081), "Port 8081 is not available");
+        assert!(port_is_available(12000), "Port 12000 is not available");
+        assert!(port_is_available(12001), "Port 12001 is not available");
         
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12000);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -196,7 +198,7 @@ fn micropayment_flow_test() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
-            None,
+            Some(relay_identity_name.to_string()),
             true,
             vec![],
             None,
@@ -207,7 +209,7 @@ fn micropayment_flow_test() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12001);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
@@ -219,7 +221,7 @@ fn micropayment_flow_test() {
             node2_commands_receiver,
             node2_db_path,
             "".to_string(),
-            None,
+            Some(relay_identity_name.to_string()),
             true,
             vec![],
             None,
@@ -408,7 +410,7 @@ fn micropayment_flow_test() {
             // node2 receives the result and stores it
             // done
 
-            let test_network_tool_name = "__node1_test_sep_shinkai:::__localhost_sep_shinkai:::echo_function";
+            let test_network_tool_name = "__node1_with_libp2p_relayer_sep_shinkai:::__localhost_sep_shinkai:::echo_function";
             let test_local_tool_key_name = "local:::__localhost_sep_shinkai:::echo_function";
 
             let shinkai_tool_offering = ShinkaiToolOffering {
@@ -661,13 +663,21 @@ fn micropayment_flow_test() {
 
                 // Convert ShinkaiToolHeader to ShinkaiTool
                 // Manually create NetworkTool
+                let provider = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
+                let tool_router_key = ToolRouterKey::new(
+                    provider.to_string(),
+                    shinkai_tool_header.author.clone(),
+                    shinkai_tool_header.name.clone(),
+                    None,
+                );
                 let network_tool = NetworkTool {
                     name: shinkai_tool_header.name.clone(),
                     author: shinkai_tool_header.author.clone(),
                     description: shinkai_tool_header.description.clone(),
                     version: shinkai_tool_header.version.clone(),
                     mcp_enabled: shinkai_tool_header.mcp_enabled.clone(),
-                    provider: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+                    provider,
+                    tool_router_key: tool_router_key.to_string_without_version(),
                     usage_type: shinkai_tool_offering.usage_type.clone(),
                     activated: shinkai_tool_header.enabled,
                     config: shinkai_tool_header.config.clone().unwrap_or_default(),

@@ -18,14 +18,18 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
+use hex;
 
-use crate::it::utils::node_test_api::wait_for_default_tools;
+use crate::it::utils::node_test_api::{
+    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node, wait_for_default_tools
+};
 use crate::it::utils::test_boilerplate::{default_embedding_model, supported_embedding_models};
 
-use super::utils::node_test_api::{
-    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node
-};
 use super::utils::node_test_local::local_registration_profile_node;
+
+const NODE1_IDENTITY_NAME: &str = "@@node1_with_libp2p_relayer.sep-shinkai";
+const NODE2_IDENTITY_NAME: &str = "@@node2_with_libp2p_relayer.sep-shinkai";
+const RELAY_IDENTITY_NAME: &str = "@@libp2p_relayer.sep-shinkai";
 
 #[test]
 fn setup() {
@@ -42,11 +46,11 @@ fn subidentity_registration() {
     let rt = Runtime::new().unwrap();
 
     let e = rt.block_on(async {
-        let node1_identity_name = "@@node1_test.sep-shinkai";
-        let node2_identity_name = "@@node2_test.sep-shinkai";
+        let node1_identity_name = NODE1_IDENTITY_NAME;
+        let node2_identity_name = NODE2_IDENTITY_NAME;
         let node1_profile_name = "main";
         let node1_device_name = "node1_device";
-        let node2_profile_name = "main_profile_node2";
+        let node2_profile_name = "main";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -90,10 +94,10 @@ fn subidentity_registration() {
             }
         }
 
-        assert!(port_is_available(8080), "Port 8080 is not available");
-        assert!(port_is_available(8081), "Port 8081 is not available");
+        assert!(port_is_available(12006), "Port 12006 is not available");
+        assert!(port_is_available(12007), "Port 12007 is not available");
         // Create node1 and node2
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12006);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -105,7 +109,7 @@ fn subidentity_registration() {
             node1_commands_receiver,
             node1_db_path,
             "".to_string(),
-            None,
+            Some(RELAY_IDENTITY_NAME.to_string()),  // Use relay server for LibP2P networking
             true,
             vec![],
             None,
@@ -116,7 +120,7 @@ fn subidentity_registration() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12007);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
@@ -128,7 +132,7 @@ fn subidentity_registration() {
             node2_commands_receiver,
             node2_db_path,
             "".to_string(),
-            None,
+            Some(RELAY_IDENTITY_NAME.to_string()),  // Use relay server for LibP2P networking
             true,
             vec![],
             None,
@@ -664,6 +668,359 @@ fn subidentity_registration() {
         let result = tokio::try_join!(node1_handler, node2_handler, interactions_handler);
         match result {
             Ok(_) => Ok(()),
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    eprintln!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    Err(e)
+                }
+            }
+        }
+    });
+
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
+}
+
+#[test]
+fn test_relay_server_communication() {
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
+
+    setup();
+    let rt = Runtime::new().unwrap();
+
+    let e: Result<(), tokio::task::JoinError> = rt.block_on(async {
+        let node1_identity_name = NODE1_IDENTITY_NAME;  
+        let node2_identity_name = NODE2_IDENTITY_NAME;
+
+        let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+        let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
+            bounded(100);
+        let (node2_commands_sender, node2_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
+            bounded(100);
+
+        let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
+        let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
+
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8083);
+        
+        let node1 = Node::new(
+            node1_identity_name.to_string(),
+            addr1,
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_sk.clone(),
+            None,
+            None,
+            0,
+            node1_commands_receiver,
+            node1_db_path,
+            "".to_string(),
+            Some(RELAY_IDENTITY_NAME.to_string()),  // Use real relay server
+            true,
+            vec![],
+            None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
+            Some("debug".to_string()),
+        )
+        .await;
+
+        let node2 = Node::new(
+            node2_identity_name.to_string(),
+            addr2,
+            clone_signature_secret_key(&node2_identity_sk),
+            node2_encryption_sk.clone(),
+            None,
+            None,
+            0,
+            node2_commands_receiver,
+            node2_db_path,
+            "".to_string(),
+            Some(RELAY_IDENTITY_NAME.to_string()),  // Use real relay server
+            true,
+            vec![],
+            None,
+            None,
+            default_embedding_model(),
+            supported_embedding_models(),
+            Some("debug".to_string()),
+        )
+        .await;
+
+        eprintln!(">> Starting relay test with real identities and relay server");
+        
+        eprintln!("Starting nodes");
+        // Start node1 and node2
+        let node1_clone = Arc::clone(&node1);
+        let node1_handler = tokio::spawn(async move {
+            eprintln!("\n\n");
+            eprintln!("Starting node 1");
+            let _ = node1_clone.lock().await.start().await;
+        });
+
+        let node1_abort_handler = node1_handler.abort_handle();
+
+        let node2_clone = Arc::clone(&node2);
+        let node2_handler = tokio::spawn(async move {
+            eprintln!("\n\n");
+            eprintln!("Starting node 2");
+            let _ = node2_clone.lock().await.start().await;
+        });
+        let node2_abort_handler = node2_handler.abort_handle();
+
+        // Wait a bit for nodes to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        // Test basic bidirectional messaging
+        let messaging_test = tokio::spawn(async move {
+            eprintln!(">> Testing bidirectional messaging between real nodes via relay");
+
+            // Wait a bit more for nodes to fully initialize
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            // Register profiles on both nodes first (required for messaging)
+            eprintln!(">> Registering profiles on both nodes");
+            
+            let (profile1_sk, profile1_pk) = unsafe_deterministic_signature_keypair(100);
+            let (profile1_encryption_sk, profile1_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
+
+            let _registration_result1 = local_registration_profile_node(
+                node1_commands_sender.clone(),
+                "main",
+                node1_identity_name,
+                profile1_encryption_sk.clone(),
+                node1_encryption_pk,
+                clone_signature_secret_key(&profile1_sk),
+                1,
+            ).await;
+            eprintln!(">> Node 1 ({}) profile registration completed", NODE1_IDENTITY_NAME);
+
+            let (profile2_sk, profile2_pk) = unsafe_deterministic_signature_keypair(101);
+            let (profile2_encryption_sk, profile2_encryption_pk) = unsafe_deterministic_encryption_keypair(101);
+
+            let _registration_result2 = local_registration_profile_node(
+                node2_commands_sender.clone(),
+                "main",
+                node2_identity_name,
+                profile2_encryption_sk.clone(),
+                node2_encryption_pk,
+                clone_signature_secret_key(&profile2_sk),
+                1,
+            ).await;
+            eprintln!(">> Node 2 ({}) profile registration completed", NODE2_IDENTITY_NAME);
+
+            eprintln!("=== NODE KEYS ===");
+            eprintln!("Node 1 Identity Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&node1_identity_sk)));
+            eprintln!("Node 1 Identity Public Key:  {}", signature_public_key_to_string(node1_identity_pk));
+            eprintln!("Node 2 Identity Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&node2_identity_sk)));
+            eprintln!("Node 2 Identity Public Key:  {}", signature_public_key_to_string(node2_identity_pk));
+            eprintln!("=== PROFILE KEYS ===");
+            eprintln!("Profile 1 Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&profile1_sk)));
+            eprintln!("Profile 1 Public Key: {}", signature_public_key_to_string(profile1_pk));
+            eprintln!("Profile 2 Secret Key: {}", signature_secret_key_to_string(clone_signature_secret_key(&profile2_sk)));
+            eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));               
+
+            // Wait for tools to be ready
+            let tools_ready1 = wait_for_default_tools(
+                node1_commands_sender.clone(),
+                "debug".to_string(),
+                60,
+            ).await.unwrap_or(false);
+            
+            let tools_ready2 = wait_for_default_tools(
+                node2_commands_sender.clone(),
+                "debug".to_string(), 
+                60,
+            ).await.unwrap_or(false);
+
+            eprintln!(">> Tools ready - Node 1: {}, Node 2: {}", tools_ready1, tools_ready2);
+
+            // Wait for LibP2P mesh to stabilize and relay connections
+            eprintln!(">> Waiting for relay connections to establish...");
+            tokio::time::sleep(Duration::from_secs(10)).await;
+
+            // Test sending message from node1 to node2
+            eprintln!(">> Sending message from Node 1 ({}) to Node 2 ({})", NODE1_IDENTITY_NAME, NODE2_IDENTITY_NAME);
+            let message_content_1to2 = "Hello from node1 to node2 via relay!".to_string();
+            let message_1to2 = ShinkaiMessageBuilder::new(
+                profile1_encryption_sk.clone(),
+                clone_signature_secret_key(&profile1_sk),
+                profile2_encryption_pk,
+            )
+            .message_raw_content(message_content_1to2.clone())
+            .no_body_encryption()
+            .message_schema_type(MessageSchemaType::TextContent)
+            .internal_metadata(
+                "main".to_string(),
+                "main".to_string(),
+                EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                None,
+            )
+            .external_metadata_with_other(
+                node2_identity_name.to_string(),
+                node1_identity_name.to_string(),
+                encryption_public_key_to_string(profile1_encryption_pk),
+            )
+            .build()
+            .unwrap();
+
+            let (res_1to2_sender, res_1to2_receiver) = async_channel::bounded(1);
+            node1_commands_sender
+                .send(NodeCommand::SendOnionizedMessage {
+                    msg: message_1to2,
+                    res: res_1to2_sender,
+                })
+                .await
+                .unwrap();
+
+            // Test sending message from node2 to node1
+            eprintln!(">> Sending message from Node 2 ({}) to Node 1 ({})", NODE2_IDENTITY_NAME, NODE1_IDENTITY_NAME);
+            let message_content_2to1 = "Hello from node2 to node1 via relay!".to_string();
+            let message_2to1 = ShinkaiMessageBuilder::new(
+                profile2_encryption_sk.clone(),
+                clone_signature_secret_key(&profile2_sk),
+                profile1_encryption_pk,
+            )
+            .message_raw_content(message_content_2to1.clone())
+            .no_body_encryption()
+            .message_schema_type(MessageSchemaType::TextContent)
+            .internal_metadata(
+                "main".to_string(),
+                "main".to_string(),
+                EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                None,
+            )
+            .external_metadata_with_other(
+                node1_identity_name.to_string(),
+                node2_identity_name.to_string(),
+                encryption_public_key_to_string(profile2_encryption_pk),
+            )
+            .build()
+            .unwrap();
+
+            let (res_2to1_sender, res_2to1_receiver) = async_channel::bounded(1);
+            node2_commands_sender
+                .send(NodeCommand::SendOnionizedMessage {
+                    msg: message_2to1,
+                    res: res_2to1_sender,
+                })
+                .await
+                .unwrap();
+
+            // Wait for message sending attempts
+            let send_result_1to2 = res_1to2_receiver.recv().await.unwrap();
+            let send_result_2to1 = res_2to1_receiver.recv().await.unwrap();
+
+            eprintln!(">> Node 1 to Node 2 send result: {:?}", send_result_1to2.is_ok());
+            eprintln!(">> Node 2 to Node 1 send result: {:?}", send_result_2to1.is_ok());
+
+            assert_eq!(send_result_1to2.is_ok(), true, "Node 1 to Node 2 send should be successful");
+            assert_eq!(send_result_2to1.is_ok(), true, "Node 2 to Node 1 send should be successful");
+
+            // Wait longer for messages to potentially be delivered via relay
+            eprintln!(">> Waiting for relay message delivery...");
+            tokio::time::sleep(Duration::from_secs(15)).await;
+
+            // Check if messages were received
+            let (res1_check_sender, res1_check_receiver) = async_channel::bounded(1);
+            node1_commands_sender
+                .send(NodeCommand::FetchLastMessages {
+                    limit: 5,
+                    res: res1_check_sender,
+                })
+                .await
+                .unwrap();
+
+            let (res2_check_sender, res2_check_receiver) = async_channel::bounded(1);
+            node2_commands_sender
+                .send(NodeCommand::FetchLastMessages {
+                    limit: 5,
+                    res: res2_check_sender,
+                })
+                .await
+                .unwrap();
+
+            let node1_messages = res1_check_receiver.recv().await.unwrap();
+            let node2_messages = res2_check_receiver.recv().await.unwrap();
+
+            eprintln!(">> Node 1 message count: {}", node1_messages.len());
+            eprintln!(">> Node 2 message count: {}", node2_messages.len());
+
+            if !node1_messages.is_empty() {
+                eprintln!(">> ✅ Node 1 received messages via relay");
+                
+                // Display received message content on Node 1
+                for (i, message) in node1_messages.iter().enumerate() {
+                    eprintln!(">> Node 1 - Message {}: {:?}", i + 1, message.get_message_content());
+                    
+                    // Try to decrypt the message if it's encrypted
+                    if ShinkaiMessage::is_content_currently_encrypted(message) {
+                        match message.clone().decrypt_inner_layer(&profile1_encryption_sk, &profile2_encryption_pk) {
+                            Ok(decrypted_msg) => {
+                                eprintln!(">> Node 1 - Decrypted content: {:?}", decrypted_msg.get_message_content());
+                            },
+                            Err(e) => {
+                                eprintln!(">> Node 1 - Failed to decrypt: {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if !node2_messages.is_empty() {
+                eprintln!(">> ✅ Node 2 received messages via relay");
+                
+                // Display received message content on Node 2
+                for (i, message) in node2_messages.iter().enumerate() {
+                    eprintln!(">> Node 2 - Message {}: {:?}", i + 1, message.get_message_content());
+                    
+                    // Try to decrypt the message if it's encrypted
+                    if ShinkaiMessage::is_content_currently_encrypted(message) {
+                        match message.clone().decrypt_inner_layer(&profile2_encryption_sk, &profile1_encryption_pk) {
+                            Ok(decrypted_msg) => {
+                                eprintln!(">> Node 2 - Decrypted content: {:?}", decrypted_msg.get_message_content());
+                            },
+                            Err(e) => {
+                                eprintln!(">> Node 2 - Failed to decrypt: {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Display the original messages that were sent
+            eprintln!("\n>> Original messages sent:");
+            eprintln!(">> Node 1 → Node 2: '{}'", message_content_1to2);
+            eprintln!(">> Node 2 → Node 1: '{}'", message_content_2to1);
+
+            assert_eq!(node2_messages.len(), 2, "Node 2 should have two messages.");
+            assert_eq!(node1_messages.len(), 2, "Node 1 should have two messages.");
+
+            eprintln!(">> Relay messaging test completed with real identities");
+            node1_abort_handler.abort();
+            node2_abort_handler.abort();
+        });
+
+        // Wait for all tasks to complete
+        let result = tokio::try_join!(node1_handler, node2_handler, messaging_test);
+        match result {
+            Ok(_) => {
+                eprintln!(">> Relay test completed - nodes can communicate via relay server");
+                Ok(())
+            },
             Err(e) => {
                 // Check if the error is because one of the tasks was aborted
                 if e.is_cancelled() {
