@@ -28,6 +28,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(_) => "gemini",
             LLMProviderInterface::Exo(_) => "exo",
             LLMProviderInterface::OpenRouter(_) => "openrouter",
+            LLMProviderInterface::LMStudio(_) => "lm_studio",
             LLMProviderInterface::Claude(_) => "claude",
             LLMProviderInterface::DeepSeek(_) => "deepseek",
             LLMProviderInterface::LocalRegex(_) => "local-regex",
@@ -45,6 +46,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(_) => "google-ai".to_string(),
             LLMProviderInterface::Exo(_) => "openai-generic".to_string(),
             LLMProviderInterface::OpenRouter(_) => "openai-generic".to_string(),
+            LLMProviderInterface::LMStudio(_) => "openai-generic".to_string(),
             LLMProviderInterface::Claude(_) => "claude".to_string(),
             LLMProviderInterface::DeepSeek(_) => "openai-generic".to_string(),
             LLMProviderInterface::LocalRegex(_) => "local-regex".to_string(),
@@ -61,6 +63,7 @@ impl SerializedLLMProvider {
             LLMProviderInterface::Gemini(gemini) => gemini.model_type.clone(),
             LLMProviderInterface::Exo(exo) => exo.model_type.clone(),
             LLMProviderInterface::OpenRouter(openrouter) => openrouter.model_type.clone(),
+            LLMProviderInterface::LMStudio(lmstudio) => lmstudio.model_type.clone(),
             LLMProviderInterface::Claude(claude) => claude.model_type.clone(),
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.clone(),
             LLMProviderInterface::LocalRegex(local_regex) => local_regex.model_type.clone(),
@@ -122,6 +125,7 @@ pub enum LLMProviderInterface {
     Gemini(Gemini),
     Exo(Exo),
     OpenRouter(OpenRouter),
+    LMStudio(LMStudio),
     Claude(Claude),
     DeepSeek(DeepSeek),
     LocalRegex(LocalRegex),
@@ -208,6 +212,17 @@ impl OpenRouter {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
+pub struct LMStudio {
+    pub model_type: String,
+}
+
+impl LMStudio {
+    pub fn model_type(&self) -> String {
+        self.model_type.to_string()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct TogetherAI {
     pub model_type: String,
@@ -263,6 +278,9 @@ impl FromStr for LLMProviderInterface {
         } else if s.starts_with("openrouter:") {
             let model_type = s.strip_prefix("openrouter:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::OpenRouter(OpenRouter { model_type }))
+        } else if s.starts_with("lm_studio:") {
+            let model_type = s.strip_prefix("lm_studio:").unwrap_or("").to_string();
+            Ok(LLMProviderInterface::LMStudio(LMStudio { model_type }))
         } else if s.starts_with("claude:") {
             let model_type = s.strip_prefix("claude:").unwrap_or("").to_string();
             Ok(LLMProviderInterface::Claude(Claude { model_type }))
@@ -314,6 +332,10 @@ impl Serialize for LLMProviderInterface {
             }
             LLMProviderInterface::OpenRouter(openrouter) => {
                 let model_type = format!("openrouter:{}", openrouter.model_type);
+                serializer.serialize_str(&model_type)
+            }
+            LLMProviderInterface::LMStudio(lmstudio) => {
+                let model_type = format!("lm_studio:{}", lmstudio.model_type);
                 serializer.serialize_str(&model_type)
             }
             LLMProviderInterface::Claude(claude) => {
@@ -371,6 +393,9 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
             "openrouter" => Ok(LLMProviderInterface::OpenRouter(OpenRouter {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
+            "lm_studio" => Ok(LLMProviderInterface::LMStudio(LMStudio {
+                model_type: parts.get(1).unwrap_or(&"").to_string(),
+            })),
             "claude" => Ok(LLMProviderInterface::Claude(Claude {
                 model_type: parts.get(1).unwrap_or(&"").to_string(),
             })),
@@ -392,6 +417,7 @@ impl<'de> Visitor<'de> for LLMProviderInterfaceVisitor {
                     "exo",
                     "gemini",
                     "openrouter",
+                    "lm_studio",
                     "claude",
                     "deepseek",
                     "local-regex",

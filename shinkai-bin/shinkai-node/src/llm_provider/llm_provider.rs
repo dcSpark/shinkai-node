@@ -236,6 +236,22 @@ impl LLMProvider {
                     )
                     .await
             }
+            LLMProviderInterface::LMStudio(lmstudio) => {
+                lmstudio
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        prompt.clone(),
+                        self.model.clone(),
+                        inbox_name,
+                        ws_manager_trait,
+                        merged_config,
+                        llm_stopper,
+                        self.db.clone(),
+                    )
+                    .await
+            }
             LLMProviderInterface::Claude(claude) => {
                 claude
                     .call_api(
