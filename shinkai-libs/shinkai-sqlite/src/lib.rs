@@ -971,7 +971,32 @@ impl SqliteManager {
         Ok(())
     }
     pub fn migrate_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute("ALTER TABLE mcp_servers MODIFY COLUMN type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE';", [])?;
+        // SQLite doesn't support MODIFY COLUMN, so we need to:
+        // 1. Create a new table with the desired schema
+        // 2. Copy data from old table
+        // 3. Drop old table
+        // 4. Rename new table to old name
+        conn.execute(
+            "CREATE TABLE mcp_servers_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
+                url TEXT,
+                env TEXT,
+                command TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE
+            );",
+            [],
+        )?;
+
+        conn.execute("INSERT INTO mcp_servers_new SELECT * FROM mcp_servers;", [])?;
+
+        conn.execute("DROP TABLE mcp_servers;", [])?;
+
+        conn.execute("ALTER TABLE mcp_servers_new RENAME TO mcp_servers;", [])?;
+
         Ok(())
     }
 
