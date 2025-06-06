@@ -96,7 +96,14 @@ impl ShinkaiTool {
         match self {
             ShinkaiTool::Rust(r, _) => ToolRouterKey::new("local".to_string(), r.author(), r.name.clone(), None),
             ShinkaiTool::Network(n, _) => {
-                ToolRouterKey::new(n.provider.to_string(), n.author.to_string(), n.name.clone(), None)
+                ToolRouterKey::from_string(&n.tool_router_key).unwrap_or_else(|_| {
+                    ToolRouterKey::new(
+                        n.provider.to_string(),
+                        n.author.to_string(),
+                        n.name.clone(),
+                        None,
+                    )
+                })
             }
             ShinkaiTool::Deno(d, _) => {
                 if let Some(key) = &d.tool_router_key {
