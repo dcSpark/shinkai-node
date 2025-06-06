@@ -14,6 +14,7 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -585,6 +586,13 @@ impl MyAgentOfferingsManager {
         })?;
 
         // TODO: avoid the expects
+        let tool_router_key = ToolRouterKey::new(
+            provider.to_string(),
+            tool_header.author.clone(),
+            tool_header.name.clone(),
+            None,
+        );
+
         let network_tool = NetworkTool::new(
             tool_header.name,
             tool_header.description,
@@ -598,6 +606,7 @@ impl MyAgentOfferingsManager {
             ToolOutputArg { json: "".to_string() },
             None,
             None,
+            Some(tool_router_key.to_string_without_version()),
         );
 
         tool_router

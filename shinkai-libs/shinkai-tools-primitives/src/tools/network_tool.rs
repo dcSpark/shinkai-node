@@ -40,8 +40,20 @@ impl NetworkTool {
         output_arg: ToolOutputArg,
         embedding: Option<Vec<f32>>,
         restrictions: Option<String>,
+        tool_router_key: Option<String>,
     ) -> Self {
-        let tool_router_key = ToolRouterKey::new(provider.to_string(), author.clone(), name.clone(), None);
+        let tool_router_key = match tool_router_key {
+            Some(key) => key,
+            None => {
+                let key = ToolRouterKey::new(
+                    provider.to_string(),
+                    author.clone(),
+                    name.clone(),
+                    None,
+                );
+                key.to_string_without_version()
+            }
+        };
 
         Self {
             name,
@@ -49,7 +61,7 @@ impl NetworkTool {
             version,
             author,
             provider,
-            tool_router_key: tool_router_key.to_string_without_version(),
+            tool_router_key,
             usage_type,
             activated,
             config,
