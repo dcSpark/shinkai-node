@@ -129,9 +129,9 @@ fn native_tool_test_knowledge() {
             model: LLMProviderInterface::OpenAI(open_ai),
         };
 
-        assert!(port_is_available(8080), "Port 8080 is not available");
+        assert!(port_is_available(12005), "Port 12005 is not available");
         // Create node1 and node2
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12005);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -303,6 +303,5 @@ fn native_tool_test_knowledge() {
     if let Err(e) = e {
         assert!(false, "An unexpected error occurred: {:?}", e);
     }
-    assert!(port_is_available(8080), "Port 8080 is not available after test");
-    assert!(port_is_available(8081), "Port 8081 is not available after test");
+    assert!(port_is_available(12005), "Port 12005 is not available after test");
 }

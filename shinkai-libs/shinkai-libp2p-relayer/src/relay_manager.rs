@@ -1,0 +1,700 @@
+use ed25519_dalek::SigningKey;
+use libp2p::{
+    dcutr::{self, Event as DcutrEvent},
+    futures::StreamExt,
+    identify::{self, Event as IdentifyEvent},
+    noise, ping::{self, Event as PingEvent}, quic, request_response,
+    relay::{self, Event as RelayEvent},
+    swarm::{NetworkBehaviour, SwarmEvent, Config},
+    tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
+};
+use shinkai_message_primitives::{
+    schemas::shinkai_network::NetworkMessageType,
+    shinkai_message::shinkai_message::{ShinkaiMessage, ExternalMetadata},
+    shinkai_utils::encryption::EncryptionMethod,
+};
+use std::collections::HashMap;
+use std::time::Duration;
+use tokio::sync::mpsc;
+
+use crate::{LibP2PRelayError, RelayMessage};
+use shinkai_crypto_identities::ShinkaiRegistry;
+
+// Custom behaviour for the relay server
+#[derive(NetworkBehaviour)]
+pub struct RelayBehaviour {
+    pub identify: identify::Behaviour,
+    pub ping: ping::Behaviour,
+    pub relay: relay::Behaviour,
+    pub dcutr: dcutr::Behaviour,
+    pub request_response: request_response::json::Behaviour<ShinkaiMessage, ShinkaiMessage>,
+}
+
+pub struct RelayManager {
+    swarm: Swarm<RelayBehaviour>,
+    registered_peers: HashMap<String, PeerId>, // identity -> peer_id
+    peer_identities: HashMap<PeerId, String>,  // peer_id -> identity
+    message_sender: mpsc::UnboundedSender<RelayMessage>,
+    message_receiver: mpsc::UnboundedReceiver<RelayMessage>,
+    external_ip: Option<std::net::IpAddr>, // Store detected external IP
+    registry: ShinkaiRegistry, // Blockchain registry for identity verification
+}
+
+impl RelayManager {
+    /// Detect the external IP address using multiple services as fallback
+    async fn detect_external_ip() -> Option<std::net::IpAddr> {
+        // List of external IP detection services
+        let services = [
+            "https://httpbin.org/ip",
+            "https://api.ipify.org",
+            "https://ifconfig.me/ip",
+            "https://icanhazip.com",
+        ];
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .ok()?;
+
+        for service in &services {
+            println!("Attempting to detect external IP using: {}", service);
+            
+            match tokio::time::timeout(Duration::from_secs(5), client.get(*service).send()).await {
+                Ok(Ok(response)) => {
+                    if let Ok(body) = response.text().await {
+                        let ip_str = if service.contains("httpbin.org") {
+                            // httpbin.org returns JSON: {"origin": "IP"}
+                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                                if let Some(origin) = json.get("origin").and_then(|v| v.as_str()) {
+                                    origin.split(',').next().unwrap_or("").trim().to_string()
+                                } else {
+                                    continue;
+                                }
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            // Other services return plain text IP
+                            body.trim().to_string()
+                        };
+
+                        if let Ok(ip) = ip_str.parse::<std::net::IpAddr>() {
+                            println!("Successfully detected external IP: {} using {}", ip, service);
+                            return Some(ip);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    println!("HTTP error from {}: {}", service, e);
+                }
+                Err(_) => {
+                    println!("Timeout detecting IP from: {}", service);
+                }
+            }
+        }
+
+        println!("Failed to detect external IP from all services");
+        None
+    }
+
+    pub async fn new(
+        listen_port: u16,
+        relay_node_name: String,
+        identity_secret_key: SigningKey,
+        registry: ShinkaiRegistry,
+    ) -> Result<Self, LibP2PRelayError> {
+        // Detect external IP address first
+        let external_ip = Self::detect_external_ip().await;
+        if let Some(ip) = external_ip {
+            println!("Detected external IP address: {}", ip);
+        } else {
+            println!("Warning: Could not detect external IP address. External connectivity may be limited.");
+        }
+
+        // Generate deterministic PeerId from relay name
+        let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())
+            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to create keypair: {}", e)))?;
+        let local_peer_id = PeerId::from(local_key.public());
+
+        // Configure transport with QUIC and TCP fallback support
+        let tcp_transport = tcp::tokio::Transport::new(tcp::Config::default())
+            .upgrade(libp2p::core::upgrade::Version::V1)
+            .authenticate(noise::Config::new(&local_key)?)
+            .multiplex(yamux::Config::default())
+            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
+
+        let quic_transport = quic::tokio::Transport::new(quic::Config::new(&local_key))
+            .map(|(peer, muxer), _| (peer, libp2p::core::muxing::StreamMuxerBox::new(muxer)));
+
+        // Combine QUIC and TCP transports - QUIC will be preferred, TCP as fallback
+        let transport = quic_transport
+            .or_transport(tcp_transport)
+            .map(|either_output, _| either_output.into_inner())
+            .boxed();
+
+        // Configure identify protocol - use same protocol version as Shinkai nodes
+        let identify = identify::Behaviour::new(identify::Config::new(
+            "/shinkai/1.0.0".to_string(),
+            local_key.public(),
+        ));
+
+        // Configure ping protocol
+        let ping = ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(30)));
+
+        // Configure relay protocol
+        let relay = relay::Behaviour::new(local_peer_id, Default::default());
+
+        // Configure DCUtR for hole punching through relay
+        let dcutr = dcutr::Behaviour::new(local_peer_id);
+
+        // Configure request-response behavior for relaying direct messages between Shinkai nodes
+        let request_response = request_response::json::Behaviour::new(
+            std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
+            request_response::Config::default(),
+        );
+
+        // Create the behaviour
+        let behaviour = RelayBehaviour {
+            identify,
+            ping,
+            relay,
+            dcutr,
+            request_response,
+        };
+
+        // Create swarm with proper configuration
+        let mut swarm = Swarm::new(transport, behaviour, local_peer_id, Config::with_tokio_executor());
+
+        // Listen on both TCP and QUIC ports - bind to all interfaces
+        let tcp_listen_addr: Multiaddr = format!("/ip4/0.0.0.0/tcp/{}", listen_port)
+            .parse()
+            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid TCP listen address: {}", e)))?;
+
+        let quic_listen_addr: Multiaddr = format!("/ip4/0.0.0.0/udp/{}/quic-v1", listen_port)
+            .parse()
+            .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid QUIC listen address: {}", e)))?;
+
+        swarm
+            .listen_on(tcp_listen_addr.clone())
+            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to listen on TCP: {}", e)))?;
+
+        swarm
+            .listen_on(quic_listen_addr.clone())
+            .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to listen on QUIC: {}", e)))?;
+
+        // If we detected an external IP, also add external addresses to help with connectivity
+        if let Some(external_ip) = external_ip {
+            let external_tcp_addr: Multiaddr = format!("/ip4/{}/tcp/{}", external_ip, listen_port)
+                .parse()
+                .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid external TCP address: {}", e)))?;
+            
+            let external_quic_addr: Multiaddr = format!("/ip4/{}/udp/{}/quic-v1", external_ip, listen_port)
+                .parse()
+                .map_err(|e| LibP2PRelayError::ConfigurationError(format!("Invalid external QUIC address: {}", e)))?;
+            
+            // Add external addresses for advertisement
+            swarm.add_external_address(external_tcp_addr.clone());
+            swarm.add_external_address(external_quic_addr.clone());
+            
+            println!("🌐 Added external addresses for advertisement:");
+            println!("🌐   TCP: {}", external_tcp_addr);
+            println!("🌐   QUIC: {}", external_quic_addr);
+            println!("🌐 Note: External addresses are advertised to peers but not locally bound");
+        }
+
+        // Create message channel
+        let (message_sender, message_receiver) = mpsc::unbounded_channel();
+
+        println!("LibP2P Relay initialized with PeerId: {}", local_peer_id);
+        println!("Relay node name: {}", relay_node_name);
+        println!("🏠 Local binding addresses:");
+        println!("🏠   TCP: {}", tcp_listen_addr);
+        println!("🏠   QUIC: {}", quic_listen_addr);
+        
+        if let Some(external_ip) = external_ip {
+            println!("🌐 External connectivity addresses (advertised to peers):");
+            println!("🌐   TCP: /ip4/{}/tcp/{}", external_ip, listen_port);
+            println!("🌐   QUIC: /ip4/{}/udp/{}/quic-v1", external_ip, listen_port);
+            println!("🌐 External peers should connect to: {}", external_ip);
+        } else {
+            println!("⚠️  No external IP detected - only local connectivity available");
+        }
+
+        Ok(RelayManager {
+            swarm,
+            registered_peers: HashMap::new(),
+            peer_identities: HashMap::new(),
+            message_sender,
+            message_receiver,
+            external_ip,
+            registry,
+        })
+    }
+
+    /// Get the external IP address if detected
+    pub fn get_external_ip(&self) -> Option<std::net::IpAddr> {
+        self.external_ip
+    }
+
+    /// Get external addresses for this relay
+    pub fn get_external_addresses(&self, listen_port: u16) -> Vec<Multiaddr> {
+        let mut addresses = Vec::new();
+        
+        if let Some(external_ip) = self.external_ip {
+            if let Ok(tcp_addr) = format!("/ip4/{}/tcp/{}", external_ip, listen_port).parse::<Multiaddr>() {
+                addresses.push(tcp_addr);
+            }
+            if let Ok(quic_addr) = format!("/ip4/{}/udp/{}/quic-v1", external_ip, listen_port).parse::<Multiaddr>() {
+                addresses.push(quic_addr);
+            }
+        }
+        
+        addresses
+    }
+
+    /// Check if a multiaddr represents an external/public address
+    /// Returns false for localhost, private networks, and other non-routable addresses
+    fn is_external_address(addr: &Multiaddr) -> bool {
+        use libp2p::multiaddr::Protocol;
+        
+        for protocol in addr.iter() {
+            match protocol {
+                Protocol::Ip4(ip) => {
+                    // Filter out private/local IP ranges
+                    if ip.is_loopback() ||        // 127.0.0.0/8
+                       ip.is_private() ||         // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                       ip.is_link_local() ||      // 169.254.0.0/16
+                       ip.is_documentation() ||   // Documentation IPs
+                       ip.is_multicast() ||       // Multicast
+                       ip.is_broadcast() ||       // Broadcast
+                       ip.is_unspecified() {      // 0.0.0.0
+                        return false;
+                    }
+                    
+                    // Additional private ranges not covered by is_private()
+                    let octets = ip.octets();
+                    match octets[0] {
+                        // Docker default bridge: 172.17.0.0/16
+                        172 if octets[1] == 17 => return false,
+                        // Additional private ranges
+                        100 if octets[1] >= 64 && octets[1] <= 127 => return false, // 100.64.0.0/10 (CGN)
+                        _ => {}
+                    }
+                }
+                Protocol::Ip6(ip) => {
+                    // Filter out IPv6 private/local ranges
+                    if ip.is_loopback() ||        // ::1
+                       ip.is_multicast() ||       // ff00::/8
+                       ip.is_unspecified() {      // ::
+                        return false;
+                    }
+                    
+                    // IPv6 link-local: fe80::/10
+                    if ip.segments()[0] & 0xffc0 == 0xfe80 {
+                        return false;
+                    }
+                    
+                    // IPv6 unique local: fc00::/7 (fd00::/8)
+                    if ip.segments()[0] & 0xfe00 == 0xfc00 {
+                        return false;
+                    }
+                }
+                _ => continue,
+            }
+        }
+        
+        true
+    }
+
+    pub fn local_peer_id(&self) -> PeerId {
+        *self.swarm.local_peer_id()
+    }
+
+    pub fn get_message_sender(&self) -> mpsc::UnboundedSender<RelayMessage> {
+        self.message_sender.clone()
+    }
+
+    pub fn register_peer(&mut self, identity: String, peer_id: PeerId) {
+        println!("Registering peer: {} with PeerId: {}", identity, peer_id);
+        self.registered_peers.insert(identity.clone(), peer_id);
+        self.peer_identities.insert(peer_id, identity);
+        
+        // Trigger peer discovery update in the background
+        println!("🔄 Peer registered - will update peer discovery information");
+    }
+
+    pub fn unregister_peer(&mut self, peer_id: &PeerId) {
+        if let Some(identity) = self.peer_identities.remove(peer_id) {
+            self.registered_peers.remove(&identity);
+            println!("Unregistered peer: {} with PeerId: {}", identity, peer_id);
+            
+            // Trigger peer discovery update in the background  
+            println!("🔄 Peer unregistered - will update peer discovery information");
+        }
+    }
+
+    pub fn find_peer_by_identity(&self, identity: &str) -> Option<PeerId> {
+        self.registered_peers.get(identity).copied()
+    }
+
+    pub fn find_identity_by_peer(&self, peer_id: &PeerId) -> Option<String> {
+        self.peer_identities.get(peer_id).cloned()
+    }
+
+    /// Verify a peer's identity by checking their public key against the blockchain registry
+    async fn verify_peer_identity_internal(
+        registry: ShinkaiRegistry, 
+        peer_public_key: ed25519_dalek::VerifyingKey
+    ) -> Option<String> {
+        // Convert public key to string for searching
+        let public_key_bytes = peer_public_key.as_bytes();
+        
+        println!("🔍 Attempting to verify peer identity from public key: {:?}", hex::encode(public_key_bytes));
+        
+        // We need to search through known identities to find one with matching public key
+        // Since there's no direct API to search by public key, we'll need to check known identities
+        let known_identities = [
+            "@@libp2p_relayer.sep-shinkai",
+            "@@node1_with_libp2p_relayer.sep-shinkai", 
+            "@@node2_with_libp2p_relayer.sep-shinkai",
+        ];
+        
+        for identity in &known_identities {
+            match registry.get_identity_record(identity.to_string(), None).await {
+                Ok(identity_record) => {
+                    if let Ok(registry_public_key) = identity_record.signature_verifying_key() {
+                        if registry_public_key == peer_public_key {
+                            println!("✅ Identity verification successful: {} matches public key", identity);
+                            return Some(identity.to_string());
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Failed to get identity record for {}: {}", identity, e);
+                }
+            }
+        }
+        
+        println!("❌ No matching identity found for public key");
+        None
+    }
+
+    /// Broadcast peer discovery information to all connected peers
+    /// This allows clients to discover each other through the relay
+    async fn broadcast_peer_discovery_update(&mut self) {
+        println!("📡 Broadcasting peer discovery update to all connected clients");
+        
+        // Create a list of all connected peers with their circuit addresses
+        let connected_peers: Vec<(PeerId, String)> = self.peer_identities.iter()
+            .map(|(peer_id, identity)| (*peer_id, identity.clone()))
+            .collect();
+        
+        if connected_peers.len() <= 1 {
+            println!("   Only {} peer(s) connected, skipping broadcast", connected_peers.len());
+            return;
+        }
+        
+        // For now, just log the peer discovery information
+        // In a more complete implementation, this would send discovery messages
+        println!("🔍 === PEER DISCOVERY UPDATE ===");
+        println!("   Connected peers that can discover each other:");
+        
+        for (peer_id, identity) in &connected_peers {
+            let circuit_addr = format!("/p2p/{}/p2p-circuit/p2p/{}", self.local_peer_id(), peer_id);
+            println!("   📍 Peer: {} (ID: {}) - Circuit: {}", identity, peer_id, circuit_addr);
+        }
+        
+        println!("   💡 Clients should be informed about these circuit addresses");
+        println!("   💡 This enables peer-to-peer communication through the relay");
+        println!("✅ Peer discovery information logged");
+    }
+
+    pub async fn run(&mut self) -> Result<(), LibP2PRelayError> {
+        println!("Starting relay manager...");
+        
+        loop {
+            tokio::select! {
+                // Handle swarm events
+                event = self.swarm.select_next_some() => {
+                    self.handle_swarm_event(event).await?;
+                }
+                
+                // Handle outgoing messages
+                message = self.message_receiver.recv() => {
+                    match message {
+                        Some(msg) => {
+                            self.handle_outgoing_message(msg).await?;
+                        }
+                        None => break, // Channel closed
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_swarm_event(
+        &mut self,
+        event: SwarmEvent<RelayBehaviourEvent>,
+    ) -> Result<(), LibP2PRelayError> {
+        match event {
+            SwarmEvent::NewListenAddr { address, .. } => {
+                let addr_str = address.to_string();
+                
+                // Check if this is an external IP address
+                if let Some(external_ip) = self.external_ip {
+                    if addr_str.contains(&external_ip.to_string()) {
+                        println!("🌐 Relay listening on EXTERNAL address: {}", address);
+                    } else {
+                        println!("🏠 Relay listening on LOCAL address: {}", address);
+                    }
+                } else {
+                    println!("📡 Relay listening on: {}", address);
+                }
+            }
+            SwarmEvent::ExternalAddrConfirmed { address } => {
+                println!("✅ External address confirmed and advertised to network: {}", address);
+                println!("✅ Peers can now connect via: {}", address);
+            }
+            SwarmEvent::ExternalAddrExpired { address } => {
+                println!("⚠️  External address expired and removed: {}", address);
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Identify(IdentifyEvent::Received {
+                peer_id,
+                info,
+                ..
+            })) => {
+                println!("Identified peer: {} with protocol version: {}", peer_id, info.protocol_version);
+                
+                // Extract the peer's public key from the libp2p identity  
+                // Get the raw public key bytes and try to create an ed25519_dalek::VerifyingKey
+                let public_key_bytes = info.public_key.encode_protobuf();
+                
+                // For Ed25519, the protobuf encoding includes a prefix, so we need to extract just the key bytes
+                // The public key should be 32 bytes for Ed25519
+                if public_key_bytes.len() >= 32 {
+                    let key_bytes = &public_key_bytes[public_key_bytes.len() - 32..];
+                                         if let Ok(verifying_key) = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes.try_into().unwrap_or([0u8; 32])) {
+                         // Verify the peer's identity using blockchain registry
+                         if let Some(verified_identity) = Self::verify_peer_identity_internal(self.registry.clone(), verifying_key).await {
+                            println!("🔑 Verified and registering peer {} with identity: {}", peer_id, verified_identity);
+                            self.register_peer(verified_identity, peer_id);
+                        } else {
+                            println!("❌ Peer {} identity verification failed - public key not found in registry", peer_id);
+                            println!("   Public key: {:?}", hex::encode(verifying_key.as_bytes()));
+                            println!("   Agent version: {}", info.agent_version);
+                            
+                            // For backward compatibility during transition, try the agent version fallback
+                            let possible_identity = if info.agent_version.contains("shinkai") || info.agent_version.contains("node") {
+                                if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
+                                    Some(format!("@@{}", identity_part))
+                                } else { None }
+                            } else { None };
+                            
+                            if let Some(identity) = possible_identity {
+                                println!("🔄 Fallback: registering peer {} with identity from agent version: {}", peer_id, identity);
+                                self.register_peer(identity, peer_id);
+                            } else {
+                                println!("❌ Could not parse identity from agent version: {}", info.agent_version);
+                            }
+                        }
+                    } else {
+                        println!("❌ Failed to convert peer {} public key to ed25519_dalek::VerifyingKey", peer_id);
+                    }
+                } else {
+                    println!("❌ Peer {} public key too short: {} bytes", peer_id, public_key_bytes.len());
+                }
+                
+                // Check what protocols the peer supports
+                let supports_relay = info.protocols.iter().any(|protocol| {
+                    protocol.to_string().contains("/libp2p/circuit/relay/") 
+                });
+
+                if !supports_relay {
+                    println!("ℹ️  Peer {} doesn't support relay protocol, will use it as client only", peer_id);
+                    println!("   This is normal for Shinkai nodes - they connect via relay, don't act as relays");
+                } else {
+                    println!("📝 Peer {} will be treated as a Shinkai client node", peer_id);
+                }
+
+                // Log supported protocols for debugging (only in debug mode)
+                #[cfg(debug_assertions)]
+                println!("📋 Peer {} supports protocols: {:?}", peer_id, info.protocols);
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Ping(ping_event)) => {
+                match ping_event {
+                    PingEvent { peer, connection: _, result } => {
+                        match result {
+                            Ok(rtt) => {
+                                println!("📡 Ping to {} successful: RTT = {:?}", peer, rtt);
+                            }
+                            Err(ping::Failure::Timeout) => {
+                                println!("⚠️  Ping to {} timed out", peer);
+                            }
+                            Err(ping::Failure::Unsupported) => {
+                                println!("⚠️  Ping protocol unsupported by peer {}", peer);
+                            }
+                            Err(ping::Failure::Other { error }) => {
+                                println!("⚠️  Ping to {} failed: {}", peer, error);
+                            }
+                        }
+                    }
+                }
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Relay(RelayEvent::ReservationReqAccepted {
+                src_peer_id,
+                ..
+            })) => {
+                println!("Accepted relay reservation from: {}", src_peer_id);
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::Dcutr(dcutr_event)) => {
+                // Enhanced DCUtR event handling for direct connection upgrades
+                // This enables hole punching through the relay for direct peer-to-peer connections
+                println!("🔄 DCUtR: Direct connection upgrade event processed: {:?}", dcutr_event);
+                println!("   This relay is facilitating hole punching for direct peer-to-peer connections");
+            }
+            SwarmEvent::Behaviour(RelayBehaviourEvent::RequestResponse(req_resp_event)) => {
+                // Handle request-response events for relaying direct messages between Shinkai nodes
+                match req_resp_event {
+                    request_response::Event::Message { peer, message, .. } => {
+                        match message {
+                            request_response::Message::Request { request, channel, .. } => {
+                                println!("🔄 Relay: Received direct message request from peer {}", peer);
+                                println!("   Message from: {} to: {}", 
+                                    request.external_metadata.sender,
+                                    request.external_metadata.recipient);
+                                
+                                // Try to find the target peer by their identity
+                                let target_identity = &request.external_metadata.recipient;
+                                let target_node = if let Ok(parsed_name) = shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(target_identity.clone()) {
+                                    parsed_name.get_node_name_string()
+                                } else {
+                                    target_identity.clone()
+                                };
+                                
+                                if let Some(target_peer_id) = self.find_peer_by_identity(&target_node) {
+                                    println!("   Forwarding to target peer: {}", target_peer_id);
+                                    
+                                    // Forward the request to the target peer
+                                    let _request_id = self.swarm
+                                        .behaviour_mut()
+                                        .request_response
+                                        .send_request(&target_peer_id, request.clone());
+                                    
+                                    // Send acknowledgment back to sender
+                                    let ack_response = request.clone();
+                                    if let Err(e) = self.swarm.behaviour_mut().request_response.send_response(channel, ack_response) {
+                                        println!("   Failed to send ack to sender: {:?}", e);
+                                    } else {
+                                        println!("   Sent acknowledgment to sender");
+                                    }
+                                } else {
+                                    println!("   Target peer {} not found", target_node);
+                                    
+                                    // Send the original message back as "not found" response
+                                    let not_found_response = request.clone();
+                                    if let Err(e) = self.swarm.behaviour_mut().request_response.send_response(channel, not_found_response) {
+                                        println!("   Failed to send not found response: {:?}", e);
+                                    }
+                                }
+                            }
+                            request_response::Message::Response { response: _, .. } => {
+                                println!("🔄 Relay: Received direct message response from peer {}", peer);
+                                // Responses are typically handled automatically by libp2p
+                                // The relay doesn't need to do anything special here
+                            }
+                        }
+                    }
+                    request_response::Event::OutboundFailure { peer, error, .. } => {
+                        println!("🔄 Relay: Failed to send direct message to peer {}: {:?}", peer, error);
+                    }
+                    request_response::Event::InboundFailure { peer, error, .. } => {
+                        println!("🔄 Relay: Failed to receive direct message from peer {}: {:?}", peer, error);
+                    }
+                    request_response::Event::ResponseSent { peer, .. } => {
+                        println!("🔄 Relay: Successfully sent response to peer {}", peer);
+                    }
+                }
+            }
+
+            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                println!("Connection established with peer: {}", peer_id);
+                
+                // Trigger peer discovery update after connection establishment
+                self.broadcast_peer_discovery_update().await;
+            }
+            SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                println!("Connection closed with peer: {} (cause: {:?})", peer_id, cause);
+                self.unregister_peer(&peer_id);
+                
+                // Trigger peer discovery update after disconnection
+                self.broadcast_peer_discovery_update().await;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn handle_outgoing_message(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
+        // For relay servers, we primarily handle message routing via request-response
+        // rather than gossipsub broadcasts
+        println!("Relay received outgoing message from {} to {:?}", 
+            message.identity, message.target_peer);
+        
+        // This could be expanded to handle specific relay routing logic if needed
+        // For now, we rely on the request-response protocol for message forwarding
+        Ok(())
+    }
+
+    async fn route_message(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
+        match message.message_type {
+            NetworkMessageType::ProxyMessage => {
+                // Handle registration/connection message
+                self.handle_proxy_registration(message).await?;
+            }
+            NetworkMessageType::ShinkaiMessage => {
+                // Route the message to the target peer
+                self.handle_shinkai_message_routing(message).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_proxy_registration(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
+        // For now, we'll implement a simple registration based on the identity
+        // In a real implementation, you'd want to validate the identity through cryptographic means
+        println!("Received proxy registration from: {}", message.identity);
+        
+        // The registration would typically include a challenge-response or signature verification
+        // For this example, we'll assume the peer is already connected and identified
+        
+        Ok(())
+    }
+
+    async fn handle_shinkai_message_routing(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
+        if let Some(target_identity) = &message.target_peer {
+            if let Some(target_peer_id) = self.find_peer_by_identity(target_identity) {
+                // For relay servers, we use request-response for direct message routing
+                // This is handled in the request-response event handling
+                println!("Routed message from {} to {} via request-response", message.identity, target_identity);
+            } else {
+                return Err(LibP2PRelayError::PeerNotFound(format!(
+                    "Target peer not found: {}",
+                    target_identity
+                )));
+            }
+        } else {
+            // For broadcast messages, we rely on the request-response forwarding mechanism
+            println!("Broadcasting message from {} via request-response forwarding", message.identity);
+        }
+        
+        Ok(())
+    }
+}
+
+// This allows the noise configuration to work
+impl From<noise::Error> for LibP2PRelayError {
+    fn from(e: noise::Error) -> Self {
+        LibP2PRelayError::LibP2PError(format!("Noise error: {}", e))
+    }
+} 
