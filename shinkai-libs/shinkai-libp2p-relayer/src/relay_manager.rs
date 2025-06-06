@@ -1,6 +1,6 @@
 use ed25519_dalek::SigningKey;
 use libp2p::{
-    dcutr::{self, Event as DcutrEvent},
+    dcutr::{self},
     futures::StreamExt,
     identify::{self, Event as IdentifyEvent},
     noise, ping::{self, Event as PingEvent}, quic, request_response,
@@ -8,11 +8,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent, Config},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
-use shinkai_message_primitives::{
-    schemas::shinkai_network::NetworkMessageType,
-    shinkai_message::shinkai_message::{ShinkaiMessage, ExternalMetadata},
-    shinkai_utils::encryption::EncryptionMethod,
-};
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -195,11 +191,6 @@ impl RelayManager {
             // Add external addresses for advertisement
             swarm.add_external_address(external_tcp_addr.clone());
             swarm.add_external_address(external_quic_addr.clone());
-            
-            println!("🌐 Added external addresses for advertisement:");
-            println!("🌐   TCP: {}", external_tcp_addr);
-            println!("🌐   QUIC: {}", external_quic_addr);
-            println!("🌐 Note: External addresses are advertised to peers but not locally bound");
         }
 
         // Create message channel
@@ -252,60 +243,6 @@ impl RelayManager {
         addresses
     }
 
-    /// Check if a multiaddr represents an external/public address
-    /// Returns false for localhost, private networks, and other non-routable addresses
-    fn is_external_address(addr: &Multiaddr) -> bool {
-        use libp2p::multiaddr::Protocol;
-        
-        for protocol in addr.iter() {
-            match protocol {
-                Protocol::Ip4(ip) => {
-                    // Filter out private/local IP ranges
-                    if ip.is_loopback() ||        // 127.0.0.0/8
-                       ip.is_private() ||         // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-                       ip.is_link_local() ||      // 169.254.0.0/16
-                       ip.is_documentation() ||   // Documentation IPs
-                       ip.is_multicast() ||       // Multicast
-                       ip.is_broadcast() ||       // Broadcast
-                       ip.is_unspecified() {      // 0.0.0.0
-                        return false;
-                    }
-                    
-                    // Additional private ranges not covered by is_private()
-                    let octets = ip.octets();
-                    match octets[0] {
-                        // Docker default bridge: 172.17.0.0/16
-                        172 if octets[1] == 17 => return false,
-                        // Additional private ranges
-                        100 if octets[1] >= 64 && octets[1] <= 127 => return false, // 100.64.0.0/10 (CGN)
-                        _ => {}
-                    }
-                }
-                Protocol::Ip6(ip) => {
-                    // Filter out IPv6 private/local ranges
-                    if ip.is_loopback() ||        // ::1
-                       ip.is_multicast() ||       // ff00::/8
-                       ip.is_unspecified() {      // ::
-                        return false;
-                    }
-                    
-                    // IPv6 link-local: fe80::/10
-                    if ip.segments()[0] & 0xffc0 == 0xfe80 {
-                        return false;
-                    }
-                    
-                    // IPv6 unique local: fc00::/7 (fd00::/8)
-                    if ip.segments()[0] & 0xfe00 == 0xfc00 {
-                        return false;
-                    }
-                }
-                _ => continue,
-            }
-        }
-        
-        true
-    }
-
     pub fn local_peer_id(&self) -> PeerId {
         *self.swarm.local_peer_id()
     }
@@ -315,21 +252,15 @@ impl RelayManager {
     }
 
     pub fn register_peer(&mut self, identity: String, peer_id: PeerId) {
-        println!("Registering peer: {} with PeerId: {}", identity, peer_id);
+        println!("🔄 Peer {} registered with PeerId: {} - will update peer discovery information", identity, peer_id);
         self.registered_peers.insert(identity.clone(), peer_id);
         self.peer_identities.insert(peer_id, identity);
-        
-        // Trigger peer discovery update in the background
-        println!("🔄 Peer registered - will update peer discovery information");
     }
 
     pub fn unregister_peer(&mut self, peer_id: &PeerId) {
         if let Some(identity) = self.peer_identities.remove(peer_id) {
+            println!("🔄 Peer {} with PeerId: {} unregistered - will update peer discovery information", identity, peer_id);
             self.registered_peers.remove(&identity);
-            println!("Unregistered peer: {} with PeerId: {}", identity, peer_id);
-            
-            // Trigger peer discovery update in the background  
-            println!("🔄 Peer unregistered - will update peer discovery information");
         }
     }
 
@@ -643,51 +574,6 @@ impl RelayManager {
         
         // This could be expanded to handle specific relay routing logic if needed
         // For now, we rely on the request-response protocol for message forwarding
-        Ok(())
-    }
-
-    async fn route_message(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
-        match message.message_type {
-            NetworkMessageType::ProxyMessage => {
-                // Handle registration/connection message
-                self.handle_proxy_registration(message).await?;
-            }
-            NetworkMessageType::ShinkaiMessage => {
-                // Route the message to the target peer
-                self.handle_shinkai_message_routing(message).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn handle_proxy_registration(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
-        // For now, we'll implement a simple registration based on the identity
-        // In a real implementation, you'd want to validate the identity through cryptographic means
-        println!("Received proxy registration from: {}", message.identity);
-        
-        // The registration would typically include a challenge-response or signature verification
-        // For this example, we'll assume the peer is already connected and identified
-        
-        Ok(())
-    }
-
-    async fn handle_shinkai_message_routing(&mut self, message: RelayMessage) -> Result<(), LibP2PRelayError> {
-        if let Some(target_identity) = &message.target_peer {
-            if let Some(target_peer_id) = self.find_peer_by_identity(target_identity) {
-                // For relay servers, we use request-response for direct message routing
-                // This is handled in the request-response event handling
-                println!("Routed message from {} to {} via request-response", message.identity, target_identity);
-            } else {
-                return Err(LibP2PRelayError::PeerNotFound(format!(
-                    "Target peer not found: {}",
-                    target_identity
-                )));
-            }
-        } else {
-            // For broadcast messages, we rely on the request-response forwarding mechanism
-            println!("Broadcasting message from {} via request-response forwarding", message.identity);
-        }
-        
         Ok(())
     }
 }

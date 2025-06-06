@@ -3,7 +3,7 @@ use futures::prelude::*;
 use libp2p::{
     dcutr, identify, noise, ping, relay, request_response,
     swarm::{NetworkBehaviour, SwarmEvent},
-    tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
+    tcp, yamux, Multiaddr, PeerId, Swarm,
 };
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -496,12 +496,6 @@ impl LibP2PManager {
                                 let circuit_addr = relay_addr.clone()
                                     .with(libp2p::multiaddr::Protocol::P2p(peer_id))
                                     .with(libp2p::multiaddr::Protocol::P2pCircuit);
-                                    
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Info,
-                                    &format!("📡 Listening on relay circuit: {}", circuit_addr),
-                                );
                                 
                                 if let Err(e) = self.swarm.listen_on(circuit_addr.clone()) {
                                     shinkai_log(
@@ -513,7 +507,7 @@ impl LibP2PManager {
                                     shinkai_log(
                                         ShinkaiLogOption::Network,
                                         ShinkaiLogLevel::Info,
-                                        "✅ Successfully requested relay reservation - should prevent KeepAliveTimeout",
+                                        &format!("📡 Successfully requested relay reservation: {}", circuit_addr),
                                     );
                                 }
                             }
@@ -534,12 +528,6 @@ impl LibP2PManager {
                             let circuit_addr = relay_addr.clone()
                                 .with(libp2p::multiaddr::Protocol::P2p(peer_id))
                                 .with(libp2p::multiaddr::Protocol::P2pCircuit);
-                                
-                            shinkai_log(
-                                ShinkaiLogOption::Network,
-                                ShinkaiLogLevel::Info,
-                                &format!("📡 Listening on relay circuit: {}", circuit_addr),
-                            );
                             
                             if let Err(e) = self.swarm.listen_on(circuit_addr.clone()) {
                                 shinkai_log(
@@ -551,7 +539,7 @@ impl LibP2PManager {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Info,
-                                    "✅ Successfully requested relay reservation",
+                                    &format!("📡 Successfully requested relay reservation: {}", circuit_addr),
                                 );
                             }
                         }
@@ -584,36 +572,6 @@ impl LibP2PManager {
                             &format!("Peer {} has external address: {}", peer_id, addr),
                         );
                     }
-                }
-                
-                // If peer is connected through relay and has external addresses, try direct connection upgrade
-                if !circuit_addrs.is_empty() && !external_addrs.is_empty() {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        &format!("Peer {} connected via relay but has external addresses - attempting DCUtR upgrade", peer_id),
-                    );
-                    if let Err(e) = self.try_direct_connection_upgrade(peer_id) {
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Debug,
-                            &format!("Failed to initiate DCUtR upgrade for peer {}: {}", peer_id, e),
-                        );
-                    }
-                } else if !circuit_addrs.is_empty() {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        &format!("Peer {} using relay circuit addressing - {} circuit addresses", 
-                            peer_id, circuit_addrs.len()),
-                    );
-                } else if !external_addrs.is_empty() {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        &format!("Peer {} using direct external addressing - {} external addresses", 
-                            peer_id, external_addrs.len()),
-                    );
                 }
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::RequestResponse(req_resp_event)) => {
@@ -693,12 +651,7 @@ impl LibP2PManager {
                         ShinkaiLogLevel::Info,
                         &format!("Connected directly to potential relay server: {}", peer_id),
                     );
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        "   Will request relay reservation after peer identification",
-                    );
-                    
+
                     // Check if this might be our configured relay
                     if let Some(relay_addr) = self.relay_address.clone() {
                         if let Some(relay_peer_from_addr) = Self::extract_peer_id_from_address(&relay_addr) {
@@ -712,7 +665,7 @@ impl LibP2PManager {
                             shinkai_log(
                                 ShinkaiLogOption::Network,
                                 ShinkaiLogLevel::Info,
-                                "   Potential relay connection - will confirm during identification",
+                                "Potential relay connection - will confirm during identification",
                             );
                         }
                     }
@@ -720,12 +673,6 @@ impl LibP2PManager {
                 
                 // Check if this connection is through a relay and create circuit address
                 if let Some(circuit_addr) = Self::extract_circuit_address(&endpoint.get_remote_address(), &peer_id) {
-                    shinkai_log(
-                        ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Info,
-                        &format!("Connected through relay, advertising circuit address: {}", circuit_addr),
-                    );
-                    
                     // Add the circuit address as an external address so other peers know how to reach us
                     self.swarm.add_external_address(circuit_addr.clone());
                     
@@ -1122,28 +1069,9 @@ impl LibP2PManager {
         Ok(())
     }
 
-    /// Add a discovered peer to our peer list
-    pub fn add_discovered_peer(&mut self, identity: String, peer_id: PeerId, circuit_addr: Multiaddr) {
-        if self.discovered_peers.contains_key(&identity) {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Debug,
-                &format!("Updating discovered peer: {} at {}", identity, circuit_addr),
-            );
-        } else {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Info,
-                &format!("🆕 Discovered new peer: {} at {}", identity, circuit_addr),
-            );
-        }
-        
-        self.discovered_peers.insert(identity, (peer_id, circuit_addr));
-    }
-
     /// Connect to a discovered peer using their circuit address
     pub async fn connect_to_discovered_peer(&mut self, identity: &str) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some((peer_id, circuit_addr)) = self.discovered_peers.get(identity).cloned() {
+        if let Some((_peer_id, circuit_addr)) = self.discovered_peers.get(identity).cloned() {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
@@ -1170,57 +1098,6 @@ impl LibP2PManager {
         }
         
         Ok(())
-    }
-
-    /// Get list of all discovered peers
-    pub fn get_discovered_peers(&self) -> Vec<(String, PeerId, Multiaddr)> {
-        self.discovered_peers.iter()
-            .map(|(identity, (peer_id, addr))| (identity.clone(), *peer_id, addr.clone()))
-            .collect()
-    }
-
-    /// Auto-connect to newly discovered peers (optional feature)
-    pub async fn auto_connect_to_discovered_peers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        if !self.discovery_enabled {
-            return Ok(());
-        }
-        
-        let peers_to_connect: Vec<String> = self.discovered_peers.keys()
-            .filter(|identity| !self.swarm.connected_peers().any(|connected_peer| {
-                // Check if we're already connected to this peer
-                if let Some((peer_id, _)) = self.discovered_peers.get(*identity) {
-                    connected_peer == peer_id
-                } else {
-                    false
-                }
-            }))
-            .cloned()
-            .collect();
-
-        for identity in peers_to_connect {
-            if let Err(e) = self.connect_to_discovered_peer(&identity).await {
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Debug,
-                    &format!("Failed to auto-connect to peer {}: {}", identity, e),
-                );
-            }
-        }
-        
-        Ok(())
-    }
-}
-
-impl ShinkaiNetworkBehaviour {
-    /// Attempt to initiate a direct connection upgrade using DCUtR
-    pub fn initiate_dcutr_upgrade(&mut self, peer_id: PeerId) {
-        // DCUtR automatically handles the upgrade when both peers support it
-        // This is just a placeholder for any future manual triggering if needed
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Debug,
-            &format!("DCUtR upgrade for peer {} will be handled automatically", peer_id),
-        );
     }
 }
 
