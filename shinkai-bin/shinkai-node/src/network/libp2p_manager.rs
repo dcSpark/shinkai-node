@@ -586,17 +586,7 @@ impl LibP2PManager {
                                 );
 
                                 // Handle the incoming request message
-                                self.message_handler.handle_message(peer, request.clone()).await;
-
-                                // Send acknowledgment response
-                                let ack_response = request.clone(); // For now, echo back the message as acknowledgment
-                                if let Err(e) = self.swarm.behaviour_mut().request_response.send_response(channel, ack_response) {
-                                    shinkai_log(
-                                        ShinkaiLogOption::Network,
-                                        ShinkaiLogLevel::Error,
-                                        &format!("Failed to send response to peer {}: {:?}", peer, e),
-                                    );
-                                }
+                                self.message_handler.handle_message(peer, request).await;
                             }
                             request_response::Message::Response { response, .. } => {
                                 shinkai_log(
@@ -931,7 +921,6 @@ impl LibP2PManager {
                     ShinkaiLogLevel::Info,
                     &format!("Attempting direct connection upgrade to peer {}", peer_id),
                 );
-                self.try_direct_connection_upgrade(peer_id)?;
             }
             NetworkEvent::DiscoverPeers => {
                 self.request_peer_discovery().await?;
