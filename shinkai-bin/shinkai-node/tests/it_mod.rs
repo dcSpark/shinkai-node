@@ -28,5 +28,6 @@ mod it {
     mod change_nodes_name_tests;
     mod job_code_duplicate;
     mod native_tool_tests;
+    mod network_tool_list_tests;
     mod tool_config_override_test;
 }
