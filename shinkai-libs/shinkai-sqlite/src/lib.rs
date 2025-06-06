@@ -211,6 +211,7 @@ impl SqliteManager {
         Self::migrate_tools_table(conn)?;
         Self::migrate_agents_table(conn)?;
         Self::migrate_llm_providers_table(conn)?;
+        Self::migrate_mcp_servers_table(conn)?;
         Ok(())
     }
 
@@ -948,7 +949,7 @@ impl SqliteManager {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 name TEXT NOT NULL,
-                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND')) DEFAULT 'SSE',
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
                 url TEXT,
                 env TEXT,
                 command TEXT,
@@ -967,6 +968,10 @@ impl SqliteManager {
             "INSERT INTO embedding_model_type (model_type) VALUES (?);",
             [&model_type.to_string() as &dyn ToSql],
         )?;
+        Ok(())
+    }
+    pub fn migrate_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute("ALTER TABLE mcp_servers MODIFY COLUMN type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE';", [])?;
         Ok(())
     }
 
