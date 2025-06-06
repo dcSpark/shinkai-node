@@ -109,9 +109,6 @@ async fn main() -> Result<(), LibP2PRelayError> {
     )
     .await?;
 
-    println!("LibP2P Relay Server initialized successfully");
-    println!("Starting relay server...");
-
     // Start the relay server (this will run indefinitely)
     proxy.start().await?;
 

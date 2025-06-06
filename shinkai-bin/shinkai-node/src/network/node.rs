@@ -593,7 +593,7 @@ impl Node {
             );
             let mut libp2p_event_sender_for_update: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>> = None;
             
-            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address, None).await {
+            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address).await {
                 Ok(libp2p_manager) => {
                     let event_sender = libp2p_manager.event_sender();
                     let libp2p_manager_arc = Arc::new(Mutex::new(libp2p_manager));
