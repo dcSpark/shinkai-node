@@ -483,9 +483,13 @@ impl RelayManager {
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 println!("📡 Connection established with peer: {}", peer_id);
             }
-            SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+            SwarmEvent::ConnectionClosed { peer_id, cause, remaining_established, .. } => {
                 println!("📡 Connection closed with peer: {} (cause: {:?})", peer_id, cause);
-                self.unregister_peer(&peer_id);
+                if remaining_established == 0 {
+                    self.unregister_peer(&peer_id);
+                } else {
+                    println!("📡 Peer {} still has {} active connection(s) - keeping registration", peer_id, remaining_established);
+                }
             }
             _ => {}
         }
