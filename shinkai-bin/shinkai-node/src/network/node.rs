@@ -1010,7 +1010,7 @@ impl Node {
         let (target_peer_id, target_peer_addr, use_relay ) = {
             let proxy_info = proxy_connection_info.lock().await;
             let identity_manager = maybe_identity_manager.lock().await;
-            
+
             // Try to get the identity record for the recipient node
             match identity_manager.external_profile_to_global_identity(&recipient_node_name, None).await {
                 Ok(identity) => {
@@ -1065,7 +1065,7 @@ impl Node {
                                     ShinkaiLogLevel::Info,
                                     &format!("Sending direct message to recipient PeerId: {}", peer_id),
                                 );
-                                (peer_id, identity.addr, false)
+                                (peer_id, identity.addr, false, identity.addr)
                             }
                             Err(e) => {
                                 return Err(Box::new(std::io::Error::new(
@@ -1089,6 +1089,10 @@ impl Node {
             format!("relay message to {}", recipient_node_name)
         } else {
             format!("direct message to {}", recipient_node_name)
+        };
+        let network_event = NetworkEvent::SendDirectMessage {
+            peer_id: target_peer_id,
+            message: message.clone(),
         };
 
         shinkai_log(
