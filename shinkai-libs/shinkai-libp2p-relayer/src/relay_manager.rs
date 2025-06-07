@@ -125,7 +125,11 @@ impl RelayManager {
         let identify = identify::Behaviour::new(identify::Config::new(
             "/shinkai/1.0.0".to_string(),
             local_key.public(),
-        ).with_agent_version(format!("shinkai-relayer/{}/{}", std::env::var("GLOBAL_IDENTITY_NAME").unwrap(), env!("CARGO_PKG_VERSION")))
+        ).with_agent_version(format!(
+            "shinkai-relayer/{}/{}",
+            std::env::var("NODE_NAME").unwrap_or_else(|_| "@@relayer_pub_01.sep-shinkai".to_string()),
+            env!("CARGO_PKG_VERSION")
+        ))
         .with_interval(Duration::from_secs(60))
         .with_push_listen_addr_updates(true)
         .with_cache_size(100)
