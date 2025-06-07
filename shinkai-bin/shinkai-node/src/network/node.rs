@@ -1090,20 +1090,6 @@ impl Node {
         } else {
             format!("direct message to {}", recipient_node_name)
         };
-        let network_event = NetworkEvent::SendDirectMessage {
-            peer_id: target_peer_id,
-            message: message.clone(),
-        };
-
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Debug,
-            &format!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
-                if use_relay { "relay" } else { "direct peer" }, target_peer_id),
-        );
-
-        eprintln!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
-                if use_relay { "relay" } else { "direct peer" }, target_peer_id);
 
         // If we're sending directly and have the peer's address, ensure we dial the peer first
         if !use_relay {
@@ -1130,6 +1116,14 @@ impl Node {
             peer_id: target_peer_id,
             message: message.clone(),
         };
+
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
+                if use_relay { "relay" } else { "direct peer" }, target_peer_id),
+        );        
+
         if let Err(e) = libp2p_event_sender.send(network_event) {
             eprintln!("Failed to send via libp2p: {}", e);
             return Err(Box::new(std::io::Error::new(
