@@ -7,6 +7,7 @@ use crate::{
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
+use libp2p::PeerId;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
@@ -42,7 +43,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
@@ -84,7 +85,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 my_agent_offering_manager,
@@ -110,7 +111,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 my_agent_offering_manager,
@@ -130,7 +131,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 proxy_connection_info,
@@ -145,7 +146,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 ShinkaiLogLevel::Debug,
                 &format!(
                     "{} {} > ACK from {:?}",
-                    my_node_profile_name, receiver_address, unsafe_sender_address
+                    my_node_profile_name, receiver_address, sender_peer_id
                 ),
             );
             // Currently, we are not saving ACKs received to the DB.
@@ -169,7 +170,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 my_agent_offering_manager,
@@ -184,17 +185,6 @@ pub async fn handle_based_on_message_content_and_encryption(
 }
 
 // All the new helper functions here:
-pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result<ShinkaiMessage> {
-    ShinkaiMessage::decode_message_result(bytes.to_vec()).map_err(|_| {
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Error,
-            &format!("{} > Failed to decode message.", receiver_address),
-        );
-        io::Error::new(io::ErrorKind::Other, "Failed to decode message")
-    })
-}
-
 pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &ShinkaiMessage) -> io::Result<()> {
     match message.verify_outer_layer_signature(&sender_signature_pk) {
         Ok(is_valid) if is_valid => Ok(()),
@@ -237,20 +227,20 @@ pub async fn handle_ping(
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
+    println!("{} > Got ping from {:?}", receiver_address, sender_peer_id);
     shinkai_log(
         ShinkaiLogOption::Network,
         ShinkaiLogLevel::Debug,
         &format!(
             "{} {} > Ping from {:?}",
-            my_node_profile_name, receiver_address, unsafe_sender_address
+            my_node_profile_name, receiver_address, sender_peer_id
         ),
     );
     ping_pong(
@@ -280,7 +270,7 @@ pub async fn handle_default_encryption(
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
@@ -310,7 +300,7 @@ pub async fn handle_default_encryption(
                             my_signature_secret_key,
                             my_node_profile_name,
                             receiver_address,
-                            unsafe_sender_address,
+                            sender_peer_id,
                             maybe_db,
                             maybe_identity_manager,
                             my_agent_offering_manager,
@@ -373,7 +363,7 @@ pub async fn handle_network_message_cases(
     my_signature_secret_key: &SigningKey,
     my_node_full_name: &str,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
@@ -384,7 +374,7 @@ pub async fn handle_network_message_cases(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!(
         "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
-        my_node_full_name, receiver_address, unsafe_sender_address
+        my_node_full_name, receiver_address, sender_peer_id
     );
 
     let mut message = message.clone();
