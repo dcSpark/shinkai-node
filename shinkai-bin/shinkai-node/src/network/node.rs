@@ -1007,7 +1007,7 @@ impl Node {
         let recipient_node_name = message.external_metadata.recipient.clone();
 
         // Check if we have a relay configured by looking up the proxy connection
-        let (target_peer_id, use_relay) = {
+        let (target_peer_id, target_peer_addr, use_relay ) = {
             let proxy_info = proxy_connection_info.lock().await;
             let identity_manager = maybe_identity_manager.lock().await;
             
@@ -1033,7 +1033,7 @@ impl Node {
                                             ShinkaiLogLevel::Info,
                                             &format!("Sending message to relay PeerId: {}", relay_peer_id),
                                         );
-                                        (relay_peer_id, true)
+                                        (relay_peer_id, relay_identity.addr, true)
                                     }
                                     Err(e) => {
                                         return Err(Box::new(std::io::Error::new(
@@ -1065,7 +1065,7 @@ impl Node {
                                     ShinkaiLogLevel::Info,
                                     &format!("Sending direct message to recipient PeerId: {}", peer_id),
                                 );
-                                (peer_id, false)
+                                (peer_id, identity.addr, false)
                             }
                             Err(e) => {
                                 return Err(Box::new(std::io::Error::new(
@@ -1090,11 +1090,6 @@ impl Node {
         } else {
             format!("direct message to {}", recipient_node_name)
         };
-        
-        let network_event = NetworkEvent::SendDirectMessage {
-            peer_id: target_peer_id,
-            message: message.clone(),
-        };
 
         shinkai_log(
             ShinkaiLogOption::Network,
@@ -1102,8 +1097,37 @@ impl Node {
             &format!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
                 if use_relay { "relay" } else { "direct peer" }, target_peer_id),
         );
-        
+
+        eprintln!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
+                if use_relay { "relay" } else { "direct peer" }, target_peer_id);
+
+        // If we're sending directly and have the peer's address, ensure we dial the peer first
+        if !use_relay {
+            if let Some(addr) = target_peer_addr {
+                let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
+                if let Ok(multiaddr) = multiaddr_str.parse::<Multiaddr>() {
+                    let add_event = NetworkEvent::AddPeer { peer_id: target_peer_id, address: multiaddr };
+                    eprintln!("About to send AddPeer event: {:?}", add_event);
+                    if let Err(e) = libp2p_event_sender.send(add_event) {
+                        eprintln!("Failed to queue AddPeer event: {}", e);
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to queue AddPeer event: {}", e),
+                        );
+                    } else {
+                        eprintln!("Successfully queued AddPeer event");
+                    }
+                }
+            }
+        }
+
+        let network_event = NetworkEvent::SendDirectMessage {
+            peer_id: target_peer_id,
+            message: message.clone(),
+        };
         if let Err(e) = libp2p_event_sender.send(network_event) {
+            eprintln!("Failed to send via libp2p: {}", e);
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to send via libp2p: {}", e),
@@ -1131,6 +1155,7 @@ impl Node {
         } else {
         }
 
+        eprintln!("Message sent via LibP2P as {}", message_type);
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
