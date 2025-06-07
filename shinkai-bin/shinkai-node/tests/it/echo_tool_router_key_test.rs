@@ -4,50 +4,50 @@ use shinkai_tools_primitives::tools::deno_tools::DenoTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets};
 
 use super::utils::node_test_api::{api_initial_registration_with_no_code_for_device, wait_for_default_tools};
-use utils::test_boilerplate::run_test_one_node_network;
+use crate::it::utils::test_boilerplate::run_test_one_node_network;
 
 fn get_echo_tool_json_string() -> String {
     r#"{
-        \"content\": [
+        "content": [
             {
-                \"activated\": false,
-                \"assets\": [],
-                \"author\": \"@@localhost.sep-shinkai\",
-                \"config\": [],
-                \"configFormData\": {},
-                \"configurations\": { \"properties\": {}, \"required\": [], \"type\": \"object\" },
-                \"description\": \"A function that echoes back the input message.\",
-                \"embedding\": null,
-                \"file_inbox\": null,
-                \"homepage\": null,
-                \"input_args\": {
-                    \"properties\": { \"message\": { \"description\": \"The message to echo\", \"type\": \"string\" } },
-                    \"required\": [\"message\"],
-                    \"type\": \"object\"
+                "activated": false,
+                "assets": [],
+                "author": "@@localhost.sep-shinkai",
+                "config": [],
+                "configFormData": {},
+                "configurations": { "properties": {}, "required": [], "type": "object" },
+                "description": "A function that echoes back the input message.",
+                "embedding": null,
+                "file_inbox": null,
+                "homepage": null,
+                "input_args": {
+                    "properties": { "message": { "description": "The message to echo", "type": "string" } },
+                    "required": ["message"],
+                    "type": "object"
                 },
-                \"js_code\": \"type CONFIG = {};\\ntype INPUTS = { message: string };\\ntype OUTPUT = { echoed: string };\\n\\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\\n    return { echoed: inputs.message };\\n}\",
-                \"keywords\": [\"echo\", \"message\", \"repeat\"],
-                \"mcp_enabled\": false,
-                \"name\": \"Echo Function\",
-                \"oauth\": [],
-                \"operating_system\": [\"linux\", \"macos\", \"windows\"],
-                \"output_arg\": { \"json\": \"{}\" },
-                \"result\": {
-                    \"properties\": { \"echoed\": { \"description\": \"The echoed message\", \"type\": \"string\" } },
-                    \"required\": [\"echoed\"],
-                    \"type\": \"object\"
+                "js_code": "type CONFIG = {};\ntype INPUTS = { message: string };\ntype OUTPUT = { echoed: string };\n\nexport async function run(config: CONFIG, inputs: INPUTS): Promise<OUTPUT> {\n    return { echoed: inputs.message };\n}",
+                "keywords": ["echo", "message", "repeat"],
+                "mcp_enabled": false,
+                "name": "Echo Function",
+                "oauth": [],
+                "operating_system": ["linux", "macos", "windows"],
+                "output_arg": { "json": "{}" },
+                "result": {
+                    "properties": { "echoed": { "description": "The echoed message", "type": "string" } },
+                    "required": ["echoed"],
+                    "type": "object"
                 },
-                \"runner\": \"any\",
-                \"sql_queries\": [],
-                \"sql_tables\": [],
-                \"tool_router_key\": \"local:::__localhost_sep_shinkai:::echo_function\",
-                \"tool_set\": \"\",
-                \"tools\": [],
-                \"version\": \"1.0.0\"
+                "runner": "any",
+                "sql_queries": [],
+                "sql_tables": [],
+                "tool_router_key": "local:::echo:::echo_function",
+                "tool_set": "",
+                "tools": [],
+                "version": "1.0.0"
             },
             true
         ],
-        \"type\": \"Deno\"
+        "type": "Deno"
     }"#.to_string()
 }
 
