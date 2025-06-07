@@ -29,4 +29,5 @@ mod it {
     mod job_code_duplicate;
     mod native_tool_tests;
     mod tool_config_override_test;
+    mod echo_tool_router_key_test;
 }
