@@ -46,7 +46,7 @@ pub fn convert_to_shinkai_tool(
     let mcp_tool = MCPServerTool {
         name: format!("{} - {}", server_name, tool_name),
         author: node_name.to_string(),
-        description: tool.description.to_string(),
+        description: tool.description.clone().unwrap_or_default().to_string(),
         config: tools_config,
         activated: true,
         tool_router_key: Some(tool_router_key),

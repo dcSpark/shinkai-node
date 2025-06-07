@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::shinkai_file_manager::{FileProcessingMode, ShinkaiFileManager};
 use shinkai_http_api::node_api_router::APIError;
-use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_sse};
+use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_http, list_tools_via_sse};
 use shinkai_message_primitives::schemas::llm_providers::agent::Agent;
 use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -951,6 +951,12 @@ pub async fn import_mcp_server(
         }
         MCPServerType::Sse => {
             let tools = list_tools_via_sse(&mcp_server.url.clone().unwrap_or_default().to_string(), None)
+                .await
+                .map_err(|e| println!("Failed to list tools: {:?}", e));
+            tools
+        }
+        MCPServerType::Http => {
+            let tools = list_tools_via_http(&mcp_server.url.clone().unwrap_or_default().to_string(), None)
                 .await
                 .map_err(|e| println!("Failed to list tools: {:?}", e));
             tools

@@ -282,6 +282,15 @@ impl SqliteManager {
                         }
                     }
                 }
+                MCPServerType::Http => {
+                    let server_url = server.url;
+                    if let Some(server_url) = server_url {
+                        if server_url.trim() == url.trim() {
+                            result = true;
+                            break;
+                        }
+                    }
+                }
             }
         }
         Ok(result)

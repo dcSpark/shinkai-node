@@ -105,8 +105,9 @@ impl McpToolsService {
                         let tool_name = name.clone().replace(' ', "_").to_lowercase().chars().filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '_').collect::<String>();
                         let mcp_tool = Tool {
                             name: Cow::Owned(tool_name.clone()),
-                            description: Cow::Owned(description),
+                            description: Some(Cow::Owned(description)),
                             input_schema: Arc::new(schema_map),
+                            annotations: None,
                         };
                         mcp_tools_list.push(mcp_tool);
 
@@ -243,7 +244,7 @@ impl ServerHandler for McpToolsService {
 
     fn list_prompts(
         &self,
-        _request: PaginatedRequestParam,
+        _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListPromptsResult, ErrorData>> + Send + '_ {
         // Use ErrorData and ListPromptsResult::default()
@@ -252,7 +253,7 @@ impl ServerHandler for McpToolsService {
 
     fn list_resources(
         &self,
-        _request: PaginatedRequestParam,
+        _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListResourcesResult, ErrorData>> + Send + '_ {
          // Use ErrorData and ListResourcesResult::default()
@@ -312,7 +313,7 @@ impl ServerHandler for McpToolsService {
 
     fn list_tools(
         &self,
-        _request: PaginatedRequestParam,
+        _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> impl Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
         async move {
