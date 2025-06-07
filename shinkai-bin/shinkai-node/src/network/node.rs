@@ -593,7 +593,7 @@ impl Node {
             );
             let mut libp2p_event_sender_for_update: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>> = None;
             
-            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address, None).await {
+            match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address).await {
                 Ok(libp2p_manager) => {
                     let event_sender = libp2p_manager.event_sender();
                     let libp2p_manager_arc = Arc::new(Mutex::new(libp2p_manager));
@@ -1007,10 +1007,10 @@ impl Node {
         let recipient_node_name = message.external_metadata.recipient.clone();
 
         // Check if we have a relay configured by looking up the proxy connection
-        let (target_peer_id, use_relay) = {
+        let (target_peer_id, use_relay, peer_addr) = {
             let proxy_info = proxy_connection_info.lock().await;
             let identity_manager = maybe_identity_manager.lock().await;
-            
+
             // Try to get the identity record for the recipient node
             match identity_manager.external_profile_to_global_identity(&recipient_node_name, None).await {
                 Ok(identity) => {
@@ -1033,7 +1033,7 @@ impl Node {
                                             ShinkaiLogLevel::Info,
                                             &format!("Sending message to relay PeerId: {}", relay_peer_id),
                                         );
-                                        (relay_peer_id, true)
+                                        (relay_peer_id, true, None)
                                     }
                                     Err(e) => {
                                         return Err(Box::new(std::io::Error::new(
@@ -1065,7 +1065,7 @@ impl Node {
                                     ShinkaiLogLevel::Info,
                                     &format!("Sending direct message to recipient PeerId: {}", peer_id),
                                 );
-                                (peer_id, false)
+                                (peer_id, false, identity.addr)
                             }
                             Err(e) => {
                                 return Err(Box::new(std::io::Error::new(
@@ -1090,7 +1090,24 @@ impl Node {
         } else {
             format!("direct message to {}", recipient_node_name)
         };
-        
+
+        // If we're sending directly and have the peer's address, ensure we dial the peer first
+        if !use_relay {
+            if let Some(addr) = peer_addr {
+                let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
+                if let Ok(multiaddr) = multiaddr_str.parse::<Multiaddr>() {
+                    let add_event = NetworkEvent::AddPeer { peer_id: target_peer_id, address: multiaddr };
+                    if let Err(e) = libp2p_event_sender.send(add_event) {
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to queue AddPeer event: {}", e),
+                        );
+                    }
+                }
+            }
+        }
+
         let network_event = NetworkEvent::SendDirectMessage {
             peer_id: target_peer_id,
             message: message.clone(),

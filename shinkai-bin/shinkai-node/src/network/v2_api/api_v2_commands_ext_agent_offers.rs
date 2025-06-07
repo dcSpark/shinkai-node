@@ -250,8 +250,23 @@ impl Node {
 
         let mut header = tool.to_header();
         header.sanitize_config();
-        let tool_router_key =
-            ToolRouterKey::new(node_name.to_string(), header.author.clone(), header.name.clone(), None);
+
+        // Use the existing tool key from the offering
+        let tool_router_key_result =
+            ToolRouterKey::to_network_router_key(&tool_offering.tool_key, &node_name.to_string());
+
+        let tool_router_key_str = match tool_router_key_result {
+            Ok(key) => key,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create network router key: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         let network_tool = NetworkTool {
             name: header.name,
@@ -260,7 +275,7 @@ impl Node {
             author: header.author,
             mcp_enabled: header.mcp_enabled,
             provider: node_name,
-            tool_router_key: tool_router_key.to_string_without_version(),
+            tool_router_key: tool_router_key_str,
             usage_type: tool_offering.usage_type.clone(),
             activated: header.enabled,
             config: header.config.unwrap_or_default(),
@@ -328,8 +343,23 @@ impl Node {
 
             let mut header = tool.to_header();
             header.sanitize_config();
-            let tool_router_key =
-                ToolRouterKey::new(node_name.to_string(), header.author.clone(), header.name.clone(), None);
+
+            // Use the existing tool key from the offering
+            let tool_router_key_result =
+                ToolRouterKey::to_network_router_key(&offering.tool_key, &node_name.to_string());
+
+            let tool_router_key_str = match tool_router_key_result {
+                Ok(key) => key,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to create network router key: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
             let network_tool = NetworkTool {
                 name: header.name,
@@ -338,7 +368,7 @@ impl Node {
                 author: header.author,
                 mcp_enabled: header.mcp_enabled,
                 provider: node_name.clone(),
-                tool_router_key: tool_router_key.to_string_without_version(),
+                tool_router_key: tool_router_key_str,
                 usage_type: offering.usage_type.clone(),
                 activated: header.enabled,
                 config: header.config.unwrap_or_default(),
