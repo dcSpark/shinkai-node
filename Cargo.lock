@@ -6444,6 +6444,7 @@ version = "1.0.10"
 dependencies = [
  "chrono",
  "clap 3.2.25",
+ "dashmap",
  "derivative",
  "dotenv",
  "ed25519-dalek",

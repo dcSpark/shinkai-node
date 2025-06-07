@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::indexable_version::IndexableVersion;
+use super::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(try_from = "String")]
@@ -173,6 +174,22 @@ impl ToolRouterKey {
             .as_ref()
             .and_then(|v| IndexableVersion::from_string(v).ok())
     }
+
+    /// Converts a normal tool router key to a network router key
+    /// Example: "local:::guillevalin:::echo_function" with node_name "@@guillevalin.sep-shinkai"
+    /// becomes "__guillevalin_sep_shinkai:::guillevalin:::echo_function"
+    pub fn to_network_router_key(key_str: &str, node_name: &str) -> Result<String, String> {
+        let key = Self::from_string(key_str)?;
+
+        // Create a ShinkaiName to properly validate the node name
+        let shinkai_name =
+            ShinkaiName::new(node_name.to_string()).map_err(|e| format!("Invalid node name '{}': {}", node_name, e))?;
+
+        // Sanitize the node name to create the network source
+        let network_source = Self::sanitize(&shinkai_name.node_name);
+        let network_key = Self::new(network_source, key.author, key.name, key.version);
+        Ok(network_key.to_string_with_version())
+    }
 }
 
 #[cfg(test)]
@@ -289,5 +306,39 @@ mod tests {
             key.to_string_with_version(),
             "local:::__official_shinkai:::concat_strings"
         );
+    }
+
+    #[test]
+    fn test_to_network_router_key() {
+        let original_key = "local:::guillevalin:::echo_function";
+        let node_name = "@@guillevalin.sep-shinkai";
+        let network_key = ToolRouterKey::to_network_router_key(original_key, node_name).unwrap();
+        assert_eq!(network_key, "__guillevalin_sep_shinkai:::guillevalin:::echo_function");
+    }
+
+    #[test]
+    fn test_to_network_router_key_with_version() {
+        let original_key = "local:::guillevalin:::echo_function:::1.0";
+        let node_name = "@@guillevalin.sep-shinkai";
+        let network_key = ToolRouterKey::to_network_router_key(original_key, node_name).unwrap();
+        assert_eq!(
+            network_key,
+            "__guillevalin_sep_shinkai:::guillevalin:::echo_function:::1.0"
+        );
+    }
+
+    #[test]
+    fn test_to_network_router_key_different_domains() {
+        let original_key = "local:::alice:::test_tool";
+
+        // Test with .shinkai domain
+        let node_name1 = "@@alice.sep-shinkai";
+        let network_key1 = ToolRouterKey::to_network_router_key(original_key, node_name1).unwrap();
+        assert_eq!(network_key1, "__alice_sep_shinkai:::alice:::test_tool");
+
+        // Test with .arb-sep-shinkai domain
+        let node_name2 = "@@alice.sep-shinkai";
+        let network_key2 = ToolRouterKey::to_network_router_key(original_key, node_name2).unwrap();
+        assert_eq!(network_key2, "__alice_sep_shinkai:::alice:::test_tool");
     }
 }
