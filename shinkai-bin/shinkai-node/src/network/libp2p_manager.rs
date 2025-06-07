@@ -71,7 +71,6 @@ pub struct LibP2PManager {
     last_disconnection_time: Option<std::time::Instant>, // Track when we disconnected
     // Peer discovery fields
     discovered_peers: HashMap<String, (PeerId, Multiaddr)>, // identity -> (peer_id, circuit_addr)
-    discovery_enabled: bool, // Enable/disable automatic peer discovery
 }
 
 use crate::network::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
@@ -111,7 +110,6 @@ impl LibP2PManager {
                 noise::Config::new,
                 yamux::Config::default,
             )?
-            .with_quic()
             .with_relay_client(noise::Config::new, yamux::Config::default)?
             .with_behaviour(|keypair, relay_behaviour| ShinkaiNetworkBehaviour {
                 relay_client: relay_behaviour,
@@ -125,34 +123,25 @@ impl LibP2PManager {
             })?
             .build();
 
-        // Listen on both QUIC and TCP ports - relay networking still requires listening to connect to/from relay
-        let (tcp_listen_addr, quic_listen_addr) = if let Some(port) = listen_port {
-            (
-                format!("/ip4/0.0.0.0/tcp/{}", port),
-                format!("/ip4/0.0.0.0/udp/{}/quic-v1", port),
-            )
+        // Listen on TCP
+        let tcp_listen_addr= if let Some(port) = listen_port {
+            format!("/ip4/0.0.0.0/tcp/{}", port)
         } else {
-            (
-                "/ip4/0.0.0.0/tcp/0".to_string(),
-                "/ip4/0.0.0.0/udp/0/quic-v1".to_string(),
-            )
+            "/ip4/0.0.0.0/tcp/0".to_string()
         };
-
-        // Listen on both TCP and QUIC
         swarm.listen_on(tcp_listen_addr.parse()?)?;
-        swarm.listen_on(quic_listen_addr.parse()?)?;
         
         if relay_address.is_some() {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
-                &format!("Listening on {} and {} (relay mode - for relay connections)", tcp_listen_addr, quic_listen_addr),
+                &format!("Listening on {} (relay mode - for relay connections)", tcp_listen_addr),
             );
         } else {
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Info,
-                &format!("Listening on {} and {} (direct mode)", tcp_listen_addr, quic_listen_addr),
+                &format!("Listening on {} (direct mode)", tcp_listen_addr),
             );
         }
 
@@ -182,7 +171,6 @@ impl LibP2PManager {
             last_disconnection_time: None, // Track when we disconnected
             // Peer discovery fields
             discovered_peers: HashMap::new(), // identity -> (peer_id, circuit_addr)
-            discovery_enabled: true, // Enable/disable automatic peer discovery
         })
     }
 
@@ -345,11 +333,6 @@ impl LibP2PManager {
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
                     &format!("🔄 DCUtR: Direct connection upgrade event: {:?}", dcutr_event),
-                );
-                shinkai_log(
-                    ShinkaiLogOption::Network,
-                    ShinkaiLogLevel::Info,
-                    "   Attempting to establish direct peer-to-peer connection",
                 );
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Ping(ping_event)) => {
@@ -557,7 +540,7 @@ impl LibP2PManager {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
-                    &format!("Connected to peer {}", peer_id),
+                    &format!("✅ Connection established with {} at {:?}", peer_id, endpoint),
                 );
                 
                 // Check if this is a direct connection to a relay server (not through a circuit)
