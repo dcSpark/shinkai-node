@@ -117,8 +117,8 @@ where
         let node1_api_key = env::var("API_V2_KEY").unwrap_or_else(|_| "SUPER_SECRET".to_string());
 
         // Create node1 and node2
-        assert!(port_is_available(8080), "Port 8080 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        assert!(port_is_available(12011), "Port 12011 is not available");
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12011);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -206,5 +206,5 @@ where
         //       This was captured in the interactions_handler_logic (the test)
         assert!(false, "ERROR: {:?}", e);
     }
-    assert!(port_is_available(8080), "Port 8080 is not available");
+    assert!(port_is_available(12011), "Port 12011 is not available");
 }

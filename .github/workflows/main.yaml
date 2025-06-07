@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: 
+    runs-on:
       group: Shinkai Runners
       labels: self-hosted
     if: ${{ github.event_name == 'push' || !github.event.pull_request.draft }}
@@ -47,7 +47,9 @@ jobs:
         env:
           X402_PAY_TO: ${{ secrets.X402_PAY_TO }}
           X402_PRIVATE_KEY: ${{ secrets.X402_PRIVATE_KEY }}
-        run: docker run --rm --name shinkai_node_tests_main_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${{ github.sha }}
+          RESTORE_WALLET_MNEMONICS_NODE2: ${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}
+          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
+        run: docker run --rm --name shinkai_node_tests_main_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} --entrypoint /entrypoints/run-main-cargo-tests.sh -e X402_PAY_TO="${{ secrets.X402_PAY_TO }}" -e X402_PRIVATE_KEY="${{ secrets.X402_PRIVATE_KEY }}" -e RESTORE_WALLET_MNEMONICS_NODE2="${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}" -e FROM_WALLET_PRIVATE_KEY="${{ secrets.FROM_WALLET_PRIVATE_KEY }}" testing_image:${{ github.sha }}
 
       - name: Remove image
         if: always()

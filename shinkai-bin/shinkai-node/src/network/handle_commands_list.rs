@@ -14,26 +14,12 @@ impl Node {
             // node.");     // self.db = Arc::new(Mutex::new(ShinkaiDB::new("PLACEHOLDER").expect("Failed to
             // create a temporary database"))); },
             NodeCommand::PingAll => {
-                let peers_clone = self.peers.clone();
-                let identity_manager_clone = Arc::clone(&self.identity_manager);
-                let node_name_clone = self.node_name.clone();
-                let encryption_secret_key_clone = self.encryption_secret_key.clone();
-                let identity_secret_key_clone = self.identity_secret_key.clone();
-                let db_clone = Arc::clone(&self.db);
                 let listen_address_clone = self.listen_address;
-                let proxy_connection_info = self.proxy_connection_info.clone();
-                let ws_manager_trait = self.ws_manager_trait.clone();
+                let libp2p_manager_clone = self.libp2p_manager.clone();
                 tokio::spawn(async move {
                     let _ = Self::ping_all(
-                        node_name_clone,
-                        encryption_secret_key_clone,
-                        identity_secret_key_clone,
-                        peers_clone,
-                        db_clone,
-                        identity_manager_clone,
                         listen_address_clone,
-                        proxy_connection_info,
-                        ws_manager_trait,
+                        libp2p_manager_clone,
                     )
                     .await;
                 });
@@ -53,6 +39,7 @@ impl Node {
                 let identity_secret_key_clone = self.identity_secret_key.clone();
                 let proxy_connection_info = self.proxy_connection_info.clone();
                 let ws_manager_trait = self.ws_manager_trait.clone();
+                let libp2p_event_sender = self.libp2p_event_sender.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_handle_send_onionized_message(
                         db_clone,
@@ -63,6 +50,7 @@ impl Node {
                         msg,
                         proxy_connection_info,
                         ws_manager_trait,
+                        libp2p_event_sender,
                         res,
                     )
                     .await;
@@ -258,6 +246,7 @@ impl Node {
                 let ws_manager_trait = self.ws_manager_trait.clone();
                 let support_embedding_models = self.supported_embedding_models.clone();
                 let public_https_certificate = self.public_https_certificate.clone();
+                let libp2p_event_sender = self.libp2p_event_sender.clone();
                 tokio::spawn(async move {
                     let _ = Node::api_handle_registration_code_usage(
                         db_clone,
@@ -275,6 +264,7 @@ impl Node {
                         msg,
                         ws_manager_trait,
                         support_embedding_models,
+                        libp2p_event_sender,
                         res,
                     )
                     .await;
@@ -580,6 +570,7 @@ impl Node {
                 let ws_manager_trait = self.ws_manager_trait.clone();
                 let supported_embedding_models = self.supported_embedding_models.clone();
                 let public_https_certificate = self.public_https_certificate.clone();
+                let libp2p_event_sender = self.libp2p_event_sender.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_handle_initial_registration(
                         db_clone,
@@ -597,6 +588,7 @@ impl Node {
                         initial_llm_providers_clone,
                         ws_manager_trait,
                         supported_embedding_models,
+                        libp2p_event_sender,
                     )
                     .await;
                 });
@@ -1222,6 +1214,21 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiListAllNetworkShinkaiTools { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let tool_router_clone = self.tool_router.clone();
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_list_all_network_shinkai_tools(
+                        db_clone,
+                        bearer,
+                        node_name_clone,
+                        tool_router_clone,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiListAllShinkaiToolsVersions { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
@@ -1236,6 +1243,20 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_shinkai_tool_metadata(db_clone, bearer, tool_router_key, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetToolWithOffering { bearer, tool_key_name, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tool_with_offering(db_clone, node_name_clone, bearer, tool_key_name, res).await;
+                });
+            }
+            NodeCommand::V2ApiGetToolsWithOfferings { bearer, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let node_name_clone = self.node_name.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_get_tools_with_offerings(db_clone, node_name_clone, bearer, res).await;
                 });
             }
             NodeCommand::V2ApiSetShinkaiTool {
@@ -1453,14 +1474,8 @@ impl Node {
                 let wallet_manager_clone = self.wallet_manager.clone();
                 let node_name = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_wallet_balance(
-                        db_clone,
-                        wallet_manager_clone,
-                        bearer,
-                        node_name,
-                        res,
-                    )
-                    .await;
+                    let _ =
+                        Node::v2_api_get_wallet_balance(db_clone, wallet_manager_clone, bearer, node_name, res).await;
                 });
             }
             NodeCommand::V2ApiGetStorageLocation { bearer, res } => {
@@ -2649,7 +2664,11 @@ impl Node {
                     let _ = Node::v2_api_docker_status(res).await;
                 });
             }
-            NodeCommand::V2ApiSetNgrokAuthToken { bearer, auth_token, res } => {
+            NodeCommand::V2ApiSetNgrokAuthToken {
+                bearer,
+                auth_token,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_set_ngrok_auth_token(db_clone, bearer, auth_token, res).await;
@@ -2665,7 +2684,8 @@ impl Node {
                 let db_clone = Arc::clone(&self.db);
                 let node_env = fetch_node_environment();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_set_ngrok_enabled(db_clone, bearer, enabled, node_env.api_listen_address, res).await;
+                    let _ = Node::v2_api_set_ngrok_enabled(db_clone, bearer, enabled, node_env.api_listen_address, res)
+                        .await;
                 });
             }
             NodeCommand::V2ApiGetNgrokStatus { bearer, res } => {
