@@ -125,7 +125,11 @@ impl RelayManager {
         let identify = identify::Behaviour::new(identify::Config::new(
             "/shinkai/1.0.0".to_string(),
             local_key.public(),
-        ).with_agent_version(format!("shinkai-relayer/{}/{}", std::env::var("GLOBAL_IDENTITY_NAME").unwrap(), env!("CARGO_PKG_VERSION")))
+        ).with_agent_version(format!(
+            "shinkai-relayer/{}/{}",
+            std::env::var("NODE_NAME").unwrap_or_else(|_| "@@relayer_pub_01.sep-shinkai".to_string()),
+            env!("CARGO_PKG_VERSION")
+        ))
         .with_interval(Duration::from_secs(60))
         .with_push_listen_addr_updates(true)
         .with_cache_size(100)
@@ -234,6 +238,40 @@ impl RelayManager {
         println!("🔄 Peer {} registered with PeerId: {} - will update peer discovery information", identity, peer_id);
         self.registered_peers.insert(identity.clone(), peer_id);
         self.peer_identities.insert(peer_id, identity);
+    }
+
+    /// Handle identity registration with conflict resolution
+    pub async fn handle_identity_registration(&mut self, identity: String, new_peer_id: PeerId) {
+        // Check if this identity is already registered to a different peer
+        if let Some(existing_peer_id) = self.registered_peers.get(&identity) {
+            let existing_peer_id = *existing_peer_id.value();
+            
+            if existing_peer_id != new_peer_id {
+                println!("⚠️  Identity conflict detected for {}: existing peer {} vs new peer {}", 
+                    identity, existing_peer_id, new_peer_id);
+                
+                // Check if the existing peer is still connected
+                if self.swarm.is_connected(&existing_peer_id) {
+                    println!("🔄 Disconnecting stale peer {} to allow new peer {} for identity {}", 
+                        existing_peer_id, new_peer_id, identity);
+                    
+                    // Disconnect the old peer
+                    let _ = self.swarm.disconnect_peer_id(existing_peer_id);
+                    
+                    // Clean up the old mapping
+                    self.peer_identities.remove(&existing_peer_id);
+                } else {
+                    println!("🧹 Cleaning up stale mapping for disconnected peer {} with identity {}", 
+                        existing_peer_id, identity);
+                    
+                    // Clean up the stale mapping
+                    self.peer_identities.remove(&existing_peer_id);
+                }
+            }
+        }
+        
+        // Register the new peer with this identity
+        self.register_peer(identity, new_peer_id);
     }
 
     pub fn unregister_peer(&mut self, peer_id: &PeerId) {
@@ -389,24 +427,24 @@ impl RelayManager {
                 if public_key_bytes.len() >= 32 {
                     let key_bytes = &public_key_bytes[public_key_bytes.len() - 32..];
                     if let Ok(verifying_key) = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes.try_into().unwrap_or([0u8; 32])) {
-                        // Verify the peer's identity using blockchain registry
-                        if let Some(verified_identity) = Self::verify_peer_identity_internal(self.registry.clone(), verifying_key, info.agent_version.clone()).await {
-                            println!("🔑 Verified and registering peer {} with identity: {}", peer_id, verified_identity);
-                            self.register_peer(verified_identity, peer_id);
-                        } else {
-                            let possible_identity = if info.agent_version.ends_with("shinkai") {
-                                if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
-                                    Some(format!("@@{}", identity_part))
-                                } else { None }
-                            } else { None };
-                            
-                            if let Some(identity) = possible_identity {
-                                println!("❌ Verification failed, registering peer {} with identity: {}", peer_id, identity);
-                                self.register_peer(identity, peer_id);
-                            } else {
-                                println!("❌ Could not parse identity from agent version: {}", info.agent_version);
-                            }
-                        }
+                                                 // Verify the peer's identity using blockchain registry
+                         if let Some(verified_identity) = Self::verify_peer_identity_internal(self.registry.clone(), verifying_key, info.agent_version.clone()).await {
+                             println!("🔑 Verified and registering peer {} with identity: {}", peer_id, verified_identity);
+                             self.handle_identity_registration(verified_identity, peer_id).await;
+                         } else {
+                             let possible_identity = if info.agent_version.ends_with("shinkai") {
+                                 if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
+                                     Some(format!("@@{}", identity_part))
+                                 } else { None }
+                             } else { None };
+                             
+                             if let Some(identity) = possible_identity {
+                                 println!("❌ Verification failed, registering peer {} with identity: {}", peer_id, identity);
+                                 self.handle_identity_registration(identity, peer_id).await;
+                             } else {
+                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
+                             }
+                         }
                     } else {
                         println!("❌ Failed to convert peer {} public key to ed25519_dalek::VerifyingKey", peer_id);
                     }
@@ -488,6 +526,7 @@ impl RelayManager {
                     "❌ Disconnected from peer: {}, reason: {:?}, remaining connections: {}",
                     peer_id, cause, num_established
                 );
+                self.unregister_peer(&peer_id);
             }
             _ => {}
         }
