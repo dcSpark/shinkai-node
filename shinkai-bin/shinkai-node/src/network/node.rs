@@ -1065,7 +1065,7 @@ impl Node {
                                     ShinkaiLogLevel::Info,
                                     &format!("Sending direct message to recipient PeerId: {}", peer_id),
                                 );
-                                (peer_id, identity.addr, false, identity.addr)
+                                (peer_id, identity.addr, false)
                             }
                             Err(e) => {
                                 return Err(Box::new(std::io::Error::new(
