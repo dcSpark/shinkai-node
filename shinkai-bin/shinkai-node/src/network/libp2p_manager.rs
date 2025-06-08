@@ -580,9 +580,9 @@ impl LibP2PManager {
                                     ShinkaiLogLevel::Info,
                                     &format!("Received direct message response from peer {}", peer),
                                 );
-                                
+                                eprintln!("Received direct message response from peer {} {:?}", peer, response);
                                 // Handle the response (acknowledgment)
-                                self.message_handler.handle_message(peer, response).await;
+                                // self.message_handler.handle_message(peer, response).await;
                             }
                         }
                     }

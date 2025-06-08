@@ -1122,7 +1122,7 @@ impl Node {
             ShinkaiLogLevel::Debug,
             &format!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
                 if use_relay { "relay" } else { "direct peer" }, target_peer_id),
-        );        
+        );
 
         if let Err(e) = libp2p_event_sender.send(network_event) {
             eprintln!("Failed to send via libp2p: {}", e);

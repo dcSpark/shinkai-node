@@ -33,6 +33,11 @@ pub trait IdentityManagerTrait {
         full_profile_name: &str,
         force_refresh: Option<bool>,
     ) -> Result<StandardIdentity, String>;
+    async fn get_routing_info(
+        &self,
+        full_profile_name: &str,
+        force_refresh: Option<bool>,
+    ) -> Result<(bool, Vec<String>), String>;
 }
 
 impl Clone for Box<dyn IdentityManagerTrait + Send> {
@@ -389,6 +394,33 @@ impl IdentityManagerTrait for IdentityManager {
                 "Failed to get identity network manager for profile name: {} with error: {}",
                 full_profile_name, e
             )),
+        }
+    }
+
+    async fn get_routing_info(
+        &self,
+        full_profile_name: &str,
+        force_refresh: Option<bool>,
+    ) -> Result<(bool, Vec<String>), String> {
+        let full_identity_name = match ShinkaiName::new(full_profile_name.to_string().clone()) {
+            Ok(name) => name,
+            Err(_) => {
+                return Err(format!(
+                    "Failed to convert profile name to ShinkaiName: {}",
+                    full_profile_name
+                ));
+            }
+        };
+        let node_name = full_identity_name.get_node_name_string().to_string();
+
+        let external_im = self.external_identity_manager.lock().await;
+        
+        match external_im
+            .external_identity_to_profile_data(node_name.to_string(), force_refresh)
+            .await
+        {
+            Ok(onchain_identity) => Ok((onchain_identity.routing, onchain_identity.address_or_proxy_nodes)),
+            Err(e) => Err(format!("Failed to get routing info for {}: {}", full_profile_name, e)),
         }
     }
 }
