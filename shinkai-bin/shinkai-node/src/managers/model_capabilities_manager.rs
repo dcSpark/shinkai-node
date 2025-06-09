@@ -534,7 +534,7 @@ impl ModelCapabilitiesManager {
     pub fn get_max_output_tokens(model: &LLMProviderInterface) -> usize {
         match model {
             LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.contains("4o-mini") {
+                if openai.model_type.contains("4o-mini") || openai.model_type.contains("4o") {
                     16_384
                 } else if openai.model_type.starts_with("o1-preview")
                     || openai.model_type.starts_with("o1-mini")
