@@ -406,7 +406,7 @@ pub mod tests_mcp_manager {
     #[tokio::test]
     async fn test_list_tools_via_http() {
         let mut envs = HashMap::new();
-        envs.insert("PORT".to_string(), "8000".to_string());
+        envs.insert("PORT".to_string(), "8002".to_string());
         let (adapted_program, adapted_args, adapted_envs) = CommandWrappedInShellBuilder::wrap_in_shell_as_values(
             "npx".to_string(),
             Some(vec![
@@ -426,7 +426,7 @@ pub mod tests_mcp_manager {
                 println!("error {:?}", e);
             });
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-        let result = list_tools_via_http("http://localhost:8000/mcp", None).await;
+        let result = list_tools_via_http("http://localhost:8002/mcp", None).await;
         assert!(result.is_ok());
         let unwrapped = result.unwrap();
         assert!(unwrapped.len() == 8);
@@ -435,7 +435,7 @@ pub mod tests_mcp_manager {
     #[tokio::test]
     async fn test_run_tool_via_http() {
         let mut envs = HashMap::new();
-        envs.insert("PORT".to_string(), "8000".to_string());
+        envs.insert("PORT".to_string(), "8003".to_string());
         let (adapted_program, adapted_args, adapted_envs) = CommandWrappedInShellBuilder::wrap_in_shell_as_values(
             "npx".to_string(),
             Some(vec![
@@ -461,7 +461,7 @@ pub mod tests_mcp_manager {
         });
         let params_map = params.as_object().unwrap().clone();
 
-        let result = run_tool_via_http("http://localhost:8000/mcp".to_string(), "add".to_string(), params_map)
+        let result = run_tool_via_http("http://localhost:8003/mcp".to_string(), "add".to_string(), params_map)
             .await
             .inspect_err(|e| {
                 println!("error {:?}", e);
