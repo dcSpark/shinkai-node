@@ -129,12 +129,14 @@ impl ModelCapabilitiesManager {
                 "gpt-4.1-nano" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4.1-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "gpt-4.1" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "o1-mini" => vec![ModelCapability::TextInference],
                 "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
                 "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
                 "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "4o-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "4o-mini" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
                 "dall-e-3" => vec![ModelCapability::ImageGeneration],
+                "o3-mini" => vec![ModelCapability::TextInference],
                 model_type if model_type.starts_with("o3") => {
                     vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference]
                 }
@@ -203,12 +205,19 @@ impl ModelCapabilitiesManager {
     pub fn get_llm_provider_cost(model: &LLMProviderInterface) -> ModelCost {
         match model {
             LLMProviderInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-4o" => ModelCost::Cheap,
+                "gpt-4o" => ModelCost::GoodValue,
                 "gpt-3.5-turbo-1106" => ModelCost::VeryCheap,
                 "gpt-4o-mini" => ModelCost::VeryCheap,
                 "gpt-4-1106-preview" => ModelCost::GoodValue,
                 "gpt-4-vision-preview" => ModelCost::GoodValue,
+                "gpt-4.1" => ModelCost::GoodValue,
+                "gpt-4.1-nano" => ModelCost::VeryCheap,
+                "gpt-4.1-mini" => ModelCost::Cheap,
                 "dall-e-3" => ModelCost::GoodValue,
+                "o3-mini" => ModelCost::Cheap,
+                "o4-mini" => ModelCost::Cheap,
+                "o1-mini" => ModelCost::Cheap,
+                model_type if model_type.starts_with("o3") => ModelCost::Expensive,
                 _ => ModelCost::Unknown,
             },
             LLMProviderInterface::TogetherAI(togetherai) => match togetherai.model_type.as_str() {
@@ -534,13 +543,12 @@ impl ModelCapabilitiesManager {
     pub fn get_max_output_tokens(model: &LLMProviderInterface) -> usize {
         match model {
             LLMProviderInterface::OpenAI(openai) => {
-                if openai.model_type.contains("4o-mini") {
+                if openai.model_type.contains("4o-mini") || openai.model_type.starts_with("gpt-4o") {
                     16_384
-                } else if openai.model_type.starts_with("o1-preview")
-                    || openai.model_type.starts_with("o1-mini")
-                    || openai.model_type.starts_with("gpt-4.1")
-                {
+                } else if openai.model_type.starts_with("o1-preview") || openai.model_type.starts_with("gpt-4.1") {
                     32768
+                } else if openai.model_type.starts_with("o1-mini") {
+                    65_536
                 } else if openai.model_type.starts_with("o3") || openai.model_type.starts_with("o4-mini") {
                     100_000
                 } else if openai.model_type.starts_with("gpt-3.5") {
@@ -703,7 +711,10 @@ impl ModelCapabilitiesManager {
     pub fn has_tool_capabilities(model: &LLMProviderInterface, _stream: Option<bool>) -> bool {
         eprintln!("has tool capabilities model: {:?}", model);
         match model {
-            LLMProviderInterface::OpenAI(_) => true,
+            LLMProviderInterface::OpenAI(openai) => {
+                // o1-mini specifically does not support function calling
+                !openai.model_type.starts_with("o1-mini")
+            }
             LLMProviderInterface::Ollama(model) => {
                 // For Ollama, check model type and respect the passed stream parameter
                 model.model_type.starts_with("llama3.1")
