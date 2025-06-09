@@ -4427,6 +4427,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+dependencies = [
+ "bitflags 2.9.1",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "no-std-compat"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5128,6 +5140,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-wrap"
+version = "8.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3ef4f2f0422f23a82ec9f628ea2acd12871c81a9362b02c43c1aa86acfc3ba1"
+dependencies = [
+ "futures",
+ "indexmap 2.9.0",
+ "nix 0.30.1",
+ "tokio",
+ "tracing",
+ "windows 0.61.1",
+]
+
+[[package]]
 name = "prometheus-client"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5689,14 +5715,15 @@ dependencies = [
 [[package]]
 name = "rmcp"
 version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33a0110d28bd076f39e14bfd5b0340216dd18effeb5d02b43215944cc3e5c751"
+source = "git+https://github.com/modelcontextprotocol/rust-sdk.git?rev=a66f66ae345a0fafde1e2ee496ec137d77aef82a#a66f66ae345a0fafde1e2ee496ec137d77aef82a"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "chrono",
  "futures",
+ "http 1.3.1",
  "paste",
  "pin-project-lite",
+ "process-wrap",
  "reqwest 0.12.18",
  "rmcp-macros",
  "schemars",
@@ -5705,19 +5732,19 @@ dependencies = [
  "sse-stream",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
- "url",
 ]
 
 [[package]]
 name = "rmcp-macros"
 version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6e2b2fd7497540489fa2db285edd43b7ed14c49157157438664278da6e42a7a"
+source = "git+https://github.com/modelcontextprotocol/rust-sdk.git?rev=a66f66ae345a0fafde1e2ee496ec137d77aef82a#a66f66ae345a0fafde1e2ee496ec137d77aef82a"
 dependencies = [
  "proc-macro2",
  "quote",
+ "serde_json",
  "syn 2.0.101",
 ]
 
@@ -5734,7 +5761,7 @@ dependencies = [
  "netlink-packet-utils",
  "netlink-proto",
  "netlink-sys",
- "nix",
+ "nix 0.26.4",
  "thiserror 1.0.69",
  "tokio",
 ]
@@ -6049,6 +6076,7 @@ version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fbf2ae1b8bc8e02df939598064d22402220cd5bbcca1c76f7d6a310974d5615"
 dependencies = [
+ "chrono",
  "dyn-clone",
  "schemars_derive",
  "serde",
@@ -6593,6 +6621,7 @@ dependencies = [
 name = "shinkai_non_rust_code"
 version = "1.0.10"
 dependencies = [
+ "log",
  "serde",
  "serde_json",
  "shinkai_message_primitives",
@@ -6895,9 +6924,9 @@ dependencies = [
 
 [[package]]
 name = "sse-stream"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0baa01c3efebe4050c7bb999ae87d5b17256b7f71391389e5fc08cdcd98ad550"
+checksum = "3f649a9f9e91db2ed32f3724516eac2bc09fab77fc33be8f670f5619b9dc6c3f"
 dependencies = [
  "bytes",
  "futures-util",
