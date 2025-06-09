@@ -49,7 +49,7 @@ impl MCPServerTool {
         ToolRouterKey::new(
             "local".to_string(),
             "__shinkai_mcp_server_import".to_string(),
-            name,
+            name.to_lowercase(),
             None,
         )
     }
