@@ -13,15 +13,15 @@ use crate::network::{
 };
 use crate::managers::{IdentityManager, identity_manager::IdentityManagerTrait};
 use ed25519_dalek::SigningKey;
-use libp2p::PeerId;
+use libp2p::{request_response::ResponseChannel, PeerId};
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, ws_types::WSUpdateHandler},
-    shinkai_message::shinkai_message::ShinkaiMessage,
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::MessageSchemaType},
+    shinkai_utils::{encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, shinkai_message_builder::ShinkaiMessageBuilder},
 };
 use shinkai_sqlite::SqliteManager;
 use std::{net::SocketAddr, sync::{Arc, Weak}};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc::UnboundedSender, Mutex};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 /// Message handler that integrates libp2p messages with the existing Shinkai network logic
@@ -36,7 +36,7 @@ pub struct ShinkaiMessageHandler {
     proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     local_addr: SocketAddr,
-    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
 }
 
 impl ShinkaiMessageHandler {
@@ -52,7 +52,7 @@ impl ShinkaiMessageHandler {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         local_addr: SocketAddr,
-        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+        libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
     ) -> Self {
         Self {
             db,
@@ -69,8 +69,12 @@ impl ShinkaiMessageHandler {
         }
     }
 
+    pub fn set_libp2p_event_sender(&mut self, libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>) {
+        self.libp2p_event_sender = libp2p_event_sender;
+    }
+
     /// Handle a message from a peer - this replaces the NetworkJobManager processing
-    pub async fn handle_message(&self, peer_id: PeerId, message: ShinkaiMessage) {
+    pub async fn handle_message(&self, peer_id: PeerId, message: ShinkaiMessage, channel: Option<ResponseChannel<ShinkaiMessage>>) {
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
@@ -82,6 +86,7 @@ impl ShinkaiMessageHandler {
             self.local_addr,
             peer_id,
             &message,
+            channel,
         ).await {
             shinkai_log(
                 ShinkaiLogOption::Network,
@@ -97,6 +102,7 @@ impl ShinkaiMessageHandler {
         receiver_address: SocketAddr,
         sender_peer_id: PeerId,
         message: &ShinkaiMessage,
+        channel: Option<ResponseChannel<ShinkaiMessage>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let maybe_db = self.db
             .upgrade()
@@ -163,7 +169,7 @@ impl ShinkaiMessageHandler {
             message.clone(),
             sender_identity.node_encryption_public_key,
             sender_identity.addr.unwrap(),
-            sender_profile_name_string,
+            sender_profile_name_string.clone(),
             &self.encryption_secret_key,
             &self.signature_secret_key,
             &self.node_name.get_node_name_string(),
@@ -180,6 +186,51 @@ impl ShinkaiMessageHandler {
         .await
         .map_err(|e| format!("Message processing failed: {:?}", e))?;
 
+        if let Some(channel) = channel {
+            let ack_message = ShinkaiMessageBuilder::new(
+                self.encryption_secret_key.clone(),
+                self.signature_secret_key.clone(),
+                sender_identity.node_encryption_public_key,
+            )
+            .message_raw_content("ACK".to_string())
+            .no_body_encryption()
+            .message_schema_type(MessageSchemaType::TextContent)
+            .internal_metadata(
+                "main".to_string(),
+                "main".to_string(),
+                EncryptionMethod::None,
+                None,
+            )
+            .external_metadata_with_other(
+                sender_profile_name_string,
+                self.node_name.get_node_name_string(),
+                encryption_public_key_to_string(sender_identity.node_encryption_public_key),
+            )
+            .build()
+            .unwrap();
+
+            let network_event = NetworkEvent::SendResponse {
+                channel: channel,
+                message: ack_message,
+            };
+            if let Some(libp2p_event_sender) = self.libp2p_event_sender.as_ref() {
+                if let Err(e) = libp2p_event_sender.send(network_event) {
+                    eprintln!("Failed to send response: {:?}", e);
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to send response: {:?}", e),
+                    );
+                }
+            } else {
+                eprintln!("No libp2p event sender");
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("No libp2p event sender"),
+                );
+            }
+        }
         Ok(())
     }
 }
