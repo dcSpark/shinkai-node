@@ -1,5 +1,6 @@
 use embedding_function::EmbeddingFunction;
 use errors::SqliteManagerError;
+use log::info;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
@@ -971,6 +972,17 @@ impl SqliteManager {
         Ok(())
     }
     pub fn migrate_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if 'HTTP' type exists in the CHECK constraint
+        info!("Checking if HTTP type exists in mcp_servers table...");
+        let mut stmt = conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='mcp_servers'")?;
+        let table_sql: String = stmt.query_row([], |row| row.get(0))?;
+        // Only migrate if HTTP is not in the type constraint
+        if table_sql.contains("'HTTP'") {
+            info!("HTTP type found in constraint - skipping migration");
+            return Ok(());
+        }
+        info!("HTTP type not found in constraint - proceeding with migration");
+
         // SQLite doesn't support MODIFY COLUMN, so we need to:
         // 1. Create a new table with the desired schema
         // 2. Copy data from old table
