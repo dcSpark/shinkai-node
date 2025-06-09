@@ -1,7 +1,7 @@
 use ed25519_dalek::SigningKey;
 use futures::prelude::*;
 use libp2p::{
-    dcutr, identify, noise, ping, relay, request_response,
+    dcutr, identify, noise, ping, relay, request_response::{self, ResponseChannel},
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm,
 };
@@ -28,11 +28,16 @@ pub struct ShinkaiNetworkBehaviour {
 }
 
 /// Events that can be sent through the network
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum NetworkEvent {
     /// A message to be sent directly to a specific peer using request-response
     SendDirectMessage {
         peer_id: PeerId,
+        message: ShinkaiMessage,
+    },
+    /// A response to be sent to a specific peer using request-response
+    SendResponse {
+        channel: ResponseChannel<ShinkaiMessage>,
         message: ShinkaiMessage,
     },
     /// Add a peer to connect to
@@ -93,7 +98,7 @@ impl LibP2PManager {
         node_name: String,
         identity_secret_key: SigningKey,
         listen_port: Option<u16>,
-        message_handler: ShinkaiMessageHandler,
+        mut message_handler: ShinkaiMessageHandler,
         relay_address: Option<Multiaddr>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())?;
@@ -170,6 +175,8 @@ impl LibP2PManager {
         // Create event channel
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
 
+        message_handler.set_libp2p_event_sender(Some(event_sender.clone()));
+
         Ok(LibP2PManager {
             swarm,
             event_sender,
@@ -230,6 +237,14 @@ impl LibP2PManager {
                 ShinkaiLogLevel::Debug,
                 &format!("Message queued for peer {}, queue size: {}", peer_id, self.message_queue.len()),
             );
+
+            if let Err(e) = self.swarm.dial(peer_id.clone()) {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to dial peer {}: {}", peer_id, e),
+                );
+            }
             
             return Ok(());
         }
@@ -247,6 +262,17 @@ impl LibP2PManager {
             &format!("Direct message request sent to peer {}", peer_id),
         );
 
+        Ok(())
+    }
+
+    pub async fn send_response_to_peer(
+        &mut self,
+        channel: ResponseChannel<ShinkaiMessage>,
+        message: ShinkaiMessage,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.swarm.behaviour_mut().request_response.send_response(channel, message.clone())
+            .map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Failed to send response")) as Box<dyn std::error::Error>)?;
+        eprintln!("Response sent to identity {:?} from identity {:?}", message.external_metadata.recipient, message.external_metadata.sender);
         Ok(())
     }
 
@@ -560,7 +586,6 @@ impl LibP2PManager {
                 }
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::RequestResponse(req_resp_event)) => {
-                eprintln!("Request response event: {:?}", req_resp_event);
                 match req_resp_event {
                     request_response::Event::Message { peer, message } => {
                         match message {
@@ -570,9 +595,10 @@ impl LibP2PManager {
                                     ShinkaiLogLevel::Info,
                                     &format!("Received direct message request from peer {}", peer),
                                 );
+                                eprintln!("Received direct message request from peer {} {:?}", peer, request);
 
                                 // Handle the incoming request message
-                                self.message_handler.handle_message(peer, request).await;
+                                self.message_handler.handle_message(peer, request, Some(channel)).await;
                             }
                             request_response::Message::Response { response, .. } => {
                                 shinkai_log(
@@ -582,11 +608,11 @@ impl LibP2PManager {
                                 );
                                 eprintln!("Received direct message response from peer {} {:?}", peer, response);
                                 // Handle the response (acknowledgment)
-                                // self.message_handler.handle_message(peer, response).await;
+                                self.message_handler.handle_message(peer, response, None).await;
                             }
                         }
                     }
-                    request_response::Event::OutboundFailure { peer, error, .. } => {
+                    request_response::Event::OutboundFailure { peer, request_id, error, .. } => {
                         match error {
                             request_response::OutboundFailure::DialFailure => {
                                 eprintln!("Dial failure to peer {} - message will be queued for retry", peer);
@@ -596,8 +622,18 @@ impl LibP2PManager {
                                     &format!("Dial failure to peer {} - will retry when connection is established", peer),
                                 );
                             }
+                            request_response::OutboundFailure::ConnectionClosed => {
+                                // This is often expected behavior (connection closed after message delivery)
+                                // Only log as debug to avoid noise in test outputs
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Debug,
+                                    &format!("Connection closed to peer {} during message send", peer),
+                                );
+                                eprintln!("Connection closed to peer {} for request {:?} (this may be expected)", peer, request_id);
+                            }
                             _ => {
-                                eprintln!("Failed to send direct message to peer {}: {:?}", peer, error);
+                                eprintln!("Failed to send direct message {:?} to peer {}: {:?}", request_id, peer, error);
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Error,
@@ -607,6 +643,7 @@ impl LibP2PManager {
                         }
                     }
                     request_response::Event::InboundFailure { peer, error, .. } => {
+                        eprintln!("Failed to receive direct message from peer {}: {:?}", peer, error);
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Error,
@@ -619,6 +656,7 @@ impl LibP2PManager {
                             ShinkaiLogLevel::Debug,
                             &format!("Successfully sent response to peer {}", peer),
                         );
+                        eprintln!("Successfully sent response to peer {}", peer);
                     }
                 }
             }
@@ -849,6 +887,14 @@ impl LibP2PManager {
                     &format!("Sending direct message to peer {}", peer_id),
                 );
                 self.send_direct_message_to_peer(peer_id, message).await?;
+            }
+            NetworkEvent::SendResponse { channel, message } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Sending response to peer."),
+                );
+                self.send_response_to_peer(channel, message).await?;
             }
             NetworkEvent::AddPeer { peer_id, address } => {
                 shinkai_log(

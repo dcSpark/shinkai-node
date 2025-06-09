@@ -9,18 +9,11 @@ use libp2p::{
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use std::{time::Duration, collections::VecDeque};
+use std::time::Duration;
 use tokio::sync::mpsc;
 use dashmap::DashMap;
-use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiVersion,
-};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
-use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
-use shinkai_message_primitives::shinkai_utils::shinkai_time::ShinkaiStringTime;
-
-use crate::{LibP2PRelayError, RelayMessage};
 use shinkai_crypto_identities::ShinkaiRegistry;
+use crate::{LibP2PRelayError, RelayMessage};
 
 /// A queued message waiting to be delivered
 #[derive(Debug)]
@@ -46,13 +39,11 @@ pub struct RelayManager {
     swarm: Swarm<RelayBehaviour>,
     registered_peers: DashMap<String, PeerId>, // identity -> peer_id
     peer_identities: DashMap<PeerId, String>,  // peer_id -> identity
+    request_response_channels: DashMap<request_response::OutboundRequestId, request_response::ResponseChannel<ShinkaiMessage>>, // request_id -> channel
     message_sender: mpsc::UnboundedSender<RelayMessage>,
     message_receiver: mpsc::UnboundedReceiver<RelayMessage>,
     external_ip: Option<std::net::IpAddr>, // Store detected external IP
     registry: ShinkaiRegistry, // Blockchain registry for identity verification
-    // Message queue fields
-    message_queue: VecDeque<QueuedRelayMessage>, // Queue for messages that failed to deliver
-    max_retry_attempts: u32, // Maximum retry attempts per message
 }
 
 impl RelayManager {
@@ -214,13 +205,11 @@ impl RelayManager {
             swarm,
             registered_peers: DashMap::new(),
             peer_identities: DashMap::new(),
+            request_response_channels: DashMap::new(),
             message_sender,
             message_receiver,
             external_ip,
             registry,
-            // Message queue fields
-            message_queue: VecDeque::new(),
-            max_retry_attempts: 5,
         })
     }
 
@@ -305,49 +294,6 @@ impl RelayManager {
         self.peer_identities.get(peer_id).map(|entry| entry.value().clone())
     }
 
-    /// Create a simple unencrypted acknowledgment message in response to a request
-    fn create_simple_ack_message(original_request: &ShinkaiMessage) -> ShinkaiMessage {
-        // Create the acknowledgment message data
-        let ack_data = ShinkaiData {
-            message_raw_content: "ACK".to_string(),
-            message_content_schema: MessageSchemaType::TextContent,
-        };
-
-        // Create internal metadata with no encryption
-        let internal_metadata = InternalMetadata {
-            sender_subidentity: String::new(),
-            recipient_subidentity: String::new(),
-            inbox: String::new(),
-            signature: String::new(),
-            encryption: EncryptionMethod::None,
-            node_api_data: None,
-        };
-
-        // Create the message body
-        let body = ShinkaiBody {
-            message_data: MessageData::Unencrypted(ack_data),
-            internal_metadata,
-        };
-
-        // Create external metadata (swap sender and recipient from original)
-        let external_metadata = ExternalMetadata {
-            sender: original_request.external_metadata.recipient.clone(),
-            recipient: original_request.external_metadata.sender.clone(),
-            scheduled_time: ShinkaiStringTime::generate_time_now(),
-            signature: String::new(),
-            intra_sender: String::new(),
-            other: String::new(),
-        };
-
-        // Create the complete message
-        ShinkaiMessage {
-            body: MessageBody::Unencrypted(body),
-            external_metadata,
-            encryption: EncryptionMethod::None,
-            version: ShinkaiVersion::V1_0,
-        }
-    }
-
     /// Verify a peer's identity by checking their public key against the blockchain registry
     async fn verify_peer_identity_internal(
         registry: ShinkaiRegistry, 
@@ -388,10 +334,7 @@ impl RelayManager {
         None
     }
 
-    pub async fn run(&mut self) -> Result<(), LibP2PRelayError> {
-        println!("Starting relay manager...");
-        let mut message_retry_timer = tokio::time::interval(Duration::from_secs(2));
-        
+    pub async fn run(&mut self) -> Result<(), LibP2PRelayError> {        
         loop {
             tokio::select! {
                 // Handle swarm events
@@ -408,11 +351,6 @@ impl RelayManager {
                         }
                         None => break, // Channel closed
                     }
-                }
-                
-                // Process message queue for retry
-                _ = message_retry_timer.tick() => {
-                    self.process_message_queue().await?;
                 }
             }
         }
@@ -504,16 +442,23 @@ impl RelayManager {
                                     target_identity.clone()
                                 };
                                 
-                                // Use the new delivery method that handles both relay and direct connections
-                                if let Err(e) = self.deliver_message_to_target(peer, &target_node, request, channel).await {
-                                    println!("   Failed to deliver message to {}: {:?}", target_node, e);
+                                // Forward to target and store channel for response
+                                if let Some(target_peer_id) = self.find_peer_by_identity(&target_node) {
+                                    let outbound_id = self.swarm.behaviour_mut().request_response.send_request(&target_peer_id, request);
+                                    self.request_response_channels.insert(outbound_id, channel);
+                                } else {
+                                    // Target not found, send error response
+                                    let mut response = request.clone();
+                                    response.external_metadata.other = "Target not found".to_string();
+                                    let _ = self.swarm.behaviour_mut().request_response.send_response(channel, response);
                                 }
                             }
-                            request_response::Message::Response { response, .. } => {
+                            request_response::Message::Response { response, request_id, .. } => {
                                 println!("🔄 Relay: Received direct message response from peer {}: {:?}", peer, response);
 
-                                // TODO: Handle response from target peer.
-                                // let _ = self.swarm.behaviour_mut().request_response.send_response(channel, response);
+                                if let Some((_, channel)) = self.request_response_channels.remove(&request_id) {
+                                    let _ = self.swarm.behaviour_mut().request_response.send_response(channel, response);
+                                }
                             }
                         }
                     }
@@ -545,157 +490,6 @@ impl RelayManager {
         Ok(())
     }
 
-    /// Check if a target identity is configured for direct connection vs relay
-    async fn check_target_connection_type(&mut self, target_identity: &str) -> Result<(bool, Vec<String>), LibP2PRelayError> {
-        match self.registry.get_identity_record(target_identity.to_string(), None).await {
-            Ok(identity_record) => {
-                println!("🔄 Identity record for {}: {:?}", target_identity, identity_record);
-                let is_direct = !identity_record.routing;
-                let addresses = identity_record.address_or_proxy_nodes;
-                Ok((is_direct, addresses))
-            }
-            Err(e) => {
-                println!("❌ Failed to get identity record for {}: {}", target_identity, e);
-                // Default to assuming it's a relay connection
-                Ok((false, vec![]))
-            }
-        }
-    }
-
-    /// Attempt to deliver a message to a target identity
-    async fn deliver_message_to_target(
-        &mut self,
-        source_peer: PeerId,
-        target_identity: &str,
-        message: ShinkaiMessage,
-        channel: request_response::ResponseChannel<ShinkaiMessage>,
-    ) -> Result<(), LibP2PRelayError> {
-        // First check if target is connected as a relay peer
-        if let Some(target_peer_id) = self.find_peer_by_identity(target_identity) {
-            println!("   Forwarding to connected relay peer: {}", target_peer_id);
-            
-            // Forward the request to the target peer
-            let _ = self.swarm
-                .behaviour_mut()
-                .request_response
-                .send_request(&target_peer_id, message.clone());
-            
-            // Send acknowledgment back to sender
-            let ack_message = Self::create_simple_ack_message(&message);
-            let _ = self.swarm.behaviour_mut().request_response.send_response(channel, ack_message);
-            return Ok(());
-        }
-
-        // Check if target is configured for direct connection
-        match self.check_target_connection_type(target_identity).await {
-            Ok((is_direct, addresses)) => {
-                if is_direct && !addresses.is_empty() {
-                    println!("   Target {} is configured for direct connection, attempting to dial: {:?}", target_identity, addresses);
-                    
-                    // Try to dial the direct address
-                    for addr_str in &addresses {
-                        if let Ok(multiaddr) = format!("/ip4/{}/tcp/{}", 
-                            addr_str.split(':').next().unwrap_or(""), 
-                            addr_str.split(':').nth(1).unwrap_or("8080")
-                        ).parse::<libp2p::Multiaddr>() {
-                            
-                            println!("   Dialing direct address: {}", multiaddr);
-                            if let Err(e) = self.swarm.dial(multiaddr.clone()) {
-                                println!("   Failed to dial {}: {}", multiaddr, e);
-                            } else {
-                                // Queue the message for retry once connection is established
-                                let queued_message = QueuedRelayMessage {
-                                    source_peer,
-                                    target_identity: target_identity.to_string(),
-                                    message: message.clone(),
-                                    retry_count: 0,
-                                    last_attempt: std::time::Instant::now(),
-                                };
-                                self.message_queue.push_back(queued_message);
-                                
-                                // Send acknowledgment that we're attempting delivery
-                                let ack_message = Self::create_simple_ack_message(&message);
-                                let _ = self.swarm.behaviour_mut().request_response.send_response(channel, ack_message);
-                                return Ok(());
-                            }
-                        }
-                    }
-                } else {
-                    println!("   Target {} not configured for direct connection", target_identity);
-                }
-            }
-            Err(e) => {
-                println!("   Failed to check connection type for {}: {:?}", target_identity, e);
-            }
-        }
-
-        // If we get here, we couldn't deliver the message
-        println!("   Target peer {} not found and not reachable", target_identity);
-        // TODO: Send not found response to sender
-        Ok(())
-    }
-
-    /// Process the message queue and retry delivering failed messages
-    async fn process_message_queue(&mut self) -> Result<(), LibP2PRelayError> {
-        if self.message_queue.is_empty() {
-            return Ok(());
-        }
-
-        println!("📦 Processing relay message queue with {} messages", self.message_queue.len());
-
-        let mut messages_to_retry = Vec::new();
-        let mut messages_to_remove = Vec::new();
-        let now = std::time::Instant::now();
-
-        // Check each message in the queue
-        for (index, queued_message) in self.message_queue.iter().enumerate() {
-            // Wait at least 1 second between retry attempts
-            if now.duration_since(queued_message.last_attempt) < Duration::from_secs(1) {
-                continue;
-            }
-
-            // Check if we've exceeded max retry attempts
-            if queued_message.retry_count >= self.max_retry_attempts {
-                println!("   Message to {} exceeded max retry attempts ({}), dropping", 
-                    queued_message.target_identity, self.max_retry_attempts);
-                messages_to_remove.push(index);
-                continue;
-            }
-
-            // Check if target peer is now connected
-            if let Some(target_peer_id) = self.find_peer_by_identity(&queued_message.target_identity) {
-                println!("   Target peer {} now connected, will retry delivery", queued_message.target_identity);
-                messages_to_retry.push(index);
-            }
-        }
-
-        // Remove messages that exceeded retry limits (in reverse order to maintain indices)
-        for &index in messages_to_remove.iter().rev() {
-            self.message_queue.remove(index);
-        }
-
-        // Retry messages for connected peers (in reverse order to maintain indices)
-        for &index in messages_to_retry.iter().rev() {
-            if let Some(queued_message) = self.message_queue.remove(index) {
-                if let Some(target_peer_id) = self.find_peer_by_identity(&queued_message.target_identity) {
-                    println!("   🔄 Retrying message delivery to {} (attempt {})", 
-                        queued_message.target_identity, queued_message.retry_count + 1);
-                    
-                    // Attempt to send the message
-                    let _ = self.swarm
-                        .behaviour_mut()
-                        .request_response
-                        .send_request(&target_peer_id, queued_message.message);
-                }
-            }
-        }
-
-        if !self.message_queue.is_empty() {
-            println!("📦 Message queue still has {} messages pending", self.message_queue.len());
-        }
-
-        Ok(())
-    }
 }
 
 // This allows the noise configuration to work

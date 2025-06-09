@@ -6,7 +6,7 @@ use super::tool_types::{OperatingSystem, RunnerType, ToolResult};
 use crate::tools::error::ToolError;
 use rmcp::model::{CallToolResult, Content};
 use serde_json::Value;
-use shinkai_mcp::mcp_methods::{run_tool_via_command, run_tool_via_sse};
+use shinkai_mcp::mcp_methods::{run_tool_via_command, run_tool_via_http, run_tool_via_sse};
 use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_tools_runner::tools::run_result::RunResult;
@@ -49,7 +49,7 @@ impl MCPServerTool {
         ToolRouterKey::new(
             "local".to_string(),
             "__shinkai_mcp_server_import".to_string(),
-            name,
+            name.to_lowercase(),
             None,
         )
     }
@@ -130,6 +130,7 @@ impl MCPServerTool {
                 run_tool_via_command(mcp_server.command.unwrap_or_default(), tool, env, parameters).await
             }
             MCPServerType::Sse => run_tool_via_sse(mcp_server.url.unwrap_or_default(), tool, parameters).await,
+            MCPServerType::Http => run_tool_via_http(mcp_server.url.unwrap_or_default(), tool, parameters).await,
         }
     }
 
