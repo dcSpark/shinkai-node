@@ -6319,7 +6319,7 @@ checksum = "24188a676b6ae68c3b2cb3a01be17fbf7240ce009799bb56d5b1409051e78fde"
 
 [[package]]
 name = "shinkai_crypto_identities"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "chrono",
  "dashmap",
@@ -6336,7 +6336,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_embedding"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6357,7 +6357,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_fs"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6390,7 +6390,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_http_api"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -6426,7 +6426,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_job_queue_manager"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "chrono",
  "serde",
@@ -6440,7 +6440,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_libp2p_relayer"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "chrono",
  "clap 3.2.25",
@@ -6465,7 +6465,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_mcp"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "async-trait",
  "futures",
@@ -6486,7 +6486,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_message_primitives"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -6514,7 +6514,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_node"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -6591,7 +6591,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_non_rust_code"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "serde",
  "serde_json",
@@ -6603,7 +6603,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_sqlite"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "bincode",
  "blake3",
@@ -6665,7 +6665,7 @@ dependencies = [
 
 [[package]]
 name = "shinkai_tools_primitives"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "base64 0.22.1",
  "log",
