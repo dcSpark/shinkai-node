@@ -168,7 +168,7 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Ollama(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Exo(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Groq(model) => Self::get_shared_capabilities(model.model_type().as_str()),
-            LLMProviderInterface::Gemini(_) => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
+            LLMProviderInterface::Gemini(gemini) => Self::get_gemini_capabilities(gemini.model_type.as_str()),
             LLMProviderInterface::OpenRouter(model) => Self::get_shared_capabilities(model.model_type().as_str()),
             LLMProviderInterface::Claude(_) => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
             LLMProviderInterface::DeepSeek(_) => vec![ModelCapability::TextInference],
@@ -198,6 +198,150 @@ impl ModelCapabilitiesManager {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             _ => vec![ModelCapability::TextInference],
+        }
+    }
+
+    fn get_gemini_capabilities(model_type: &str) -> Vec<ModelCapability> {
+        match model_type {
+            // Gemini 2.5 models
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => {
+                vec![ModelCapability::TextInference]
+            }
+            model_type if model_type.starts_with("gemini-2.5-pro-preview") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => {
+                vec![ModelCapability::TextInference]
+            }
+            // Gemini 2.0 models
+            model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => {
+                vec![
+                    ModelCapability::TextInference,
+                    ModelCapability::ImageAnalysis,
+                    ModelCapability::ImageGeneration,
+                ]
+            }
+            model_type if model_type.starts_with("gemini-2.0-flash-lite") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-2.0-flash") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            // Gemini 1.5 models
+            model_type if model_type.starts_with("gemini-1.5-flash-8b") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-1.5-flash") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-1.5-pro") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            // Legacy and other Gemini models
+            model_type if model_type.starts_with("gemini-pro") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            model_type if model_type.starts_with("gemini-ultra") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
+            _ => vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis],
+        }
+    }
+
+    fn get_gemini_cost(model_type: &str) -> ModelCost {
+        match model_type {
+            // Gemini 2.5 models (preview/experimental - more expensive due to restricted limits)
+            model_type if model_type.starts_with("gemini-2.5-flash-preview") => ModelCost::GoodValue,
+            model_type if model_type.starts_with("gemini-2.5-pro-preview") => ModelCost::Expensive,
+            // Gemini 2.0 models
+            model_type if model_type.starts_with("gemini-2.0-flash-lite") => ModelCost::VeryCheap,
+            model_type if model_type.starts_with("gemini-2.0-flash") => ModelCost::Cheap,
+            // Gemini 1.5 models
+            model_type if model_type.starts_with("gemini-1.5-flash-8b") => ModelCost::VeryCheap,
+            model_type if model_type.starts_with("gemini-1.5-flash") => ModelCost::Cheap,
+            model_type if model_type.starts_with("gemini-1.5-pro") => ModelCost::GoodValue,
+            // Legacy Gemini models
+            model_type if model_type.starts_with("gemini-pro") => ModelCost::Cheap,
+            model_type if model_type.starts_with("gemini-ultra") => ModelCost::Expensive,
+            _ => ModelCost::Cheap,
+        }
+    }
+
+    fn get_gemini_max_tokens(model_type: &str) -> usize {
+        match model_type {
+            // Gemini 2.5 models
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => 1_048_576,
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio-dialog") => 128_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio-thinking-dialog") => 128_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => 8_000,
+            model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 1_048_576,
+            model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 8_000,
+            // Gemini 2.0 models
+            model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => 32_000,
+            model_type if model_type.starts_with("gemini-2.0-flash-lite") => 1_048_576,
+            model_type if model_type.starts_with("gemini-2.0-flash") => 1_048_576,
+            // Gemini 1.5 models
+            model_type if model_type.starts_with("gemini-1.5-pro") => 2_097_152,
+            model_type if model_type.starts_with("gemini-1.5-flash") => 1_048_576,
+            // Legacy Gemini models
+            model_type if model_type.starts_with("gemini-pro") => 30_720,
+            model_type if model_type.starts_with("gemini-ultra") => 30_720,
+            _ => 1_000_000, // Default for unknown Gemini models
+        }
+    }
+
+    fn get_gemini_max_output_tokens(model_type: &str) -> usize {
+        match model_type {
+            // Gemini 2.5 models
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => 65_536,
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio-dialog") => 8_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio-thinking-dialog") => 8_000,
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => 16_000,
+            model_type if model_type.starts_with("gemini-2.5-pro-preview-06-05") => 65_536,
+            model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => 16_000,
+            // Gemini 2.0 models
+            model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => 8_192,
+            model_type if model_type.starts_with("gemini-2.0-flash-lite") => 8_192,
+            model_type if model_type.starts_with("gemini-2.0-flash") => 8_192,
+            // Gemini 1.5 models
+            model_type if model_type.starts_with("gemini-1.5-pro") => 8_192,
+            model_type if model_type.starts_with("gemini-1.5-flash") => 8_192,
+            // Legacy Gemini models
+            model_type if model_type.starts_with("gemini-pro") => 2_048,
+            model_type if model_type.starts_with("gemini-ultra") => 2_048,
+            _ => 8_192, // Default for unknown Gemini models
+        }
+    }
+
+    fn gemini_has_tool_capabilities(model_type: &str) -> bool {
+        match model_type {
+            // Gemini 2.5 models - TTS models don't support function calling
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-tts") => false,
+            model_type if model_type.starts_with("gemini-2.5-pro-preview-tts") => false,
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-05-20") => true,
+            model_type if model_type.starts_with("gemini-2.5-flash-preview-native-audio") => true,
+            model_type if model_type.starts_with("gemini-2.5-flash-exp-native-audio") => true,
+            model_type if model_type.starts_with("gemini-2.5-pro-preview") => true,
+            // Gemini 2.0 models - Image generation model doesn't support function calling
+            model_type if model_type.starts_with("gemini-2.0-flash-preview-image-generation") => false,
+            model_type if model_type.starts_with("gemini-2.0-flash-lite") => true,
+            model_type if model_type.starts_with("gemini-2.0-flash") => true,
+            // Gemini 1.5 models
+            model_type if model_type.starts_with("gemini-1.5-pro") => true,
+            model_type if model_type.starts_with("gemini-1.5-flash") => true,
+            // Legacy Gemini models
+            model_type if model_type.starts_with("gemini-pro") => true,
+            model_type if model_type.starts_with("gemini-ultra") => true,
+            _ => true, // Default for unknown Gemini models
         }
     }
 
@@ -234,7 +378,7 @@ impl ModelCapabilitiesManager {
             },
             LLMProviderInterface::Ollama(_) => ModelCost::Free,
             LLMProviderInterface::Groq(_) => ModelCost::VeryCheap,
-            LLMProviderInterface::Gemini(_) => ModelCost::Cheap,
+            LLMProviderInterface::Gemini(gemini) => Self::get_gemini_cost(gemini.model_type.as_str()),
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
@@ -439,7 +583,7 @@ impl ModelCapabilitiesManager {
                 "CODE_GENERATOR_NO_FEEDBACK" => 128_000,
                 _ => 128_000,
             },
-            LLMProviderInterface::Gemini(_) => 1_000_000,
+            LLMProviderInterface::Gemini(gemini) => Self::get_gemini_max_tokens(gemini.model_type.as_str()),
             LLMProviderInterface::Ollama(ollama) => Self::get_max_tokens_for_model_type(&ollama.model_type),
             LLMProviderInterface::Exo(exo) => Self::get_max_tokens_for_model_type(&exo.model_type),
             LLMProviderInterface::Groq(groq) => {
@@ -497,13 +641,25 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("claude-sonnet-4") => 200_000,
             model_type if model_type.starts_with("claude-3-7-sonnet") => 200_000,
             model_type if model_type.starts_with("claude") => 200_000,
+            // Groq Production Models
+            model_type if model_type.starts_with("gemma2-9b-it") => 8_192,
+            model_type if model_type.starts_with("meta-llama/llama-guard-4-12b") => 131_072,
             model_type if model_type.starts_with("llama-3.3-70b-versatile") => 128_000,
             model_type if model_type.starts_with("llama-3.1-8b-instant") => 128_000,
-            model_type if model_type.starts_with("llama-guard-3-8b") => 8_192,
             model_type if model_type.starts_with("llama3-70b-8192") => 8_192,
             model_type if model_type.starts_with("llama3-8b-8192") => 8_192,
+            // Groq Preview Models
+            model_type if model_type.starts_with("allam-2-7b") => 4_096,
+            model_type if model_type.starts_with("deepseek-r1-distill-llama-70b") => 128_000,
+            model_type if model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct") => 131_072,
+            model_type if model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct") => 131_072,
+            model_type if model_type.starts_with("meta-llama/llama-prompt-guard-2-22m") => 512,
+            model_type if model_type.starts_with("meta-llama/llama-prompt-guard-2-86m") => 512,
+            model_type if model_type.starts_with("mistral-saba-24b") => 32_000,
+            model_type if model_type.starts_with("qwen-qwq-32b") => 128_000,
+            // Legacy Groq models (keeping for backward compatibility)
+            model_type if model_type.starts_with("llama-guard-3-8b") => 8_192,
             model_type if model_type.starts_with("mixtral-8x7b-32768") => 32_768,
-            model_type if model_type.starts_with("gemma2-9b-it") => 8_192,
             model_type if model_type.starts_with("llama-3.3-70b-specdec") => 8_192,
             model_type if model_type.starts_with("llama-3.2-1b-preview") => 128_000,
             model_type if model_type.starts_with("llama-3.2-3b-preview") => 128_000,
@@ -584,15 +740,26 @@ impl ModelCapabilitiesManager {
                     4096
                 }
             }
-            LLMProviderInterface::Groq(_) => {
-                // Fill in the appropriate logic for Ollama
-                4096
+            LLMProviderInterface::Groq(groq) => {
+                // Groq model-specific max output tokens based on official documentation
+                if groq.model_type.starts_with("meta-llama/llama-guard-4-12b") {
+                    128
+                } else if groq.model_type.starts_with("llama-3.3-70b-versatile") {
+                    32_768
+                } else if groq.model_type.starts_with("llama-3.1-8b-instant") {
+                    8_192
+                } else if groq
+                    .model_type
+                    .starts_with("meta-llama/llama-4-maverick-17b-128e-instruct")
+                    || groq.model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct")
+                {
+                    8_192
+                } else {
+                    4096 // Default for other Groq models
+                }
             }
             LLMProviderInterface::Exo(_) => 4096,
-            LLMProviderInterface::Gemini(_) => {
-                // Fill in the appropriate logic for Ollama
-                8192
-            }
+            LLMProviderInterface::Gemini(gemini) => Self::get_gemini_max_output_tokens(gemini.model_type.as_str()),
             LLMProviderInterface::OpenRouter(_) => {
                 // Fill in the appropriate logic for OpenRouter
                 if Self::get_max_tokens(model) <= 8000 {
@@ -746,13 +913,21 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-small")
             }
             LLMProviderInterface::Groq(model) => {
-                model.model_type.starts_with("llama-3.3-70b-versatile")
+                // Groq Production Models (that support tool calling)
+                model.model_type.starts_with("gemma2-9b-it")
+                    || model.model_type.starts_with("meta-llama/llama-guard-4-12b")
+                    || model.model_type.starts_with("llama-3.3-70b-versatile")
                     || model.model_type.starts_with("llama-3.1-8b-instant")
-                    || model.model_type.starts_with("llama-guard-3-8b")
                     || model.model_type.starts_with("llama3-70b-8192")
                     || model.model_type.starts_with("llama3-8b-8192")
+                    // Groq Preview Models (that support tool calling)
+                    || model.model_type.starts_with("deepseek-r1-distill-llama-70b")
+                    || model.model_type.starts_with("meta-llama/llama-4-maverick-17b-128e-instruct")
+                    || model.model_type.starts_with("meta-llama/llama-4-scout-17b-16e-instruct")
+                    || model.model_type.starts_with("qwen-qwq-32b")
+                    // Legacy/backward compatibility models
+                    || model.model_type.starts_with("llama-guard-3-8b")
                     || model.model_type.starts_with("mixtral-8x7b-32768")
-                    || model.model_type.starts_with("gemma2-9b-it")
                     || model.model_type.starts_with("llama-3.3-70b-specdec")
                     || model.model_type.starts_with("llama-3.2-1b-preview")
                     || model.model_type.starts_with("llama-3.2-3b-preview")
@@ -762,12 +937,9 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama3.2")
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")
-                    || model.model_type.starts_with("qwen-qwq-32b")
                     || model.model_type.starts_with("qwen-2.5-coder-32b")
                     || model.model_type.starts_with("qwen-2.5-32b")
                     || model.model_type.starts_with("deepseek-r1-distill-qwen-32b")
-                    || model.model_type.starts_with("deepseek-r1-distill-llama-70b")
-                    || model.model_type.starts_with("llama-3.3-70b-versatile")
             }
             LLMProviderInterface::OpenRouter(model) => {
                 model.model_type.starts_with("llama-3.2")
@@ -781,14 +953,7 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
-            LLMProviderInterface::Gemini(model) => {
-                model.model_type.starts_with("gemini-pro")
-                    || model.model_type.starts_with("gemini-pro-vision")
-                    || model.model_type.starts_with("gemini-ultra")
-                    || model.model_type.starts_with("gemini-ultra-vision")
-                    || model.model_type.starts_with("gemini-1.5")
-                    || model.model_type.starts_with("gemini-2.0")
-            }
+            LLMProviderInterface::Gemini(model) => Self::gemini_has_tool_capabilities(model.model_type.as_str()),
             LLMProviderInterface::DeepSeek(_) => true,
             _ => false,
         }
@@ -807,11 +972,23 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Ollama(ollama) => {
                 ollama.model_type.starts_with("deepseek-r1") || ollama.model_type.starts_with("qwq")
             }
+            LLMProviderInterface::Groq(groq) => {
+                groq.model_type.starts_with("deepseek-r1-distill-llama-70b")
+                    || groq.model_type.starts_with("qwen-qwq-32b")
+            }
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {
                 claude.model_type.starts_with("claude-opus-4")
                     || claude.model_type.starts_with("claude-sonnet-4")
                     || claude.model_type.starts_with("claude-3-7-sonnet")
+            }
+            LLMProviderInterface::Gemini(gemini) => {
+                gemini.model_type.starts_with("gemini-2.5-flash-preview-05-20")
+                    || gemini
+                        .model_type
+                        .starts_with("gemini-2.5-flash-exp-native-audio-thinking")
+                    || gemini.model_type.starts_with("gemini-2.5-pro-preview")
+                    || gemini.model_type.starts_with("gemini-2.0-flash")
             }
             _ => false,
         }
