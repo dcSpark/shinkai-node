@@ -1062,6 +1062,15 @@ mod tests {
         ) -> Result<StandardIdentity, String> {
             unimplemented!()
         }
+
+        async fn get_routing_info(
+            &self,
+            _full_profile_name: &str,
+            _: Option<bool>,
+        ) -> Result<(bool, Vec<String>), String> {
+            // Mock implementation - return some default routing info
+            Ok((false, vec!["127.0.0.1:9901".to_string()]))
+        }
     }
 
     fn setup() {

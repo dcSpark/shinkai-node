@@ -13,7 +13,7 @@ use crate::network::{
 };
 use crate::managers::{IdentityManager, identity_manager::IdentityManagerTrait};
 use ed25519_dalek::SigningKey;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::PeerId;
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, ws_types::WSUpdateHandler},
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -35,8 +35,6 @@ pub struct ShinkaiMessageHandler {
     ext_agent_offerings_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    // We'll store a mapping of PeerId to SocketAddr for compatibility
-    peer_addr_map: Arc<Mutex<std::collections::HashMap<PeerId, SocketAddr>>>,
     local_addr: SocketAddr,
     libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 }
@@ -66,16 +64,9 @@ impl ShinkaiMessageHandler {
             ext_agent_offerings_manager,
             proxy_connection_info,
             ws_manager,
-            peer_addr_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
             local_addr,
             libp2p_event_sender,
         }
-    }
-
-    /// Add a peer mapping for PeerId to SocketAddr
-    pub async fn add_peer_mapping(&self, peer_id: PeerId, addr: SocketAddr) {
-        let mut map = self.peer_addr_map.lock().await;
-        map.insert(peer_id, addr);
     }
 
     /// Handle a message from a peer - this replaces the NetworkJobManager processing
@@ -192,25 +183,3 @@ impl ShinkaiMessageHandler {
         Ok(())
     }
 }
-
-/// Convert Multiaddr to SocketAddr (best effort)
-pub fn multiaddr_to_socket_addr(multiaddr: &Multiaddr) -> Option<SocketAddr> {
-    use libp2p::core::multiaddr::Protocol;
-    
-    let mut ip = None;
-    let mut port = None;
-    
-    for component in multiaddr.iter() {
-        match component {
-            Protocol::Ip4(addr) => ip = Some(std::net::IpAddr::V4(addr)),
-            Protocol::Ip6(addr) => ip = Some(std::net::IpAddr::V6(addr)),
-            Protocol::Tcp(p) => port = Some(p),
-            _ => {}
-        }
-    }
-    
-    match (ip, port) {
-        (Some(ip), Some(port)) => Some(SocketAddr::new(ip, port)),
-        _ => None,
-    }
-} 

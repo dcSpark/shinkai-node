@@ -1006,39 +1006,117 @@ impl Node {
         
         let recipient_node_name = message.external_metadata.recipient.clone();
 
-        // Check if we have a relay configured by looking up the proxy connection
-        let (target_peer_id, use_relay, peer_addr) = {
+        // First, check if we have a proxy configured
+        let proxy_configured = {
             let proxy_info = proxy_connection_info.lock().await;
+            proxy_info.is_some()
+        };
+
+        eprintln!("🔄 Sending message to {}, proxy configured: {:?}", recipient_node_name, proxy_configured);
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Info,
+            &format!("Sending message to {}, proxy configured: {}", recipient_node_name, proxy_configured),
+        );
+
+        // Get the recipient's routing configuration from blockchain
+        let (target_peer_id, target_peer_addr, use_relay) = {
             let identity_manager = maybe_identity_manager.lock().await;
 
-            // Try to get the identity record for the recipient node
-            match identity_manager.external_profile_to_global_identity(&recipient_node_name, None).await {
-                Ok(identity) => {
-                    // Check if we have a relay configured in proxy_connection_info
-                    if let Some(ref proxy_info) = *proxy_info {
-                        // We have a relay configured - route through the relay
-                        let relay_identity_name = proxy_info.proxy_identity.get_node_name_string();
+            match identity_manager.get_routing_info(&recipient_node_name, None).await {
+                Ok((recipient_uses_relay, relay_addresses)) => {
+                    eprintln!("🔄 Recipient {} uses relay: {}, addresses: {:?}", recipient_node_name, recipient_uses_relay, relay_addresses);
+                    
+                    // Check if we can handle this routing configuration
+                    if recipient_uses_relay && !proxy_configured {
+                        eprintln!("🔄 Recipient {} uses relay but no proxy/relay configured on this node. Cannot send message to relay-enabled recipient.", recipient_node_name);
+                        return Err(Box::new(std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!("Cannot send message to relay-enabled recipient {} - no proxy/relay configured on this node", recipient_node_name),
+                        )));
+                    }
+
+                    if recipient_uses_relay {
+                        // Recipient uses relay - send through relay
+                        if relay_addresses.is_empty() {
+                            return Err(Box::new(std::io::Error::new(
+                                std::io::ErrorKind::NotFound,
+                                format!("Recipient {} uses relay but no relay addresses found", recipient_node_name),
+                            )));
+                        }
+
+                        let relay_address = &relay_addresses[0];
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Info,
-                            &format!("Relay configured ({}), routing message for {} through relay server", relay_identity_name, recipient_node_name),
+                            &format!("Recipient {} uses relay, sending through relay server: {}", recipient_node_name, relay_address),
+                        );
+
+                        let proxy_info = proxy_connection_info.lock().await;
+                        if let Some(ref proxy_info) = *proxy_info {
+                            let relay_identity_name = proxy_info.proxy_identity.get_node_name_string();
+                            shinkai_log(
+                                ShinkaiLogOption::Network,
+                                ShinkaiLogLevel::Info,
+                                &format!("Using configured relay {} to reach recipient {} at relay address {}", relay_identity_name, recipient_node_name, relay_address),
+                            );
+                            eprintln!("🔄 Using configured relay {} to reach recipient {} at relay address {}", relay_identity_name, recipient_node_name, relay_address);
+                            match identity_manager.external_profile_to_global_identity(&relay_identity_name, None).await {
+                                Ok(relay_identity) => {
+                                    match verifying_key_to_peer_id(relay_identity.node_signature_public_key) {
+                                        Ok(relay_peer_id) => {
+                                            shinkai_log(
+                                                ShinkaiLogOption::Network,
+                                                ShinkaiLogLevel::Info,
+                                                &format!("Sending message to configured relay PeerId: {} for recipient {}", relay_peer_id, recipient_node_name),
+                                            );
+                                            (relay_peer_id, relay_identity.addr, true)
+                                        }
+                                        Err(e) => {
+                                            return Err(Box::new(std::io::Error::new(
+                                                std::io::ErrorKind::Other,
+                                                format!("Failed to convert relay identity public key to PeerId: {}", e),
+                                            )));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    return Err(Box::new(std::io::Error::new(
+                                        std::io::ErrorKind::NotFound,
+                                        format!("Cannot resolve configured relay identity {}: {}", relay_identity_name, e),
+                                    )));
+                                }
+                            }
+                        } else {
+                            return Err(Box::new(std::io::Error::new(
+                                std::io::ErrorKind::NotFound,
+                                format!("Recipient {} uses relay at {} but no relay is configured", recipient_node_name, relay_address),
+                            )));
+                        }
+                    } else {
+                        // Recipient uses direct connection - send directly to them
+                        shinkai_log(
+                            ShinkaiLogOption::Network,
+                            ShinkaiLogLevel::Info,
+                            &format!("Recipient {} uses direct connection, sending direct message", recipient_node_name),
                         );
                         
-                        match identity_manager.external_profile_to_global_identity(&relay_identity_name, None).await {
-                            Ok(relay_identity) => {
-                                match verifying_key_to_peer_id(relay_identity.node_signature_public_key) {
-                                    Ok(relay_peer_id) => {
+                        // Get the recipient's identity for direct connection
+                        match identity_manager.external_profile_to_global_identity(&recipient_node_name, None).await {
+                            Ok(recipient_identity) => {
+                                match verifying_key_to_peer_id(recipient_identity.node_signature_public_key) {
+                                    Ok(peer_id) => {
                                         shinkai_log(
                                             ShinkaiLogOption::Network,
                                             ShinkaiLogLevel::Info,
-                                            &format!("Sending message to relay PeerId: {}", relay_peer_id),
+                                            &format!("Sending direct message to recipient PeerId: {}", peer_id),
                                         );
-                                        (relay_peer_id, true, None)
+                                        (peer_id, recipient_identity.addr, false)
                                     }
                                     Err(e) => {
                                         return Err(Box::new(std::io::Error::new(
                                             std::io::ErrorKind::Other,
-                                            format!("Failed to convert relay identity public key to PeerId: {}", e),
+                                            format!("Failed to convert recipient identity public key to PeerId: {}", e),
                                         )));
                                     }
                                 }
@@ -1046,31 +1124,7 @@ impl Node {
                             Err(e) => {
                                 return Err(Box::new(std::io::Error::new(
                                     std::io::ErrorKind::NotFound,
-                                    format!("Cannot resolve relay identity {}: {}", relay_identity_name, e),
-                                )));
-                            }
-                        }
-                    } else {
-                        // No relay configured - send directly to the recipient
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Info,
-                            &format!("No relay configured, sending direct message to {}", recipient_node_name),
-                        );
-                        
-                        match verifying_key_to_peer_id(identity.node_signature_public_key) {
-                            Ok(peer_id) => {
-                                shinkai_log(
-                                    ShinkaiLogOption::Network,
-                                    ShinkaiLogLevel::Info,
-                                    &format!("Sending direct message to recipient PeerId: {}", peer_id),
-                                );
-                                (peer_id, false, identity.addr)
-                            }
-                            Err(e) => {
-                                return Err(Box::new(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    format!("Failed to convert recipient identity public key to PeerId: {}", e),
+                                    format!("Cannot resolve recipient identity {}: {}", recipient_node_name, e),
                                 )));
                             }
                         }
@@ -1079,11 +1133,13 @@ impl Node {
                 Err(e) => {
                     return Err(Box::new(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
-                        format!("Cannot resolve {} to identity: {}", recipient_node_name, e),
+                        format!("Cannot get routing info for {}: {}", recipient_node_name, e),
                     )));
                 }
             }
         };
+
+        eprintln!("🔄 Target peer ID: {:?}, Target peer address: {:?}, Use relay: {:?}", target_peer_id, target_peer_addr, use_relay);
 
         let message_type = if use_relay {
             format!("relay message to {}", recipient_node_name)
@@ -1093,16 +1149,20 @@ impl Node {
 
         // If we're sending directly and have the peer's address, ensure we dial the peer first
         if !use_relay {
-            if let Some(addr) = peer_addr {
+            if let Some(addr) = target_peer_addr {
                 let multiaddr_str = format!("/ip4/{}/tcp/{}", addr.ip(), addr.port());
                 if let Ok(multiaddr) = multiaddr_str.parse::<Multiaddr>() {
                     let add_event = NetworkEvent::AddPeer { peer_id: target_peer_id, address: multiaddr };
+                    eprintln!("About to send AddPeer event: {:?}", add_event);
                     if let Err(e) = libp2p_event_sender.send(add_event) {
+                        eprintln!("Failed to queue AddPeer event: {}", e);
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Error,
                             &format!("Failed to queue AddPeer event: {}", e),
                         );
+                    } else {
+                        eprintln!("Successfully queued AddPeer event");
                     }
                 }
             }
@@ -1119,8 +1179,9 @@ impl Node {
             &format!("About to send NetworkEvent::SendDirectMessage to {} (via {})", 
                 if use_relay { "relay" } else { "direct peer" }, target_peer_id),
         );
-        
+
         if let Err(e) = libp2p_event_sender.send(network_event) {
+            eprintln!("Failed to send via libp2p: {}", e);
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Failed to send via libp2p: {}", e),
@@ -1148,6 +1209,7 @@ impl Node {
         } else {
         }
 
+        eprintln!("Message sent via LibP2P as {}", message_type);
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
