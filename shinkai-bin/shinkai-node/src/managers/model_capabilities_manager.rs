@@ -238,12 +238,14 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Exo(_) => ModelCost::Cheap,
             LLMProviderInterface::OpenRouter(_) => ModelCost::Free,
             LLMProviderInterface::Claude(claude) => match claude.model_type.as_str() {
-                "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-latest" => ModelCost::Cheap,
+                "claude-opus-4-20250514" | "claude-opus-4-latest" => ModelCost::Expensive,
                 "claude-sonnet-4-20250514" | "claude-sonnet-4-latest" => ModelCost::Cheap,
-                "claude-3-opus-20240229" | "claude-3-opus-latest" => ModelCost::GoodValue,
-                "claude-opus-4-20250514" | "claude-opus-4-latest" => ModelCost::GoodValue,
-                "claude-3-sonnet-20240229" => ModelCost::Cheap,
+                "claude-3-7-sonnet-20250219" | "claude-3-7-sonnet-latest" => ModelCost::Cheap,
+                "claude-3-5-sonnet-20241022" | "claude-3-5-sonnet-latest" => ModelCost::Cheap,
+                "claude-3-5-haiku-20241022" | "claude-3-5-haiku-latest" => ModelCost::VeryCheap,
+                "claude-3-opus-20240229" | "claude-3-opus-latest" => ModelCost::Expensive,
                 "claude-3-haiku-20240307" => ModelCost::VeryCheap,
+                "claude-3-sonnet-20240229" => ModelCost::Cheap,
                 _ => ModelCost::Unknown,
             },
             LLMProviderInterface::DeepSeek(deepseek) => match deepseek.model_type.as_str() {
@@ -444,7 +446,7 @@ impl ModelCapabilitiesManager {
                 std::cmp::min(Self::get_max_tokens_for_model_type(&groq.model_type), 7000)
             }
             LLMProviderInterface::OpenRouter(openrouter) => Self::get_max_tokens_for_model_type(&openrouter.model_type),
-            LLMProviderInterface::Claude(_) => 200_000,
+            LLMProviderInterface::Claude(_) => 200_000, // All Claude models now have 200K context window
             LLMProviderInterface::DeepSeek(_) => 64_000,
             LLMProviderInterface::LocalRegex(_) => 128_000,
         }
@@ -491,8 +493,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("llama-3.1") => 128_000,
             model_type if model_type.starts_with("llama3.1") => 128_000,
             model_type if model_type.starts_with("llama3") || model_type.starts_with("llava-llama3") => 8_000,
-            model_type if model_type.starts_with("claude-sonnet-4") => 200_000,
             model_type if model_type.starts_with("claude-opus-4") => 200_000,
+            model_type if model_type.starts_with("claude-sonnet-4") => 200_000,
+            model_type if model_type.starts_with("claude-3-7-sonnet") => 200_000,
             model_type if model_type.starts_with("claude") => 200_000,
             model_type if model_type.starts_with("llama-3.3-70b-versatile") => 128_000,
             model_type if model_type.starts_with("llama-3.1-8b-instant") => 128_000,
@@ -601,14 +604,20 @@ impl ModelCapabilitiesManager {
             LLMProviderInterface::Claude(claude) => {
                 if claude.model_type.starts_with("claude-opus-4") {
                     32_000
-                } else if claude.model_type.starts_with("claude-3-5-sonnet")
-                    || claude.model_type.starts_with("claude-3-7-sonnet")
-                    || claude.model_type.starts_with("claude-sonnet-4")
-                    || claude.model_type.starts_with("claude-3-5-haiku")
-                {
+                } else if claude.model_type.starts_with("claude-sonnet-4") {
+                    64_000
+                } else if claude.model_type.starts_with("claude-3-7-sonnet") {
+                    64_000
+                } else if claude.model_type.starts_with("claude-3-5-sonnet") {
                     8192
-                } else {
+                } else if claude.model_type.starts_with("claude-3-5-haiku") {
+                    8192
+                } else if claude.model_type.starts_with("claude-3-opus") {
                     4096
+                } else if claude.model_type.starts_with("claude-3-haiku") {
+                    4096
+                } else {
+                    8192 // Default for other Claude models
                 }
             }
             LLMProviderInterface::DeepSeek(_) => 8192,
@@ -770,11 +779,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
             }
-            LLMProviderInterface::Claude(claude) => {
-                claude.model_type.starts_with("claude-sonnet-4")
-                    || claude.model_type.starts_with("claude-opus-4")
-                    || claude.model_type.starts_with("claude")
-            }
+            LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
             LLMProviderInterface::Gemini(model) => {
                 model.model_type.starts_with("gemini-pro")
@@ -804,9 +809,9 @@ impl ModelCapabilitiesManager {
             }
             LLMProviderInterface::DeepSeek(deepseek) => deepseek.model_type.starts_with("deepseek-reasoner"),
             LLMProviderInterface::Claude(claude) => {
-                claude.model_type.starts_with("claude-3-7-sonnet")
+                claude.model_type.starts_with("claude-opus-4")
                     || claude.model_type.starts_with("claude-sonnet-4")
-                    || claude.model_type.starts_with("claude-opus-4")
+                    || claude.model_type.starts_with("claude-3-7-sonnet")
             }
             _ => false,
         }
