@@ -270,8 +270,9 @@ impl LibP2PManager {
         channel: ResponseChannel<ShinkaiMessage>,
         message: ShinkaiMessage,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.swarm.behaviour_mut().request_response.send_response(channel, message)
+        self.swarm.behaviour_mut().request_response.send_response(channel, message.clone())
             .map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Failed to send response")) as Box<dyn std::error::Error>)?;
+        eprintln!("Response sent to identity {:?} from identity {:?}", message.external_metadata.recipient, message.external_metadata.sender);
         Ok(())
     }
 
@@ -611,7 +612,7 @@ impl LibP2PManager {
                             }
                         }
                     }
-                    request_response::Event::OutboundFailure { peer, error, .. } => {
+                    request_response::Event::OutboundFailure { peer, request_id, error, .. } => {
                         match error {
                             request_response::OutboundFailure::DialFailure => {
                                 eprintln!("Dial failure to peer {} - message will be queued for retry", peer);
@@ -621,8 +622,18 @@ impl LibP2PManager {
                                     &format!("Dial failure to peer {} - will retry when connection is established", peer),
                                 );
                             }
+                            request_response::OutboundFailure::ConnectionClosed => {
+                                // This is often expected behavior (connection closed after message delivery)
+                                // Only log as debug to avoid noise in test outputs
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Debug,
+                                    &format!("Connection closed to peer {} during message send", peer),
+                                );
+                                eprintln!("Connection closed to peer {} for request {:?} (this may be expected)", peer, request_id);
+                            }
                             _ => {
-                                eprintln!("Failed to send direct message to peer {}: {:?}", peer, error);
+                                eprintln!("Failed to send direct message {:?} to peer {}: {:?}", request_id, peer, error);
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Error,
