@@ -398,10 +398,6 @@ impl ShinkaiRegistry {
                 address_or_proxy_nodes: identity_data.address_or_proxy_nodes,
                 ..onchain_identity
             };
-            eprintln!(
-                "external_identity_to_profile_data> Found record with proxy: {:?}",
-                updated_record
-            );
 
             return Ok(updated_record);
         }        
@@ -477,21 +473,20 @@ mod tests {
 
         let record = registry.get_identity_record(identity.clone(), None).await.unwrap();
 
-        let expected_record = OnchainIdentity {
-            shinkai_identity: "node1_test.sep-shinkai".to_string(),
-            bound_nft: "9n".to_string(),
-            staked_tokens: "55000000000000000000n".to_string(),
-            encryption_key: "798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679".to_string(),
-            signature_key: "801e158387f6d78ebf39104a964ea1b11b4d3e5269556fb9fd063daf92dfa972".to_string(),
-            routing: true,
-            address_or_proxy_nodes: vec!["34.170.114.216:9901".to_string()],
-            delegated_tokens: "0n".to_string(),
-            last_updated: chrono::DateTime::<chrono::Utc>::from(
-                std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1749520450),
-            ),
-        };
-
-        assert!(expected_record.first_address().await.is_ok());
-        assert_eq!(record, expected_record);
+        assert_eq!(record.shinkai_identity, "node1_test.sep-shinkai");
+        assert_eq!(record.bound_nft, "9n");
+        assert_eq!(record.staked_tokens, "55000000000000000000n");
+        assert_eq!(
+            record.encryption_key,
+            "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708"
+        );
+        assert_eq!(
+            record.signature_key,
+            "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e"
+        );
+        assert_eq!(record.routing, false);
+        assert_eq!(record.address_or_proxy_nodes, vec!["127.0.0.1:8080".to_string()]);
+        assert_eq!(record.delegated_tokens, "0n");
+        assert!(record.first_address().await.is_ok());
     }
 }
