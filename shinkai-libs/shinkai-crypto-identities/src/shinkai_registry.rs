@@ -101,6 +101,7 @@ impl OnchainIdentity {
             )
             .as_str(),
         );
+
         let default_value = "localhost:9550";
         let first_address = self
             .address_or_proxy_nodes
@@ -339,7 +340,7 @@ impl ShinkaiRegistry {
         contract_abi: String,
         identity: String,
     ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let identity_data = get_identity_data(rpc_endpoints, contract_address, contract_abi, identity.clone())
+        let identity_data = get_identity_data(rpc_endpoints.clone(), contract_address.clone(), contract_abi.clone(), identity.clone())
             .await
             .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
             .identity_data;
@@ -368,7 +369,42 @@ impl ShinkaiRegistry {
             last_updated,
         };
 
-        eprintln!("fetch identity result: {:?}", onchain_identity);
+        // Check if any of the address_or_proxy_nodes ends with .sepolia-shinkai
+        if onchain_identity.address_or_proxy_nodes.iter().any(|node| {
+            let node_base = node.split(':').next().unwrap_or(node);
+            node_base.ends_with(".sepolia-shinkai")
+                || node_base.ends_with(".shinkai")
+                || node_base.ends_with(".sep-shinkai")
+        }) {
+            // Call the proxy node to get the actual data
+            let proxy_identity = onchain_identity.address_or_proxy_nodes.clone();
+            
+            let identity_data = get_identity_data(rpc_endpoints.clone(), contract_address.clone(), contract_abi.clone(), proxy_identity.join(","))
+            .await
+            .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
+            .identity_data;
+
+            if identity_data.is_none() {
+                return Err(ShinkaiRegistryError::IdentityNotFound(format!(
+                    "identity '{}' not found",
+                    proxy_identity.join(",")
+                )));
+            }
+
+            let identity_data = identity_data.unwrap();
+
+            // Return the same record but with the updated address_or_proxy_nodes field
+            let updated_record = OnchainIdentity {
+                address_or_proxy_nodes: identity_data.address_or_proxy_nodes,
+                ..onchain_identity
+            };
+            eprintln!(
+                "external_identity_to_profile_data> Found record with proxy: {:?}",
+                updated_record
+            );
+
+            return Ok(updated_record);
+        }        
 
         Ok(onchain_identity)
     }
@@ -445,15 +481,16 @@ mod tests {
             shinkai_identity: "node1_test.sep-shinkai".to_string(),
             bound_nft: "9n".to_string(),
             staked_tokens: "55000000000000000000n".to_string(),
-            encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
-            signature_key: "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e".to_string(),
-            routing: false,
-            address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
+            encryption_key: "798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679".to_string(),
+            signature_key: "801e158387f6d78ebf39104a964ea1b11b4d3e5269556fb9fd063daf92dfa972".to_string(),
+            routing: true,
+            address_or_proxy_nodes: vec!["34.170.114.216:9901".to_string()],
             delegated_tokens: "0n".to_string(),
             last_updated: chrono::DateTime::<chrono::Utc>::from(
-                std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1738389678),
+                std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1749520450),
             ),
         };
+
         assert!(expected_record.first_address().await.is_ok());
         assert_eq!(record, expected_record);
     }
