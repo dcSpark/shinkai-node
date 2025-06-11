@@ -101,6 +101,7 @@ impl OnchainIdentity {
             )
             .as_str(),
         );
+
         let default_value = "localhost:9550";
         let first_address = self
             .address_or_proxy_nodes
@@ -339,7 +340,7 @@ impl ShinkaiRegistry {
         contract_abi: String,
         identity: String,
     ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let identity_data = get_identity_data(rpc_endpoints, contract_address, contract_abi, identity.clone())
+        let identity_data = get_identity_data(rpc_endpoints.clone(), contract_address.clone(), contract_abi.clone(), identity.clone())
             .await
             .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
             .identity_data;
@@ -368,7 +369,38 @@ impl ShinkaiRegistry {
             last_updated,
         };
 
-        eprintln!("fetch identity result: {:?}", onchain_identity);
+        // Check if any of the address_or_proxy_nodes ends with .sepolia-shinkai
+        if onchain_identity.address_or_proxy_nodes.iter().any(|node| {
+            let node_base = node.split(':').next().unwrap_or(node);
+            node_base.ends_with(".sepolia-shinkai")
+                || node_base.ends_with(".shinkai")
+                || node_base.ends_with(".sep-shinkai")
+        }) {
+            // Call the proxy node to get the actual data
+            let proxy_identity = onchain_identity.address_or_proxy_nodes.clone();
+            
+            let identity_data = get_identity_data(rpc_endpoints.clone(), contract_address.clone(), contract_abi.clone(), proxy_identity.join(","))
+            .await
+            .map_err(|e| ShinkaiRegistryError::IdentityFetchError(e.to_string()))?
+            .identity_data;
+
+            if identity_data.is_none() {
+                return Err(ShinkaiRegistryError::IdentityNotFound(format!(
+                    "identity '{}' not found",
+                    proxy_identity.join(",")
+                )));
+            }
+
+            let identity_data = identity_data.unwrap();
+
+            // Return the same record but with the updated address_or_proxy_nodes field
+            let updated_record = OnchainIdentity {
+                address_or_proxy_nodes: identity_data.address_or_proxy_nodes,
+                ..onchain_identity
+            };
+
+            return Ok(updated_record);
+        }        
 
         Ok(onchain_identity)
     }

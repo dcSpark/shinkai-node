@@ -4,6 +4,7 @@ use libp2p::{
     dcutr, identify, noise, ping, relay, request_response::{self, ResponseChannel},
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm,
+    multiaddr::Protocol,
 };
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -111,14 +112,6 @@ impl LibP2PManager {
             &format!("LIBP2P Local peer id: {}", local_peer_id),
         );
 
-        // Create Identify behavior with compatible protocol and include node identity
-        let mut identify_config = identify::Config::new(
-            "/shinkai/1.0.0".to_string(),
-            local_key.public(),
-        );
-        identify_config = identify_config.with_agent_version(format!("shinkai-node-{}", node_name));
-        let identify = identify::Behaviour::new(identify_config);
-
         // Create swarm
         let mut swarm =
         libp2p::SwarmBuilder::with_existing_identity(local_key)
@@ -131,8 +124,14 @@ impl LibP2PManager {
             .with_relay_client(noise::Config::new, yamux::Config::default)?
             .with_behaviour(|keypair, relay_behaviour| ShinkaiNetworkBehaviour {
                 relay_client: relay_behaviour,
-                ping: ping::Behaviour::new(ping::Config::new()),
-                identify: identify,
+                ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(10))),
+                identify: identify::Behaviour::new(identify::Config::new(
+                    "/shinkai/1.0.0".to_string(),
+                    keypair.public(),
+                ).with_agent_version(format!("shinkai-node-{}", node_name))
+                .with_interval(Duration::from_secs(60))
+                .with_push_listen_addr_updates(true)
+                .with_cache_size(100)),
                 dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
                 request_response: request_response::json::Behaviour::new(
                     std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
@@ -370,7 +369,7 @@ impl LibP2PManager {
                         );
                         
                         // Now we have a reservation, create and advertise our circuit address
-                        if let Some(circuit_addr) = Self::create_circuit_address_for_relay(&relay_peer_id) {
+                        if let Some(circuit_addr) = Self::create_circuit_address_for_relay(self, &relay_peer_id) {
                             self.swarm.add_external_address(circuit_addr.clone());
                             shinkai_log(
                                 ShinkaiLogOption::Network,
@@ -574,26 +573,9 @@ impl LibP2PManager {
                     }
                 }
                 
-                // Check if this peer is connected through a relay and attempt direct connection upgrade
-                let mut circuit_addrs = Vec::new();
-                let mut external_addrs = Vec::new();
-                
+                // Add all listen addresses from the peer to the swarm
                 for addr in &info.listen_addrs {
-                    if Self::is_circuit_address(addr) {
-                        circuit_addrs.push(addr.clone());
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Info,
-                            &format!("Peer {} has relay circuit address: {}", peer_id, addr),
-                        );
-                    } else if Self::is_external_address(addr) {
-                        external_addrs.push(addr.clone());
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Debug,
-                            &format!("Peer {} has external address: {}", peer_id, addr),
-                        );
-                    }
+                    self.swarm.add_peer_address(peer_id, addr.clone());
                 }
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::RequestResponse(req_resp_event)) => {
@@ -642,15 +624,12 @@ impl LibP2PManager {
                                 }
                             }
                             request_response::OutboundFailure::ConnectionClosed => {
-                                // This is often expected behavior (connection closed after message delivery)
-                                // Only log as debug to avoid noise in test outputs
+                                eprintln!("Connection closed to peer {} for request {:?}.", peer, request_id);
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Debug,
-                                    &format!("Connection closed to peer {} during message send", peer),
+                                    &format!("Connection closed to peer {} for request {:?}.", peer, request_id),
                                 );
-                                eprintln!("Connection closed to peer {} for request {:?} (this may be expected)", peer, request_id);
-                                self.pending_outbound_requests.remove(&request_id);
                             }
                             _ => {
                                 eprintln!("Failed to send direct message {:?} to peer {}: {:?}", request_id, peer, error);
@@ -681,7 +660,6 @@ impl LibP2PManager {
                     }
                 }
             }
-
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
@@ -880,16 +858,14 @@ impl LibP2PManager {
 
     /// Create a circuit address for a specific relay peer
     /// This creates the address that other peers can use to reach us through the relay
-    fn create_circuit_address_for_relay(relay_peer_id: &PeerId) -> Option<Multiaddr> {
-        use libp2p::multiaddr::Protocol;
-        
-        // For now, we'll create a generic circuit address
-        // In a real implementation, you'd want to use the actual relay's listening address
-        let mut circuit_addr = Multiaddr::empty();
-        circuit_addr.push(Protocol::P2p(relay_peer_id.clone()));
-        circuit_addr.push(Protocol::P2pCircuit);
-        
-        Some(circuit_addr)
+    fn create_circuit_address_for_relay(&self, relay_peer_id: &PeerId) -> Option<Multiaddr> {
+        if let Some(mut addr) = self.relay_address.clone() {
+            addr.push(Protocol::P2p(relay_peer_id.clone()));
+            addr.push(Protocol::P2pCircuit);
+            Some(addr)
+        } else {
+            None
+        }
     }
 
     /// Handle network events from the event channel
