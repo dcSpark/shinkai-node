@@ -9,6 +9,7 @@ default-run = "shinkai_node"
 
 [build-dependencies]
 shinkai_tools_runner = { workspace = true, features = ["built-in-tools"] }
+zip = "2.2.0"
 
 # Features
 [features]
