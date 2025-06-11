@@ -1,18 +1,24 @@
-use std::{collections::HashMap, convert::Infallible, sync::Arc};
-use std::pin::Pin;
 use bytes::Bytes;
-use rand::random;
-use futures::{Stream};
+use futures::Stream;
 use futures::StreamExt as FuturesStreamExt;
 use futures::TryStreamExt;
+use rand::random;
 use rmcp::{
-    model::{ClientJsonRpcMessage, JsonRpcError, RequestId, ServerJsonRpcMessage, InitializeRequestParam},
-    service::{serve_directly},
+    model::{ClientJsonRpcMessage, InitializeRequestParam, JsonRpcError, RequestId, ServerJsonRpcMessage},
+    service::serve_directly,
 };
-use serde_json::{Value, json};
-use tokio::{sync::{mpsc, RwLock}, time::Duration};
+use serde_json::{json, Value};
+use std::pin::Pin;
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
+use tokio::{
+    sync::{mpsc, RwLock},
+    time::Duration,
+};
 use tokio_stream::wrappers::ReceiverStream;
-use warp::{http::{Response, StatusCode}, reject, Rejection, Reply};
+use warp::{
+    http::{Response, StatusCode},
+    reject, Rejection, Reply,
+};
 
 use crate::api_sse::mcp_tools_service::McpToolsService;
 use tokio_stream::StreamExt as TokioStreamExt;
@@ -77,11 +83,14 @@ impl McpState {
     /// Register a new session with client sender and auth token
     pub async fn register_session(&self, session_id: &str, sender: ClientSender) {
         let mut sessions = self.sessions.write().await;
-        sessions.insert(session_id.to_string(), SessionInfo {
-            client_sender: sender,
-            created_at: std::time::SystemTime::now(),
-        });
-        
+        sessions.insert(
+            session_id.to_string(),
+            SessionInfo {
+                client_sender: sender,
+                created_at: std::time::SystemTime::now(),
+            },
+        );
+
         tracing::debug!("Registered session: {}", session_id);
     }
 
@@ -89,15 +98,15 @@ impl McpState {
     pub async fn remove_session(&self, session_id: &str) -> bool {
         let mut sessions = self.sessions.write().await;
         let removed = sessions.remove(session_id).is_some();
-        
+
         if removed {
             // Also clean up transports
             let mut transports = self.transports.write().await;
             transports.remove(session_id);
-            
+
             tracing::debug!("Removed session: {}", session_id);
         }
-        
+
         removed
     }
 
@@ -106,48 +115,48 @@ impl McpState {
         let sessions = self.sessions.read().await;
         sessions.get(session_id).map(|info| info.client_sender.clone())
     }
-    
+
     /// Get the session info for a session
     pub async fn get_session_info(&self, session_id: &str) -> Option<SessionInfo> {
         let sessions = self.sessions.read().await;
         sessions.get(session_id).cloned()
     }
-    
+
     /// Get the ping interval
     pub fn ping_interval(&self) -> Option<Duration> {
         self.ping_interval
     }
-    
+
     /// Register a service transport
     pub async fn register_service_transport(&self, session_id: &str, tx: ServiceSender) {
         let mut transports = self.transports.write().await;
         transports.insert(session_id.to_string(), tx);
         tracing::debug!("Registered service transport for session: {}", session_id);
     }
-    
+
     /// Get service transport for a session
     pub async fn get_service_transport(&self, session_id: &str) -> Option<ServiceSender> {
         let transports = self.transports.read().await;
         transports.get(session_id).cloned()
     }
-    
+
     /// Get all active sessions
     pub async fn get_all_sessions(&self) -> Vec<String> {
         let sessions = self.sessions.read().await;
         sessions.keys().cloned().collect()
     }
-    
+
     /// Get session count
     pub async fn get_session_count(&self) -> usize {
         let sessions = self.sessions.read().await;
         sessions.len()
     }
-    
+
     /// Clean up expired sessions
     pub async fn clean_expired_sessions(&self, max_age: Duration) -> usize {
         let now = std::time::SystemTime::now();
         let mut to_remove = Vec::new();
-        
+
         // First identify sessions to remove
         {
             let sessions = self.sessions.read().await;
@@ -159,13 +168,13 @@ impl McpState {
                 }
             }
         }
-        
+
         // Then remove them
         let count = to_remove.len();
         for id in to_remove {
             self.remove_session(&id).await;
         }
-        
+
         count
     }
 }
@@ -178,11 +187,7 @@ fn generate_session_id() -> String {
 }
 
 /// Handle SSE connections
-pub async fn sse_handler(
-    state: Arc<McpState>,
-    tools_service: Arc<McpToolsService>,
-) -> Result<impl Reply> {
-    
+pub async fn sse_handler(state: Arc<McpState>, tools_service: Arc<McpToolsService>) -> Result<impl Reply> {
     // Generate a unique session ID
     let session_id = generate_session_id();
     tracing::info!("New SSE connection established with sessionId: {}", session_id);
@@ -193,7 +198,7 @@ pub async fn sse_handler(
 
     // Register the session with auth token in state
     state.register_session(&session_id, client_tx.clone()).await;
-    
+
     // Also register the service transport
     state.register_service_transport(&session_id, service_tx).await;
 
@@ -211,34 +216,28 @@ pub async fn sse_handler(
 
     // Start the MCP service - spawn to not block this function
     tokio::spawn(async move {
-        match serve_directly(tools_service_clone.as_ref().clone(), transport, InitializeRequestParam::default()).await {
-            Ok(running_service) => {
-                tracing::info!("MCP service started for session: {}", session_id_clone);
-                
-                // Wait for service to complete
-                if let Err(e) = running_service.waiting().await {
-                    tracing::error!("MCP service error for session {}: {:?}", session_id_clone, e);
-                }
-                
-                // Clean up using cloned state and session_id
-                state_clone.remove_session(&session_id_clone).await;
-            },
-            Err(e) => {
-                tracing::error!("Failed to start MCP service for session {}: {:?}", session_id_clone, e);
-                state_clone.remove_session(&session_id_clone).await;
-            }
+        let running_service = serve_directly(
+            tools_service_clone.as_ref().clone(),
+            transport,
+            Some(InitializeRequestParam::default()),
+        );
+        tracing::info!("MCP service started for session: {}", session_id_clone);
+
+        // Wait for service to complete
+        if let Err(e) = running_service.waiting().await {
+            tracing::error!("MCP service error for session {}: {:?}", session_id_clone, e);
         }
+
+        // Clean up using cloned state and session_id
+        state_clone.remove_session(&session_id_clone).await;
     });
 
     // Start building SSE stream with client_rx
     let client_rx_stream = ReceiverStream::new(client_rx);
-    
+
     // Initial message with endpoint information
-    let endpoint_event = format!(
-        "event: endpoint\ndata: /mcp/sse?sessionId={}\n\n",
-        session_id
-    );
-    
+    let endpoint_event = format!("event: endpoint\ndata: /mcp/sse?sessionId={}\n\n", session_id);
+
     // Base stream with endpoint and client messages
     let base_stream = tokio_stream::StreamExt::chain(
         tokio_stream::once(Ok::<_, Infallible>(endpoint_event)),
@@ -249,26 +248,28 @@ pub async fn sse_handler(
                     let event_string = format!("event: message\ndata: {}\n\n", json);
                     tracing::debug!("sse_handler: Sending event: {}", event_string);
                     Ok(event_string)
-                },
+                }
                 Err(e) => {
                     tracing::error!("Failed to serialize message: {}", e);
                     Ok(String::new())
                 }
             }
-        })
+        }),
     );
 
     // Conditionally add keep-alive pings
-    let final_stream: Pin<Box<dyn Stream<Item = std::result::Result<String, Infallible>> + Send>> = if let Some(interval) = state.ping_interval() {
-        let ping_stream = TokioStreamExt::map(tokio_stream::wrappers::IntervalStream::new(
-            tokio::time::interval(interval)
-        ), |_| Ok::<_, Infallible>(": ping\n\n".to_string()));
+    let final_stream: Pin<Box<dyn Stream<Item = std::result::Result<String, Infallible>> + Send>> =
+        if let Some(interval) = state.ping_interval() {
+            let ping_stream = TokioStreamExt::map(
+                tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(interval)),
+                |_| Ok::<_, Infallible>(": ping\n\n".to_string()),
+            );
 
-        // Use TokioStreamExt::merge and Box::pin the result
-        Box::pin(TokioStreamExt::merge(base_stream, ping_stream))
-    } else {
-        Box::pin(base_stream)
-    };
+            // Use TokioStreamExt::merge and Box::pin the result
+            Box::pin(TokioStreamExt::merge(base_stream, ping_stream))
+        } else {
+            Box::pin(base_stream)
+        };
 
     // Build the response
     let resp = Response::builder()
@@ -276,7 +277,9 @@ pub async fn sse_handler(
         .header("Content-Type", "text/event-stream")
         .header("Cache-Control", "no-cache")
         .header("Connection", "keep-alive")
-        .body(warp::hyper::Body::wrap_stream(final_stream.map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "infallible stream error"))))
+        .body(warp::hyper::Body::wrap_stream(final_stream.map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::Other, "infallible stream error")
+        })))
         .map_err(|e| {
             tracing::error!("Failed to build SSE response: {}", e);
             reject::custom(IoError)
@@ -286,11 +289,7 @@ pub async fn sse_handler(
 }
 
 /// Handle POST events from clients
-pub async fn post_event_handler(
-    session_id: String,
-    body: Bytes,
-    state: Arc<McpState>,
-) -> Result<impl Reply> {
+pub async fn post_event_handler(session_id: String, body: Bytes, state: Arc<McpState>) -> Result<impl Reply> {
     let body_str = String::from_utf8_lossy(&body);
     tracing::debug!("Received raw message for session {}: {}", session_id, body_str);
 
@@ -318,15 +317,20 @@ pub async fn post_event_handler(
     let client_message: ClientJsonRpcMessage = match serde_json::from_value(generic_value) {
         Ok(msg) => msg,
         Err(e) => {
-            tracing::warn!("Failed final parse after potential transform for session {}: {}", session_id, e);
+            tracing::warn!(
+                "Failed final parse after potential transform for session {}: {}",
+                session_id,
+                e
+            );
             // Attempt to deserialize original_id, fallback to a string ID
-            let req_id = serde_json::from_value(original_id).unwrap_or_else(|_| RequestId::String("final_parse_error".into()));
+            let req_id =
+                serde_json::from_value(original_id).unwrap_or_else(|_| RequestId::String("final_parse_error".into()));
             let error = JsonRpcError {
                 jsonrpc: Default::default(),
                 id: req_id,
                 error: rmcp::model::ErrorData::invalid_request(
                     format!("Invalid JSON-RPC structure after transform: {}", e),
-                    None, 
+                    None,
                 ),
             };
             return Ok(warp::reply::json(&error).into_response());
@@ -345,7 +349,11 @@ pub async fn post_event_handler(
     }
 
     // Return success
-    Ok(warp::reply::with_status(warp::reply::json(&serde_json::json!({"success": true})), StatusCode::ACCEPTED).into_response())
+    Ok(warp::reply::with_status(
+        warp::reply::json(&serde_json::json!({"success": true})),
+        StatusCode::ACCEPTED,
+    )
+    .into_response())
 }
 
 /// MCP Transport implementation that bridges the SSE and MCP systems
@@ -403,14 +411,18 @@ impl futures::Sink<ServerJsonRpcMessage> for McpTransport {
         // Access fields directly from the pinned reference
         let session_id = self.session_id.clone();
         let client_tx = self.client_tx.clone();
-        
+
         tokio::spawn(async move {
-            tracing::debug!("McpTransport: Attempting to send item for session {}: {:?}", session_id, item);
+            tracing::debug!(
+                "McpTransport: Attempting to send item for session {}: {:?}",
+                session_id,
+                item
+            );
             if let Err(e) = client_tx.send(item).await {
                 tracing::error!("Failed to send message to client for session {}: {}", session_id, e);
             }
         });
-        
+
         Ok(())
     }
 
@@ -429,20 +441,18 @@ impl futures::Sink<ServerJsonRpcMessage> for McpTransport {
         // Clean up the session when closing
         let session_id = self.session_id.clone();
         let state = self.state.clone();
-        
+
         tokio::spawn(async move {
             // Use state to clean up instead of global variables
             state.remove_session(&session_id).await;
             tracing::info!("Closed transport for session: {}", session_id);
         });
-        
+
         std::task::Poll::Ready(Ok(()))
     }
 }
 
-pub async fn update_tools_cache_handler(
-    tools_service: Arc<McpToolsService>,
-) -> Result<impl Reply> {
+pub async fn update_tools_cache_handler(tools_service: Arc<McpToolsService>) -> Result<impl Reply> {
     tracing::info!("Received request to update tools cache");
     match tools_service.update_tools_cache().await {
         Ok(_) => {
@@ -461,7 +471,10 @@ pub async fn update_tools_cache_handler(
                 "details": e.to_string()
             }));
             // Return 500 Internal Server Error
-            Ok(warp::reply::with_status(error_response, StatusCode::INTERNAL_SERVER_ERROR))
+            Ok(warp::reply::with_status(
+                error_response,
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ))
         }
     }
 }

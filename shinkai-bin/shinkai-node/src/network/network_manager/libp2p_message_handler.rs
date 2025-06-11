@@ -13,7 +13,7 @@ use crate::network::{
 };
 use crate::managers::{IdentityManager, identity_manager::IdentityManagerTrait};
 use ed25519_dalek::SigningKey;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::{request_response::ResponseChannel, PeerId};
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, ws_types::WSUpdateHandler},
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -21,7 +21,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_sqlite::SqliteManager;
 use std::{net::SocketAddr, sync::{Arc, Weak}};
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc::UnboundedSender, Mutex};
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 /// Message handler that integrates libp2p messages with the existing Shinkai network logic
@@ -35,10 +35,8 @@ pub struct ShinkaiMessageHandler {
     ext_agent_offerings_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-    // We'll store a mapping of PeerId to SocketAddr for compatibility
-    peer_addr_map: Arc<Mutex<std::collections::HashMap<PeerId, SocketAddr>>>,
     local_addr: SocketAddr,
-    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
 }
 
 impl ShinkaiMessageHandler {
@@ -54,7 +52,7 @@ impl ShinkaiMessageHandler {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         local_addr: SocketAddr,
-        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+        libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
     ) -> Self {
         Self {
             db,
@@ -66,20 +64,17 @@ impl ShinkaiMessageHandler {
             ext_agent_offerings_manager,
             proxy_connection_info,
             ws_manager,
-            peer_addr_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
             local_addr,
             libp2p_event_sender,
         }
     }
 
-    /// Add a peer mapping for PeerId to SocketAddr
-    pub async fn add_peer_mapping(&self, peer_id: PeerId, addr: SocketAddr) {
-        let mut map = self.peer_addr_map.lock().await;
-        map.insert(peer_id, addr);
+    pub fn set_libp2p_event_sender(&mut self, libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>) {
+        self.libp2p_event_sender = libp2p_event_sender;
     }
 
     /// Handle a message from a peer - this replaces the NetworkJobManager processing
-    pub async fn handle_message(&self, peer_id: PeerId, message: ShinkaiMessage) {
+    pub async fn handle_message(&self, peer_id: PeerId, message: ShinkaiMessage, channel: Option<ResponseChannel<ShinkaiMessage>>) {
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Info,
@@ -91,6 +86,7 @@ impl ShinkaiMessageHandler {
             self.local_addr,
             peer_id,
             &message,
+            channel,
         ).await {
             shinkai_log(
                 ShinkaiLogOption::Network,
@@ -106,6 +102,7 @@ impl ShinkaiMessageHandler {
         receiver_address: SocketAddr,
         sender_peer_id: PeerId,
         message: &ShinkaiMessage,
+        channel: Option<ResponseChannel<ShinkaiMessage>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let maybe_db = self.db
             .upgrade()
@@ -172,7 +169,7 @@ impl ShinkaiMessageHandler {
             message.clone(),
             sender_identity.node_encryption_public_key,
             sender_identity.addr.unwrap(),
-            sender_profile_name_string,
+            sender_profile_name_string.clone(),
             &self.encryption_secret_key,
             &self.signature_secret_key,
             &self.node_name.get_node_name_string(),
@@ -185,6 +182,7 @@ impl ShinkaiMessageHandler {
             proxy_connection_info,
             self.ws_manager.clone(),
             self.libp2p_event_sender.clone(),
+            channel,
         )
         .await
         .map_err(|e| format!("Message processing failed: {:?}", e))?;
@@ -192,25 +190,3 @@ impl ShinkaiMessageHandler {
         Ok(())
     }
 }
-
-/// Convert Multiaddr to SocketAddr (best effort)
-pub fn multiaddr_to_socket_addr(multiaddr: &Multiaddr) -> Option<SocketAddr> {
-    use libp2p::core::multiaddr::Protocol;
-    
-    let mut ip = None;
-    let mut port = None;
-    
-    for component in multiaddr.iter() {
-        match component {
-            Protocol::Ip4(addr) => ip = Some(std::net::IpAddr::V4(addr)),
-            Protocol::Ip6(addr) => ip = Some(std::net::IpAddr::V6(addr)),
-            Protocol::Tcp(p) => port = Some(p),
-            _ => {}
-        }
-    }
-    
-    match (ip, port) {
-        (Some(ip), Some(port)) => Some(SocketAddr::new(ip, port)),
-        _ => None,
-    }
-} 

@@ -1,9 +1,10 @@
 use ed25519_dalek::SigningKey;
 use futures::prelude::*;
 use libp2p::{
-    dcutr, identify, noise, ping, relay, request_response,
+    dcutr, identify, noise, ping, relay, request_response::{self, ResponseChannel},
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux, Multiaddr, PeerId, Swarm,
+    multiaddr::Protocol,
 };
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -12,7 +13,7 @@ use shinkai_message_primitives::{
 use std::{
     sync::Arc,
     time::Duration,
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
 };
 use tokio::sync::mpsc;
 
@@ -28,11 +29,16 @@ pub struct ShinkaiNetworkBehaviour {
 }
 
 /// Events that can be sent through the network
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum NetworkEvent {
     /// A message to be sent directly to a specific peer using request-response
     SendDirectMessage {
         peer_id: PeerId,
+        message: ShinkaiMessage,
+    },
+    /// A response to be sent to a specific peer using request-response
+    SendResponse {
+        channel: ResponseChannel<ShinkaiMessage>,
         message: ShinkaiMessage,
     },
     /// Add a peer to connect to
@@ -57,6 +63,15 @@ pub enum NetworkEvent {
     },
 }
 
+/// A queued message waiting to be sent
+#[derive(Debug, Clone)]
+pub struct QueuedMessage {
+    pub peer_id: PeerId,
+    pub message: ShinkaiMessage,
+    pub retry_count: u32,
+    pub last_attempt: std::time::Instant,
+}
+
 /// The main libp2p network manager
 pub struct LibP2PManager {
     swarm: Swarm<ShinkaiNetworkBehaviour>,
@@ -71,6 +86,9 @@ pub struct LibP2PManager {
     last_disconnection_time: Option<std::time::Instant>, // Track when we disconnected
     // Peer discovery fields
     discovered_peers: HashMap<String, (PeerId, Multiaddr)>, // identity -> (peer_id, circuit_addr)
+    // Message queue fields
+    message_queue: VecDeque<QueuedMessage>, // Queue for messages that failed to send
+    max_retry_attempts: u32, // Maximum retry attempts per message
 }
 
 use crate::network::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
@@ -81,7 +99,7 @@ impl LibP2PManager {
         node_name: String,
         identity_secret_key: SigningKey,
         listen_port: Option<u16>,
-        message_handler: ShinkaiMessageHandler,
+        mut message_handler: ShinkaiMessageHandler,
         relay_address: Option<Multiaddr>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())?;
@@ -92,14 +110,6 @@ impl LibP2PManager {
             ShinkaiLogLevel::Info,
             &format!("LIBP2P Local peer id: {}", local_peer_id),
         );
-
-        // Create Identify behavior with compatible protocol and include node identity
-        let mut identify_config = identify::Config::new(
-            "/shinkai/1.0.0".to_string(),
-            local_key.public(),
-        );
-        identify_config = identify_config.with_agent_version(format!("shinkai-node-{}", node_name));
-        let identify = identify::Behaviour::new(identify_config);
 
         // Create swarm
         let mut swarm =
@@ -113,12 +123,18 @@ impl LibP2PManager {
             .with_relay_client(noise::Config::new, yamux::Config::default)?
             .with_behaviour(|keypair, relay_behaviour| ShinkaiNetworkBehaviour {
                 relay_client: relay_behaviour,
-                ping: ping::Behaviour::new(ping::Config::new()),
-                identify: identify,
+                ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(10))),
+                identify: identify::Behaviour::new(identify::Config::new(
+                    "/shinkai/1.0.0".to_string(),
+                    keypair.public(),
+                ).with_agent_version(format!("shinkai-node-{}", node_name))
+                .with_interval(Duration::from_secs(60))
+                .with_push_listen_addr_updates(true)
+                .with_cache_size(100)),
                 dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
                 request_response: request_response::json::Behaviour::new(
                     std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
-                    request_response::Config::default(),
+                    request_response::Config::default().with_request_timeout(Duration::from_secs(300)),
                 ),
             })?
             .build();
@@ -158,6 +174,8 @@ impl LibP2PManager {
         // Create event channel
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
 
+        message_handler.set_libp2p_event_sender(Some(event_sender.clone()));
+
         Ok(LibP2PManager {
             swarm,
             event_sender,
@@ -171,6 +189,9 @@ impl LibP2PManager {
             last_disconnection_time: None, // Track when we disconnected
             // Peer discovery fields
             discovered_peers: HashMap::new(), // identity -> (peer_id, circuit_addr)
+            // Message queue fields
+            message_queue: VecDeque::new(), // Queue for messages that failed to send
+            max_retry_attempts: 5, // Maximum retry attempts per message
         })
     }
 
@@ -190,18 +211,67 @@ impl LibP2PManager {
         peer_id: PeerId,
         message: ShinkaiMessage,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Check if the peer is already connected
+        let is_connected = self.swarm.is_connected(&peer_id);
+        
+        if !is_connected {
+            eprintln!("Peer {} not connected, queueing message for retry", peer_id);
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Info,
+                &format!("Peer {} not connected, queueing message for retry", peer_id),
+            );
+            
+            // Queue the message for retry
+            let queued_message = QueuedMessage {
+                peer_id,
+                message,
+                retry_count: 0,
+                last_attempt: std::time::Instant::now(),
+            };
+            self.message_queue.push_back(queued_message);
+            
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Message queued for peer {}, queue size: {}", peer_id, self.message_queue.len()),
+            );
+
+            if let Err(e) = self.swarm.dial(peer_id.clone()) {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to dial peer {}: {}", peer_id, e),
+                );
+            }
+            
+            return Ok(());
+        }
+
         // Send the message using request-response protocol
         let _request_id = self.swarm
             .behaviour_mut()
             .request_response
             .send_request(&peer_id, message);
 
+        eprintln!("Direct message request sent to peer {} {:?}", peer_id, _request_id);
         shinkai_log(
             ShinkaiLogOption::Network,
             ShinkaiLogLevel::Debug,
             &format!("Direct message request sent to peer {}", peer_id),
         );
 
+        Ok(())
+    }
+
+    pub async fn send_response_to_peer(
+        &mut self,
+        channel: ResponseChannel<ShinkaiMessage>,
+        message: ShinkaiMessage,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.swarm.behaviour_mut().request_response.send_response(channel, message.clone())
+            .map_err(|_| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Failed to send response")) as Box<dyn std::error::Error>)?;
+        eprintln!("Response sent to identity {:?} from identity {:?}", message.external_metadata.recipient, message.external_metadata.sender);
         Ok(())
     }
 
@@ -216,6 +286,7 @@ impl LibP2PManager {
         
         // Dial the peer directly
         if let Err(e) = self.swarm.dial(address.clone()) {
+            eprintln!("Failed to dial peer {} at {}: {}", peer_id, address, e);
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Error,
@@ -230,6 +301,7 @@ impl LibP2PManager {
     /// Run the network manager
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut reconnection_timer = tokio::time::interval(Duration::from_secs(5)); // Check reconnection every 5 seconds
+        let mut message_retry_timer = tokio::time::interval(Duration::from_secs(2)); // Process message queue every 2 seconds
         
         loop {
             tokio::select! {
@@ -243,6 +315,9 @@ impl LibP2PManager {
                 }
                 _ = reconnection_timer.tick() => {
                     self.check_and_reconnect_to_relay().await?;
+                }
+                _ = message_retry_timer.tick() => {
+                    self.process_message_queue().await?;
                 }
             }
         }
@@ -283,7 +358,7 @@ impl LibP2PManager {
                         );
                         
                         // Now we have a reservation, create and advertise our circuit address
-                        if let Some(circuit_addr) = Self::create_circuit_address_for_relay(&relay_peer_id) {
+                        if let Some(circuit_addr) = Self::create_circuit_address_for_relay(self, &relay_peer_id) {
                             self.swarm.add_external_address(circuit_addr.clone());
                             shinkai_log(
                                 ShinkaiLogOption::Network,
@@ -459,31 +534,37 @@ impl LibP2PManager {
                 } else {
                     shinkai_log(
                         ShinkaiLogOption::Network,
-                        ShinkaiLogLevel::Debug,
-                        &format!("Peer {} does not support relay protocol", peer_id),
+                        ShinkaiLogLevel::Info,
+                        &format!("Peer {} identified as direct connection peer (no relay support)", peer_id),
                     );
-                }
-                
-                // Check if this peer is connected through a relay and attempt direct connection upgrade
-                let mut circuit_addrs = Vec::new();
-                let mut external_addrs = Vec::new();
-                
-                for addr in &info.listen_addrs {
-                    if Self::is_circuit_address(addr) {
-                        circuit_addrs.push(addr.clone());
+                    
+                    // For direct connections, ensure the connection is properly established
+                    eprintln!("Direct peer {} identified, connection should now be stable", peer_id);
+                    
+                    // Check if this peer supports our Shinkai message protocol
+                    let supports_shinkai = info.protocols.iter().any(|protocol| {
+                        protocol.to_string().contains("/shinkai/message/")
+                    });
+                    
+                    if supports_shinkai {
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Info,
-                            &format!("Peer {} has relay circuit address: {}", peer_id, addr),
+                            &format!("✅ Peer {} supports Shinkai message protocol - ready for communication", peer_id),
                         );
-                    } else if Self::is_external_address(addr) {
-                        external_addrs.push(addr.clone());
+                        eprintln!("✅ Peer {} supports Shinkai protocol and is ready for messages", peer_id);
+                    } else {
                         shinkai_log(
                             ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Debug,
-                            &format!("Peer {} has external address: {}", peer_id, addr),
+                            ShinkaiLogLevel::Info,
+                            &format!("⚠️  Peer {} does not support Shinkai message protocol", peer_id),
                         );
                     }
+                }
+                
+                // Add all listen addresses from the peer to the swarm
+                for addr in &info.listen_addrs {
+                    self.swarm.add_peer_address(peer_id, addr.clone());
                 }
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::RequestResponse(req_resp_event)) => {
@@ -496,9 +577,10 @@ impl LibP2PManager {
                                     ShinkaiLogLevel::Info,
                                     &format!("Received direct message request from peer {}", peer),
                                 );
+                                eprintln!("Received direct message request from peer {} {:?}", peer, request);
 
                                 // Handle the incoming request message
-                                self.message_handler.handle_message(peer, request).await;
+                                self.message_handler.handle_message(peer, request, Some(channel)).await;
                             }
                             request_response::Message::Response { response, .. } => {
                                 shinkai_log(
@@ -506,20 +588,42 @@ impl LibP2PManager {
                                     ShinkaiLogLevel::Info,
                                     &format!("Received direct message response from peer {}", peer),
                                 );
-                                
+                                eprintln!("Received direct message response from peer {} {:?}", peer, response);
                                 // Handle the response (acknowledgment)
-                                self.message_handler.handle_message(peer, response).await;
+                                self.message_handler.handle_message(peer, response, None).await;
                             }
                         }
                     }
-                    request_response::Event::OutboundFailure { peer, error, .. } => {
-                        shinkai_log(
-                            ShinkaiLogOption::Network,
-                            ShinkaiLogLevel::Error,
-                            &format!("Failed to send direct message to peer {}: {:?}", peer, error),
-                        );
+                    request_response::Event::OutboundFailure { peer, request_id, error, .. } => {
+                        match error {
+                            request_response::OutboundFailure::DialFailure => {
+                                eprintln!("Dial failure to peer {} - message will be queued for retry", peer);
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Info,
+                                    &format!("Dial failure to peer {} - will retry when connection is established", peer),
+                                );
+                            }
+                            request_response::OutboundFailure::ConnectionClosed => {
+                                eprintln!("Connection closed to peer {} for request {:?}.", peer, request_id);
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Debug,
+                                    &format!("Connection closed to peer {} for request {:?}.", peer, request_id),
+                                );
+                            }
+                            _ => {
+                                eprintln!("Failed to send direct message {:?} to peer {}: {:?}", request_id, peer, error);
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to send direct message to peer {}: {:?}", peer, error),
+                                );
+                            }
+                        }
                     }
                     request_response::Event::InboundFailure { peer, error, .. } => {
+                        eprintln!("Failed to receive direct message from peer {}: {:?}", peer, error);
                         shinkai_log(
                             ShinkaiLogOption::Network,
                             ShinkaiLogLevel::Error,
@@ -532,16 +636,18 @@ impl LibP2PManager {
                             ShinkaiLogLevel::Debug,
                             &format!("Successfully sent response to peer {}", peer),
                         );
+                        eprintln!("Successfully sent response to peer {}", peer);
                     }
                 }
             }
-
             SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
                     &format!("✅ Connection established with {} at {:?}", peer_id, endpoint),
                 );
+
+                eprintln!("Connection established with {} at {:?}", peer_id, endpoint);
                 
                 // Check if this is a direct connection to a relay server (not through a circuit)
                 let is_direct_to_relay = Self::is_external_address(&endpoint.get_remote_address()) 
@@ -605,6 +711,7 @@ impl LibP2PManager {
                 self.mark_relay_disconnected(peer_id);
             }
             SwarmEvent::IncomingConnectionError { error, .. } => {
+                eprintln!("Incoming connection error: {}", error);
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Debug,
@@ -612,6 +719,7 @@ impl LibP2PManager {
                 );
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                eprintln!("Outgoing connection error to {:?}: {}", peer_id, error);
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Debug,
@@ -730,16 +838,14 @@ impl LibP2PManager {
 
     /// Create a circuit address for a specific relay peer
     /// This creates the address that other peers can use to reach us through the relay
-    fn create_circuit_address_for_relay(relay_peer_id: &PeerId) -> Option<Multiaddr> {
-        use libp2p::multiaddr::Protocol;
-        
-        // For now, we'll create a generic circuit address
-        // In a real implementation, you'd want to use the actual relay's listening address
-        let mut circuit_addr = Multiaddr::empty();
-        circuit_addr.push(Protocol::P2p(relay_peer_id.clone()));
-        circuit_addr.push(Protocol::P2pCircuit);
-        
-        Some(circuit_addr)
+    fn create_circuit_address_for_relay(&self, relay_peer_id: &PeerId) -> Option<Multiaddr> {
+        if let Some(mut addr) = self.relay_address.clone() {
+            addr.push(Protocol::P2p(relay_peer_id.clone()));
+            addr.push(Protocol::P2pCircuit);
+            Some(addr)
+        } else {
+            None
+        }
     }
 
     /// Handle network events from the event channel
@@ -758,6 +864,14 @@ impl LibP2PManager {
                     &format!("Sending direct message to peer {}", peer_id),
                 );
                 self.send_direct_message_to_peer(peer_id, message).await?;
+            }
+            NetworkEvent::SendResponse { channel, message } => {
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Sending response to peer."),
+                );
+                self.send_response_to_peer(channel, message).await?;
             }
             NetworkEvent::AddPeer { peer_id, address } => {
                 shinkai_log(
@@ -924,6 +1038,111 @@ impl LibP2PManager {
             return Err(format!("Peer {} not found in discovered peers", identity).into());
         }
         
+        Ok(())
+    }
+
+    /// Process the message queue and retry sending failed messages
+    async fn process_message_queue(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.message_queue.is_empty() {
+            return Ok(());
+        }
+
+        eprintln!("Processing message queue with {} messages", self.message_queue.len());
+        shinkai_log(
+            ShinkaiLogOption::Network,
+            ShinkaiLogLevel::Debug,
+            &format!("Processing message queue with {} messages", self.message_queue.len()),
+        );
+
+        let mut messages_to_retry = Vec::new();
+        let mut messages_to_remove = Vec::new();
+        let now = std::time::Instant::now();
+
+        // Check each message in the queue
+        for (index, queued_message) in self.message_queue.iter().enumerate() {
+            eprintln!("Checking message {} to peer {}, retry_count: {}, last_attempt: {:?} ago", 
+                index, queued_message.peer_id, queued_message.retry_count, 
+                now.duration_since(queued_message.last_attempt));
+
+            // Wait at least 1 second between retry attempts
+            if now.duration_since(queued_message.last_attempt) < Duration::from_secs(1) {
+                eprintln!("Message {} too recent, skipping", index);
+                continue;
+            }
+
+            // Check if we've exceeded max retry attempts
+            if queued_message.retry_count >= self.max_retry_attempts {
+                eprintln!("Message {} exceeded max retries, removing", index);
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("Message to peer {} exceeded max retry attempts ({}), dropping", 
+                        queued_message.peer_id, self.max_retry_attempts),
+                );
+                messages_to_remove.push(index);
+                continue;
+            }
+
+            // Check if peer is now connected
+            let is_connected = self.swarm.is_connected(&queued_message.peer_id);
+            let connected_peers: Vec<PeerId> = self.swarm.connected_peers().cloned().collect();
+            eprintln!("Peer {} connected status: {}", queued_message.peer_id, is_connected);
+            eprintln!("All connected peers: {:?}", connected_peers);
+            
+            if is_connected {
+                eprintln!("Adding message {} to retry list", index);
+                messages_to_retry.push(index);
+            } else {
+                // Try to send anyway even if not showing as connected
+                eprintln!("Peer not showing as connected, but attempting to send anyway");
+                messages_to_retry.push(index);
+            }
+        }
+
+        // Remove messages that exceeded retry limits (in reverse order to maintain indices)
+        for &index in messages_to_remove.iter().rev() {
+            eprintln!("Removing message at index {}", index);
+            self.message_queue.remove(index);
+        }
+
+        // Retry messages for connected peers (in reverse order to maintain indices)
+        for &index in messages_to_retry.iter().rev() {
+            if let Some(queued_message) = self.message_queue.remove(index) {
+                eprintln!("Retrying message to peer {} (attempt {})", 
+                    queued_message.peer_id, queued_message.retry_count + 1);
+                
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Info,
+                    &format!("Retrying message to peer {} (attempt {})", 
+                        queued_message.peer_id, queued_message.retry_count + 1),
+                );
+
+                // Attempt to send the message
+                let _request_id = self.swarm
+                    .behaviour_mut()
+                    .request_response
+                    .send_request(&queued_message.peer_id, queued_message.message.clone());
+
+                eprintln!("Message retry sent to peer {} {:?}", queued_message.peer_id, _request_id);
+                
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Message retry sent to peer {}", queued_message.peer_id),
+                );
+            }
+        }
+
+        if !self.message_queue.is_empty() {
+            eprintln!("Message queue still has {} messages pending", self.message_queue.len());
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Debug,
+                &format!("Message queue status: {} messages pending", self.message_queue.len()),
+            );
+        }
+
         Ok(())
     }
 }

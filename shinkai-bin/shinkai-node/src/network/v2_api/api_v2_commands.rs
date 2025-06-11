@@ -3,11 +3,15 @@ use crate::managers::galxe_quests::{compute_quests, generate_proof};
 use crate::managers::tool_router::ToolRouter;
 use crate::network::node_shareable_logic::download_zip_from_url;
 use crate::network::zip_export_import::zip_export_import::{
-    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools
+    generate_agent_zip, get_agent_from_zip, import_agent, import_dependencies_tools,
 };
 use crate::utils::environment::NodeEnvironment;
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::{identity_manager::IdentityManagerTrait, IdentityManager}, network::{node_error::NodeError, Node}, tools::tool_generation, utils::update_global_identity::update_global_identity_name
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
+    managers::{identity_manager::IdentityManagerTrait, IdentityManager},
+    network::{node_error::NodeError, Node},
+    tools::tool_generation,
+    utils::update_global_identity::update_global_identity_name,
 };
 use async_channel::Sender;
 use ed25519_dalek::ed25519::signature::SignerMut;
@@ -18,32 +22,49 @@ use serde_json::{json, Value};
 use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_embedding::{embedding_generator::RemoteEmbeddingGenerator, model_type::EmbeddingModelType};
 use shinkai_http_api::api_v2::api_v2_handlers_mcp_servers::{
-    AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest
+    AddMCPServerRequest, DeleteMCPServerResponse, UpdateMCPServerRequest,
 };
 use shinkai_http_api::node_api_router::APIUseRegistrationCodeSuccessResponse;
 use shinkai_http_api::{
-    api_v2::api_v2_handlers_general::InitialRegistrationRequest, node_api_router::{APIError, GetPublicKeysResponse}
+    api_v2::api_v2_handlers_general::InitialRegistrationRequest,
+    node_api_router::{APIError, GetPublicKeysResponse},
 };
-use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_sse};
+use shinkai_mcp::mcp_methods::{list_tools_via_command, list_tools_via_http, list_tools_via_sse};
 use shinkai_message_primitives::schemas::llm_providers::shinkai_backend::QuotaResponse;
 use shinkai_message_primitives::schemas::mcp_server::{MCPServer, MCPServerType};
 use shinkai_message_primitives::schemas::shinkai_preferences::ShinkaiInternalComms;
 use shinkai_message_primitives::{
-    schemas::ws_types::WSUpdateHandler, schemas::{
-        identity::{Identity, IdentityType, RegistrationCode}, inbox_name::InboxName, llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::ShinkaiName
-    }, shinkai_message::shinkai_message_schemas::JobCreationInfo, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_schemas::{
-            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage
-        }
-    }, shinkai_utils::{
-        encryption::{encryption_public_key_to_string, EncryptionMethod}, shinkai_message_builder::ShinkaiMessageBuilder, signatures::signature_public_key_to_string
-    }, shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime}
+    schemas::ws_types::WSUpdateHandler,
+    schemas::{
+        identity::{Identity, IdentityType, RegistrationCode},
+        inbox_name::InboxName,
+        llm_providers::{agent::Agent, serialized_llm_provider::SerializedLLMProvider},
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_message::shinkai_message_schemas::JobCreationInfo,
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_schemas::{
+            APIAddOllamaModels, IdentityPermissions, JobMessage, MessageSchemaType, V2ChatMessage,
+        },
+    },
+    shinkai_utils::{
+        encryption::{encryption_public_key_to_string, EncryptionMethod},
+        shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::signature_public_key_to_string,
+    },
+    shinkai_utils::{job_scope::MinimalJobScope, shinkai_time::ShinkaiStringTime},
 };
 use shinkai_sqlite::regex_pattern_manager::RegexPattern;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::{
-    agent_tool_wrapper::AgentToolWrapper, parameters::Parameters, shinkai_tool::ShinkaiTool, tool_config::{BasicConfig, ToolConfig}, tool_output_arg::ToolOutputArg, tool_types::ToolResult
+    agent_tool_wrapper::AgentToolWrapper,
+    parameters::Parameters,
+    shinkai_tool::ShinkaiTool,
+    tool_config::{BasicConfig, ToolConfig},
+    tool_output_arg::ToolOutputArg,
+    tool_types::ToolResult,
 };
 use std::collections::HashMap;
 use std::process::Command;
@@ -2337,6 +2358,21 @@ impl Node {
                     return Ok(());
                 }
             }
+            MCPServerType::Http => {
+                if let Some(url) = &mcp_server.url {
+                    log::info!("MCP Server Type Http: URL='{}'", url);
+                } else {
+                    log::warn!("No URL provided for MCP Server: '{}'", mcp_server.name);
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!("No URL provided for MCP Server '{}' of type Http.", mcp_server.name),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
             _ => {
                 log::warn!(
                     "MCP Server type not yet fully implemented or recognized: {:?}",
@@ -2360,6 +2396,10 @@ impl Node {
                     mcp_server.command.clone().unwrap_or_default().to_string()
                 ),
                 MCPServerType::Sse => format!(
+                    "MCP Server with url '{}' already exists.",
+                    mcp_server.url.clone().unwrap_or_default().to_string()
+                ),
+                MCPServerType::Http => format!(
                     "MCP Server with url '{}' already exists.",
                     mcp_server.url.clone().unwrap_or_default().to_string()
                 ),
@@ -2481,6 +2521,37 @@ impl Node {
                     } else {
                         log::warn!("MCP Server '{}' (ID: {:?}) is of type Sse and enabled, but has no URL for spawning. This indicates an inconsistent state.", server.name, server.id);
                     }
+                } else if server.r#type == MCPServerType::Http && server.is_enabled {
+                    if let Some(url) = &server.url {
+                        match list_tools_via_http(url, None).await {
+                            Ok(tools) => {
+                                for tool in tools {
+                                    let server_id = server.id.as_ref().expect("Server ID should exist").to_string();
+                                    let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                                        &tool,
+                                        &server.name,
+                                        &server_id,
+                                        &server_command_hash,
+                                        &node_name.to_string(),
+                                        vec![],
+                                    );
+
+                                    if let Err(err) = db.add_tool(shinkai_tool).await {
+                                        eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                    };
+                                }
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "Failed to list tools for http '{}' via list_tools_via_http: {:?}",
+                                    url,
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        log::warn!("MCP Server '{}' (ID: {:?}) is of type Http and enabled, but has no URL for spawning. This indicates an inconsistent state.", server.name, server.id);
+                    }
                 }
 
                 let _ = res.send(Ok(server)).await;
@@ -2550,6 +2621,27 @@ impl Node {
                             error: "Invalid MCP Server Configuration".to_string(),
                             message: format!(
                                 "No URL provided for MCP Server '{}' of type Sse.",
+                                mcp_server.name.clone().unwrap_or_default()
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            MCPServerType::Http => {
+                if let Some(url) = &mcp_server.url {
+                    log::info!("MCP Server Type Http: URL='{}'", url);
+                } else {
+                    log::warn!(
+                        "No URL provided for MCP Server: '{}'",
+                        mcp_server.name.clone().unwrap_or_default()
+                    );
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Invalid MCP Server Configuration".to_string(),
+                            message: format!(
+                                "No URL provided for MCP Server '{}' of type Http.",
                                 mcp_server.name.clone().unwrap_or_default()
                             ),
                         }))
@@ -2680,6 +2772,34 @@ impl Node {
                                 Err(e) => {
                                     log::error!(
                                         "Failed to list tools for sse '{}' via list_tools_via_sse: {:?}",
+                                        url,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    MCPServerType::Http => {
+                        if let Some(url) = &mcp_server.url {
+                            match list_tools_via_http(url, None).await {
+                                Ok(tools) => {
+                                    for tool in tools {
+                                        let shinkai_tool = mcp_manager::convert_to_shinkai_tool(
+                                            &tool,
+                                            &updated_mcp_server.name,
+                                            &server_id,
+                                            &server_command_hash,
+                                            &node_name.to_string(),
+                                            vec![],
+                                        );
+                                        if let Err(err) = db.add_tool(shinkai_tool).await {
+                                            eprintln!("Warning: Failed to add mcp server tool: {}", err);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::error!(
+                                        "Failed to list tools for http '{}' via list_tools_via_http: {:?}",
                                         url,
                                         e
                                     );
