@@ -925,31 +925,39 @@ fn test_relay_server_communication() {
                 "Node 2 to Node 1 send should be successful"
             );
 
-            // Wait longer for messages to potentially be delivered via relay
+            // Wait for messages to be delivered via relay by polling periodically
             eprintln!(">> Waiting for relay message delivery...");
-            tokio::time::sleep(Duration::from_secs(20)).await;
 
-            // Check if messages were received
-            let (res1_check_sender, res1_check_receiver) = async_channel::bounded(1);
-            node1_commands_sender
-                .send(NodeCommand::FetchLastMessages {
-                    limit: 5,
-                    res: res1_check_sender,
-                })
-                .await
-                .unwrap();
+            let mut node1_messages = Vec::new();
+            let mut node2_messages = Vec::new();
+            for _ in 0..80 { // up to ~40 seconds (80 * 500ms)
+                let (res1_check_sender, res1_check_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::FetchLastMessages {
+                        limit: 5,
+                        res: res1_check_sender,
+                    })
+                    .await
+                    .unwrap();
 
-            let (res2_check_sender, res2_check_receiver) = async_channel::bounded(1);
-            node2_commands_sender
-                .send(NodeCommand::FetchLastMessages {
-                    limit: 5,
-                    res: res2_check_sender,
-                })
-                .await
-                .unwrap();
+                let (res2_check_sender, res2_check_receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::FetchLastMessages {
+                        limit: 5,
+                        res: res2_check_sender,
+                    })
+                    .await
+                    .unwrap();
 
-            let node1_messages = res1_check_receiver.recv().await.unwrap();
-            let node2_messages = res2_check_receiver.recv().await.unwrap();
+                node1_messages = res1_check_receiver.recv().await.unwrap();
+                node2_messages = res2_check_receiver.recv().await.unwrap();
+
+                if node1_messages.len() == 2 && node2_messages.len() == 2 {
+                    break;
+                }
+
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
 
             eprintln!(">> Node 1 message count: {}", node1_messages.len());
             eprintln!(">> Node 2 message count: {}", node2_messages.len());
