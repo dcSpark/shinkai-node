@@ -1291,6 +1291,45 @@ impl Node {
         }
     }
 
+    pub async fn v2_api_get_message_traces(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        message_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_traces_by_parent_message_id(&message_id) {
+            Ok(traces) => {
+                let traces_json: Vec<Value> = traces
+                    .into_iter()
+                    .map(|t| {
+                        json!({
+                            "id": t.id,
+                            "parent_message_id": t.parent_message_id,
+                            "inbox_name": t.inbox_name,
+                            "datetime": t.datetime,
+                            "trace_name": t.trace_name,
+                            "trace_info": t.trace_info,
+                        })
+                    })
+                    .collect();
+                let _ = res.send(Ok(json!(traces_json))).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve traces: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn v2_fork_job_messages(
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
@@ -1556,23 +1595,6 @@ impl Node {
             }
         }
 
-        // TODO: remove the files from the job folder
-        // Remove the file inboxes
-        // for file_inbox in file_inboxes {
-        //     match db.remove_inbox(&file_inbox) {
-        //         Ok(_) => {}
-        //         Err(err) => {
-        //             let api_error = APIError {
-        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //                 error: "Internal Server Error".to_string(),
-        //                 message: format!("Failed to remove file inbox: {}", err),
-        //             };
-        //             let _ = res.send(Err(api_error)).await;
-        //             return Ok(());
-        //         }
-        //     }
-        // }
-
         let _ = res
             .send(Ok(SendResponseBody {
                 status: "success".to_string(),
@@ -1622,15 +1644,6 @@ impl Node {
                 return Ok(());
             }
         };
-
-        // TODO: Review and fix this
-
-        // Retrieve the filenames in the inboxes
-        let _file_inboxes = v2_chat_messages
-            .iter()
-            .flatten()
-            .map(|message| message.job_message.fs_files_paths.clone())
-            .collect::<Vec<_>>();
 
         // Export the messages in the requested format
         match format {
