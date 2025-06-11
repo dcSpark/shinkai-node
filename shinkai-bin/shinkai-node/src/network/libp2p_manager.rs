@@ -1156,6 +1156,30 @@ impl LibP2PManager {
                     ShinkaiLogLevel::Debug,
                     &format!("Message retry sent to peer {}", queued_message.peer_id),
                 );
+
+                // Update retry metadata
+                queued_message.retry_count += 1;
+                queued_message.last_attempt = now;
+
+                if queued_message.retry_count < self.max_retry_attempts {
+                    let peer_id = queued_message.peer_id;
+                    let retry_count = queued_message.retry_count;
+                    self.message_queue.push_back(queued_message);
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Queued message for peer {} for retry {}", peer_id, retry_count),
+                    );
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!(
+                            "Dropping message to peer {} after {} attempts",
+                            queued_message.peer_id, queued_message.retry_count
+                        ),
+                    );
+                }                
             }
         }
 

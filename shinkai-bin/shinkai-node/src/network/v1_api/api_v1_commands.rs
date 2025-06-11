@@ -3072,12 +3072,12 @@ impl Node {
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        if node_name.get_node_name_string().starts_with("@@localhost.") {
+        if potentially_encrypted_msg.external_metadata.recipient.starts_with("@@localhost.") {
             let _ = res
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
-                    message: "Invalid node name: @@localhost".to_string(),
+                    message: "Invalid recipient node name: @@localhost".to_string(),
                 }))
                 .await;
             return Ok(());
@@ -3207,10 +3207,23 @@ impl Node {
         msg.external_metadata.intra_sender = "".to_string();
         msg.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
 
-        let encrypted_msg = msg.encrypt_outer_layer(
-            &encryption_secret_key.clone(),
-            &external_global_identity.node_encryption_public_key,
-        )?;
+        // Store the scheduled_time before potentially moving msg
+        let scheduled_time = msg.external_metadata.scheduled_time.clone();
+        let potentially_encrypted_msg_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
+
+        // For localhost nodes sending through relay, avoid body encryption to prevent 
+        // decryption issues. Only use content encryption which can be properly handled.
+        let encrypted_msg = if node_name.get_node_name_string().starts_with("@@localhost.") {
+            println!("🔄 Localhost message - skipping body encryption to avoid relay decryption issues");
+            // For localhost, don't add body encryption - the message already has proper content encryption
+            msg
+        } else {
+            // For non-localhost nodes, apply normal body encryption
+            msg.encrypt_outer_layer(
+                &encryption_secret_key.clone(),
+                &external_global_identity.node_encryption_public_key,
+            )?
+        };
 
         // We update the signature so it comes from the node and not the profile
         // that way the recipient will be able to verify it
@@ -3232,16 +3245,13 @@ impl Node {
         );
 
         {
-            let inbox_name = match InboxName::from_message(&msg.clone()) {
+            let inbox_name = match InboxName::from_message(&potentially_encrypted_msg) {
                 Ok(inbox) => inbox.to_string(),
                 Err(_) => "".to_string(),
             };
 
-            let scheduled_time = msg.external_metadata.scheduled_time;
-            let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
-
             let parent_key = if !inbox_name.is_empty() {
-                match db.get_parent_message_hash(&inbox_name, &message_hash) {
+                match db.get_parent_message_hash(&inbox_name, &potentially_encrypted_msg_hash) {
                     Ok(result) => result,
                     Err(_) => None,
                 }
@@ -3250,7 +3260,7 @@ impl Node {
             };
 
             let response = SendResponseBodyData {
-                message_id: message_hash,
+                message_id: potentially_encrypted_msg_hash,
                 parent_message_id: parent_key,
                 inbox: inbox_name,
                 scheduled_time,
