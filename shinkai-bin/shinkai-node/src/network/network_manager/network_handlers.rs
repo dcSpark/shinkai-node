@@ -2,11 +2,12 @@ use crate::{
     managers::IdentityManager, network::{
         agent_payments_manager::{
             external_agent_offerings_manager::ExtAgentOfferingsManager, my_agent_offerings_manager::MyAgentOfferingsManager
-        }, node::ProxyConnectionInfo, Node
+        }, libp2p_manager::NetworkEvent, node::ProxyConnectionInfo, Node
     }
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
+use libp2p::{request_response::ResponseChannel, PeerId};
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
@@ -23,7 +24,7 @@ use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::network_job_manager_error::NetworkJobQueueError;
+
 
 pub enum PingPong {
     Ping,
@@ -42,12 +43,14 @@ pub async fn handle_based_on_message_content_and_encryption(
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    channel: Option<ResponseChannel<ShinkaiMessage>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let message_body = message.body.clone();
     let message_content = match &message_body {
         MessageBody::Encrypted(body) => &body.content,
@@ -83,13 +86,15 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 my_agent_offering_manager,
                 external_agent_offering_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
+                channel,
             )
             .await
         }
@@ -108,13 +113,15 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 my_agent_offering_manager,
                 external_agent_offering_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
+                channel,
             )
             .await
         }
@@ -127,11 +134,12 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
             )
             .await
         }
@@ -141,9 +149,10 @@ pub async fn handle_based_on_message_content_and_encryption(
                 ShinkaiLogLevel::Debug,
                 &format!(
                     "{} {} > ACK from {:?}",
-                    my_node_profile_name, receiver_address, unsafe_sender_address
+                    my_node_profile_name, receiver_address, sender_peer_id
                 ),
             );
+            println!("ACK received from {:?}", sender_peer_id);
             // Currently, we are not saving ACKs received to the DB.
             Ok(())
         }
@@ -165,13 +174,15 @@ pub async fn handle_based_on_message_content_and_encryption(
                 my_signature_secret_key,
                 my_node_profile_name,
                 receiver_address,
-                unsafe_sender_address,
+                sender_peer_id,
                 maybe_db,
                 maybe_identity_manager,
                 my_agent_offering_manager,
                 external_agent_offering_manager,
                 proxy_connection_info,
                 ws_manager,
+                libp2p_event_sender,
+                channel,
             )
             .await
         }
@@ -179,17 +190,6 @@ pub async fn handle_based_on_message_content_and_encryption(
 }
 
 // All the new helper functions here:
-pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result<ShinkaiMessage> {
-    ShinkaiMessage::decode_message_result(bytes.to_vec()).map_err(|_| {
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Error,
-            &format!("{} > Failed to decode message.", receiver_address),
-        );
-        io::Error::new(io::ErrorKind::Other, "Failed to decode message")
-    })
-}
-
 pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &ShinkaiMessage) -> io::Result<()> {
     match message.verify_outer_layer_signature(&sender_signature_pk) {
         Ok(is_valid) if is_valid => Ok(()),
@@ -232,18 +232,27 @@ pub async fn handle_ping(
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
-    println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    println!("{} > Got ping from {:?}", receiver_address, sender_peer_id);
+    shinkai_log(
+        ShinkaiLogOption::Network,
+        ShinkaiLogLevel::Debug,
+        &format!(
+            "{} {} > Ping from {:?}",
+            my_node_profile_name, receiver_address, sender_peer_id
+        ),
+    );
     ping_pong(
         (sender_address, sender_profile_name.clone()),
         PingPong::Pong,
-        clone_static_secret_key(my_encryption_secret_key),
-        clone_signature_secret_key(my_signature_secret_key),
+        my_encryption_secret_key.clone(),
+        my_signature_secret_key.clone(),
         sender_encryption_pk,
         my_node_profile_name.to_string(),
         sender_profile_name,
@@ -251,6 +260,7 @@ pub async fn handle_ping(
         maybe_identity_manager,
         proxy_connection_info,
         ws_manager,
+        libp2p_event_sender,
     )
     .await
 }
@@ -265,14 +275,16 @@ pub async fn handle_default_encryption(
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    channel: Option<ResponseChannel<ShinkaiMessage>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let decrypted_message_result = message.decrypt_outer_layer(my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
@@ -294,13 +306,15 @@ pub async fn handle_default_encryption(
                             my_signature_secret_key,
                             my_node_profile_name,
                             receiver_address,
-                            unsafe_sender_address,
+                            sender_peer_id,
                             maybe_db,
                             maybe_identity_manager,
                             my_agent_offering_manager,
                             external_agent_offering_manager,
                             proxy_connection_info,
                             ws_manager.clone(),
+                            libp2p_event_sender,
+                            channel,
                         )
                         .await?;
                     }
@@ -319,16 +333,13 @@ pub async fn handle_default_encryption(
                     .await?;
 
                     let _ = send_ack(
-                        (sender_address, sender_profile_name.clone()),
                         clone_static_secret_key(my_encryption_secret_key),
                         clone_signature_secret_key(my_signature_secret_key),
                         sender_encryption_pk,
                         my_node_profile_name.to_string(),
                         sender_profile_name,
-                        maybe_db,
-                        maybe_identity_manager,
-                        proxy_connection_info,
-                        ws_manager,
+                        libp2p_event_sender,
+                        channel,
                     )
                     .await;
                 }
@@ -355,17 +366,19 @@ pub async fn handle_network_message_cases(
     my_signature_secret_key: &SigningKey,
     my_node_full_name: &str,
     receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    sender_peer_id: PeerId,
     maybe_db: Arc<SqliteManager>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     my_agent_offering_manager: Weak<Mutex<MyAgentOfferingsManager>>,
     external_agent_offering_manager: Weak<Mutex<ExtAgentOfferingsManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    channel: Option<ResponseChannel<ShinkaiMessage>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!(
         "{} {} > Network Message Got message from {:?}. Processing and sending ACK",
-        my_node_full_name, receiver_address, unsafe_sender_address
+        my_node_full_name, receiver_address, sender_peer_id
     );
 
     let mut message = message.clone();
@@ -454,7 +467,7 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade external_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
@@ -529,14 +542,20 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade my_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice) => {
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
-                            my_agent_offering_manager.store_invoice(&invoice).await?;
+                            if let Err(e) = my_agent_offering_manager.store_invoice(&invoice).await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to store invoice: {:?}", e),
+                                );
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -569,16 +588,22 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade external_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<Invoice>(&content) {
                         Ok(invoice) => {
                             let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
-                            ext_agent_offering_manager
+                            if let Err(e) = ext_agent_offering_manager
                                 .network_confirm_invoice_payment_and_process(requester, invoice)
-                                .await?;
+                                .await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to confirm invoice payment: {:?}", e),
+                                );
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -611,7 +636,7 @@ pub async fn handle_network_message_cases(
                             ShinkaiLogLevel::Error,
                             "Failed to upgrade my_agent_offering_manager",
                         );
-                        return Err(NetworkJobQueueError::ManagerUnavailable);
+                        return Ok(());
                     };
 
                     let content = message.get_message_content().unwrap_or("".to_string());
@@ -619,7 +644,13 @@ pub async fn handle_network_message_cases(
                         Ok(invoice_result) => {
                             println!("Invoice result received: {:?}", invoice_result);
                             let my_agent_offering_manager = my_agent_offering_manager.lock().await;
-                            my_agent_offering_manager.store_invoice_result(&invoice_result).await?;
+                            if let Err(e) = my_agent_offering_manager.store_invoice_result(&invoice_result).await {
+                                shinkai_log(
+                                    ShinkaiLogOption::Network,
+                                    ShinkaiLogLevel::Error,
+                                    &format!("Failed to store invoice result: {:?}", e),
+                                );
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -652,33 +683,27 @@ pub async fn handle_network_message_cases(
     }
 
     send_ack(
-        (sender_address, sender_profile_name.clone()),
         clone_static_secret_key(my_encryption_secret_key),
         clone_signature_secret_key(my_signature_secret_key),
         sender_encryption_pk,
         my_node_full_name.to_string(),
         sender_profile_name,
-        maybe_db,
-        maybe_identity_manager,
-        proxy_connection_info,
-        ws_manager,
+        libp2p_event_sender.clone(),
+        channel,
     )
     .await
 }
 
 #[allow(clippy::too_many_arguments)]
 pub async fn send_ack(
-    peer: (SocketAddr, ShinkaiNameString),
-    encryption_secret_key: EncryptionStaticKey, // not important for ping pong
+    encryption_secret_key: EncryptionStaticKey,
     signature_secret_key: SigningKey,
-    receiver_public_key: EncryptionPublicKey, // not important for ping pong
+    receiver_public_key: EncryptionPublicKey,
     sender: ShinkaiNameString,
     receiver: ShinkaiNameString,
-    maybe_db: Arc<SqliteManager>,
-    maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
-    ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    channel: Option<ResponseChannel<ShinkaiMessage>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
         signature_secret_key,
@@ -688,17 +713,32 @@ pub async fn send_ack(
     )
     .unwrap();
 
-    Node::send(
-        msg,
-        Arc::new(clone_static_secret_key(&encryption_secret_key)),
-        peer,
-        proxy_connection_info,
-        maybe_db,
-        maybe_identity_manager,
-        ws_manager,
-        false,
-        None,
-    );
+    if let Some(channel) = channel {
+        let network_event = NetworkEvent::SendResponse {
+            channel: channel,
+            message: msg,
+        };
+        if let Some(libp2p_event_sender) = libp2p_event_sender.as_ref() {
+            if let Err(e) = libp2p_event_sender.send(network_event) {
+                eprintln!("Failed to send response: {:?}", e);
+                shinkai_log(
+                    ShinkaiLogOption::Network,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to send response: {:?}", e),
+                );
+            }
+        } else {
+            eprintln!("No libp2p event sender");
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Error,
+                &format!("No libp2p event sender"),
+            );
+        }
+    } else {
+        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No channel defined.")));
+    }
+    
     Ok(())
 }
 
@@ -715,7 +755,8 @@ pub async fn ping_pong(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
-) -> Result<(), NetworkJobQueueError> {
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
         PingPong::Pong => "Pong",
@@ -740,6 +781,7 @@ pub async fn ping_pong(
         ws_manager,
         false,
         None,
+        libp2p_event_sender,
     );
     Ok(())
 }

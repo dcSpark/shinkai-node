@@ -1,5 +1,6 @@
 use embedding_function::EmbeddingFunction;
 use errors::SqliteManagerError;
+use log::info;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
@@ -212,6 +213,7 @@ impl SqliteManager {
         Self::migrate_tools_table(conn)?;
         Self::migrate_agents_table(conn)?;
         Self::migrate_llm_providers_table(conn)?;
+        Self::migrate_mcp_servers_table(conn)?;
         Ok(())
     }
 
@@ -927,7 +929,7 @@ impl SqliteManager {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 name TEXT NOT NULL,
-                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND')) DEFAULT 'SSE',
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
                 url TEXT,
                 env TEXT,
                 command TEXT,
@@ -946,6 +948,46 @@ impl SqliteManager {
             "INSERT INTO embedding_model_type (model_type) VALUES (?);",
             [&model_type.to_string() as &dyn ToSql],
         )?;
+        Ok(())
+    }
+    pub fn migrate_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if 'HTTP' type exists in the CHECK constraint
+        info!("Checking if HTTP type exists in mcp_servers table...");
+        let mut stmt = conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='mcp_servers'")?;
+        let table_sql: String = stmt.query_row([], |row| row.get(0))?;
+        // Only migrate if HTTP is not in the type constraint
+        if table_sql.contains("'HTTP'") {
+            info!("HTTP type found in constraint - skipping migration");
+            return Ok(());
+        }
+        info!("HTTP type not found in constraint - proceeding with migration");
+
+        // SQLite doesn't support MODIFY COLUMN, so we need to:
+        // 1. Create a new table with the desired schema
+        // 2. Copy data from old table
+        // 3. Drop old table
+        // 4. Rename new table to old name
+        conn.execute(
+            "CREATE TABLE mcp_servers_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
+                url TEXT,
+                env TEXT,
+                command TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE
+            );",
+            [],
+        )?;
+
+        conn.execute("INSERT INTO mcp_servers_new SELECT * FROM mcp_servers;", [])?;
+
+        conn.execute("DROP TABLE mcp_servers;", [])?;
+
+        conn.execute("ALTER TABLE mcp_servers_new RENAME TO mcp_servers;", [])?;
+
         Ok(())
     }
 

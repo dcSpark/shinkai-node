@@ -101,9 +101,9 @@ fn test_tool_execution_with_config_override() {
             api_key: Some("mockapikey".to_string()),
             model: LLMProviderInterface::OpenAI(open_ai),
         };
-        assert!(port_is_available(8080), "Port 8080 is not available");
+        assert!(port_is_available(12010), "Port 12010 is not available");
         // Create node
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12010);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,

@@ -261,7 +261,7 @@ impl JobManager {
                         let in_progress = processing_jobs.clone();
 
                         tokio::spawn(async move {
-                            (job_processing_fn)(
+                            let _ = (job_processing_fn)(
                                 job,
                                 db_clone,
                                 node_profile_name,
@@ -475,9 +475,8 @@ impl JobManager {
                                     let agent_id = agent_name
                                         .get_agent_name_string()
                                         .ok_or(LLMProviderError::LLMProviderNotFound)?;
-                                    let job_creation: JobCreationInfo =
-                                        serde_json::from_str(&data.message_raw_content)
-                                            .map_err(|_| LLMProviderError::ContentParseFailed)?;
+                                    let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
+                                        .map_err(|_| LLMProviderError::ContentParseFailed)?;
 
                                     self.process_job_creation(job_creation, &profile, &agent_id).await
                                 }

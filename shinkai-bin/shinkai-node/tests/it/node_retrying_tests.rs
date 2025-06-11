@@ -89,9 +89,9 @@ fn node_retrying_test() {
         }
 
         // Create node1 and node2
-        assert!(port_is_available(8080), "Port 8080 is not available");
-        assert!(port_is_available(8081), "Port 8081 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        assert!(port_is_available(12008), "Port 12008 is not available");
+        assert!(port_is_available(12009), "Port 12009 is not available");
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12008);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -114,7 +114,7 @@ fn node_retrying_test() {
         )
         .await;
 
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12009);
         let node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,

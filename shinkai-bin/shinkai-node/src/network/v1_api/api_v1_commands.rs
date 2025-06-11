@@ -616,6 +616,7 @@ impl Node {
         msg: ShinkaiMessage,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<crate::network::libp2p_manager::NetworkEvent>>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("api_handle_registration_code_usage");
@@ -708,6 +709,7 @@ impl Node {
             ws_manager,
             supported_embedding_models,
             public_https_certificate,
+            libp2p_event_sender,
             res,
         )
         .await
@@ -729,6 +731,7 @@ impl Node {
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         supported_embedding_models: Arc<Mutex<Vec<EmbeddingModelType>>>,
         public_https_certificate: Option<String>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<crate::network::libp2p_manager::NetworkEvent>>,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("handle_registration_code_usage");
@@ -3065,6 +3068,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         proxy_connection_info: Arc<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<crate::network::libp2p_manager::NetworkEvent>>,
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
@@ -3224,6 +3228,7 @@ impl Node {
             ws_manager.clone(),
             true,
             None,
+            libp2p_event_sender, // Pass the libp2p_event_sender for LibP2P networking
         );
 
         {

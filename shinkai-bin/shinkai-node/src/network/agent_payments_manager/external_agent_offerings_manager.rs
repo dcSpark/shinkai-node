@@ -1,6 +1,7 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
+use crate::network::libp2p_manager::NetworkEvent;
 use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
 use crate::network::node::ProxyConnectionInfo;
 use crate::wallet::wallet_error;
@@ -88,6 +89,7 @@ pub struct ExtAgentOfferingsManager {
     pub offering_processing_task: Option<tokio::task::JoinHandle<()>>,
     pub tool_router: Weak<ToolRouter>,
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
+    pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 }
 
 const NUM_THREADS: usize = 4;
@@ -121,6 +123,7 @@ impl ExtAgentOfferingsManager {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         tool_router: Weak<ToolRouter>,
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
         // need tool_router
     ) -> Self {
         let db_prefix = "shinkai__tool__offering_"; // dont change it
@@ -178,7 +181,13 @@ impl ExtAgentOfferingsManager {
             offering_processing_task: Some(offering_queue_handler),
             tool_router,
             wallet_manager,
+            libp2p_event_sender,
         }
+    }
+
+    /// Update the libp2p event sender after initialization
+    pub fn update_libp2p_event_sender(&mut self, sender: tokio::sync::mpsc::UnboundedSender<NetworkEvent>) {
+        self.libp2p_event_sender = Some(sender);
     }
 
     // TODO: Should be split this into two? one for invoices and one for actual tool jobs?
@@ -667,6 +676,7 @@ impl ExtAgentOfferingsManager {
                         self.my_encryption_secret_key.clone(),
                         self.identity_manager.clone(),
                         self.proxy_connection_info.clone(),
+                        self.libp2p_event_sender.clone(),
                     )
                     .await?;
                 }
@@ -713,6 +723,7 @@ impl ExtAgentOfferingsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
             )
             .await?;
         }
@@ -972,6 +983,7 @@ impl ExtAgentOfferingsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
             )
             .await?;
         }
@@ -1049,6 +1061,18 @@ mod tests {
             _: Option<bool>,
         ) -> Result<StandardIdentity, String> {
             unimplemented!()
+        }
+
+        async fn get_routing_info(
+            &self,
+            _full_profile_name: &str,
+            _: Option<bool>,
+        ) -> Result<(bool, Vec<String>), String> {
+            if _full_profile_name.to_string() == "@@node1.shinkai/main" {
+                Ok((false, vec!["127.0.0.1:9552".to_string()]))
+            } else {
+                Err("Identity not found".to_string())
+            }
         }
     }
 
