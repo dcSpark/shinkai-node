@@ -746,8 +746,11 @@ mod tests {
             _full_profile_name: &str,
             _: Option<bool>,
         ) -> Result<(bool, Vec<String>), String> {
-            // Mock implementation - return some default routing info
-            Ok((false, vec!["127.0.0.1:9901".to_string()]))
+            if _full_profile_name.to_string() == "@@node1.shinkai/main" {
+                Ok((false, vec!["127.0.0.1:9552".to_string()]))
+            } else {
+                Err("Identity not found".to_string())
+            }
         }
     }
 

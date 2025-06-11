@@ -184,7 +184,7 @@ where
                     .map_err(|e| RunError::CodeExecutionError(e.to_string()))?
             }
         };
-        println!("result: {:?}", result);
+
         serde_json::from_value(result.data).map_err(|e| RunError::ParseOutputError(e.to_string()))
     }
 }

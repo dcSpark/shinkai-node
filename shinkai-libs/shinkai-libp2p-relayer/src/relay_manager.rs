@@ -9,11 +9,11 @@ use libp2p::{
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use x25519_dalek::{StaticSecret as EncryptionStaticKey};
 use std::time::Duration;
-use tokio::sync::mpsc;
 use dashmap::DashMap;
 use shinkai_crypto_identities::ShinkaiRegistry;
-use crate::{LibP2PRelayError, RelayMessage};
+use crate::LibP2PRelayError;
 
 /// A queued message waiting to be delivered
 #[derive(Debug)]
@@ -35,15 +35,21 @@ pub struct RelayBehaviour {
     pub request_response: request_response::json::Behaviour<ShinkaiMessage, ShinkaiMessage>,
 }
 
+pub struct RelayManagerConfig {
+    pub listen_port: u16,
+    pub relay_node_name: String,
+    pub identity_secret_key: SigningKey,
+    pub encryption_secret_key: EncryptionStaticKey,
+}
+
 pub struct RelayManager {
     swarm: Swarm<RelayBehaviour>,
     registered_peers: DashMap<String, PeerId>, // identity -> peer_id
     peer_identities: DashMap<PeerId, String>,  // peer_id -> identity
     request_response_channels: DashMap<request_response::OutboundRequestId, request_response::ResponseChannel<ShinkaiMessage>>, // request_id -> channel
-    message_sender: mpsc::UnboundedSender<RelayMessage>,
-    message_receiver: mpsc::UnboundedReceiver<RelayMessage>,
     external_ip: Option<std::net::IpAddr>, // Store detected external IP
     registry: ShinkaiRegistry, // Blockchain registry for identity verification
+    config: RelayManagerConfig,
 }
 
 impl RelayManager {
@@ -107,6 +113,7 @@ impl RelayManager {
         listen_port: u16,
         relay_node_name: String,
         identity_secret_key: SigningKey,
+        encryption_secret_key: EncryptionStaticKey,
         registry: ShinkaiRegistry,
     ) -> Result<Self, LibP2PRelayError> {
         // Detect external IP address first
@@ -131,7 +138,7 @@ impl RelayManager {
             local_key.public(),
         ).with_agent_version(format!(
             "shinkai-relayer/{}/{}",
-            std::env::var("NODE_NAME").unwrap_or_else(|_| "@@relayer_pub_01.sep-shinkai".to_string()),
+            relay_node_name,
             env!("CARGO_PKG_VERSION")
         ))
         .with_interval(Duration::from_secs(60))
@@ -185,9 +192,6 @@ impl RelayManager {
             swarm.add_external_address(external_tcp_addr.clone());
         }
 
-        // Create message channel
-        let (message_sender, message_receiver) = mpsc::unbounded_channel();
-
         println!("LibP2P Relay initialized with PeerId: {}", local_peer_id);
         println!("Relay node name: {}", relay_node_name);
         println!("🏠 Local binding addresses:");
@@ -206,10 +210,14 @@ impl RelayManager {
             registered_peers: DashMap::new(),
             peer_identities: DashMap::new(),
             request_response_channels: DashMap::new(),
-            message_sender,
-            message_receiver,
             external_ip,
             registry,
+            config: RelayManagerConfig {
+                listen_port,
+                relay_node_name,
+                identity_secret_key,
+                encryption_secret_key,
+            },
         })
     }
 
@@ -233,10 +241,6 @@ impl RelayManager {
 
     pub fn local_peer_id(&self) -> PeerId {
         *self.swarm.local_peer_id()
-    }
-
-    pub fn get_message_sender(&self) -> mpsc::UnboundedSender<RelayMessage> {
-        self.message_sender.clone()
     }
 
     pub fn register_peer(&mut self, identity: String, peer_id: PeerId) {
@@ -341,20 +345,8 @@ impl RelayManager {
                 event = self.swarm.select_next_some() => {
                     self.handle_swarm_event(event).await?;
                 }
-                
-                // Handle outgoing messages
-                message = self.message_receiver.recv() => {
-                    match message {
-                        Some(msg) => {
-                            println!("📡 Relay received outgoing message from {} to {:?}", 
-                                msg.identity, msg.target_peer);
-                        }
-                        None => break, // Channel closed
-                    }
-                }
             }
         }
-        Ok(())
     }
 
     async fn handle_swarm_event(
@@ -387,24 +379,24 @@ impl RelayManager {
                 if public_key_bytes.len() >= 32 {
                     let key_bytes = &public_key_bytes[public_key_bytes.len() - 32..];
                     if let Ok(verifying_key) = ed25519_dalek::VerifyingKey::from_bytes(&key_bytes.try_into().unwrap_or([0u8; 32])) {
-                                                 // Verify the peer's identity using blockchain registry
-                         if let Some(verified_identity) = Self::verify_peer_identity_internal(self.registry.clone(), verifying_key, info.agent_version.clone()).await {
-                             println!("🔑 Verified and registering peer {} with identity: {}", peer_id, verified_identity);
-                             self.handle_identity_registration(verified_identity, peer_id).await;
-                         } else {
-                             let possible_identity = if info.agent_version.ends_with("shinkai") {
-                                 if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
-                                     Some(format!("@@{}", identity_part))
-                                 } else { None }
-                             } else { None };
-                             
-                             if let Some(identity) = possible_identity {
-                                 println!("❌ Verification failed, registering peer {} with identity: {}", peer_id, identity);
-                                 self.handle_identity_registration(identity, peer_id).await;
-                             } else {
-                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
-                             }
-                         }
+                        // Verify the peer's identity using blockchain registry
+                        if let Some(verified_identity) = Self::verify_peer_identity_internal(self.registry.clone(), verifying_key, info.agent_version.clone()).await {
+                            println!("🔑 Verified and registering peer {} with identity: {}", peer_id, verified_identity);
+                            self.handle_identity_registration(verified_identity, peer_id).await;
+                        } else {
+                            let possible_identity = if info.agent_version.ends_with("shinkai") {
+                                if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
+                                    Some(format!("@@{}", identity_part))
+                                } else { None }
+                            } else { None };
+
+                            if let Some(identity) = possible_identity {
+                                println!("❌ Verification failed, registering peer {} with identity: {}", peer_id, identity);
+                                self.handle_identity_registration(identity, peer_id).await;
+                            } else {
+                                println!("❌ Could not parse identity from agent version: {}", info.agent_version);
+                            }
+                        }
                     } else {
                         println!("❌ Failed to convert peer {} public key to ed25519_dalek::VerifyingKey", peer_id);
                     }
@@ -428,7 +420,7 @@ impl RelayManager {
                 match req_resp_event {
                     request_response::Event::Message { peer, message, .. } => {
                         match message {
-                            request_response::Message::Request { request, channel, .. } => {
+                            request_response::Message::Request { mut request, channel, .. } => {
                                 println!("🔄 Relay: Received direct message request from peer {}", peer);
                                 println!("   Message from: {} to: {}", 
                                     request.external_metadata.sender,
@@ -442,19 +434,27 @@ impl RelayManager {
                                     target_identity.clone()
                                 };
                                 
+                                if request.external_metadata.sender == "@@localhost.sep-shinkai" {
+                                    println!("🔄 Relay: Received direct message request from localhost to {}", target_node);
+                                    request.external_metadata.sender = self.config.relay_node_name.clone();
+                                }
+
                                 // Forward to target and store channel for response
                                 if let Some(target_peer_id) = self.find_peer_by_identity(&target_node) {
                                     let outbound_id = self.swarm.behaviour_mut().request_response.send_request(&target_peer_id, request);
                                     self.request_response_channels.insert(outbound_id, channel);
                                 } else {
                                     // Target not found, send error response
-                                    let mut response = request.clone();
-                                    response.external_metadata.other = "Target not found".to_string();
-                                    let _ = self.swarm.behaviour_mut().request_response.send_response(channel, response);
+                                    println!("❌ Target not found for request from {} to {}", request.external_metadata.sender, request.external_metadata.recipient);
+                                    request.external_metadata.other = "Target not found".to_string();
+                                    let _ = self.swarm.behaviour_mut().request_response.send_response(channel, request);
                                 }
                             }
                             request_response::Message::Response { response, request_id, .. } => {
-                                println!("🔄 Relay: Received direct message response from peer {}: {:?}", peer, response);
+                                println!("🔄 Relay: Received direct message response from peer {}", peer);
+                                println!("   Message from: {} to: {}", 
+                                    response.external_metadata.sender,
+                                    response.external_metadata.recipient);                                
 
                                 if let Some((_, channel)) = self.request_response_channels.remove(&request_id) {
                                     let _ = self.swarm.behaviour_mut().request_response.send_response(channel, response);
