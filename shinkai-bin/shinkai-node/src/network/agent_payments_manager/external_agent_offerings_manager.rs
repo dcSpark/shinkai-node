@@ -1062,6 +1062,18 @@ mod tests {
         ) -> Result<StandardIdentity, String> {
             unimplemented!()
         }
+
+        async fn get_routing_info(
+            &self,
+            _full_profile_name: &str,
+            _: Option<bool>,
+        ) -> Result<(bool, Vec<String>), String> {
+            if _full_profile_name.to_string() == "@@node1.shinkai/main" {
+                Ok((false, vec!["127.0.0.1:9552".to_string()]))
+            } else {
+                Err("Identity not found".to_string())
+            }
+        }
     }
 
     fn setup() {

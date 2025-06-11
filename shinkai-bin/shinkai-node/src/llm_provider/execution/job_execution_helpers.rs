@@ -27,6 +27,7 @@ impl JobManager {
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
         db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let llm_provider_cloned = llm_provider.clone();
         let prompt_cloned = filled_prompt.clone();
@@ -34,7 +35,14 @@ impl JobManager {
         let task_response = tokio::spawn(async move {
             let llm_provider = LLMProvider::from_provider_or_agent(llm_provider_cloned, db.clone()).await?;
             llm_provider
-                .inference(prompt_cloned, inbox_name, ws_manager_trait, config, llm_stopper)
+                .inference(
+                    prompt_cloned,
+                    inbox_name,
+                    ws_manager_trait,
+                    config,
+                    llm_stopper,
+                    tracing_message_id,
+                )
                 .await
         })
         .await;

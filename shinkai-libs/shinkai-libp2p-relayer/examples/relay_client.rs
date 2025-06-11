@@ -5,9 +5,6 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent, Config},
     tcp, yamux, Multiaddr, PeerId, Swarm, Transport,
 };
-use shinkai_libp2p_relayer::RelayMessage;
-use shinkai_message_primitives::schemas::shinkai_network::NetworkMessageType;
-use std::time::Duration;
 use tokio::io::{self, AsyncBufReadExt};
 
 #[derive(NetworkBehaviour)]

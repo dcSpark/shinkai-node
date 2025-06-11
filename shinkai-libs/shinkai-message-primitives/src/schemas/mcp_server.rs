@@ -31,6 +31,7 @@ impl MCPServer {
         let command_string = match self.r#type {
             MCPServerType::Command => self.command.clone().unwrap_or_default().trim().to_string(),
             MCPServerType::Sse => self.url.clone().unwrap_or_default().trim().to_string(),
+            MCPServerType::Http => self.url.clone().unwrap_or_default().trim().to_string(),
         };
 
         // Create a hasher and hash the command string
@@ -71,6 +72,7 @@ impl MCPServer {
 pub enum MCPServerType {
     Sse,
     Command,
+    Http,
 }
 
 impl MCPServerType {
@@ -78,6 +80,7 @@ impl MCPServerType {
         match s.to_uppercase().as_str() {
             "SSE" => Ok(MCPServerType::Sse),
             "COMMAND" => Ok(MCPServerType::Command),
+            "HTTP" => Ok(MCPServerType::Http),
             _ => Err(format!("Invalid MCP server type: {}", s)),
         }
     }
@@ -86,6 +89,7 @@ impl MCPServerType {
         match self {
             MCPServerType::Sse => "SSE".to_string(),
             MCPServerType::Command => "COMMAND".to_string(),
+            MCPServerType::Http => "HTTP".to_string(),
         }
     }
 }

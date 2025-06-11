@@ -11,6 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Generate a test identity secret key
     let mut rng = OsRng;
     let identity_secret_key = SigningKey::generate(&mut rng);
+    let encryption_secret_key = x25519_dalek::StaticSecret::random_from_rng(&mut rng);
     
     // Create an empty registry for testing
     let registry = ShinkaiRegistry::new(
@@ -26,6 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         9999, // Test port
         "@@test-relay.sep-shinkai".to_string(),
         identity_secret_key,
+        encryption_secret_key,
         registry,
     ).await?;
     

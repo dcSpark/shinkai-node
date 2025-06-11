@@ -1,8 +1,10 @@
-use crate::{command::CommandWrappedInShellBuilder, utils::disect_command, error::McpError};
+use crate::{command::CommandWrappedInShellBuilder, error::McpError, utils::disect_command};
 
 type Result<T> = std::result::Result<T, McpError>;
 use rmcp::{
-    model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool}, transport::{SseTransport, TokioChildProcess}, ServiceExt
+    model::{CallToolRequestParam, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool},
+    transport::{SseClientTransport, StreamableHttpClientTransport, TokioChildProcess},
+    ServiceExt,
 };
 use std::collections::HashMap;
 use tokio::process::Command;
@@ -18,8 +20,12 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
     cmd.args(adapted_args);
 
     // Retain the TokioChildProcess so we can wait on it after cancellation
-    let child_process = TokioChildProcess::new(&mut cmd)?;
-    let service = ().serve(child_process).await?;
+    let child_process = TokioChildProcess::new(cmd).map_err(|e| McpError {
+        message: format!("{}", e),
+    })?;
+    let service = ().serve(child_process).await.map_err(|e| McpError {
+        message: format!("{}", e),
+    })?;
     // 2. Initialize the MCP server
     service.peer_info();
 
@@ -41,7 +47,9 @@ pub async fn list_tools_via_command(cmd_str: &str, config: Option<HashMap<String
 pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, String>>) -> Result<Vec<Tool>> {
     // TODO: The config parameter is not currently used by SseTransport or ClientInfo setup in the example.
     // It might be used in the future for authentication headers or other SSE-specific configurations.
-    let transport = SseTransport::start(sse_url).await?;
+    let transport = SseClientTransport::start(sse_url).await.map_err(|e| McpError {
+        message: format!("{}", e),
+    })?;
     let client_info = ClientInfo {
         protocol_version: Default::default(),
         capabilities: ClientCapabilities::default(),
@@ -50,10 +58,9 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
             version: env!("CARGO_PKG_VERSION").to_string(),
         },
     };
-    let client = client_info
-        .serve(transport)
-        .await
-        .map_err(|e| McpError::from(format!("SSE client connection error: {:?}", e)))?;
+    let client = client_info.serve(transport).await.map_err(|e| McpError {
+        message: format!("SSE client connection error: {:?}", e),
+    })?;
 
     // Initialize and log server info (optional, but good for debugging)
     let _ = client.peer_info();
@@ -69,6 +76,40 @@ pub async fn list_tools_via_sse(sse_url: &str, _config: Option<HashMap<String, S
         .cancel()
         .await
         .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
+
+    Ok(tools_result.unwrap())
+}
+
+pub async fn list_tools_via_http(sse_url: &str, _config: Option<HashMap<String, String>>) -> Result<Vec<Tool>> {
+    // TODO: The config parameter is not currently used by SseTransport or ClientInfo setup in the example.
+    // It might be used in the future for authentication headers or other SSE-specific configurations.
+    let transport = StreamableHttpClientTransport::from_uri(sse_url);
+    let client_info = ClientInfo {
+        protocol_version: Default::default(),
+        capabilities: ClientCapabilities::default(),
+        client_info: Implementation {
+            name: "shinkai_node_http_client".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    };
+    let client = client_info.serve(transport).await.map_err(|e| McpError {
+        message: format!("HTTP client connection error: {:?}", e),
+    })?;
+
+    // Initialize and log server info (optional, but good for debugging)
+    let _ = client.peer_info();
+
+    // List tools
+    let tools_result = client
+        .list_all_tools()
+        .await
+        .inspect_err(|e| log::error!("error listing tools: {:?}", e));
+
+    // Gracefully shut down the client
+    let _ = client
+        .cancel()
+        .await
+        .inspect_err(|e| log::error!("error cancelling http service: {:?}", e));
 
     Ok(tools_result.unwrap())
 }
@@ -95,7 +136,14 @@ pub async fn run_tool_via_command(
     cmd.envs(env_vars);
     cmd.args(adapted_args);
 
-    let service = ().serve(TokioChildProcess::new(&mut cmd)?).await?;
+    let service = ()
+        .serve(TokioChildProcess::new(cmd).map_err(|e| McpError {
+            message: format!("{}", e),
+        })?)
+        .await
+        .map_err(|e| McpError {
+            message: format!("{}", e),
+        })?;
     service.peer_info();
 
     let call_tool_result = service
@@ -109,7 +157,9 @@ pub async fn run_tool_via_command(
         .cancel()
         .await
         .inspect_err(|e| log::error!("error cancelling stdio service: {:?}", e));
-    Ok(call_tool_result?)
+    Ok(call_tool_result.map_err(|e| McpError {
+        message: format!("{}", e),
+    })?)
 }
 
 pub async fn run_tool_via_sse(
@@ -117,9 +167,12 @@ pub async fn run_tool_via_sse(
     tool: String,
     parameters: serde_json::Map<String, serde_json::Value>,
 ) -> Result<CallToolResult> {
-    let transport = SseTransport::start(url)
+    let transport = SseClientTransport::start(url)
         .await
-        .inspect_err(|e| log::error!("error starting sse transport: {:?}", e))?;
+        .inspect_err(|e| log::error!("error starting sse transport: {:?}", e))
+        .map_err(|e| McpError {
+            message: format!("{}", e),
+        })?;
 
     let client_info = ClientInfo {
         protocol_version: Default::default(),
@@ -129,9 +182,15 @@ pub async fn run_tool_via_sse(
             version: "0.0.1".to_string(),
         },
     };
-    let client = client_info.serve(transport).await.inspect_err(|e| {
-        log::error!("client error: {:?}", e);
-    })?;
+    let client = client_info
+        .serve(transport)
+        .await
+        .inspect_err(|e| {
+            log::error!("client error: {:?}", e);
+        })
+        .map_err(|e| McpError {
+            message: format!("{}", e),
+        })?;
 
     // Initialize
     let server_info = client.peer_info();
@@ -148,7 +207,54 @@ pub async fn run_tool_via_sse(
         .cancel()
         .await
         .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
-    Ok(call_tool_result?)
+    Ok(call_tool_result.map_err(|e| McpError {
+        message: format!("{}", e),
+    })?)
+}
+
+pub async fn run_tool_via_http(
+    url: String,
+    tool: String,
+    parameters: serde_json::Map<String, serde_json::Value>,
+) -> Result<CallToolResult> {
+    let transport = StreamableHttpClientTransport::from_uri(url);
+
+    let client_info = ClientInfo {
+        protocol_version: Default::default(),
+        capabilities: ClientCapabilities::default(),
+        client_info: Implementation {
+            name: "Shinkai Node HTTP Client".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+    };
+    let client = client_info
+        .serve(transport)
+        .await
+        .inspect_err(|e| {
+            log::error!("client error: {:?}", e);
+        })
+        .map_err(|e| McpError {
+            message: format!("{}", e),
+        })?;
+
+    // Initialize
+    let server_info = client.peer_info();
+    log::info!("connected to server: {server_info:#?}");
+
+    let call_tool_result = client
+        .call_tool(CallToolRequestParam {
+            name: tool.into(),
+            arguments: Some(parameters),
+        })
+        .await
+        .inspect_err(|e| log::error!("error calling tool: {:?}", e));
+    let _ = client
+        .cancel()
+        .await
+        .inspect_err(|e| log::error!("error cancelling sse service: {:?}", e));
+    Ok(call_tool_result.map_err(|e| McpError {
+        message: format!("{}", e),
+    })?)
 }
 
 #[cfg(test)]
@@ -296,6 +402,82 @@ pub mod tests_mcp_manager {
             assert!(unwrapped.iter().any(|t| t.name == tool));
         }
     }
+
+    #[tokio::test]
+    async fn test_list_tools_via_http() {
+        let mut envs = HashMap::new();
+        envs.insert("PORT".to_string(), "8002".to_string());
+        let (adapted_program, adapted_args, adapted_envs) = CommandWrappedInShellBuilder::wrap_in_shell_as_values(
+            "npx".to_string(),
+            Some(vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-everything".to_string(),
+                "streamableHttp".to_string(),
+            ]) as Option<Vec<String>>,
+            Some(envs),
+        );
+
+        let _child_result = Command::new(adapted_program)
+            .args(adapted_args)
+            .envs(adapted_envs)
+            .kill_on_drop(true)
+            .spawn()
+            .inspect_err(|e| {
+                println!("error {:?}", e);
+            });
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let result = list_tools_via_http("http://localhost:8002/mcp", None).await;
+        assert!(result.is_ok());
+        let unwrapped = result.unwrap();
+        assert!(unwrapped.len() == 8);
+    }
+
+    #[tokio::test]
+    async fn test_run_tool_via_http() {
+        let mut envs = HashMap::new();
+        envs.insert("PORT".to_string(), "8003".to_string());
+        let (adapted_program, adapted_args, adapted_envs) = CommandWrappedInShellBuilder::wrap_in_shell_as_values(
+            "npx".to_string(),
+            Some(vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-everything".to_string(),
+                "streamableHttp".to_string(),
+            ]) as Option<Vec<String>>,
+            Some(envs),
+        );
+
+        let _child_result = Command::new(adapted_program)
+            .args(adapted_args)
+            .envs(adapted_envs)
+            .kill_on_drop(true)
+            .spawn()
+            .inspect_err(|e| {
+                println!("error {:?}", e);
+            });
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let params = json!({
+            "a": 1,
+            "b": 2,
+        });
+        let params_map = params.as_object().unwrap().clone();
+
+        let result = run_tool_via_http("http://localhost:8003/mcp".to_string(), "add".to_string(), params_map)
+            .await
+            .inspect_err(|e| {
+                println!("error {:?}", e);
+            });
+        match result {
+            Ok(result) => {
+                assert!(result.content.len() == 1);
+                assert!(result.content[0].as_text().unwrap().text.contains("3"));
+            }
+            Err(e) => {
+                println!("error {:?}", e);
+                assert!(false);
+            }
+        }
+    }
+
     /* TODO: Uncomment these tests when we have a way to test them, right now the credentials expire so it does not work consistently
     #[tokio::test]
     async fn test_list_tools_composio_github() {

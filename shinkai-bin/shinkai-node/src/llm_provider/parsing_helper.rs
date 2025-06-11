@@ -33,6 +33,7 @@ impl ParsingHelper {
                 None,
                 llm_stopper.clone(),
                 db.clone(),
+                None, // No tracing for generate_description
             )
             .await
             {
