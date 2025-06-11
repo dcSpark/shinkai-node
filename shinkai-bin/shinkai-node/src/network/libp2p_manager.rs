@@ -89,6 +89,7 @@ pub struct LibP2PManager {
     // Message queue fields
     message_queue: VecDeque<QueuedMessage>, // Queue for messages that failed to send
     max_retry_attempts: u32, // Maximum retry attempts per message
+    pending_outbound_requests: HashMap<request_response::OutboundRequestId, QueuedMessage>,
 }
 
 use crate::network::network_manager::libp2p_message_handler::ShinkaiMessageHandler;
@@ -192,6 +193,7 @@ impl LibP2PManager {
             // Message queue fields
             message_queue: VecDeque::new(), // Queue for messages that failed to send
             max_retry_attempts: 5, // Maximum retry attempts per message
+            pending_outbound_requests: HashMap::new(),
         })
     }
 
@@ -249,10 +251,19 @@ impl LibP2PManager {
         }
 
         // Send the message using request-response protocol
+        let queued_message = QueuedMessage {
+            peer_id,
+            message: message.clone(),
+            retry_count: 0,
+            last_attempt: std::time::Instant::now(),
+        };
+
         let _request_id = self.swarm
             .behaviour_mut()
             .request_response
             .send_request(&peer_id, message);
+
+        self.pending_outbound_requests.insert(_request_id, queued_message);
 
         eprintln!("Direct message request sent to peer {} {:?}", peer_id, _request_id);
         shinkai_log(
@@ -582,7 +593,7 @@ impl LibP2PManager {
                                 // Handle the incoming request message
                                 self.message_handler.handle_message(peer, request, Some(channel)).await;
                             }
-                            request_response::Message::Response { response, .. } => {
+                            request_response::Message::Response { response, request_id, .. } => {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Info,
@@ -591,6 +602,7 @@ impl LibP2PManager {
                                 eprintln!("Received direct message response from peer {} {:?}", peer, response);
                                 // Handle the response (acknowledgment)
                                 self.message_handler.handle_message(peer, response, None).await;
+                                self.pending_outbound_requests.remove(&request_id);
                             }
                         }
                     }
@@ -603,6 +615,13 @@ impl LibP2PManager {
                                     ShinkaiLogLevel::Info,
                                     &format!("Dial failure to peer {} - will retry when connection is established", peer),
                                 );
+
+                                if let Some(mut queued_message) = self.pending_outbound_requests.remove(&request_id) {
+                                    if !self.message_queue.iter().any(|m| m.peer_id == queued_message.peer_id && m.message == queued_message.message) {
+                                        queued_message.last_attempt = std::time::Instant::now();
+                                        self.message_queue.push_back(queued_message);
+                                    }
+                                }
                             }
                             request_response::OutboundFailure::ConnectionClosed => {
                                 eprintln!("Connection closed to peer {} for request {:?}.", peer, request_id);
@@ -619,6 +638,7 @@ impl LibP2PManager {
                                     ShinkaiLogLevel::Error,
                                     &format!("Failed to send direct message to peer {}: {:?}", peer, error),
                                 );
+                                self.pending_outbound_requests.remove(&request_id);
                             }
                         }
                     }
@@ -1107,8 +1127,8 @@ impl LibP2PManager {
 
         // Retry messages for connected peers (in reverse order to maintain indices)
         for &index in messages_to_retry.iter().rev() {
-            if let Some(queued_message) = self.message_queue.remove(index) {
-                eprintln!("Retrying message to peer {} (attempt {})", 
+            if let Some(mut queued_message) = self.message_queue.remove(index) {
+                eprintln!("Retrying message to peer {} (attempt {})",
                     queued_message.peer_id, queued_message.retry_count + 1);
                 
                 shinkai_log(
@@ -1118,11 +1138,16 @@ impl LibP2PManager {
                         queued_message.peer_id, queued_message.retry_count + 1),
                 );
 
+                queued_message.retry_count += 1;
+                queued_message.last_attempt = std::time::Instant::now();
+
                 // Attempt to send the message
                 let _request_id = self.swarm
                     .behaviour_mut()
                     .request_response
                     .send_request(&queued_message.peer_id, queued_message.message.clone());
+
+                self.pending_outbound_requests.insert(_request_id, queued_message.clone());
 
                 eprintln!("Message retry sent to peer {} {:?}", queued_message.peer_id, _request_id);
                 

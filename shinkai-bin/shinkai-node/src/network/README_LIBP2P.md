@@ -51,6 +51,7 @@ The Node struct has been updated to include:
 3. **Message Sending**: The `send` method has been updated to:
    - First attempt to use libp2p for peer communication
    - Fall back to TCP if libp2p is not available or fails
+   - Dial failures automatically queue the message for retry
 
 4. **Message Receiving**: Incoming libp2p messages are:
    - Received through GossipSub
