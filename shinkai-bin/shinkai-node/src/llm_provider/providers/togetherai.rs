@@ -34,7 +34,7 @@ impl LLMService for TogetherAI {
         _ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         _config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
         tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         if let Some(base_url) = url {
@@ -81,6 +81,18 @@ impl LLMService for TogetherAI {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload).as_str(),
                 );
+
+                let payload_log = payload.clone();
+                if let Some(ref msg_id) = tracing_message_id {
+                    if let Err(e) = db.add_tracing(
+                        msg_id,
+                        _inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                        "llm_payload",
+                        &payload_log,
+                    ) {
+                        eprintln!("failed to add payload trace: {:?}", e);
+                    }
+                }
 
                 let res = client
                     .post(url)

@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -148,6 +148,21 @@ impl LLMService for OpenAI {
                         &payload_log,
                     ) {
                         eprintln!("failed to add payload trace: {:?}", e);
+                    }
+                }
+
+                if let Some(ref msg_id) = tracing_message_id {
+                    let network_info = json!({
+                        "url": url,
+                        "payload": payload_log
+                    });
+                    if let Err(e) = db.add_tracing(
+                        msg_id,
+                        inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                        "llm_network_request",
+                        &network_info,
+                    ) {
+                        eprintln!("failed to add network request trace: {:?}", e);
                     }
                 }
 
