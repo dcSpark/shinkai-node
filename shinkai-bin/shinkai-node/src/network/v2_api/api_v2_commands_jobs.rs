@@ -8,14 +8,25 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox}
-    }, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
-            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
-        }
-    }, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
-    }
+        identity::Identity,
+        inbox_name::InboxName,
+        job::{ForkedJob, JobLike},
+        job_config::JobConfig,
+        llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider},
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox},
+    },
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData},
+        shinkai_message_schemas::{
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
+            V2ChatMessage,
+        },
+    },
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 
 use shinkai_sqlite::inbox_manager::PaginatedSmartInboxes;
@@ -25,7 +36,9 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
+    llm_provider::job_manager::JobManager,
+    managers::IdentityManager,
+    network::{node_error::NodeError, Node},
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1605,6 +1618,40 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_api_kill_job(
+        db: Arc<SqliteManager>,
+        job_manager: Arc<Mutex<JobManager>>,
+        bearer: String,
+        conversation_inbox_name: String,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match job_manager
+            .lock()
+            .await
+            .kill_job_by_conversation_inbox_name(&conversation_inbox_name)
+            .await
+        {
+            Ok(job_id) => {
+                let _ = res.send(Ok(job_id)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: err.to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn v2_export_messages_from_inbox(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -1761,11 +1808,7 @@ impl Node {
 
                 for messages in v2_chat_messages {
                     for message in messages {
-                        let role = if message
-                            .sender_subidentity
-                            .to_lowercase()
-                            .contains("/agent/")
-                        {
+                        let role = if message.sender_subidentity.to_lowercase().contains("/agent/") {
                             "assistant"
                         } else {
                             "user"
