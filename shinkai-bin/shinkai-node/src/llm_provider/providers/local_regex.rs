@@ -7,19 +7,13 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use shinkai_message_primitives::schemas::{
-    inbox_name::InboxName,
-    job_config::JobConfig,
-    llm_providers::serialized_llm_provider::{LLMProviderInterface, LocalRegex},
-    prompts::Prompt,
-    ws_types::WSUpdateHandler,
+    inbox_name::InboxName, job_config::JobConfig, llm_providers::serialized_llm_provider::{LLMProviderInterface, LocalRegex}, prompts::Prompt, ws_types::WSUpdateHandler
 };
 
 use crate::{
     llm_provider::{
-        error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse,
-        llm_stopper::LLMStopper, providers::shared::ollama_api::ollama_prepare_messages,
-    },
-    managers::model_capabilities_manager::PromptResultEnum,
+        error::LLMProviderError, execution::chains::inference_chain_trait::LLMInferenceResponse, llm_stopper::LLMStopper, providers::shared::ollama_api::ollama_prepare_messages
+    }, managers::model_capabilities_manager::PromptResultEnum
 };
 
 use super::LLMService;
@@ -38,6 +32,7 @@ impl LLMService for LocalRegex {
         _config: Option<JobConfig>,
         _llm_stopper: Arc<LLMStopper>,
         db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         // Prepare messages from the prompt using Ollama's message preparation
         let messages_result = ollama_prepare_messages(&model, prompt)?;
@@ -65,11 +60,14 @@ impl LLMService for LocalRegex {
         // Get patterns from the database for this specific provider
         let provider_str = match &model {
             LLMProviderInterface::LocalRegex(local_regex) => &local_regex.model_type,
-            _ => return Err(LLMProviderError::SomeError(
-                "Expected LocalRegex provider type".to_string()
-            )),
+            _ => {
+                return Err(LLMProviderError::SomeError(
+                    "Expected LocalRegex provider type".to_string(),
+                ))
+            }
         };
-        let patterns = db.get_enabled_regex_patterns_for_provider(provider_str)
+        let patterns = db
+            .get_enabled_regex_patterns_for_provider(provider_str)
             .map_err(|e| LLMProviderError::DatabaseError(format!("Failed to get regex patterns: {}", e)))?;
 
         // Try to match the message against patterns

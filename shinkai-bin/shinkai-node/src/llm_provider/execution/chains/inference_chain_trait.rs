@@ -607,7 +607,7 @@ impl Default for MockInferenceChainContext {
             user_message,
             image_files: HashMap::new(),
             user_profile,
-            max_iterations: 10,
+            max_iterations: 20,
             iteration_count: 0,
             max_tokens_in_prompt: 1000,
             raw_files: None,

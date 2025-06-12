@@ -1,5 +1,6 @@
 use embedding_function::EmbeddingFunction;
 use errors::SqliteManagerError;
+use log::info;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
@@ -37,6 +38,7 @@ pub mod shinkai_tool_manager;
 pub mod source_file_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
+pub mod tracing;
 pub mod wallet_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
@@ -168,8 +170,6 @@ impl SqliteManager {
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
-        // TODO: remove this
-        Self::initialize_file_inboxes_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
         Self::initialize_inbox_profile_permissions_table(conn)?;
@@ -198,6 +198,8 @@ impl SqliteManager {
         Self::initialize_filesystem_tables(conn)?;
         Self::initialize_oauth_table(conn)?;
         Self::initialize_regex_patterns_table(conn)?;
+        Self::initialize_tracing_table(conn)?;
+
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
@@ -211,6 +213,7 @@ impl SqliteManager {
         Self::migrate_tools_table(conn)?;
         Self::migrate_agents_table(conn)?;
         Self::migrate_llm_providers_table(conn)?;
+        Self::migrate_mcp_servers_table(conn)?;
         Ok(())
     }
 
@@ -583,7 +586,7 @@ impl SqliteManager {
     }
 
     fn initialize_tools_table(conn: &rusqlite::Connection) -> Result<()> {
-        let _result = conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
@@ -602,8 +605,6 @@ impl SqliteManager {
             );",
             [],
         )?;
-        println!("shinkai_tools table created");
-        // The index is automatically created by the PRIMARY KEY constraint
 
         Ok(())
     }
@@ -834,26 +835,6 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_file_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS file_inboxes (
-                file_inbox_name TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-
-                PRIMARY KEY (file_inbox_name, file_name)
-            );",
-            [],
-        )?;
-
-        // Create an index for the file_inbox_name column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
-            [],
-        )?;
-
-        Ok(())
-    }
-
     fn initialize_oauth_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS oauth_tokens (
@@ -948,7 +929,7 @@ impl SqliteManager {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 name TEXT NOT NULL,
-                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND')) DEFAULT 'SSE',
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
                 url TEXT,
                 env TEXT,
                 command TEXT,
@@ -967,6 +948,46 @@ impl SqliteManager {
             "INSERT INTO embedding_model_type (model_type) VALUES (?);",
             [&model_type.to_string() as &dyn ToSql],
         )?;
+        Ok(())
+    }
+    pub fn migrate_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if 'HTTP' type exists in the CHECK constraint
+        info!("Checking if HTTP type exists in mcp_servers table...");
+        let mut stmt = conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='mcp_servers'")?;
+        let table_sql: String = stmt.query_row([], |row| row.get(0))?;
+        // Only migrate if HTTP is not in the type constraint
+        if table_sql.contains("'HTTP'") {
+            info!("HTTP type found in constraint - skipping migration");
+            return Ok(());
+        }
+        info!("HTTP type not found in constraint - proceeding with migration");
+
+        // SQLite doesn't support MODIFY COLUMN, so we need to:
+        // 1. Create a new table with the desired schema
+        // 2. Copy data from old table
+        // 3. Drop old table
+        // 4. Rename new table to old name
+        conn.execute(
+            "CREATE TABLE mcp_servers_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
+                url TEXT,
+                env TEXT,
+                command TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE
+            );",
+            [],
+        )?;
+
+        conn.execute("INSERT INTO mcp_servers_new SELECT * FROM mcp_servers;", [])?;
+
+        conn.execute("DROP TABLE mcp_servers;", [])?;
+
+        conn.execute("ALTER TABLE mcp_servers_new RENAME TO mcp_servers;", [])?;
+
         Ok(())
     }
 
