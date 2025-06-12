@@ -1054,7 +1054,7 @@ fn test_localhost_relay_server_communication() {
     let e: Result<(), tokio::task::JoinError> = rt.block_on(async {
         let node1_identity_name = "@@node1_with_libp2p_relayer.sep-shinkai";
         let node2_identity_name = "@@localhost.sep-shinkai";
-        let relay_identity_name = Some("@@libp2p_relayer.sep-shinkai".to_string());        
+        let relay_identity_name = Some("@@libp2p_relayer.sep-shinkai".to_string());
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -1070,10 +1070,10 @@ fn test_localhost_relay_server_communication() {
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name));
 
-        assert!(port_is_available(8082), "Port 8082 is not available");
-        assert!(port_is_available(8083), "Port 8083 is not available");
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
-        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8083);
+        assert!(port_is_available(12050), "Port 12050 is not available");
+        assert!(port_is_available(12051), "Port 12051 is not available");
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12050);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12051);
         
         let node1 = Node::new(
             node1_identity_name.to_string(),
