@@ -206,8 +206,19 @@ impl RelayManager {
                 .with_timeout(Duration::from_secs(10))  // Add explicit timeout
         );
 
-        // Configure relay protocol
-        let relay = relay::Behaviour::new(local_peer_id, Default::default());
+        // Configure relay protocol with increased limits
+        let relay_config = relay::Config {
+            reservation_duration: Duration::from_secs(1800), // 30 minutes
+            reservation_rate_limiters: Vec::new(), // No rate limiting for now
+            circuit_src_rate_limiters: Vec::new(), // No rate limiting for now  
+            max_reservations: 1024, // Allow up to 1024 concurrent reservations
+            max_reservations_per_peer: 16, // Allow 16 reservations per peer
+            max_circuits: 1024, // Allow up to 1024 concurrent circuits
+            max_circuits_per_peer: 16, // Allow 16 circuits per peer
+            max_circuit_duration: Duration::from_secs(3600), // 1 hour max circuit duration
+            max_circuit_bytes: 1024 * 1024 * 1024, // 1GB max circuit data transfer
+        };
+        let relay = relay::Behaviour::new(local_peer_id, relay_config);
 
         // Configure DCUtR for hole punching through relay
         let dcutr = dcutr::Behaviour::new(local_peer_id);
