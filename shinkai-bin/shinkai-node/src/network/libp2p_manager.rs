@@ -124,7 +124,11 @@ impl LibP2PManager {
             .with_relay_client(noise::Config::new, yamux::Config::default)?
             .with_behaviour(|keypair, relay_behaviour| ShinkaiNetworkBehaviour {
                 relay_client: relay_behaviour,
-                ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(10))),
+                ping: ping::Behaviour::new(
+                    ping::Config::new()
+                        .with_interval(Duration::from_secs(5))  // Reduced from 10s to 5s
+                        .with_timeout(Duration::from_secs(10))  // Add explicit timeout
+                ),
                 identify: identify::Behaviour::new(identify::Config::new(
                     "/shinkai/1.0.0".to_string(),
                     keypair.public(),
@@ -135,7 +139,8 @@ impl LibP2PManager {
                 dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
                 request_response: request_response::json::Behaviour::new(
                     std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
-                    request_response::Config::default().with_request_timeout(Duration::from_secs(300)),
+                    request_response::Config::default()
+                        .with_request_timeout(Duration::from_secs(30))
                 ),
             })?
             .build();
@@ -311,8 +316,8 @@ impl LibP2PManager {
 
     /// Run the network manager
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut reconnection_timer = tokio::time::interval(Duration::from_secs(5)); // Check reconnection every 5 seconds
-        let mut message_retry_timer = tokio::time::interval(Duration::from_secs(2)); // Process message queue every 2 seconds
+        let mut reconnection_timer = tokio::time::interval(Duration::from_secs(3)); // Check reconnection every 3 seconds
+        let mut message_retry_timer = tokio::time::interval(Duration::from_secs(1)); // Process message queue every 1 second
         
         loop {
             tokio::select! {
@@ -983,13 +988,20 @@ impl LibP2PManager {
         Ok(())
     }
 
-    /// Calculate exponential backoff duration for reconnection attempts
+    /// Calculate exponential backoff duration for reconnection attempts with jitter
     fn calculate_backoff_duration(&self) -> Duration {
-        // Exponential backoff: 5s, 10s, 20s, 40s, then max out at 60s
-        let base_delay = 5;
-        let max_delay = 60;
+        // Exponential backoff: 2s, 4s, 8s, 16s, then max out at 30s
+        let base_delay = 2;
+        let max_delay = 30;
         let delay_seconds = std::cmp::min(base_delay * (2_u32.saturating_pow(self.reconnection_attempts)), max_delay);
-        Duration::from_secs(delay_seconds as u64)
+        
+        // Add jitter (0-1000ms) to prevent thundering herd
+        let jitter_ms = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos() % 1_000_000_000) / 1_000_000; // Convert to milliseconds
+        
+        Duration::from_millis((delay_seconds * 1000) as u64 + (jitter_ms % 1000) as u64)
     }
 
     /// Mark relay as connected and reset reconnection state
