@@ -7,6 +7,8 @@ use crate::tools::error::ToolError;
 use super::parameters::Parameters;
 use super::shinkai_tool::ShinkaiToolHeader;
 use super::tool_output_arg::ToolOutputArg;
+use super::tool_playground::ToolPlaygroundMetadata;
+use super::tool_types::ToolResult;
 
 #[derive(Debug)]
 pub enum RustToolError {
@@ -81,5 +83,44 @@ impl RustTool {
             tool_router_key: header.tool_router_key.clone(),
             mcp_enabled: header.mcp_enabled,
         })
+    }
+
+    pub fn get_metadata(&self) -> ToolPlaygroundMetadata {
+        let (output_type, output_properties, output_required) = 
+            match serde_json::from_str::<serde_json::Value>(&self.output_arg.json) {
+                Ok(json_schema) => {
+                    let r#type = json_schema.get("type").and_then(|v| v.as_str()).unwrap_or("object").to_string();
+                    let properties = json_schema.get("properties").cloned().unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+                    let required_array = json_schema.get("required").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+                    let required_vec = required_array.into_iter().filter_map(|v| v.as_str().map(String::from)).collect::<Vec<String>>();
+                    (r#type, properties, required_vec)
+                }
+                Err(_) => (
+                    "object".to_string(), 
+                    serde_json::Value::Object(serde_json::Map::new()), 
+                    vec![]
+                ),
+            };
+
+        let result = ToolResult::new(output_type, output_properties, output_required);
+
+        ToolPlaygroundMetadata {
+            name: self.name.clone(),
+            version: "1.0.0".to_string(),
+            homepage: None,
+            description: self.description.clone(),
+            author: self.author(),
+            keywords: vec![],
+            configurations: vec![],
+            parameters: self.input_args.clone(),
+            result,
+            sql_tables: vec![],
+            sql_queries: vec![],
+            tools: None,
+            oauth: None,
+            runner: super::tool_types::RunnerType::Any,
+            operating_system: vec![],
+            tool_set: None,
+        }
     }
 }

@@ -17,6 +17,12 @@ use console_subscriber;
 
 #[tokio::main]
 pub async fn main() {
+    // Initialize crypto provider for rustls (required by ngrok)
+    #[cfg(feature = "ngrok")]
+    {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+    
     // Initialize logging based on features
     #[cfg(feature = "console")] {
         // When using console subscriber, we don't need env_logger
@@ -30,6 +36,8 @@ pub async fn main() {
             .init();
         init_default_tracing();
     }
+
+    println!("Starting Shinkai Node...");
 
     let result = initialize_node().await.unwrap();
     let _ = run_node_tasks(result.1, result.2, result.3).await;

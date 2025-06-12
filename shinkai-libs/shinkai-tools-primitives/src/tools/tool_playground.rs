@@ -137,7 +137,10 @@ where
         let mut property = HashMap::new();
         property.insert("description", basic.description.clone());
         // If type_name is None, default to "string"
-        let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+        let type_value = basic
+            .type_name
+            .as_ref()
+            .map_or_else(|| "string".to_string(), |t| t.clone());
         property.insert("type", type_value);
         properties.insert(basic.key_name.clone(), property);
 
@@ -464,7 +467,7 @@ mod tests {
         let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
 
         // Verify tools were correctly deserialized
-        let tools = deserialized.metadata.tools.unwrap();
+        let tools = deserialized.metadata.tools.clone().unwrap();
         assert_eq!(tools.len(), 2);
 
         let tool1 = &tools[0];
@@ -935,5 +938,355 @@ mod tests {
         let deserialized: ToolPlaygroundMetadata = serde_json::from_value(serialized).unwrap();
         assert_eq!(deserialized.sql_tables, metadata.sql_tables);
         assert_eq!(deserialized.sql_queries, metadata.sql_queries);
+    }
+
+    #[test]
+    fn test_deserialize_playground_tool_with_various_properties() {
+        let json_data = r#"
+        {
+            "metadata": {
+                "name": "Complex Property Tool",
+                "version": "1.0.0",
+                "homepage": "https://example.com",
+                "description": "A tool with various property types",
+                "author": "Test Author",
+                "keywords": ["test", "complex", "properties"],
+                "configurations": {
+                    "type": "object",
+                    "properties": {
+                        "string_prop": {
+                            "type": "string",
+                            "description": "A string property",
+                            "key_value": "default_value"
+                        },
+                        "number_prop": {
+                            "type": "number",
+                            "description": "A number property",
+                            "key_value": 42
+                        },
+                        "boolean_prop": {
+                            "type": "boolean",
+                            "description": "A boolean property",
+                            "key_value": true
+                        },
+                        "false_boolean_prop": {
+                            "type": "boolean",
+                            "description": "A boolean property with false default",
+                            "key_value": false
+                        },
+                        "array_prop": {
+                            "type": "array",
+                            "description": "An array property",
+                            "key_value": ["item1", "item2"]
+                        },
+                        "object_prop": {
+                            "type": "object",
+                            "description": "An object property",
+                            "key_value": {
+                                "key1": "value1",
+                                "key2": 123
+                            }
+                        },
+                        "required_prop": {
+                            "type": "string",
+                            "description": "A required property"
+                        },
+                        "optional_prop": {
+                            "type": "string",
+                            "description": "An optional property"
+                        }
+                    },
+                    "required": ["required_prop"]
+                },
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "string_prop": {
+                            "type": "string",
+                            "description": "A string property",
+                            "default": "default_value"
+                        },
+                        "number_prop": {
+                            "type": "number",
+                            "description": "A number property",
+                            "default": 42
+                        },
+                        "boolean_prop": {
+                            "type": "boolean",
+                            "description": "A boolean property",
+                            "default": true
+                        },
+                        "false_boolean_prop": {
+                            "type": "boolean",
+                            "description": "A boolean property with false default",
+                            "default": false
+                        },
+                        "array_prop": {
+                            "type": "array",
+                            "description": "An array property",
+                            "default": ["item1", "item2"]
+                        },
+                        "object_prop": {
+                            "type": "object",
+                            "description": "An object property",
+                            "default": {
+                                "key1": "value1",
+                                "key2": 123
+                            }
+                        },
+                        "required_prop": {
+                            "type": "string",
+                            "description": "A required property"
+                        },
+                        "optional_prop": {
+                            "type": "string",
+                            "description": "An optional property"
+                        }
+                    },
+                    "required": ["required_prop"]
+                },
+                "result": {
+                    "type": "object",
+                    "properties": {
+                        "output_string": {
+                            "type": "string",
+                            "description": "Output string result"
+                        },
+                        "output_number": {
+                            "type": "number",
+                            "description": "Output number result"
+                        }
+                    },
+                    "required": ["output_string"]
+                },
+                "sqlTables": [
+                    {
+                        "name": "test_table",
+                        "definition": "CREATE TABLE test_table (id INTEGER PRIMARY KEY, name TEXT)"
+                    }
+                ],
+                "sqlQueries": [
+                    {
+                        "name": "get_test_data",
+                        "query": "SELECT * FROM test_table WHERE id = ?"
+                    }
+                ],
+                "tools": [
+                    "local:::toolkit1:::tool1",
+                    "local:::toolkit2:::tool2:::1.0"
+                ],
+                "oauth": [
+                    {
+                        "name": "test_oauth",
+                        "authorizationUrl": "https://example.com/oauth/authorize",
+                        "tokenUrl": "https://example.com/oauth/token",
+                        "clientId": "test_client_id",
+                        "clientSecret": "test_client_secret",
+                        "redirectUrl": "https://example.com/callback",
+                        "version": "2.0",
+                        "responseType": "code",
+                        "scopes": ["read", "write"],
+                        "pkceType": "plain",
+                        "refreshToken": "true",
+                        "requestTokenAuthHeader": "Bearer",
+                        "requestTokenContentType": "application/json"
+                    }
+                ],
+                "runner": "any",
+                "operating_system": ["linux", "macos", "windows"],
+                "tool_set": "test-tool-set"
+            },
+            "tool_router_key": "local:::test-author:::complex-property-tool",
+            "job_id": "job_123",
+            "job_id_history": [],
+            "code": "console.log('Hello, world!');",
+            "language": "Typescript"
+        }
+        "#;
+
+        let deserialized: ToolPlayground = serde_json::from_str(json_data).expect("Failed to deserialize");
+        println!("deserialized: {:?}", deserialized);
+
+        // Verify basic metadata
+        assert_eq!(deserialized.metadata.name, "Complex Property Tool");
+        assert_eq!(deserialized.metadata.version, "1.0.0");
+        assert_eq!(deserialized.metadata.homepage, Some("https://example.com".to_string()));
+        assert_eq!(deserialized.metadata.description, "A tool with various property types");
+        assert_eq!(deserialized.metadata.author, "Test Author");
+        assert_eq!(deserialized.metadata.keywords, vec!["test", "complex", "properties"]);
+
+        // Verify configurations
+        let configs = &deserialized.metadata.configurations;
+        assert_eq!(configs.len(), 8); // 7 properties in configurations
+
+        // Find and verify string property with default
+        let string_prop = configs
+            .iter()
+            .find(|c| {
+                if let ToolConfig::BasicConfig(bc) = c {
+                    bc.key_name == "string_prop"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        if let ToolConfig::BasicConfig(bc) = string_prop {
+            assert_eq!(bc.description, "A string property");
+            assert_eq!(bc.type_name, Some("string".to_string()));
+            assert!(!bc.required);
+        }
+
+        // Find and verify number property with default
+        let number_prop = configs
+            .iter()
+            .find(|c| {
+                if let ToolConfig::BasicConfig(bc) = c {
+                    bc.key_name == "number_prop"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        if let ToolConfig::BasicConfig(bc) = number_prop {
+            assert_eq!(bc.description, "A number property");
+            assert_eq!(bc.type_name, Some("number".to_string()));
+            assert!(!bc.required);
+            // TODO: key_values are not deserialized into BasicConfig
+            // assert_eq!(bc.key_value, Some(serde_json::Value::Number(42.into())));
+        }
+
+        // Find and verify required property
+        let required_prop = configs
+            .iter()
+            .find(|c| {
+                if let ToolConfig::BasicConfig(bc) = c {
+                    bc.key_name == "required_prop"
+                } else {
+                    false
+                }
+            })
+            .unwrap();
+        if let ToolConfig::BasicConfig(bc) = required_prop {
+            assert_eq!(bc.description, "A required property");
+            assert_eq!(bc.type_name, Some("string".to_string()));
+            assert!(bc.required);
+            // TODO: key_values are not deserialized into BasicConfig
+            // assert_eq!(bc.key_value, None);
+        }
+
+        // Verify SQL components
+        assert_eq!(deserialized.metadata.sql_tables.len(), 1);
+        assert_eq!(deserialized.metadata.sql_tables[0].name, "test_table");
+        assert_eq!(deserialized.metadata.sql_queries.len(), 1);
+        assert_eq!(deserialized.metadata.sql_queries[0].name, "get_test_data");
+
+        // Verify tools
+        let tools = deserialized.metadata.tools.clone().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].source, "local");
+        assert_eq!(tools[0].name, "tool1");
+        assert_eq!(tools[1].source, "local");
+        assert_eq!(tools[1].name, "tool2");
+        assert_eq!(tools[1].version, Some("1.0".to_string()));
+
+        // Verify OAuth
+        let oauth = deserialized.metadata.oauth.clone().unwrap();
+        assert_eq!(oauth.len(), 1);
+        assert_eq!(oauth[0].name, "test_oauth");
+        assert_eq!(oauth[0].authorization_url, "https://example.com/oauth/authorize");
+        assert_eq!(oauth[0].token_url, Some("https://example.com/oauth/token".to_string()));
+        assert_eq!(oauth[0].client_id, "test_client_id");
+        assert_eq!(oauth[0].client_secret, "test_client_secret");
+        assert_eq!(oauth[0].redirect_url, "https://example.com/callback");
+        assert_eq!(oauth[0].version, "2.0");
+        assert_eq!(oauth[0].response_type, "code");
+        assert_eq!(oauth[0].scopes, vec!["read", "write"]);
+        assert_eq!(oauth[0].pkce_type, Some("plain".to_string()));
+        assert_eq!(oauth[0].refresh_token, Some("true".to_string()));
+        assert_eq!(oauth[0].request_token_auth_header, Some("Bearer".to_string()));
+        assert_eq!(
+            oauth[0].request_token_content_type,
+            Some("application/json".to_string())
+        );
+
+        // Verify runner and operating system
+        assert_eq!(deserialized.metadata.runner, RunnerType::Any);
+        assert_eq!(deserialized.metadata.operating_system.len(), 3);
+        assert!(deserialized.metadata.operating_system.contains(&OperatingSystem::Linux));
+        assert!(deserialized.metadata.operating_system.contains(&OperatingSystem::MacOS));
+        assert!(deserialized
+            .metadata
+            .operating_system
+            .contains(&OperatingSystem::Windows));
+
+        // Verify tool set
+        assert_eq!(deserialized.metadata.tool_set, Some("test-tool-set".to_string()));
+
+        // Test round-trip serialization
+        let serialized = serde_json::to_string(&deserialized).expect("Failed to serialize");
+        let deserialized_again: ToolPlayground =
+            serde_json::from_str(&serialized).expect("Failed to deserialize again");
+        assert_eq!(deserialized, deserialized_again);
+
+        // Verify parameters
+        let params = &deserialized.metadata.parameters;
+        assert_eq!(params.schema_type, "object");
+        assert_eq!(params.properties.len(), 8); // 8 properties in parameters
+
+        // Find and verify string property with default
+        let string_prop = params.properties.get("string_prop").unwrap();
+        assert_eq!(string_prop.property_type, "string");
+        assert_eq!(string_prop.description, "A string property");
+        assert_eq!(
+            string_prop.default,
+            Some(serde_json::Value::String("default_value".to_string()))
+        );
+
+        // Find and verify number property with default
+        let number_prop = params.properties.get("number_prop").unwrap();
+        assert_eq!(number_prop.property_type, "number");
+        assert_eq!(number_prop.description, "A number property");
+        assert_eq!(number_prop.default, Some(serde_json::Value::Number(42.into())));
+
+        // Find and verify boolean property with default
+        let boolean_prop = params.properties.get("boolean_prop").unwrap();
+        assert_eq!(boolean_prop.property_type, "boolean");
+        assert_eq!(boolean_prop.description, "A boolean property");
+        assert_eq!(boolean_prop.default, Some(serde_json::Value::Bool(true)));
+
+        // Find and verify array property with default
+        let array_prop = params.properties.get("array_prop").unwrap();
+        assert_eq!(array_prop.property_type, "array");
+        assert_eq!(array_prop.description, "An array property");
+        let default_array = array_prop.default.as_ref().unwrap().as_array().unwrap();
+        assert_eq!(default_array.len(), 2);
+        assert_eq!(default_array[0].as_str(), Some("item1"));
+        assert_eq!(default_array[1].as_str(), Some("item2"));
+
+        // Find and verify object property with default
+        let object_prop = params.properties.get("object_prop").unwrap();
+        assert_eq!(object_prop.property_type, "object");
+        assert_eq!(object_prop.description, "An object property");
+        let default_object = object_prop.default.as_ref().unwrap().as_object().unwrap();
+        assert_eq!(default_object.get("key1").and_then(|v| v.as_str()), Some("value1"));
+        assert_eq!(
+            default_object.get("key2").and_then(|v| v.as_number()),
+            Some(&serde_json::Number::from(123))
+        );
+
+        // Find and verify required property
+        let required_prop = params.properties.get("required_prop").unwrap();
+        assert_eq!(required_prop.property_type, "string");
+        assert_eq!(required_prop.description, "A required property");
+        assert_eq!(required_prop.default, None);
+
+        // Find and verify optional property
+        let optional_prop = params.properties.get("optional_prop").unwrap();
+        assert_eq!(optional_prop.property_type, "string");
+        assert_eq!(optional_prop.description, "An optional property");
+        assert_eq!(optional_prop.default, None);
+
+        // Verify required fields
+        assert_eq!(params.required, vec!["required_prop"]);
     }
 }

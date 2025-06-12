@@ -516,9 +516,10 @@ impl SqliteManager {
         &self,
         profile_name_identity: StandardIdentity,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
     ) -> Result<Vec<SmartInbox>, SqliteManagerError> {
         let result =
-            self.get_all_smart_inboxes_for_profile_with_pagination(profile_name_identity, None, None, show_hidden)?;
+            self.get_all_smart_inboxes_for_profile_with_pagination(profile_name_identity, None, None, show_hidden, agent_id)?;
         Ok(result.inboxes)
     }
 
@@ -528,81 +529,141 @@ impl SqliteManager {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
     ) -> Result<PaginatedSmartInboxes, SqliteManagerError> {
         let conn = self.get_connection()?;
 
-        let inboxes = self.get_inboxes_for_profile(profile_name_identity.clone(), show_hidden)?;
+        // 1. Fetch initial data: (inbox_name, smart_inbox_name, last_modified, is_hidden)
+        let initial_inbox_data: Vec<(String, String, String, Option<bool>)> = {
+            if let Some(agent_id_val) = &agent_id {
+                // Agent ID provided: Use JOIN query
+                let mut stmt = conn.prepare(
+                    "SELECT i.inbox_name, i.smart_inbox_name, i.last_modified, i.is_hidden
+                     FROM inboxes i
+                     JOIN jobs j ON i.inbox_name LIKE 'job_inbox::' || j.job_id || '::%'
+                     WHERE j.parent_agent_or_llm_provider_id = ?1",
+                )?;
+                let rows = stmt.query_map(params![agent_id_val], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            } else {
+                // No Agent ID: Fetch all inboxes (permissions are not checked here, consistent with original logic)
+                let mut stmt = conn.prepare(
+                    "SELECT inbox_name, smart_inbox_name, last_modified, is_hidden FROM inboxes",
+                )?;
+                let rows = stmt.query_map([], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            }
+        };
 
-        // If offset is provided, find its position in the list
+        // 2. Filter by hidden status
+        let show_hidden_flag = show_hidden.unwrap_or(false);
+        let mut filtered_data = initial_inbox_data
+            .into_iter()
+            .filter(|(_, _, _, is_hidden_opt)| {
+                show_hidden_flag || !is_hidden_opt.unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+
+        // 3. Sort by last_modified DESC for stable pagination order
+        filtered_data.sort_by(|(_, _, time_a, _), (_, _, time_b, _)| {
+            let dt_a = DateTime::parse_from_rfc3339(time_a).unwrap_or(DateTime::<Utc>::MIN_UTC.into());
+            let dt_b = DateTime::parse_from_rfc3339(time_b).unwrap_or(DateTime::<Utc>::MIN_UTC.into());
+            dt_b.cmp(&dt_a) // Descending order
+        });
+
+        // 4. Create smart_inbox_names map for quick lookup later
+        let smart_inbox_names_map: HashMap<String, String> = filtered_data
+            .iter()
+            .map(|(name, smart_name, _, _)| (name.clone(), smart_name.clone()))
+            .collect();
+
+        // 5. Extract sorted inbox names for pagination
+        let sorted_inbox_names: Vec<String> = filtered_data
+            .into_iter()
+            .map(|(name, _, _, _)| name)
+            .collect();
+
+
+        // 6. Apply pagination logic
         let start_index = if let Some(offset_id) = offset {
             if offset_id.is_empty() {
                 0
             } else {
-                inboxes
+                sorted_inbox_names
                     .iter()
                     .position(|inbox| inbox == &offset_id)
-                    .map(|pos| pos + 1)
-                    .unwrap_or(inboxes.len())
+                    .map(|pos| pos + 1) // Start after the offset item
+                    .unwrap_or(sorted_inbox_names.len()) // Offset not found, start at the end (empty result)
             }
         } else {
             0
         };
 
-        // Apply offset by taking the slice from start_index
-        let inboxes = &inboxes[start_index..];
+        let limit_val = limit.unwrap_or(20);
+        // Calculate end index, ensuring it doesn't exceed bounds
+        let end_index = (start_index + limit_val).min(sorted_inbox_names.len());
 
-        // Apply limit if provided, otherwise use default of 20
-        let limit = limit.unwrap_or(20);
-        let has_next_page = inboxes.len() > limit;
-        let inboxes = &inboxes[..inboxes.len().min(limit)];
+        // Determine if there's a next page *before* slicing
+        let has_next_page = end_index < sorted_inbox_names.len();
 
-        let smart_inbox_names = {
-            let mut stmt = conn.prepare("SELECT inbox_name, smart_inbox_name FROM inboxes")?;
-            let mut rows = stmt.query([])?;
-
-            let mut smart_inbox_names = HashMap::new();
-            while let Some(row) = rows.next()? {
-                let inbox_name: String = row.get(0)?;
-                let smart_inbox_name: String = row.get(1)?;
-
-                smart_inbox_names.insert(inbox_name, smart_inbox_name);
-            }
-
-            smart_inbox_names
+        // Get the slice of inbox names to process for the current page
+        let inboxes_to_process = if start_index >= sorted_inbox_names.len() || start_index > end_index {
+            // Handle cases where start_index is out of bounds or invalid range
+             &[]
+        } else {
+             &sorted_inbox_names[start_index..end_index]
         };
 
+
+        // 7. Build SmartInbox objects for the paginated list
         let mut smart_inboxes = Vec::new();
 
-        for inbox_id in inboxes {
+        for inbox_id in inboxes_to_process {
             let last_message = self
                 .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
                 .into_iter()
                 .next()
                 .and_then(|mut v| v.pop());
 
-            let custom_name = smart_inbox_names.get(inbox_id).unwrap_or(inbox_id).to_string();
+            // Use the pre-fetched smart inbox name from the map
+            let custom_name = smart_inbox_names_map.get(inbox_id)
+                .cloned()
+                .unwrap_or_else(|| inbox_id.to_string()); // Fallback just in case
 
             let mut job_scope_value: Option<Value> = None;
             let mut datetime_created = String::new();
             let mut job_config_value: Option<JobConfig> = None;
 
-            // Determine if the inbox is finished
+            // Determine if the inbox is finished (check job status)
             let is_finished = if inbox_id.starts_with("job_inbox::") {
                 match InboxName::new(inbox_id.clone()).map_err(|e| SqliteManagerError::SomeError(e.to_string()))? {
                     InboxName::JobInbox { unique_id, .. } => {
-                        let job = self.get_job_with_options(&unique_id, false)?;
-                        let scope_value = job.scope.to_json_value()?;
-                        job_scope_value = Some(scope_value);
-                        job_config_value = job.config;
-                        datetime_created.clone_from(&job.datetime_created);
-                        job.is_finished || job.is_hidden
+                         match self.get_job_with_options(&unique_id, false) {
+                             Ok(job) => {
+                                let scope_value = job.scope.to_json_value()?;
+                                job_scope_value = Some(scope_value);
+                                job_config_value = job.config;
+                                datetime_created.clone_from(&job.datetime_created);
+                                // Consider finished if job is finished OR if job is hidden
+                                job.is_finished || job.is_hidden
+                             },
+                             Err(_) => {
+                                // Handle error case e.g. job not found, assume not finished
+                                false
+                             }
+                         }
                     }
-                    _ => false,
+                    _ => false, // Not a job inbox format after all
                 }
             } else {
                 false
             };
 
+            // Fetch agent/provider info (remains the same)
             let (agent_subset, provider_type) = {
                 let profile_result = profile_name_identity.full_identity_name.clone().extract_profile();
                 match profile_result {
@@ -612,46 +673,50 @@ impl SqliteManager {
                                 .map_err(|e| SqliteManagerError::SomeError(e.to_string()))?
                             {
                                 InboxName::JobInbox { unique_id, .. } => {
-                                    let job = self.get_job_with_options(&unique_id, false)?;
-                                    let agent_id = job.parent_agent_or_llm_provider_id;
+                                     match self.get_job_with_options(&unique_id, false) {
+                                         Ok(job) => {
+                                            let parent_id = job.parent_agent_or_llm_provider_id;
+                                             // Check if the parent_id is an LLM provider
+                                             match self.get_llm_provider(&parent_id, &p) {
+                                                 Ok(Some(provider)) => (
+                                                     Some(LLMProviderSubset::from_serialized_llm_provider(provider)),
+                                                     ProviderType::LLMProvider,
+                                                 ),
+                                                 Ok(None) => { // Not found as provider, try agent
+                                                      match self.get_agent(&parent_id.to_lowercase()) {
+                                                         Ok(Some(agent)) => {
+                                                             // Fetch the serialized LLM provider for the agent
+                                                             if let Ok(Some(serialized_llm_provider)) =
+                                                                 self.get_llm_provider(&agent.llm_provider_id, &p)
+                                                             {
+                                                                 (
+                                                                     Some(LLMProviderSubset::from_agent(
+                                                                         agent,
+                                                                         serialized_llm_provider,
+                                                                     )),
+                                                                     ProviderType::Agent,
+                                                                 )
+                                                             } else {
+                                                                 (None, ProviderType::Unknown) // Agent exists but provider doesn't?
+                                                             }
+                                                         }
+                                                         _ => (None, ProviderType::Unknown), // Not found as agent either
+                                                     }
 
-                                    // Check if the agent_id is an LLM provider
-                                    match self.get_llm_provider(&agent_id, &p) {
-                                        Ok(agent) => (
-                                            agent.map(LLMProviderSubset::from_serialized_llm_provider),
-                                            ProviderType::LLMProvider,
-                                        ),
-                                        Err(_) => {
-                                            // If not found as an LLM provider, check if it exists as an agent
-                                            match self.get_agent(&agent_id.to_lowercase()) {
-                                                Ok(Some(agent)) => {
-                                                    // Fetch the serialized LLM provider
-                                                    if let Ok(Some(serialized_llm_provider)) =
-                                                        self.get_llm_provider(&agent.llm_provider_id, &p)
-                                                    {
-                                                        (
-                                                            Some(LLMProviderSubset::from_agent(
-                                                                agent,
-                                                                serialized_llm_provider,
-                                                            )),
-                                                            ProviderType::Agent,
-                                                        )
-                                                    } else {
-                                                        (None, ProviderType::Unknown)
-                                                    }
-                                                }
-                                                _ => (None, ProviderType::Unknown),
-                                            }
-                                        }
-                                    }
+                                                 }
+                                                 Err(_) => (None, ProviderType::Unknown) // Error fetching provider
+                                             }
+                                         },
+                                         Err(_) => (None, ProviderType::Unknown) // Job not found
+                                     }
                                 }
-                                _ => (None, ProviderType::Unknown),
+                                _ => (None, ProviderType::Unknown), // Invalid JobInbox name format
                             }
                         } else {
-                            (None, ProviderType::Unknown)
+                            (None, ProviderType::Unknown) // Not a job inbox
                         }
                     }
-                    Err(_) => (None, ProviderType::Unknown),
+                    Err(_) => (None, ProviderType::Unknown), // Profile extraction failed
                 }
             };
 
@@ -670,18 +735,22 @@ impl SqliteManager {
             smart_inboxes.push(smart_inbox);
         }
 
-        // Sort the smart_inboxes by the timestamp of the last message
+        // 8. Sort the final smart_inboxes by the timestamp of the last message (descending)
         smart_inboxes.sort_by(|a, b| match (&a.last_message, &b.last_message) {
             (Some(a_msg), Some(b_msg)) => {
-                let a_time = DateTime::parse_from_rfc3339(&a_msg.external_metadata.scheduled_time).unwrap();
-                let b_time = DateTime::parse_from_rfc3339(&b_msg.external_metadata.scheduled_time).unwrap();
-                b_time.cmp(&a_time)
+                 // Handle potential parsing errors gracefully
+                 let a_time = DateTime::parse_from_rfc3339(&a_msg.external_metadata.scheduled_time)
+                               .unwrap_or(DateTime::<Utc>::MIN_UTC.into());
+                 let b_time = DateTime::parse_from_rfc3339(&b_msg.external_metadata.scheduled_time)
+                               .unwrap_or(DateTime::<Utc>::MIN_UTC.into());
+                 b_time.cmp(&a_time) // Descending
             }
-            (Some(_), None) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Less, // Inboxes with messages come first
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => std::cmp::Ordering::Equal,
+            (None, None) => std::cmp::Ordering::Equal, // Keep original relative order if both have no message
         });
 
+        // 9. Return the paginated and sorted result
         Ok(PaginatedSmartInboxes {
             inboxes: smart_inboxes,
             has_next_page,
@@ -811,7 +880,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -1573,7 +1642,7 @@ mod tests {
 
         // Measure the time taken by get_all_smart_inboxes_for_profile
         let start_time = std::time::Instant::now();
-        let smart_inboxes = db.get_all_smart_inboxes_for_profile(profile_identity, None).unwrap();
+        let smart_inboxes = db.get_all_smart_inboxes_for_profile(profile_identity, None, None).unwrap();
         let duration = start_time.elapsed();
 
         println!("Time taken to get all smart inboxes: {:?}", duration);
@@ -1653,6 +1722,7 @@ mod tests {
                         Some(page_size),
                         current_offset.clone(),
                         None,
+                        None,
                     )
                     .unwrap();
 
@@ -1723,6 +1793,7 @@ mod tests {
                 Some(10),
                 Some("".to_string()),
                 None,
+                None,
             )
             .unwrap();
         assert_eq!(empty_offset_result.inboxes.len(), 10);
@@ -1735,6 +1806,7 @@ mod tests {
                 Some(10),
                 Some("non_existent_inbox".to_string()),
                 None,
+                None,
             )
             .unwrap();
         assert_eq!(non_existent_result.inboxes.len(), 0);
@@ -1742,7 +1814,7 @@ mod tests {
 
         // Test with a limit larger than total inboxes
         let large_limit_result = db
-            .get_all_smart_inboxes_for_profile_with_pagination(profile_identity.clone(), Some(50), None, None)
+            .get_all_smart_inboxes_for_profile_with_pagination(profile_identity.clone(), Some(50), None, None, None)
             .unwrap();
         assert_eq!(large_limit_result.inboxes.len(), 25);
         assert!(!large_limit_result.has_next_page);

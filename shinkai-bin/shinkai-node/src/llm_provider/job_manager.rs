@@ -1,7 +1,6 @@
 use super::error::LLMProviderError;
 use super::job_callback_manager::JobCallbackManager;
 use super::llm_stopper::LLMStopper;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::ToolRouter;
 use crate::managers::IdentityManager;
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
@@ -14,7 +13,6 @@ use shinkai_job_queue_manager::job_queue_manager::{JobForProcessing, JobQueueMan
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::job::JobLike;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::AssociatedUI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName, shinkai_message::{
@@ -71,7 +69,6 @@ impl JobManager {
         embedding_generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         ext_agent_payments_manager: Arc<Mutex<ExtAgentOfferingsManager>>,
@@ -121,7 +118,6 @@ impl JobManager {
             embedding_generator.clone(),
             ws_manager.clone(),
             tool_router.clone(),
-            sheet_manager.clone(),
             callback_manager.clone(),
             Some(my_agent_payments_manager.clone()),
             Some(ext_agent_payments_manager.clone()),
@@ -133,7 +129,6 @@ impl JobManager {
              generator,
              ws_manager,
              tool_router,
-             sheet_manager,
              callback_manager,
              job_queue_manager,
              my_agent_payments_manager,
@@ -147,7 +142,6 @@ impl JobManager {
                     generator,
                     ws_manager,
                     tool_router,
-                    sheet_manager,
                     callback_manager,
                     job_queue_manager,
                     my_agent_payments_manager.clone(),
@@ -181,7 +175,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Arc<Mutex<SheetManager>>,
         callback_manager: Arc<Mutex<JobCallbackManager>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
@@ -194,7 +187,6 @@ impl JobManager {
                 RemoteEmbeddingGenerator,
                 Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
                 Option<Arc<ToolRouter>>,
-                Arc<Mutex<SheetManager>>,
                 Arc<Mutex<JobCallbackManager>>,
                 Arc<Mutex<JobQueueManager<JobForProcessing>>>,
                 Option<Arc<Mutex<MyAgentOfferingsManager>>>,
@@ -261,7 +253,6 @@ impl JobManager {
                         let generator = generator.clone();
                         let ws_manager = ws_manager.clone();
                         let tool_router = tool_router.clone();
-                        let sheet_manager = sheet_manager.clone();
                         let callback_manager = callback_manager.clone();
                         let queue_immediate = queue_immediate.clone();
                         let my_agent_payments_manager = my_agent_payments_manager.clone();
@@ -270,7 +261,7 @@ impl JobManager {
                         let in_progress = processing_jobs.clone();
 
                         tokio::spawn(async move {
-                            let result = (job_processing_fn)(
+                            let _ = (job_processing_fn)(
                                 job,
                                 db_clone,
                                 node_profile_name,
@@ -278,7 +269,6 @@ impl JobManager {
                                 generator,
                                 ws_manager,
                                 tool_router,
-                                sheet_manager,
                                 callback_manager,
                                 queue_immediate.clone(),
                                 my_agent_payments_manager,
@@ -362,7 +352,6 @@ impl JobManager {
                                     let generator = generator.clone();
                                     let ws_manager = ws_manager.clone();
                                     let tool_router = tool_router.clone();
-                                    let sheet_manager = sheet_manager.clone();
                                     let callback_manager = callback_manager.clone();
                                     let queue_normal = queue_normal.clone();
                                     let my_agent_payments_manager = my_agent_payments_manager.clone();
@@ -371,7 +360,7 @@ impl JobManager {
                                     let in_progress = processing_jobs.clone();
 
                                     tokio::spawn(async move {
-                                        let result = (job_processing_fn)(
+                                        (job_processing_fn)(
                                             job,
                                             db_clone,
                                             node_profile_name,
@@ -379,7 +368,6 @@ impl JobManager {
                                             generator,
                                             ws_manager,
                                             tool_router,
-                                            sheet_manager,
                                             callback_manager,
                                             queue_normal.clone(),
                                             my_agent_payments_manager,
@@ -416,7 +404,6 @@ impl JobManager {
                                         let generator = generator.clone();
                                         let ws_manager = ws_manager.clone();
                                         let tool_router = tool_router.clone();
-                                        let sheet_manager = sheet_manager.clone();
                                         let callback_manager = callback_manager.clone();
                                         let queue_immediate = queue_immediate.clone();
                                         let my_agent_payments_manager = my_agent_payments_manager.clone();
@@ -425,7 +412,7 @@ impl JobManager {
                                         let in_progress = processing_jobs.clone();
 
                                         tokio::spawn(async move {
-                                            let result = (job_processing_fn)(
+                                            (job_processing_fn)(
                                                 imm_job,
                                                 db_clone,
                                                 node_profile_name,
@@ -433,7 +420,6 @@ impl JobManager {
                                                 generator,
                                                 ws_manager,
                                                 tool_router,
-                                                sheet_manager,
                                                 callback_manager,
                                                 queue_immediate.clone(),
                                                 my_agent_payments_manager,
@@ -489,17 +475,8 @@ impl JobManager {
                                     let agent_id = agent_name
                                         .get_agent_name_string()
                                         .ok_or(LLMProviderError::LLMProviderNotFound)?;
-                                    let mut job_creation: JobCreationInfo =
-                                        serde_json::from_str(&data.message_raw_content)
-                                            .map_err(|_| LLMProviderError::ContentParseFailed)?;
-
-                                    // Delete later
-                                    // Treat empty string in associated_ui as None
-                                    if let Some(AssociatedUI::Sheet(ref sheet)) = job_creation.associated_ui {
-                                        if sheet.is_empty() {
-                                            job_creation.associated_ui = None;
-                                        }
-                                    }
+                                    let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
+                                        .map_err(|_| LLMProviderError::ContentParseFailed)?;
 
                                     self.process_job_creation(job_creation, &profile, &agent_id).await
                                 }

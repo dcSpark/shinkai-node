@@ -1,0 +1,43 @@
+[package]
+name = "shinkai_libp2p_relayer"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["derive", "env"] }
+shinkai_message_primitives = { workspace = true }
+shinkai_crypto_identities = { workspace = true }
+x25519-dalek = { workspace = true }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+chrono = { workspace = true }
+dotenv = "0.15.0"
+derivative = "2.2"
+uuid = { workspace = true, features = ["v4"] }
+thiserror = "1.0"
+reqwest = { workspace = true, features = ["json"] }
+dashmap = { workspace = true }
+
+# LibP2P dependencies
+libp2p = { version = "0.55.0", features = [
+    "noise",
+    "yamux",
+    "tcp",
+    "quic",
+    "identify",
+    "ping",
+    "tokio",
+    "macros",
+    "relay",
+    "dcutr",
+    "request-response",
+    "json",
+] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

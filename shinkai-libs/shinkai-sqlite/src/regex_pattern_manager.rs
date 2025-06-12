@@ -1,5 +1,4 @@
-use rusqlite::{Result, Row, ToSql, OptionalExtension};
-use std::time::{SystemTime, UNIX_EPOCH};
+use rusqlite::{OptionalExtension, Result, Row, ToSql};
 
 use crate::{errors::SqliteManagerError, SqliteManager};
 
@@ -200,7 +199,7 @@ mod tests {
         let db_path = temp_file.path();
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

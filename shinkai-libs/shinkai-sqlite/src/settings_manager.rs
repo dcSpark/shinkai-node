@@ -58,6 +58,29 @@ impl SqliteManager {
 
         Ok(key)
     }
+
+    pub fn set_ngrok_auth_token(&self, auth_token: Option<&str>) -> Result<(), SqliteManagerError> {
+        let conn = self.get_connection()?;
+
+        if let Some(auth_token) = auth_token {
+            let mut stmt = conn.prepare("INSERT OR REPLACE INTO shinkai_settings (key, value) VALUES ('ngrok_auth_token', ?)")?;
+            stmt.execute([auth_token])?;
+        } else {
+            let mut stmt = conn.prepare("DELETE FROM shinkai_settings WHERE key = 'ngrok_auth_token'")?;
+            stmt.execute([])?;
+        }
+
+        Ok(())
+    }
+
+    pub fn read_ngrok_auth_token(&self) -> Result<Option<String>, SqliteManagerError> {
+        let conn = self.get_connection()?;
+        let stmt = conn.prepare("SELECT value FROM shinkai_settings WHERE key = 'ngrok_auth_token'");
+
+        let auth_token = stmt?.query_row([], |row| row.get(0)).ok();
+
+        Ok(auth_token)
+    }
 }
 
 #[cfg(test)]
@@ -72,7 +95,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -81,7 +104,7 @@ mod tests {
     async fn test_update_and_get_supported_embedding_models() {
         let manager = setup_test_db();
         let models = vec![EmbeddingModelType::OllamaTextEmbeddingsInference(
-            OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M,
+            OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM,
         )];
 
         // Insert the models
@@ -92,7 +115,7 @@ mod tests {
         assert_eq!(models, updated_models);
 
         let new_models = vec![
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM),
             EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::JinaEmbeddingsV2BaseEs),
         ];
 

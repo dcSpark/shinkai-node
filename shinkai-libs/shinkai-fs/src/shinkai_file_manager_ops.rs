@@ -97,7 +97,7 @@ impl ShinkaiFileManager {
             return Err(ShinkaiFsError::FileNotFoundOnFilesystem);
         }
 
-        let new_rel_path = new_path.relative_path();
+        let _new_rel_path = new_path.relative_path();
 
         // Check if the parent directory of the new path exists
         let parent_dir = new_path.as_path().parent().unwrap();
@@ -229,7 +229,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -418,7 +418,7 @@ mod tests {
         assert!(found_file, "File 'old_file.txt' should be found in the directory.");
 
         let mock_generator = MockGenerator::new(
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M),
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM),
             10,
         );
 

@@ -36,7 +36,8 @@ impl LLMService for DeepSeek {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
@@ -58,7 +59,7 @@ impl LLMService for DeepSeek {
                 };
 
                 // Extract tools_json from the result
-                let mut tools_json = result.functions.unwrap_or_else(Vec::new);
+                let tools_json = result.functions.unwrap_or_else(Vec::new);
 
                 // Set up initial payload with appropriate token limit field based on model capabilities
                 let mut payload = if ModelCapabilitiesManager::has_reasoning_capabilities(&model) {
@@ -110,6 +111,17 @@ impl LLMService for DeepSeek {
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
+                if let Some(ref msg_id) = tracing_message_id {
+                    if let Err(e) = db.add_tracing(
+                        msg_id,
+                        inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                        "llm_payload",
+                        &payload_log,
+                    ) {
+                        eprintln!("failed to add payload trace: {:?}", e);
+                    }
+                }
+
                 if is_stream {
                     handle_streaming_response(
                         client,
@@ -152,7 +164,6 @@ mod tests {
     use super::*;
     use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::SerializedLLMProvider;
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-    use shinkai_message_primitives::schemas::subprompts::{SubPrompt, SubPromptType};
 
     #[test]
     fn test_deepseek_provider_creation() {
@@ -166,6 +177,8 @@ mod tests {
     fn test_deepseek_serialized_provider() {
         let provider = SerializedLLMProvider {
             id: "test-id".to_string(),
+            name: None,
+            description: None,
             full_identity_name: ShinkaiName::new("@@test.shinkai/main/agent/deepseek_test".to_string()).unwrap(),
             model: LLMProviderInterface::DeepSeek(DeepSeek {
                 model_type: "deepseek-chat".to_string(),

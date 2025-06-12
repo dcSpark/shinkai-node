@@ -2,9 +2,7 @@ use async_channel::Sender;
 use serde::Deserialize;
 use serde_json::Value;
 use shinkai_message_primitives::schemas::{
-    coinbase_mpc_config::CoinbaseMPCWalletConfig,
-    wallet_complementary::{WalletRole, WalletSource},
-    wallet_mixed::{Address, Asset, Network, NetworkIdentifier, NetworkProtocolFamilyEnum},
+    coinbase_mpc_config::CoinbaseMPCWalletConfig, wallet_complementary::{WalletRole, WalletSource}, wallet_mixed::{Address, Asset, NetworkProtocolFamilyEnum}, x402_types::Network
 };
 use utoipa::{OpenApi, ToSchema};
 use warp::Filter;
@@ -50,16 +48,23 @@ pub fn wallet_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(list_wallets_handler);
 
+    let get_wallet_balance_route = warp::path("get_wallet_balance")
+        .and(warp::get())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and_then(get_wallet_balance_handler);
+
     restore_local_wallet_route
         .or(create_local_wallet_route)
         .or(pay_invoice_route)
         .or(restore_coinbase_mpc_wallet_route)
         .or(list_wallets_route)
+        .or(get_wallet_balance_route)
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct RestoreLocalWalletRequest {
-    pub network: NetworkIdentifier,
+    pub network: Network,
     pub source: WalletSource,
     pub role: WalletRole,
 }
@@ -101,7 +106,7 @@ pub async fn restore_local_wallet_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateLocalWalletRequest {
-    pub network: NetworkIdentifier,
+    pub network: Network,
     pub role: WalletRole,
 }
 
@@ -181,7 +186,7 @@ pub async fn pay_invoice_handler(
 
 #[derive(Deserialize, ToSchema)]
 pub struct RestoreCoinbaseMPCWalletRequest {
-    pub network: NetworkIdentifier,
+    pub network: Network,
     pub config: Option<CoinbaseMPCWalletConfig>,
     pub wallet_id: String,
     pub role: WalletRole,
@@ -253,6 +258,33 @@ pub async fn list_wallets_handler(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/v2/get_wallet_balance",
+    responses(
+        (status = 200, description = "Successfully retrieved wallet balance", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_wallet_balance_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiGetWalletBalance { bearer, res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
 #[derive(OpenApi)]
 #[openapi(
     paths(
@@ -263,7 +295,7 @@ pub async fn list_wallets_handler(
     ),
     components(
         schemas(APIError, CreateLocalWalletRequest, PayInvoiceRequest, RestoreCoinbaseMPCWalletRequest, RestoreLocalWalletRequest,
-            Network, NetworkIdentifier, NetworkProtocolFamilyEnum, WalletRole, WalletSource, CoinbaseMPCWalletConfig, Address, Asset)
+            NetworkProtocolFamilyEnum, WalletRole, WalletSource, CoinbaseMPCWalletConfig, Address, Asset)
     ),
     tags(
         (name = "wallet", description = "Wallet API endpoints")

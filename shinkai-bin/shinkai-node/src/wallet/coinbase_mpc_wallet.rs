@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::coinbase_mpc_config::CoinbaseMPCWalletConfig;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_non_rust_code::functions::x402;
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
 use shinkai_tools_primitives::tools::tool_config::ToolConfig;
@@ -13,15 +14,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
-use tokio::sync::RwLock;
 
 use super::wallet_manager::WalletEnum;
 use super::wallet_traits::{CommonActions, IsWallet, PaymentWallet, ReceivingWallet, SendActions, TransactionHash};
 use crate::utils::environment::fetch_node_environment;
 use crate::wallet::wallet_error::WalletError;
 use shinkai_message_primitives::schemas::wallet_mixed::{
-    Address, AddressBalanceList, Asset, AssetType, Balance, Network, PublicAddress,
+    Address, AddressBalanceList, Asset, AssetType, Balance, PublicAddress
 };
+use shinkai_message_primitives::schemas::x402_types::{Network, PaymentRequirements};
 
 #[derive(Debug, Clone)]
 pub struct CoinbaseMPCWallet {
@@ -113,7 +114,9 @@ impl CoinbaseMPCWallet {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
                                 "name" => name = basic_config.key_value.clone().unwrap_or_default().to_string(),
-                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default().to_string(),
+                                "privateKey" => {
+                                    private_key = basic_config.key_value.clone().unwrap_or_default().to_string()
+                                }
                                 "useServerSigner" => {
                                     use_server_signer = basic_config.key_value.clone().unwrap_or_default().to_string()
                                 }
@@ -176,7 +179,7 @@ impl CoinbaseMPCWallet {
             network: network.clone(),
             address: Address {
                 wallet_id: wallet_id,
-                network_id: network.id,
+                network_id: network.clone(),
                 public_key: None,
                 address_id,
             },
@@ -213,7 +216,9 @@ impl CoinbaseMPCWallet {
                         match cfg {
                             ToolConfig::BasicConfig(basic_config) => match basic_config.key_name.as_str() {
                                 "name" => name = basic_config.key_value.clone().unwrap_or_default().to_string(),
-                                "privateKey" => private_key = basic_config.key_value.clone().unwrap_or_default().to_string(),
+                                "privateKey" => {
+                                    private_key = basic_config.key_value.clone().unwrap_or_default().to_string()
+                                }
                                 "useServerSigner" => {
                                     use_server_signer = basic_config.key_value.clone().unwrap_or_default().to_string()
                                 }
@@ -273,7 +278,7 @@ impl CoinbaseMPCWallet {
             config,
             address: Address {
                 wallet_id: wallet_id,
-                network_id: network.id,
+                network_id: network.clone(),
                 public_key: None,
                 address_id,
             },
@@ -421,8 +426,7 @@ impl CommonActions for CoinbaseMPCWallet {
         node_name: ShinkaiName,
     ) -> Pin<Box<dyn Future<Output = Result<AddressBalanceList, WalletError>> + Send + 'static>> {
         let config = self.config.clone();
-        let network_id = self.network.id.clone();
-        let network = self.network.clone();
+
         let sqlite_manager = match self.sqlite_manager.clone() {
             Some(manager) => manager,
             None => {
@@ -468,14 +472,14 @@ impl CommonActions for CoinbaseMPCWallet {
                             asset: Asset {
                                 asset_id: asset.clone(),
                                 decimals: Some(18),
-                                network_id: network.id.clone(),
+                                network_id: Network::BaseSepolia,
                                 contract_address: None,
                             },
                         }),
                         "USDC" => Some(Balance {
                             amount: amount.to_string(),
                             decimals: Some(6),
-                            asset: Asset::new(AssetType::USDC, &network_id.clone())?,
+                            asset: Asset::new(AssetType::USDC, &Network::BaseSepolia)?,
                         }),
                         _ => None,
                     }
@@ -665,6 +669,13 @@ impl SendActions for CoinbaseMPCWallet {
 
         Box::pin(fut)
     }
+
+    fn create_payment_request(
+        &self,
+        _payment_requirements: PaymentRequirements,
+    ) -> Pin<Box<dyn Future<Output = Result<x402::create_payment::Output, WalletError>> + Send>> {
+        unimplemented!()
+    }
 }
 
 pub enum ShinkaiToolCoinbase {
@@ -705,7 +716,7 @@ impl ShinkaiToolCoinbase {
 mod tests {
     use super::*;
     use bigdecimal::BigDecimal;
-    use shinkai_message_primitives::schemas::wallet_mixed::NetworkIdentifier;
+    use shinkai_message_primitives::schemas::x402_types::Network;
     use std::str::FromStr;
 
     #[tokio::test]
@@ -713,7 +724,7 @@ mod tests {
         let token = Some(Asset {
             asset_id: "USDC".to_string(),
             decimals: Some(6),
-            network_id: NetworkIdentifier::BaseSepolia,
+            network_id: Network::BaseSepolia,
             contract_address: None,
         });
 

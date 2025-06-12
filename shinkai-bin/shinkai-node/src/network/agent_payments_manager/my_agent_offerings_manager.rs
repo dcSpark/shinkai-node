@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::AddressBalanceList
+        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
     }, shinkai_message::shinkai_message_schemas::MessageSchemaType, shinkai_utils::{
         encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
     }
@@ -14,12 +14,13 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
-use tokio::sync::{Mutex, RwLock};
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
     managers::{identity_manager::IdentityManagerTrait, tool_router::ToolRouter}, network::{
-        network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer}, node::ProxyConnectionInfo
+        libp2p_manager::NetworkEvent, network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer}, node::ProxyConnectionInfo
     }, wallet::wallet_manager::WalletManager
 };
 
@@ -40,6 +41,7 @@ pub struct MyAgentOfferingsManager {
     // Wallet manager
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
+    pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 }
 
 impl MyAgentOfferingsManager {
@@ -53,6 +55,7 @@ impl MyAgentOfferingsManager {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         tool_router: Weak<ToolRouter>,
         wallet_manager: Weak<Mutex<Option<WalletManager>>>,
+        libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
     ) -> Self {
         Self {
             db,
@@ -63,7 +66,13 @@ impl MyAgentOfferingsManager {
             identity_manager,
             tool_router,
             wallet_manager,
+            libp2p_event_sender,
         }
+    }
+
+    /// Update the libp2p event sender after initialization
+    pub fn update_libp2p_event_sender(&mut self, sender: tokio::sync::mpsc::UnboundedSender<NetworkEvent>) {
+        self.libp2p_event_sender = Some(sender);
     }
 
     // Notes:
@@ -169,6 +178,7 @@ impl MyAgentOfferingsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
             )
             .await?;
         }
@@ -248,7 +258,7 @@ impl MyAgentOfferingsManager {
         })?;
 
         // Get the price for the usage type
-        let usage_type_inquiry = UsageTypeInquiry::PerUse; // or UsageTypeInquiry::Downloadable based on your context
+        let usage_type_inquiry = UsageTypeInquiry::PerUse;
         let price = invoice
             .shinkai_offering
             .get_price_for_usage(&usage_type_inquiry)
@@ -270,13 +280,18 @@ impl MyAgentOfferingsManager {
 
         let my_address = wallet.payment_wallet.get_address();
 
+        // Create the Asset struct
+        let asset = Asset {
+            network_id: asset_payment.network.clone(),
+            asset_id: asset_payment.asset.clone(),
+            decimals: None, // TODO: this should be retrieved from the asset
+            contract_address: None,
+        };
+        println!("asset: {:?}", asset);
+
         // Check the balance before attempting to pay
         let balance = match wallet
-            .check_balance_payment_wallet(
-                my_address.clone().into(),
-                asset_payment.asset.clone(),
-                node_name.clone(),
-            )
+            .check_balance_payment_wallet(my_address.clone().into(), asset, node_name.clone())
             .await
         {
             Ok(balance) => balance,
@@ -290,14 +305,16 @@ impl MyAgentOfferingsManager {
         };
         println!("wallet {} balance: {:?}", my_address.address_id.clone(), balance);
 
-        let required_amount = asset_payment.amount.parse::<u128>().map_err(|e| {
+        let required_amount = asset_payment.max_amount_required.parse::<u128>().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to parse required amount: {}", e))
         })?;
         println!("required_amount: {:?}", required_amount);
 
-        let available_amount = balance.amount.split('.').next().unwrap().parse::<u128>().map_err(|e| {
+        let available_amount = balance.amount.parse::<u128>().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e))
         })?;
+
+        println!("available_amount: {:?}", available_amount);
 
         if available_amount < required_amount {
             return Err(AgentOfferingManagerError::OperationFailed(
@@ -416,6 +433,7 @@ impl MyAgentOfferingsManager {
             .db
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
         db.set_invoice(&updated_invoice).map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to store paid invoice: {:?}", e))
         })?;
@@ -514,6 +532,7 @@ impl MyAgentOfferingsManager {
                 self.my_encryption_secret_key.clone(),
                 self.identity_manager.clone(),
                 self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
             )
             .await?;
         }
@@ -567,6 +586,13 @@ impl MyAgentOfferingsManager {
         })?;
 
         // TODO: avoid the expects
+        let tool_router_key = ToolRouterKey::new(
+            provider.to_string(),
+            tool_header.author.clone(),
+            tool_header.name.clone(),
+            None,
+        );
+
         let network_tool = NetworkTool::new(
             tool_header.name,
             tool_header.description,
@@ -580,6 +606,7 @@ impl MyAgentOfferingsManager {
             ToolOutputArg { json: "".to_string() },
             None,
             None,
+            Some(tool_router_key.to_string_without_version()),
         );
 
         tool_router
@@ -713,6 +740,18 @@ mod tests {
                 Err("Profile not found".to_string())
             }
         }
+
+        async fn get_routing_info(
+            &self,
+            _full_profile_name: &str,
+            _: Option<bool>,
+        ) -> Result<(bool, Vec<String>), String> {
+            if _full_profile_name.to_string() == "@@node1.shinkai/main" {
+                Ok((false, vec!["127.0.0.1:9552".to_string()]))
+            } else {
+                Err("Identity not found".to_string())
+            }
+        }
     }
 
     fn setup() {
@@ -844,26 +883,4 @@ mod tests {
 
     //     Ok(())
     // }
-
-    #[tokio::test]
-    async fn test_parse_available_amount() {
-        struct MockBalance {
-            amount: String,
-        }
-
-        let balance = MockBalance {
-            amount: "4999000.000".to_string(),
-        };
-
-        let available_amount = balance
-            .amount
-            .split('.')
-            .next()
-            .unwrap()
-            .parse::<u128>()
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to parse available amount: {}", e)))
-            .unwrap();
-
-        assert_eq!(available_amount, 4999000);
-    }
 }

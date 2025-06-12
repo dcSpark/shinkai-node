@@ -37,10 +37,30 @@ pub async fn try_to_execute_rust_tool(
 ) -> Result<Value, ToolError> {
     println!("[executing_rust_tool] {}", tool_router_key);
 
+    // Note(Important): if you update the # of tools, you need to update the # of tools in fn has_rust_tools(&self) ->
+    // Result<bool, SqliteManagerError> { ... } in shinkai_sqlite/src/shinkai_tool_manager.rs
+
     let result = match tool_router_key {
         // TODO Keep in sync with definitions_custom.rs
         s if s == "local:::__official_shinkai:::shinkai_llm_map_reduce_processor" => {
             tool_implementation::native_tools::llm_map_reduce_processor::LlmMapReduceProcessorTool::execute(
+                bearer,
+                tool_id,
+                app_id,
+                db,
+                node_name,
+                identity_manager,
+                job_manager,
+                encryption_secret_key,
+                encryption_public_key,
+                signing_secret_key,
+                &parameters,
+                llm_provider,
+            )
+            .await
+        }
+        s if s == "local:::__official_shinkai:::shinkai_agent_prompt_processor" => {
+            tool_implementation::native_tools::agent_processor::AgentPromptProcessorTool::execute(
                 bearer,
                 tool_id,
                 app_id,

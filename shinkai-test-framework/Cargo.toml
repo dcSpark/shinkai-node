@@ -1,0 +1,24 @@
+[package]
+name = "shinkai_test_framework"
+version = "0.1.0"
+edition = "2021"
+
+
+[lib]
+name = "shinkai_test_framework"
+
+[dependencies]
+tokio = { workspace = true }
+async-channel = { workspace = true }
+anyhow = { workspace = true }
+shinkai_http_api = { workspace = true }
+shinkai_message_primitives = { workspace = true }
+shinkai_embedding = { workspace = true }
+shinkai_sqlite = { workspace = true }
+shinkai_node = { path = "../shinkai-bin/shinkai-node" }
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+tempfile = { workspace = true }
+ed25519-dalek = { workspace = true }
+x25519-dalek = { workspace = true }

@@ -2,12 +2,10 @@ use super::error::LLMProviderError;
 use super::execution::prompts::general_prompts::JobPromptGenerator;
 use super::job_manager::JobManager;
 use super::llm_stopper::LLMStopper;
-use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_fs::simple_parser::file_parser_helper::ShinkaiFileParser;
 use shinkai_fs::simple_parser::text_group::TextGroup;
 use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provider::ProviderOrAgent;
 use shinkai_sqlite::SqliteManager;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 pub struct ParsingHelper {}
@@ -35,6 +33,7 @@ impl ParsingHelper {
                 None,
                 llm_stopper.clone(),
                 db.clone(),
+                None, // No tracing for generate_description
             )
             .await
             {

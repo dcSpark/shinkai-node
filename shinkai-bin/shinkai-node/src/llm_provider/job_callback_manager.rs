@@ -4,7 +4,7 @@ use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiM
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::{cron_tasks::cron_manager::CronManager, managers::sheet_manager::SheetManager};
+use crate::cron_tasks::cron_manager::CronManager;
 
 use super::job_manager::JobManager;
 use crate::llm_provider::error::LLMProviderError;
@@ -14,14 +14,12 @@ use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::RwLock;
 
 /// The `JobCallbackManager` is responsible for handling incoming job requests
 /// and delegating them to the appropriate manager (JobManager, SheetManager, or CronManager).
 ///
 /// # Fields
 /// - `job_manager`: An `Arc<Mutex<JobManager>>` for handling job-related requests.
-/// - `sheet_manager`: An `Arc<Mutex<SheetManager>>` for handling sheet-related requests.
 /// - `cron_manager`: An `Arc<Mutex<CronManager>>` for handling cron-related requests.
 ///
 /// # Methods
@@ -29,7 +27,6 @@ use tokio::sync::RwLock;
 /// - `handle_request`: Takes a `JobRequest` and forwards it to the appropriate manager based on the `manager_type`.
 pub struct JobCallbackManager {
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
-    pub sheet_manager: Option<Arc<Mutex<SheetManager>>>,
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
 }
 
@@ -44,17 +41,12 @@ impl JobCallbackManager {
     pub fn new() -> Self {
         JobCallbackManager {
             job_manager: None,
-            sheet_manager: None,
             cron_manager: None,
         }
     }
 
     pub fn update_job_manager(&mut self, job_manager: Arc<Mutex<JobManager>>) {
         self.job_manager = Some(job_manager);
-    }
-
-    pub fn update_sheet_manager(&mut self, sheet_manager: Arc<Mutex<SheetManager>>) {
-        self.sheet_manager = Some(sheet_manager);
     }
 
     pub fn update_cron_manager(&mut self, cron_manager: Arc<Mutex<CronManager>>) {
@@ -67,10 +59,6 @@ impl JobCallbackManager {
     //         //     let mut manager = self.job_manager.lock().await;
     //         //     // manager.handle_job(job_message);
     //         // }
-    //         CallbackAction::Sheet(sheet_action) => {
-    //             let mut manager = self.sheet_manager.lock().await;
-    //             // manager.handle_sheet(sheet_action);
-    //         }
     //         // Note: add later
     //         // CallbackAction::Cron(cron_action) => {
     //         //     let mut manager = self.cron_manager.lock().await;

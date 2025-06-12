@@ -18,7 +18,9 @@ use shinkai_message_primitives::{
     }
 };
 
+use shinkai_sqlite::inbox_manager::PaginatedSmartInboxes;
 use shinkai_sqlite::SqliteManager;
+
 use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
@@ -414,6 +416,7 @@ impl Node {
         _limit: Option<usize>,
         _offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<Vec<V2SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -439,26 +442,34 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let smart_inboxes = match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden) {
-            Ok(inboxes) => inboxes,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve smart inboxes: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        let smart_inboxes: Vec<SmartInbox> =
+            match db.get_all_smart_inboxes_for_profile(main_identity, show_hidden, agent_id) {
+                Ok(inboxes) => inboxes,
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to retrieve smart inboxes: {}", err),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            };
 
-        // Convert SmartInbox to V2SmartInbox
-        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
+        // Convert SmartInbox to V2SmartInbox, collecting into a Result
+        let v2_smart_inboxes_result: Result<Vec<V2SmartInbox>, NodeError> = smart_inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
 
-        match v2_smart_inboxes {
+        // Handle the Result and filter based on agent_id if necessary
+        let final_result = match v2_smart_inboxes_result {
+            Ok(inboxes) => Ok(inboxes), // Return the Vec wrapped in Ok
+            Err(e) => Err(e),           // Propagate the error if conversion failed
+        };
+
+        // Send the final result
+        match final_result {
             Ok(inboxes) => {
                 let _ = res.send(Ok(inboxes)).await;
             }
@@ -466,7 +477,8 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert smart inboxes: {}", err),
+                    // Updated error message to reflect potential conversion error
+                    message: format!("Failed to process smart inboxes: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
@@ -482,6 +494,7 @@ impl Node {
         limit: Option<usize>,
         offset: Option<String>,
         show_hidden: Option<bool>,
+        agent_id: Option<String>,
         res: Sender<Result<serde_json::Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -507,28 +520,40 @@ impl Node {
         };
 
         // Retrieve all smart inboxes for the profile with pagination
-        let paginated_inboxes =
-            match db.get_all_smart_inboxes_for_profile_with_pagination(main_identity, limit, offset, show_hidden) {
-                Ok(inboxes) => inboxes,
-                Err(err) => {
-                    let api_error = APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Internal Server Error".to_string(),
-                        message: format!("Failed to retrieve smart inboxes: {}", err),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
-                }
-            };
+        let paginated_inboxes: PaginatedSmartInboxes = match db.get_all_smart_inboxes_for_profile_with_pagination(
+            main_identity,
+            limit,
+            offset,
+            show_hidden,
+            agent_id,
+        ) {
+            Ok(inboxes) => inboxes,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve smart inboxes: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
-        // Convert SmartInbox to V2SmartInbox
-        let v2_smart_inboxes: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
+        // Convert SmartInbox to V2SmartInbox, collecting into a Result
+        let v2_smart_inboxes_result: Result<Vec<V2SmartInbox>, NodeError> = paginated_inboxes
             .inboxes
             .into_iter()
             .map(Self::convert_smart_inbox_to_v2_smart_inbox)
             .collect();
 
-        match v2_smart_inboxes {
+        // Handle the Result and filter based on agent_id if necessary
+        let final_result = match v2_smart_inboxes_result {
+            Ok(inboxes) => Ok(inboxes),
+            Err(e) => Err(e), // Propagate the error if conversion failed
+        };
+
+        // Send the final result, preserving pagination info
+        match final_result {
             Ok(inboxes) => {
                 let response = json!({
                     "inboxes": inboxes,
@@ -540,7 +565,8 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert smart inboxes: {}", err),
+                    // Updated error message
+                    message: format!("Failed to process smart inboxes: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
             }
@@ -1265,6 +1291,45 @@ impl Node {
         }
     }
 
+    pub async fn v2_api_get_message_traces(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        message_id: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_traces_by_parent_message_id(&message_id) {
+            Ok(traces) => {
+                let traces_json: Vec<Value> = traces
+                    .into_iter()
+                    .map(|t| {
+                        json!({
+                            "id": t.id,
+                            "parent_message_id": t.parent_message_id,
+                            "inbox_name": t.inbox_name,
+                            "datetime": t.datetime,
+                            "trace_name": t.trace_name,
+                            "trace_info": t.trace_info,
+                        })
+                    })
+                    .collect();
+                let _ = res.send(Ok(json!(traces_json))).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve traces: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn v2_fork_job_messages(
         db: Arc<SqliteManager>,
         node_name: ShinkaiName,
@@ -1302,8 +1367,8 @@ impl Node {
 
     pub async fn fork_job(
         db: Arc<SqliteManager>,
-        node_name: ShinkaiName,
-        identity_manager: Arc<Mutex<IdentityManager>>,
+        _node_name: ShinkaiName,
+        _identity_manager: Arc<Mutex<IdentityManager>>,
         job_id: String,
         message_id: Option<String>,
         node_encryption_sk: EncryptionStaticKey,
@@ -1530,23 +1595,6 @@ impl Node {
             }
         }
 
-        // TODO: remove the files from the job folder
-        // Remove the file inboxes
-        // for file_inbox in file_inboxes {
-        //     match db.remove_inbox(&file_inbox) {
-        //         Ok(_) => {}
-        //         Err(err) => {
-        //             let api_error = APIError {
-        //                 code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //                 error: "Internal Server Error".to_string(),
-        //                 message: format!("Failed to remove file inbox: {}", err),
-        //             };
-        //             let _ = res.send(Err(api_error)).await;
-        //             return Ok(());
-        //         }
-        //     }
-        // }
-
         let _ = res
             .send(Ok(SendResponseBody {
                 status: "success".to_string(),
@@ -1596,15 +1644,6 @@ impl Node {
                 return Ok(());
             }
         };
-
-        // TODO: Review and fix this
-
-        // Retrieve the filenames in the inboxes
-        let file_inboxes = v2_chat_messages
-            .iter()
-            .flatten()
-            .map(|message| message.job_message.fs_files_paths.clone())
-            .collect::<Vec<_>>();
 
         // Export the messages in the requested format
         match format {
@@ -1722,7 +1761,17 @@ impl Node {
 
                 for messages in v2_chat_messages {
                     for message in messages {
-                        result_messages.push_str(&format!("{}\n\n", message.job_message.content));
+                        let role = if message
+                            .sender_subidentity
+                            .to_lowercase()
+                            .contains("/agent/")
+                        {
+                            "assistant"
+                        } else {
+                            "user"
+                        };
+
+                        result_messages.push_str(&format!("{}: {}\n\n", role, message.job_message.content));
 
                         for file in &message.job_message.fs_files_paths {
                             result_messages.push_str(&format!("Attached file: {}\n\n", file));

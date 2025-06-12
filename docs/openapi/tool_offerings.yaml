@@ -29,6 +29,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
+  /v2/get_tools_with_offerings:
+    get:
+      tags:
+      - crate
+      operationId: get_tools_with_offerings_handler
+      responses:
+        '200':
+          description: Successfully retrieved all network tools and offerings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
   /v2/get_tool_offering:
     post:
       tags:
@@ -168,9 +188,9 @@ components:
           minimum: 0
         network_id:
           $ref: '#/components/schemas/NetworkIdentifier'
-    AssetPayment:
+    PaymentRequirements:
       type: object
-      description: Represents a payment with an asset and amount.
+      description: Represents a payment requirement with an asset and amount.
       required:
       - asset
       - amount
@@ -243,7 +263,7 @@ components:
           Payment:
             type: array
             items:
-              $ref: '#/components/schemas/AssetPayment'
+              $ref: '#/components/schemas/PaymentRequirements'
     UsageType:
       oneOf:
       - type: object
@@ -252,26 +272,6 @@ components:
         properties:
           PerUse:
             $ref: '#/components/schemas/ToolPrice'
-      - type: object
-        required:
-        - Downloadable
-        properties:
-          Downloadable:
-            $ref: '#/components/schemas/ToolPrice'
-      - type: object
-        required:
-        - Both
-        properties:
-          Both:
-            type: object
-            required:
-            - per_use_price
-            - download_price
-            properties:
-              download_price:
-                $ref: '#/components/schemas/ToolPrice'
-              per_use_price:
-                $ref: '#/components/schemas/ToolPrice'
 tags:
 - name: tool_offerings
   description: Tool Offering API endpoints

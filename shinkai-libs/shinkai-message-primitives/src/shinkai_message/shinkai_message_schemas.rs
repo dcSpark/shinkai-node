@@ -1,5 +1,3 @@
-use crate::schemas::sheet::{APIColumnDefinition, ColumnUuid, RowUuid, UuidString};
-use crate::schemas::shinkai_subscription_req::{FolderSubscription, SubscriptionPayment};
 use crate::schemas::shinkai_tools::DynamicToolType;
 use crate::schemas::tool_router_key::ToolRouterKey;
 use crate::schemas::{inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider};
@@ -51,18 +49,7 @@ pub enum MessageSchemaType {
     VecFsDeleteItem,
     AvailableSharedItems,
     AvailableSharedItemsResponse,
-    CreateShareableFolder,
-    UpdateShareableFolder,
-    UnshareFolder,
-    GetMySubscribers,
     ConvertFilesAndSaveToFolder,
-    SubscribeToSharedFolder,
-    UnsubscribeToSharedFolder,
-    SubscribeToSharedFolderResponse,
-    UnsubscribeToSharedFolderResponse,
-    MySubscriptions,
-    SubscriptionRequiresTreeUpdate,
-    SubscriptionRequiresTreeUpdateResponse,
     UpdateLocalProcessingPreference,
     GetProcessingPreference,
     APIRemoveToolkit,
@@ -78,18 +65,6 @@ pub enum MessageSchemaType {
     ListWorkflows,
     UpdateSupportedEmbeddingModels,
     UpdateDefaultEmbeddingModel,
-    UserSheets,
-    SetColumn,
-    RemoveColumn,
-    RemoveSheet,
-    CreateEmptySheet,
-    SetCellValue,
-    GetSheet,
-    RemoveRows,
-    AddRows,
-    ImportSheet,
-    ExportSheet,
-    SetSheetUploadedFiles,
     SetShinkaiTool,
     ListAllShinkaiTools,
     GetShinkaiTool,
@@ -140,18 +115,7 @@ impl MessageSchemaType {
             "VecFsDeleteItem" => Some(Self::VecFsDeleteItem),
             "AvailableSharedItems" => Some(Self::AvailableSharedItems),
             "AvailableSharedItemsResponse" => Some(Self::AvailableSharedItemsResponse),
-            "CreateShareableFolder" => Some(Self::CreateShareableFolder),
-            "UpdateShareableFolder" => Some(Self::UpdateShareableFolder),
-            "UnshareFolder" => Some(Self::UnshareFolder),
-            "GetMySubscribers" => Some(Self::GetMySubscribers),
             "ConvertFilesAndSaveToFolder" => Some(Self::ConvertFilesAndSaveToFolder),
-            "SubscribeToSharedFolder" => Some(Self::SubscribeToSharedFolder),
-            "UnsubscribeToSharedFolder" => Some(Self::UnsubscribeToSharedFolder),
-            "SubscribeToSharedFolderResponse" => Some(Self::SubscribeToSharedFolderResponse),
-            "UnsubscribeToSharedFolderResponse" => Some(Self::UnsubscribeToSharedFolderResponse),
-            "MySubscriptions" => Some(Self::MySubscriptions),
-            "SubscriptionRequiresTreeUpdate" => Some(Self::SubscriptionRequiresTreeUpdate),
-            "SubscriptionRequiresTreeUpdateResponse" => Some(Self::SubscriptionRequiresTreeUpdateResponse),
             "UpdateLocalProcessingPreference" => Some(Self::UpdateLocalProcessingPreference),
             "GetProcessingPreference" => Some(Self::GetProcessingPreference),
             "APIRemoveToolkit" => Some(Self::APIRemoveToolkit),
@@ -167,18 +131,6 @@ impl MessageSchemaType {
             "ListWorkflows" => Some(Self::ListWorkflows),
             "UpdateSupportedEmbeddingModels" => Some(Self::UpdateSupportedEmbeddingModels),
             "UpdateDefaultEmbeddingModel" => Some(Self::UpdateDefaultEmbeddingModel),
-            "UserSheets" => Some(Self::UserSheets),
-            "SetColumn" => Some(Self::SetColumn),
-            "RemoveColumn" => Some(Self::RemoveColumn),
-            "RemoveSheet" => Some(Self::RemoveSheet),
-            "CreateEmptySheet" => Some(Self::CreateEmptySheet),
-            "SetCellValue" => Some(Self::SetCellValue),
-            "GetSheet" => Some(Self::GetSheet),
-            "RemoveRows" => Some(Self::RemoveRows),
-            "AddRows" => Some(Self::AddRows),
-            "ImportSheet" => Some(Self::ImportSheet),
-            "ExportSheet" => Some(Self::ExportSheet),
-            "SetSheetUploadedFiles" => Some(Self::SetSheetUploadedFiles),
             "SetShinkaiTool" => Some(Self::SetShinkaiTool),
             "ListAllShinkaiTools" => Some(Self::ListAllShinkaiTools),
             "GetShinkaiTool" => Some(Self::GetShinkaiTool),
@@ -229,18 +181,7 @@ impl MessageSchemaType {
             Self::VecFsDeleteItem => "VecFsDeleteItem",
             Self::AvailableSharedItems => "AvailableSharedItems",
             Self::AvailableSharedItemsResponse => "AvailableSharedItemsResponse",
-            Self::CreateShareableFolder => "CreateShareableFolder",
-            Self::UpdateShareableFolder => "UpdateShareableFolder",
-            Self::UnshareFolder => "UnshareFolder",
-            Self::GetMySubscribers => "GetMySubscribers",
             Self::ConvertFilesAndSaveToFolder => "ConvertFilesAndSaveToFolder",
-            Self::SubscribeToSharedFolder => "SubscribeToSharedFolder",
-            Self::UnsubscribeToSharedFolder => "UnsubscribeToSharedFolder",
-            Self::SubscribeToSharedFolderResponse => "SubscribeToSharedFolderResponse",
-            Self::UnsubscribeToSharedFolderResponse => "UnsubscribeToSharedFolderResponse",
-            Self::MySubscriptions => "MySubscriptions",
-            Self::SubscriptionRequiresTreeUpdate => "SubscriptionRequiresTreeUpdate",
-            Self::SubscriptionRequiresTreeUpdateResponse => "SubscriptionRequiresTreeUpdateResponse",
             Self::UpdateLocalProcessingPreference => "UpdateLocalProcessingPreference",
             Self::GetProcessingPreference => "GetProcessingPreference",
             Self::APIRemoveToolkit => "APIRemoveToolkit",
@@ -256,18 +197,6 @@ impl MessageSchemaType {
             Self::ListWorkflows => "ListWorkflows",
             Self::UpdateSupportedEmbeddingModels => "UpdateSupportedEmbeddingModels",
             Self::UpdateDefaultEmbeddingModel => "UpdateDefaultEmbeddingModel",
-            Self::UserSheets => "UserSheets",
-            Self::SetColumn => "SetColumn",
-            Self::RemoveColumn => "RemoveColumn",
-            Self::RemoveSheet => "RemoveSheet",
-            Self::CreateEmptySheet => "CreateEmptySheet",
-            Self::SetCellValue => "SetCellValue",
-            Self::GetSheet => "GetSheet",
-            Self::RemoveRows => "RemoveRows",
-            Self::AddRows => "AddRows",
-            Self::ImportSheet => "ImportSheet",
-            Self::ExportSheet => "ExportSheet",
-            Self::SetSheetUploadedFiles => "SetSheetUploadedFiles",
             Self::SetShinkaiTool => "SetShinkaiTool",
             Self::ListAllShinkaiTools => "ListAllShinkaiTools",
             Self::GetShinkaiTool => "GetShinkaiTool",
@@ -294,7 +223,6 @@ pub struct SymmetricKeyExchange {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum AssociatedUI {
-    Sheet(String),
     Playground,
     Cron(String),
     // Add more variants as needed
@@ -310,7 +238,6 @@ pub struct JobCreationInfo {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub enum CallbackAction {
     Job(JobMessage),
-    Sheet(SheetManagerAction),
     ToolPlayground(ToolPlaygroundAction),
     // ImplementationCheck: (DynamicToolType, available_tools)
     ImplementationCheck(DynamicToolType, Vec<ToolRouterKey>),
@@ -321,6 +248,7 @@ pub struct JobMessage {
     pub job_id: String,
     pub content: String,
     pub parent: Option<String>,
+    // TODO: remove this after checking is safe
     pub sheet_job_data: Option<String>,
     // This is added to force specific tools to be used in the LLM scope
     pub tools: Option<Vec<String>>,
@@ -365,103 +293,12 @@ pub struct V2ChatMessage {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
-pub struct SheetManagerAction {
-    pub job_message_next: Option<JobMessage>,
-    // TODO: should this be m0re complex and have the actual desired action?
-    pub sheet_action: SheetJobAction,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 pub struct ToolPlaygroundAction {
     pub tool_router_key: String,
     pub code: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
-pub struct SheetJobAction {
-    pub sheet_id: String,
-    #[schema(value_type = String)]
-    pub row: RowUuid,
-    #[schema(value_type = String)]
-    pub col: ColumnUuid,
-}
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, ToSchema)]
-pub enum FileDestinationSourceType {
-    S3,
-    R2,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
-pub struct FileDestinationCredentials {
-    pub source: FileDestinationSourceType,
-    pub access_key_id: String,
-    pub secret_access_key: String,
-    pub endpoint_uri: String,
-    pub bucket: String,
-}
-
-impl FileDestinationCredentials {
-    #[allow(dead_code)]
-    pub fn new(
-        source: String,
-        access_key_id: String,
-        secret_access_key: String,
-        endpoint_uri: String,
-        bucket: String,
-    ) -> Self {
-        let source_type = match source.as_str() {
-            "S3" => FileDestinationSourceType::S3,
-            "R2" => FileDestinationSourceType::R2,
-            _ => panic!("Unsupported source type"),
-        };
-        FileDestinationCredentials {
-            source: source_type,
-            access_key_id,
-            secret_access_key,
-            endpoint_uri,
-            bucket,
-        }
-    }
-}
-
-/// Represents the response for a subscription request, providing details
-/// about the subscription status and any errors encountered.
-/// Note(Nico): I know things will be much simpler if we added SubscriptionId
-/// here but can't trust other nodes, we need to generate those on your side.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SubscriptionGenericResponse {
-    // Explanation of what is taking place with this generic response
-    pub subscription_details: String,
-    /// The overall status of the subscription request.
-    pub shared_folder: String,
-    /// The overall status of the subscription request.
-    pub status: SubscriptionResponseStatus,
-    /// Detailed error information, if any errors occurred during the process.
-    pub error: Option<SubscriptionError>,
-    /// Additional metadata related to the subscription, for extensibility.
-    pub metadata: Option<HashMap<String, String>>,
-}
-
-/// Represents the status of a subscription request.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum SubscriptionResponseStatus {
-    Success,
-    Failure,
-    Pending,
-    Request,
-}
-
-/// Provides structured error information for subscription requests.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SubscriptionError {
-    /// A code representing the type of error encountered.
-    pub code: String,
-    /// A human-readable message describing the error.
-    pub message: String,
-    /// Additional details or metadata about the error.
-    pub details: Option<HashMap<String, String>>,
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMessagesFromInboxRequest {
@@ -571,6 +408,8 @@ pub struct APIVecFsCopyItem {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIVecFsRetrieveSourceFile {
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub processed_file: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
@@ -581,48 +420,8 @@ pub struct APIAvailableSharedItems {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APISubscribeToSharedFolder {
-    pub path: String,
-    pub streamer_node_name: String,
-    pub streamer_profile_name: String,
-    pub payment: SubscriptionPayment,
-    pub base_folder: Option<String>,
-    pub http_preferred: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIUnsubscribeToSharedFolder {
-    pub path: String,
-    pub streamer_node_name: String,
-    pub streamer_profile_name: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APICreateShareableFolder {
-    pub path: String,
-    pub subscription_req: FolderSubscription,
-    pub credentials: Option<FileDestinationCredentials>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIUpdateShareableFolder {
-    pub path: String,
-    pub subscription: FolderSubscription,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIUnshareFolder {
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
 pub struct APIAddOllamaModels {
     pub models: Vec<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, ToSchema)]
-pub struct APIGetMySubscribers {
-    pub path: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -649,88 +448,20 @@ pub struct TopicSubscription {
     pub subtopic: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
-pub struct APISetWorkflow {
-    pub workflow_raw: String,
-    pub description: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct APISetColumnPayload {
-    pub sheet_id: String,
-    pub column: APIColumnDefinition,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct APIRemoveColumnPayload {
-    pub sheet_id: String,
-    pub column_id: ColumnUuid,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct APISetCellValuePayload {
-    pub sheet_id: String,
-    pub row: RowUuid,
-    pub col: ColumnUuid,
-    pub value: String,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct APIRemoveRowsPayload {
-    pub sheet_id: String,
-    pub row_indices: Vec<UuidString>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct APIAddRowsPayload {
-    pub sheet_id: String,
-    pub number_of_rows: usize,
-    pub starting_row: Option<usize>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
-pub struct APIImportSheetPayload {
-    pub sheet_data: SpreadSheetPayload,
-    pub sheet_name: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone, ToSchema)]
-pub struct APIExportSheetPayload {
-    pub sheet_id: String,
-    pub file_format: SheetFileFormat,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "type", content = "content")]
-pub enum SpreadSheetPayload {
-    CSV(String),
-    XLSX(Vec<u8>),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum SheetFileFormat {
-    CSV,
-    XLSX,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct APISetSheetUploadedFilesPayload {
-    pub sheet_id: String,
-    pub files: HashMap<(UuidString, UuidString), Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, ToSchema)]
-pub struct APIWorkflowKeyname {
-    pub tool_router_key: String,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportInboxMessagesFormat {
     CSV,
     JSON,
     TXT,
+}
+
+/// An authenticated WebSocket message that includes a bearer token
+/// and the actual WSMessage payload
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AuthenticatedWSMessage {
+    pub bearer_auth: String,
+    pub message: WSMessage,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -941,36 +672,6 @@ mod tests {
             serde_json::from_str(&serialized).expect("Failed to deserialize minimal JobMessage");
 
         assert_eq!(minimal_message, deserialized);
-    }
-
-    #[test]
-    fn test_job_message_with_sheet_callback() {
-        let message_with_sheet_callback = JobMessage {
-            job_id: "sheet_job".to_string(),
-            content: "sheet content".to_string(),
-            parent: None,
-            sheet_job_data: Some("sheet1".to_string()),
-            tools: None,
-            callback: Some(Box::new(CallbackAction::Sheet(SheetManagerAction {
-                job_message_next: None,
-                sheet_action: SheetJobAction {
-                    sheet_id: "sheet1".to_string(),
-                    row: RowUuid::from("row1"),
-                    col: ColumnUuid::from("col1"),
-                },
-            }))),
-            metadata: None,
-            tool_key: None,
-            fs_files_paths: vec![],
-            job_filenames: vec![],
-        };
-
-        let serialized = serde_json::to_string(&message_with_sheet_callback)
-            .expect("Failed to serialize JobMessage with sheet callback");
-        let deserialized: JobMessage =
-            serde_json::from_str(&serialized).expect("Failed to deserialize JobMessage with sheet callback");
-
-        assert_eq!(message_with_sheet_callback, deserialized);
     }
 
     #[test]

@@ -15,6 +15,7 @@ pub async fn generate_execution_environment(
     llm_provider: String,
     app_id: String,
     tool_id: String,
+    agent_id: Option<String>,
     tool_router_key: String,
     instance_id: String,
     oauth: &Option<Vec<OAuth>>,
@@ -25,6 +26,9 @@ pub async fn generate_execution_environment(
     envs.insert("BEARER".to_string(), bearer);
     envs.insert("X_SHINKAI_TOOL_ID".to_string(), tool_id.clone());
     envs.insert("X_SHINKAI_APP_ID".to_string(), app_id.clone());
+    if let Some(agent_id) = agent_id {
+        envs.insert("X_SHINKAI_AGENT_ID".to_string(), agent_id.clone());
+    }
     envs.insert("X_SHINKAI_INSTANCE_ID".to_string(), instance_id.clone());
     envs.insert("X_SHINKAI_LLM_PROVIDER".to_string(), llm_provider);
 
@@ -217,18 +221,21 @@ mod tests {
             "string".to_string(),
             "A string parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "number_param".to_string(),
             "number".to_string(),
             "A number parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "optional_bool".to_string(),
             "boolean".to_string(),
             "An optional boolean parameter".to_string(),
             false,
+            None,
         );
         params
     }
@@ -497,6 +504,7 @@ mod tests {
             "array".to_string(),
             "An array parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -514,6 +522,7 @@ mod tests {
             "array".to_string(),
             "An array parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -537,6 +546,7 @@ mod tests {
             "object".to_string(),
             "An object parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -554,6 +564,7 @@ mod tests {
             "object".to_string(),
             "An object parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -577,6 +588,7 @@ mod tests {
             "integer".to_string(),
             "An integer parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -597,12 +609,14 @@ mod tests {
             "string".to_string(),
             "A string parameter".to_string(),
             true,
+            None,
         );
         params.add_property(
             "number_param".to_string(),
             "number".to_string(),
             "A number parameter".to_string(),
             true,
+            None,
         );
 
         let mut value = Map::new();
@@ -629,6 +643,7 @@ mod tests {
             "string".to_string(),
             "An optional parameter".to_string(),
             false,
+            None,
         );
 
         let mut value = Map::new();
@@ -825,7 +840,7 @@ mod tests {
         let mut params = Parameters::new();
 
         // Create an array of strings property
-        let string_prop = Property::new("string".to_string(), "A string item".to_string());
+        let string_prop = Property::new("string".to_string(), "A string item".to_string(), None);
         let array_prop = Property::with_array_items("An array of strings".to_string(), string_prop);
         params.properties.insert("tags".to_string(), array_prop);
         params.required.push("tags".to_string());
@@ -862,11 +877,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         params.add_nested_property(
@@ -921,11 +936,11 @@ mod tests {
         let mut user_props = std::collections::HashMap::new();
         user_props.insert(
             "name".to_string(),
-            Property::new("string".to_string(), "The user's name".to_string()),
+            Property::new("string".to_string(), "The user's name".to_string(), None),
         );
         user_props.insert(
             "age".to_string(),
-            Property::new("integer".to_string(), "The user's age".to_string()),
+            Property::new("integer".to_string(), "The user's age".to_string(), None),
         );
 
         let object_prop =

@@ -34,7 +34,6 @@ pub fn random_string() -> String {
 pub fn count_tokens_from_message_llama3(message: &str) -> usize {
     let mut token_count = 0;
     let mut alphabetic_count = 0; // Total count of alphabetic characters
-    let mut space_count = 0; // Total count of spaces
                              // ^ need to fix this
 
     // First pass: count alphabetic characters and spaces
@@ -42,7 +41,7 @@ pub fn count_tokens_from_message_llama3(message: &str) -> usize {
         if c.is_ascii_alphabetic() {
             alphabetic_count += 1;
         } else if c.is_whitespace() {
-            space_count += 1;
+            // track spaces for potential ignoring
         }
     }
 
@@ -58,7 +57,7 @@ pub fn count_tokens_from_message_llama3(message: &str) -> usize {
             token_count += alphabetic_token_weight; // Counting as 1/3, so add 1 to the scaled count
         } else if c.is_whitespace() {
             if spaces_to_ignore > 0 {
-                space_count -= 10; // Reduce the count of spaces to ignore by the scaling factor
+                // ignore this space
             } else {
                 token_count += 30; // Count the space as a full token if not enough alphabetic characters
             }

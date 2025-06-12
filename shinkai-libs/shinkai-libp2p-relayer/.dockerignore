@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+README*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+tests/
+**/tests/
+test_*
+*_test.rs
+
+# Examples
+examples/
+**/examples/
+
+# Development
+.env
+.env.*
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts (keep target/ as it may be used for caching)
+# target/
+*.tmp
+*.bak
+
+# Storage and debug directories
+storage_debug_*/
+knowledge/
+files/
+
+# Scripts
+scripts/
+perf_scripts/
+
+# Framework
+shinkai-test-framework/
+shinkai-test-macro/ 

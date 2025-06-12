@@ -23,6 +23,8 @@ use mockito::Server;
 #[ignore]
 fn job_image_analysis() {
     let mut server = Server::new();
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     run_test_one_node_network(|env| {
         Box::pin(async move {
@@ -96,6 +98,8 @@ fn job_image_analysis() {
 
                 let agent = SerializedLLMProvider {
                     id: node1_agent.clone().to_string(),
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     full_identity_name: agent_name,
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
@@ -113,7 +117,7 @@ fn job_image_analysis() {
                 .await;
             }
 
-            let mut job_id = "".to_string();
+            let mut job_id: String;
             let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
             {
                 // Create a Job
@@ -164,7 +168,9 @@ fn job_image_analysis() {
                 let expected_file_name = "blue_64x64.png";
                 eprintln!("file_paths: {:?}", file_paths);
                 assert!(
-                    file_paths.iter().any(|file_name| file_name.ends_with(expected_file_name)),
+                    file_paths
+                        .iter()
+                        .any(|file_name| file_name.ends_with(expected_file_name)),
                     "Expected file not found in job files"
                 );
 

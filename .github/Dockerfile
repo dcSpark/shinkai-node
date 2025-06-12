@@ -1,7 +1,7 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
 ARG BUILD_TYPE
-RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld protobuf-compiler
+RUN apt-get update && apt-get install -y libclang-dev cmake libssl-dev libc++-dev libc++abi-dev lld
 
 # Install nvm, npm and node
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -22,13 +22,12 @@ RUN node -v
 # Create a new directory for your app
 WORKDIR /app
 
-# Copy the Cargo.toml and Cargo.lock files to the container
-
+# Clone the repository
 COPY . .
 
 # Build the dependencies (cached)
-RUN ./shinkai-libs/shinkai-ocr/ocrs/download-models.sh
 RUN cargo clean
+RUN rustup default 1.87
 RUN rustup component add rustfmt
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build $([ "$BUILD_TYPE" = "release" ] && echo "--release")
 

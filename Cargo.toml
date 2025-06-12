@@ -1,46 +1,46 @@
 [workspace]
 members = [
   "shinkai-libs/shinkai-crypto-identities",
-  "shinkai-libs/shinkai-sheet",
   "shinkai-libs/shinkai-message-primitives",
-  "shinkai-libs/shinkai-ocr",
-  "shinkai-libs/shinkai-tcp-relayer",
+  "shinkai-libs/shinkai-libp2p-relayer",
   "shinkai-libs/shinkai-job-queue-manager",
   # "shinkai-libs/shinkai-baml",
   "shinkai-libs/shinkai-fs",
   "shinkai-libs/shinkai-embedding",
   "shinkai-libs/shinkai-http-api",
   "shinkai-libs/shinkai-tools-primitives",
-  "shinkai-libs/shinkai-mini-libs",
   "shinkai-libs/shinkai-sqlite",
-  "shinkai-libs/shinkai-spreadsheet-llm",
+  "shinkai-libs/shinkai-non-rust-code",
+  "shinkai-libs/shinkai-mcp",
+  "shinkai-test-framework",
+  "shinkai-test-macro",
   "shinkai-bin/*",
 ]
 resolver = "2"
 
 [workspace.package]
-version = "0.9.19"
+version = "1.0.11"
 edition = "2021"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
 [workspace.dependencies]
 shinkai_message_primitives = { path = "./shinkai-libs/shinkai-message-primitives" }
 shinkai_crypto_identities = { path = "./shinkai-libs/shinkai-crypto-identities" }
-shinkai_tcp_relayer = { path = "./shinkai-libs/shinkai-tcp-relayer" }
-shinkai_sheet = { path = "./shinkai-libs/shinkai-sheet" }
-shinkai_ocr = { path = "./shinkai-libs/shinkai-ocr" }
+shinkai_libp2p_relayer = { path = "./shinkai-libs/shinkai-libp2p-relayer" }
 shinkai_job_queue_manager = { path = "./shinkai-libs/shinkai-job-queue-manager" }
 # shinkai_baml = { path = "./shinkai-libs/shinkai-baml" }
 shinkai_http_api = { path = "./shinkai-libs/shinkai-http-api" }
 shinkai_tools_primitives = { path = "./shinkai-libs/shinkai-tools-primitives" }
-shinkai_mini_libs = { path = "./shinkai-libs/shinkai-mini-libs" }
 shinkai_sqlite = { path = "./shinkai-libs/shinkai-sqlite" }
 shinkai_fs = { path = "./shinkai-libs/shinkai-fs" }
 shinkai_embedding = { path = "./shinkai-libs/shinkai-embedding" }
+shinkai_non_rust_code = { path = "./shinkai-libs/shinkai-non-rust-code" }
+shinkai_mcp = { path = "./shinkai-libs/shinkai-mcp" }
 
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk.git", rev = "a66f66ae345a0fafde1e2ee496ec137d77aef82a" }
 futures = "0.3.30"
 keyphrases = "0.3.3"
-tokio = { version = "1.36", features = ["full"] }
+tokio = { version = "1.36", features = ["rt", "rt-multi-thread", "macros", "fs", "io-util", "net", "sync", "time"] }
 tokio-util = "0.7.13"
 bincode = "1.3.3"
 log = "0.4.20"
@@ -48,14 +48,35 @@ chrono = "0.4"
 serde_json = "1.0.117"
 anyhow = "1.0.94"
 blake3 = "1.2.0"
-shinkai_tools_runner = "0.9.9"
-serde = "1.0.188"
+shinkai_tools_runner = "1.0.0"
+serde = "1.0.219"
 base64 = "0.22.0"
 reqwest = "0.11.27"
 regex = "1"
 uuid = { version = "1.6.1" }
 rand = "=0.8.5"
-chrono-tz = "0.5"
 hex = "=0.4.3"
 env_logger = "0.11.5"
 async-trait = "0.1.74"
+ed25519-dalek = { version = "2.1.1", features = ["rand_core"] }
+x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+tempfile = "3.19"
+lazy_static = "1.5.0"
+async-channel = "1.6.1"
+csv = "1.1.6"
+thiserror = "2.0.3"
+dashmap = "5.5.3"
+clap = "3.0.0-beta.5"
+r2d2 = "0.8.10"
+r2d2_sqlite = "0.25"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+os_path = "0.8.0"
+utoipa = "4.2.3"
+warp = "0.3.7"
+once_cell = "1.21"
+home = "0.5"
+strip-ansi-escapes = "0.2"
+tracing = "0.1.40"
+serde_yaml = "0.9.34-deprecated"
+tokio-tungstenite = "0.26.2"
+rustls = "0.23.27"

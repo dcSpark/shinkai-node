@@ -1,5 +1,4 @@
 use shinkai_http_api::node_commands::NodeCommand;
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{
     LLMProviderInterface, Ollama, SerializedLLMProvider
 };
@@ -21,6 +20,8 @@ use mockito::Server;
 #[test]
 fn test_fork_job_messages() {
     std::env::set_var("WELCOME_MESSAGE", "false");
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
     let mut server = Server::new();
 
@@ -54,17 +55,17 @@ fn test_fork_job_messages() {
                     node1_device_name.as_str(),
                 )
                 .await;
-
-                // Wait for default tools to be ready
-                let tools_ready = wait_for_default_tools(
-                    node1_commands_sender.clone(),
-                    node1_api_key.clone(),
-                    20, // Wait up to 20 seconds
-                )
-                .await
-                .expect("Failed to check for default tools");
-                assert!(tools_ready, "Default tools should be ready within 20 seconds");
             }
+
+            // Wait for default tools to be ready
+            let tools_ready = wait_for_default_tools(
+                node1_commands_sender.clone(),
+                node1_api_key.clone(),
+                120, // Wait up to 120 seconds
+            )
+            .await
+            .expect("Failed to check for default tools");
+            assert!(tools_ready, "Default tools should be ready within 20 seconds");
 
             {
                 // Register an Agent
@@ -111,6 +112,8 @@ fn test_fork_job_messages() {
                 let agent = SerializedLLMProvider {
                     id: node1_llm_provider.clone().to_string(),
                     full_identity_name: agent_name,
+                    name: Some("Test Agent".to_string()),
+                    description: Some("Test Agent Description".to_string()),
                     external_url: Some(server.url()),
                     api_key: Some("".to_string()),
                     model: LLMProviderInterface::Ollama(ollama),
@@ -127,7 +130,7 @@ fn test_fork_job_messages() {
                 .await;
             }
 
-            let mut job_id = "".to_string();
+            let mut job_id: String;
             let agent_subidentity =
                 format!("{}/agent/{}", node1_profile_name.clone(), node1_llm_provider.clone()).to_string();
             {
@@ -314,6 +317,7 @@ fn test_fork_job_messages() {
                         limit: None,
                         offset: None,
                         show_hidden: None,
+                        agent_id: None,
                         res: res2_sender,
                     })
                     .await

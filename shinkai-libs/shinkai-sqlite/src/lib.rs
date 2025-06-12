@@ -1,9 +1,11 @@
 use embedding_function::EmbeddingFunction;
 use errors::SqliteManagerError;
+use log::info;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{ffi::sqlite3_auto_extension, Result, Row, ToSql};
 use shinkai_embedding::model_type::EmbeddingModelType;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use sqlite_vec::sqlite3_vec_init;
 use std::path::Path;
 use std::sync::Arc;
@@ -25,17 +27,18 @@ pub mod job_manager;
 pub mod job_queue_manager;
 pub mod keys_manager;
 pub mod llm_provider_manager;
+pub mod mcp_server_manager;
 pub mod oauth_manager;
 pub mod preferences;
 pub mod prompt_manager;
 pub mod regex_pattern_manager;
 pub mod retry_manager;
 pub mod settings_manager;
-pub mod sheet_manager;
 pub mod shinkai_tool_manager;
 pub mod source_file_manager;
 pub mod tool_payment_req_manager;
 pub mod tool_playground;
+pub mod tracing;
 pub mod wallet_manager;
 
 // Updated struct to manage SQLite connections using a connection pool
@@ -137,8 +140,27 @@ impl SqliteManager {
         }
 
         manager.update_default_embedding_model(model_type)?;
-
+        Self::migrate_agents_full_identity_name(&manager)?;
         Ok(manager)
+    }
+
+    // There might be old agents with partial full_identity_name.
+    // This function migrates them to the new format.
+    fn migrate_agents_full_identity_name(manager: &SqliteManager) -> Result<(), SqliteManagerError> {
+        let agents = manager.get_all_agents()?;
+        for mut agent in agents {
+            if !agent.full_identity_name.has_profile() {
+                println!("Migrating agent: {:?}", agent);
+                agent.full_identity_name = ShinkaiName::new(format!(
+                    "{}/main/agent/{}",
+                    agent.full_identity_name.node_name.clone(),
+                    agent.agent_id
+                ))
+                .map_err(|_e| SqliteManagerError::InvalidData)?;
+                manager.update_agent(agent)?;
+            }
+        }
+        Ok(())
     }
 
     // Initializes the required tables in the SQLite database
@@ -148,8 +170,6 @@ impl SqliteManager {
         Self::initialize_cron_task_executions_table(conn)?;
         Self::initialize_device_identities_table(conn)?;
         Self::initialize_standard_identities_table(conn)?;
-        // TODO: remove this
-        Self::initialize_file_inboxes_table(conn)?;
         Self::initialize_inboxes_table(conn)?;
         Self::initialize_inbox_messages_table(conn)?;
         Self::initialize_inbox_profile_permissions_table(conn)?;
@@ -178,15 +198,63 @@ impl SqliteManager {
         Self::initialize_filesystem_tables(conn)?;
         Self::initialize_oauth_table(conn)?;
         Self::initialize_regex_patterns_table(conn)?;
+        Self::initialize_tracing_table(conn)?;
+
         // Vector tables
         Self::initialize_tools_vector_table(conn)?;
         // Initialize the embedding model type table
         Self::initialize_embedding_model_type_table(conn)?;
+        // Initialize MCP servers table
+        Self::initialize_mcp_servers_table(conn)?;
         Ok(())
     }
 
     fn migrate_tables(conn: &rusqlite::Connection) -> Result<()> {
         Self::migrate_tools_table(conn)?;
+        Self::migrate_agents_table(conn)?;
+        Self::migrate_llm_providers_table(conn)?;
+        Self::migrate_mcp_servers_table(conn)?;
+        Ok(())
+    }
+
+    fn migrate_agents_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if tool_config_override column exists
+        let mut stmt = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'tools_config_override'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // Add the column if it doesn't exist
+        if column_exists == 0 {
+            conn.execute("ALTER TABLE shinkai_agents ADD COLUMN tools_config_override TEXT", [])?;
+        }
+        // Check if edited column exists
+        let mut stmt =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('shinkai_agents') WHERE name = 'edited'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // Add the column if it doesn't exist
+        if column_exists == 0 {
+            conn.execute(
+                "ALTER TABLE shinkai_agents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn migrate_llm_providers_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if 'name' column exists
+        let mut stmt = conn.prepare("PRAGMA table_info(llm_providers)")?;
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get(1))?
+            .collect::<Result<Vec<String>, _>>()?;
+        if !columns.contains(&"name".to_string()) {
+            conn.execute("ALTER TABLE llm_providers ADD COLUMN name TEXT", [])?;
+        }
+        if !columns.contains(&"description".to_string()) {
+            conn.execute("ALTER TABLE llm_providers ADD COLUMN description TEXT", [])?;
+        }
         Ok(())
     }
 
@@ -209,7 +277,9 @@ impl SqliteManager {
                 tools TEXT NOT NULL,
                 debug_mode INTEGER NOT NULL,
                 config TEXT, -- Store as a JSON string
-                scope TEXT NOT NULL -- Change this line to use TEXT instead of BLOB
+                scope TEXT NOT NULL, -- Change this line to use TEXT instead of BLOB
+                tools_config_override TEXT, -- Store as a JSON string
+                edited INTEGER NOT NULL DEFAULT 0
             );",
             [],
         )?;
@@ -390,7 +460,9 @@ impl SqliteManager {
                 full_identity_name TEXT NOT NULL,
                 external_url TEXT,
                 api_key TEXT,
-                model TEXT
+                model TEXT,
+                name TEXT,
+                description TEXT
             );",
             [],
         )?;
@@ -514,7 +586,7 @@ impl SqliteManager {
     }
 
     fn initialize_tools_table(conn: &rusqlite::Connection) -> Result<()> {
-        let result = conn.execute(
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS shinkai_tools (
                 name TEXT NOT NULL,
                 description TEXT,
@@ -533,8 +605,6 @@ impl SqliteManager {
             );",
             [],
         )?;
-        println!("shinkai_tools table created");
-        // The index is automatically created by the PRIMARY KEY constraint
 
         Ok(())
     }
@@ -666,8 +736,7 @@ impl SqliteManager {
                 requester_name TEXT NOT NULL,
                 tool_key_name TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,
-                date_time TEXT NOT NULL,
-                secret_prehash TEXT NOT NULL
+                date_time TEXT NOT NULL
             );",
             [],
         )?;
@@ -766,26 +835,6 @@ impl SqliteManager {
         Ok(())
     }
 
-    fn initialize_file_inboxes_table(conn: &rusqlite::Connection) -> Result<()> {
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS file_inboxes (
-                file_inbox_name TEXT NOT NULL,
-                file_name TEXT NOT NULL,
-
-                PRIMARY KEY (file_inbox_name, file_name)
-            );",
-            [],
-        )?;
-
-        // Create an index for the file_inbox_name column
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_file_inboxes_file_inbox_name ON file_inboxes (file_inbox_name);",
-            [],
-        )?;
-
-        Ok(())
-    }
-
     fn initialize_oauth_table(conn: &rusqlite::Connection) -> Result<()> {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS oauth_tokens (
@@ -872,6 +921,25 @@ impl SqliteManager {
         Ok(())
     }
 
+    // Initialize MCP servers table
+    fn initialize_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS mcp_servers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
+                url TEXT,
+                env TEXT,
+                command TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE
+            );",
+            [],
+        )?;
+        Ok(())
+    }
+
     // New method to update the embedding model type
     pub fn update_default_embedding_model(&self, model_type: EmbeddingModelType) -> Result<(), SqliteManagerError> {
         let conn = self.get_connection()?;
@@ -880,6 +948,46 @@ impl SqliteManager {
             "INSERT INTO embedding_model_type (model_type) VALUES (?);",
             [&model_type.to_string() as &dyn ToSql],
         )?;
+        Ok(())
+    }
+    pub fn migrate_mcp_servers_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if 'HTTP' type exists in the CHECK constraint
+        info!("Checking if HTTP type exists in mcp_servers table...");
+        let mut stmt = conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='mcp_servers'")?;
+        let table_sql: String = stmt.query_row([], |row| row.get(0))?;
+        // Only migrate if HTTP is not in the type constraint
+        if table_sql.contains("'HTTP'") {
+            info!("HTTP type found in constraint - skipping migration");
+            return Ok(());
+        }
+        info!("HTTP type not found in constraint - proceeding with migration");
+
+        // SQLite doesn't support MODIFY COLUMN, so we need to:
+        // 1. Create a new table with the desired schema
+        // 2. Copy data from old table
+        // 3. Drop old table
+        // 4. Rename new table to old name
+        conn.execute(
+            "CREATE TABLE mcp_servers_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL CHECK(type IN ('SSE', 'COMMAND', 'HTTP')) DEFAULT 'SSE',
+                url TEXT,
+                env TEXT,
+                command TEXT,
+                is_enabled BOOLEAN DEFAULT TRUE
+            );",
+            [],
+        )?;
+
+        conn.execute("INSERT INTO mcp_servers_new SELECT * FROM mcp_servers;", [])?;
+
+        conn.execute("DROP TABLE mcp_servers;", [])?;
+
+        conn.execute("ALTER TABLE mcp_servers_new RENAME TO mcp_servers;", [])?;
+
         Ok(())
     }
 
@@ -931,16 +1039,52 @@ impl SqliteManager {
         vec![value; 384]
     }
 
-    // Method to set the version and determine if a global reset is needed
-    pub fn set_version(&self, version: &str) -> Result<()> {
-        // Note: add breaking versions here as needed
-        let breaking_versions = ["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7", "0.9.8"];
+    pub fn get_needs_global_reset(
+        current_version: &semver::Version,
+        new_version: &semver::Version,
+        breaking_versions: &[semver::Version],
+    ) -> bool {
+        let needs_global_reset = breaking_versions
+            .iter()
+            .any(|breaking_version| current_version < breaking_version && new_version >= breaking_version);
+        needs_global_reset
+    }
 
-        let needs_global_reset = self.get_version().map_or(false, |(current_version, _)| {
-            breaking_versions
-                .iter()
-                .any(|&breaking_version| current_version.as_str() < breaking_version && version >= breaking_version)
-        });
+    // Method to set the version and determine if a global reset is needed
+    pub fn set_version(&self, version: &str) -> Result<(), rusqlite::Error> {
+        // Note: add breaking versions here as needed
+        let new_version = match semver::Version::parse(version) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(1),
+                    Some(format!("failed to parse new version: {}", e)),
+                ))
+            }
+        };
+
+        let breaking_versions = vec!["0.9.0", "0.9.1", "0.9.2", "0.9.3", "0.9.4", "0.9.5", "0.9.7", "0.9.8"]
+            .iter()
+            .map(|v| semver::Version::parse(v))
+            .collect::<Result<Vec<semver::Version>, _>>()
+            .map_err(|e| {
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(1),
+                    Some(format!("failed to parse breaking versions: {}", e)),
+                )
+            })?;
+
+        let mut needs_global_reset = false;
+
+        if let Ok((current_version_str, _)) = self.get_version() {
+            let current_version = semver::Version::parse(&current_version_str).map_err(|e| {
+                rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(1),
+                    Some(format!("failed to parse current version: {}", e)),
+                )
+            })?;
+            needs_global_reset = Self::get_needs_global_reset(&current_version, &new_version, &breaking_versions);
+        }
 
         let conn = self.get_connection()?;
         conn.execute("DELETE FROM app_version;", [])?;
@@ -982,7 +1126,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -1154,5 +1298,115 @@ mod tests {
         // Wait for both threads to complete
         handle.join().unwrap();
         read_handle.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_needs_global_reset() {
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.19").unwrap(),
+            &semver::Version::parse("0.9.20").unwrap(),
+            &vec![
+                semver::Version::parse("0.9.0").unwrap(),
+                semver::Version::parse("0.9.1").unwrap(),
+                semver::Version::parse("0.9.2").unwrap(),
+                semver::Version::parse("0.9.3").unwrap(),
+                semver::Version::parse("0.9.4").unwrap(),
+                semver::Version::parse("0.9.5").unwrap(),
+                semver::Version::parse("0.9.7").unwrap(),
+                semver::Version::parse("0.9.8").unwrap(),
+            ],
+        );
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn test_needs_global_reset_edge_cases() {
+        // Test case 1: Current version is exactly at a breaking version
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.5").unwrap(),
+            &semver::Version::parse("0.9.6").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(!result);
+
+        // Test case 2: New version is exactly at a breaking version
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.4").unwrap(),
+            &semver::Version::parse("0.9.5").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 3: Current version is greater than all breaking versions
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("1.0.1").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(!result);
+
+        // Test case 4: Current version is less than all breaking versions, new version is greater than all
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.8.0").unwrap(),
+            &semver::Version::parse("1.0.0").unwrap(),
+            &vec![semver::Version::parse("0.9.5").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 5: Multiple breaking versions, current version between them
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.3").unwrap(),
+            &semver::Version::parse("0.9.7").unwrap(),
+            &vec![
+                semver::Version::parse("0.9.0").unwrap(),
+                semver::Version::parse("0.9.5").unwrap(),
+                semver::Version::parse("0.9.8").unwrap(),
+            ],
+        );
+        assert!(result);
+
+        // Test case 6: Multiple breaking versions, current version after all of them
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.9").unwrap(),
+            &semver::Version::parse("1.0.0").unwrap(),
+            &vec![
+                semver::Version::parse("0.9.0").unwrap(),
+                semver::Version::parse("0.9.5").unwrap(),
+                semver::Version::parse("0.9.8").unwrap(),
+            ],
+        );
+        assert!(!result);
+
+        // Test case 7: Empty breaking versions list
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("0.9.0").unwrap(),
+            &semver::Version::parse("1.0.0").unwrap(),
+            &vec![],
+        );
+        assert!(!result);
+
+        // Test case 8: Major version change (1.0.0 to 2.0.0)
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("2.0.0").unwrap(),
+            &vec![semver::Version::parse("1.5.0").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 9: Minor version change (1.0.0 to 1.1.0)
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("1.1.0").unwrap(),
+            &vec![semver::Version::parse("1.0.5").unwrap()],
+        );
+        assert!(result);
+
+        // Test case 10: Patch version change (1.0.0 to 1.0.1)
+        let result = SqliteManager::get_needs_global_reset(
+            &semver::Version::parse("1.0.0").unwrap(),
+            &semver::Version::parse("1.0.1").unwrap(),
+            &vec![semver::Version::parse("1.0.0").unwrap()],
+        );
+        assert!(!result);
     }
 }

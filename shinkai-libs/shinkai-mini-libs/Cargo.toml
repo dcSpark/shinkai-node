@@ -1,8 +1,0 @@
-[package]
-name = "shinkai_mini_libs"
-version = { workspace = true }
-edition = { workspace = true }
-authors = { workspace = true }
-
-[dependencies]
-base64 = { workspace = true }

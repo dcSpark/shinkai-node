@@ -8,11 +8,11 @@ use serde_json::Value;
 use shinkai_sqlite::SqliteManager;
 
 use std::sync::Arc;
+use base64::Engine;
 
 use reqwest::Client;
 use shinkai_http_api::node_api_router::APIError;
 
-use base64;
 
 impl Node {
     pub async fn v2_api_get_oauth_token(
@@ -176,7 +176,7 @@ impl Node {
                     if let (Some(client_id), Some(client_secret)) =
                         (oauth_data.client_id.clone(), oauth_data.client_secret.clone())
                     {
-                        let auth = base64::encode(format!("{}:{}", client_id, client_secret));
+                        let auth = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", client_id, client_secret));
                         request = request.header("Authorization", format!("Basic {}", auth));
                     }
                 }
@@ -195,7 +195,7 @@ impl Node {
                     if let (Some(client_id), Some(client_secret)) =
                         (oauth_data.client_id.clone(), oauth_data.client_secret.clone())
                     {
-                        let auth = base64::encode(format!("{}:{}", client_id, client_secret));
+                        let auth = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", client_id, client_secret));
                         request = request.header("Authorization", format!("Basic {}", auth));
                     }
                 }

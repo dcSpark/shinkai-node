@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::job_config::JobConfig;
 use shinkai_message_primitives::schemas::llm_providers::serialized_llm_provider::{LLMProviderInterface, OpenAI};
 use shinkai_message_primitives::schemas::prompts::Prompt;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSMetadata, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -71,7 +71,8 @@ impl LLMService for OpenAI {
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         config: Option<JobConfig>,
         llm_stopper: Arc<LLMStopper>,
-        _db: Arc<SqliteManager>,
+        db: Arc<SqliteManager>,
+        tracing_message_id: Option<String>,
     ) -> Result<LLMInferenceResponse, LLMProviderError> {
         let session_id = Uuid::new_v4().to_string();
         if let Some(base_url) = url {
@@ -138,6 +139,32 @@ impl LLMService for OpenAI {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
+
+                if let Some(ref msg_id) = tracing_message_id {
+                    if let Err(e) = db.add_tracing(
+                        msg_id,
+                        inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                        "llm_payload",
+                        &payload_log,
+                    ) {
+                        eprintln!("failed to add payload trace: {:?}", e);
+                    }
+                }
+
+                if let Some(ref msg_id) = tracing_message_id {
+                    let network_info = json!({
+                        "url": url,
+                        "payload": payload_log
+                    });
+                    if let Err(e) = db.add_tracing(
+                        msg_id,
+                        inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                        "llm_network_request",
+                        &network_info,
+                    ) {
+                        eprintln!("failed to add network request trace: {:?}", e);
+                    }
+                }
 
                 if is_stream {
                     handle_streaming_response(
@@ -519,7 +546,7 @@ pub async fn parse_openai_stream_chunk(
                                         if let Some(function) = tool_call.get("function") {
                                             if let Some(name) = function.get("name").and_then(|n| n.as_str()) {
                                                 let new_id = tool_call.get("id").and_then(|id| id.as_str());
-                                                let index = tool_call.get("index").and_then(|i| i.as_u64());
+                                                let _index = tool_call.get("index").and_then(|i| i.as_u64());
 
                                                 // If partial_fc is in use, check both name and ID before continuing
                                                 if partial_fc.is_accumulating {
@@ -567,7 +594,7 @@ pub async fn parse_openai_stream_chunk(
                                                                     tools,
                                                                 );
                                                             }
-                                                            Err(e) => {
+                                                            Err(_e) => {
                                                                 // Continue accumulating
                                                             }
                                                         }
@@ -796,7 +823,7 @@ pub async fn handle_streaming_response(
                 .await?;
 
                 // Process complete messages in the buffer
-                if let Ok(Some(err)) = parse_openai_stream_chunk(
+                if let Ok(Some(_err)) = parse_openai_stream_chunk(
                     &mut buffer,
                     &mut response_text,
                     &mut function_calls,
@@ -808,7 +835,7 @@ pub async fn handle_streaming_response(
                 )
                 .await
                 {
-                    error_message = Some(err);
+                    // error message ignored in this early-return branch
                 }
 
                 // Handle WebSocket updates for function calls
@@ -1279,7 +1306,7 @@ pub fn extract_and_remove_arguments(json_str: &str) -> (Option<String>, String) 
     // Remove the ":0" part to match any index
     let tool_calls_prefix = r#""tool_calls":[{"index":"#;
 
-    let (prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
+    let (_prefix, content_start) = if let Some(args_start_pos) = json_str.find(function_call_prefix) {
         (function_call_prefix, args_start_pos + function_call_prefix.len())
     } else if let Some(args_start_pos) = json_str.find(tool_calls_prefix) {
         // Since we changed the prefix, we need to find where the actual arguments start

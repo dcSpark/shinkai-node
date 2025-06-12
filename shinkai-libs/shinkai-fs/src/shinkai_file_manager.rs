@@ -1,7 +1,5 @@
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use chrono::{DateTime, Utc};
@@ -61,6 +59,67 @@ impl ShinkaiFileManager {
         Ok(())
     }
 
+    /// Save a file to disk and process it with pre-computed embeddings and chunks.
+    pub async fn save_and_process_file_with_embeddings(
+        dest_path: ShinkaiPath,
+        data: Vec<u8>,
+        sqlite_manager: &SqliteManager,
+        text_groups: Vec<(String, Vec<f32>)>,
+    ) -> Result<(), ShinkaiFsError> {
+        // Save the file to disk
+        Self::write_file_to_fs(dest_path.clone(), data)?;
+
+        // Compute the relative path
+        let rel_path = dest_path.relative_path();
+
+        // Calculate total characters from all text groups
+        let total_characters = text_groups.iter().map(|(text, _)| text.chars().count() as i64).sum();
+
+        // Calculate total tokens using llama3 token counting
+        let total_tokens = text_groups
+            .iter()
+            .map(|(text, _)| count_tokens_from_message_llama3(text) as i64)
+            .sum();
+
+        // Add the parsed file to the database
+        let parsed_file = ParsedFile {
+            id: None, // Expected. The DB will auto-generate the id.
+            relative_path: rel_path.to_string(),
+            original_extension: dest_path.extension().map(|s| s.to_string()),
+            description: None,
+            source: None,
+            embedding_model_used: None,
+            keywords: None,
+            distribution_info: None,
+            created_time: Some(Self::current_timestamp()),
+            tags: None,
+            total_tokens: Some(total_tokens),
+            total_characters: Some(total_characters),
+        };
+
+        sqlite_manager.add_parsed_file(&parsed_file)?;
+
+        // Retrieve the parsed file ID
+        let parsed_file_id = sqlite_manager
+            .get_parsed_file_by_rel_path(&rel_path)?
+            .ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?
+            .id
+            .unwrap();
+
+        // Create and add chunks to the database
+        for (position, (content, embedding)) in text_groups.into_iter().enumerate() {
+            let chunk = ShinkaiFileChunk {
+                chunk_id: None,
+                parsed_file_id,
+                position: position as i64,
+                content,
+            };
+            sqlite_manager.create_chunk_with_embedding(&chunk, Some(&embedding))?;
+        }
+
+        Ok(())
+    }
+
     /// Process file: If not in DB, add it. If supported, generate chunks.
     /// If already processed, consider checking if file changed (not implemented here).
     pub async fn process_embeddings_for_file(
@@ -91,7 +150,7 @@ impl ShinkaiFileManager {
 
         // 1- Parse the file
         let max_node_text_size = generator.model_type().max_input_token_count();
-        let mut text_groups = SimpleParser::parse_file(path.clone(), max_node_text_size.try_into().unwrap())?;
+        let mut text_groups = SimpleParser::parse_file(path.clone(), max_node_text_size.try_into().unwrap()).await?;
 
         // Generate embeddings for each text group and assign them directly
         for text_group in &mut text_groups {
@@ -278,7 +337,12 @@ impl ShinkaiFileManager {
         path: ShinkaiPath,
         sqlite_manager: &SqliteManager,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/ 0, /*max_depth=*/ 0)
+        Self::gather_directory_contents(
+            &path,
+            sqlite_manager,
+            /* current_depth= */ 0,
+            /* max_depth= */ 0,
+        )
     }
 
     /// Recursively list files/folders up to `max_depth`.
@@ -287,7 +351,7 @@ impl ShinkaiFileManager {
         sqlite_manager: &SqliteManager,
         max_depth: usize,
     ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
-        Self::gather_directory_contents(&path, sqlite_manager, /*current_depth=*/ 0, max_depth)
+        Self::gather_directory_contents(&path, sqlite_manager, /* current_depth= */ 0, max_depth)
     }
 
     /// Private helper that does the actual directory reading.
@@ -302,22 +366,33 @@ impl ShinkaiFileManager {
         let mut contents = Vec::new();
         let rel_path = path.relative_path();
 
-        for entry in std::fs::read_dir(path.as_path())? {
-            let entry = entry?;
-            let metadata = entry.metadata()?;
+        for entry in walkdir::WalkDir::new(path.as_path())
+            .max_depth(1)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            // Skip the root directory itself (depth 0)
+            if entry.depth() == 0 {
+                continue;
+            }
 
-            let file_name = entry.file_name().into_string().unwrap_or_default();
+            let file_name = entry.file_name().to_str().unwrap_or_default();
             let shinkai_path = ShinkaiPath::new(&format!("{}/{}", rel_path, file_name));
 
             let mut file_info = FileInfo {
                 path: shinkai_path.relative_path().to_string(),
-                is_directory: metadata.is_dir(),
-                created_time: metadata.created().ok(),
-                modified_time: metadata.modified().ok(),
+                is_directory: entry.file_type().is_dir(),
+                created_time: entry.metadata().ok().and_then(|m| m.created().ok()),
+                modified_time: entry.metadata().ok().and_then(|m| m.modified().ok()),
                 has_embeddings: false,
                 children: None,
-                size: if metadata.is_file() { Some(metadata.len()) } else { None },
-                name: file_name.clone(),
+                size: if entry.file_type().is_file() {
+                    Some(entry.metadata().unwrap().len())
+                } else {
+                    None
+                },
+                name: file_name.to_string(),
             };
 
             // If it's a directory and we can still go deeper, recurse
@@ -411,7 +486,7 @@ impl ShinkaiFileManager {
                             // Convert the path to a relative path from the base directory
                             if let Ok(relative_path) = entry.path().strip_prefix(base_dir) {
                                 let relative_path_str = relative_path.to_string_lossy().to_string();
-                                
+
                                 // Check if the file has embeddings
                                 let has_embeddings = sqlite_manager
                                     .get_parsed_file_by_rel_path(&relative_path_str)
@@ -431,11 +506,143 @@ impl ShinkaiFileManager {
                             }
                         }
                     }
+                } else {
+                    println!("Failed to read file: {:?}", entry.path());
+                }
+            }
+        }
+        Ok(matching_files)
+    }
+
+    /// Search files based on their names and return matching FileInfo entries.
+    /// This performs a case-insensitive search of filenames.
+    pub fn search_files_by_name(
+        base_path: ShinkaiPath,
+        search_text: &str,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        let mut matching_files = Vec::new();
+        let base_dir = base_path.as_path();
+        let search_text_lower = search_text.to_lowercase();
+
+        // Walk through the directory recursively
+        for entry in walkdir::WalkDir::new(base_dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            // Skip the root directory itself (depth 0)
+            if entry.depth() == 0 {
+                continue;
+            }
+
+            // Get the file name and check if it matches the search criteria
+            let file_name = entry.file_name().to_string_lossy().to_string();
+
+            // Perform case-insensitive search on the filename
+            if file_name.to_lowercase().contains(&search_text_lower) {
+                // Get file metadata
+                if let Ok(metadata) = entry.metadata() {
+                    // Convert the path to a relative path from the base directory
+                    if let Ok(relative_path) = entry.path().strip_prefix(base_dir) {
+                        let relative_path_str = relative_path.to_string_lossy().to_string();
+
+                        // Check if the file has embeddings (only if it's a file)
+                        let has_embeddings = if !entry.file_type().is_dir() {
+                            sqlite_manager
+                                .get_parsed_file_by_rel_path(&relative_path_str)
+                                .map_or(false, |pf| pf.is_some())
+                        } else {
+                            false
+                        };
+
+                        let file_info = FileInfo {
+                            path: relative_path_str,
+                            is_directory: entry.file_type().is_dir(),
+                            created_time: metadata.created().ok(),
+                            modified_time: metadata.modified().ok(),
+                            has_embeddings,
+                            children: None,
+                            size: if entry.file_type().is_file() {
+                                Some(metadata.len())
+                            } else {
+                                None
+                            },
+                            name: file_name,
+                        };
+                        matching_files.push(file_info);
+                    }
                 }
             }
         }
 
         Ok(matching_files)
+    }
+
+    /// Search files based on both their names and content, returning combined results
+    /// with duplicates removed. This performs a case-insensitive search.
+    pub fn search_files_by_name_and_content(
+        base_path: ShinkaiPath,
+        search_text: &str,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<FileInfo>, ShinkaiFsError> {
+        // Get results from both search methods
+        let name_results = Self::search_files_by_name(base_path.clone(), search_text, sqlite_manager)?;
+        let content_results = Self::search_files_by_content(base_path, search_text, sqlite_manager)?;
+
+        // Use a HashMap to keep track of unique paths
+        let mut unique_results = std::collections::HashMap::new();
+
+        // Add all name search results
+        for file_info in name_results {
+            unique_results.insert(file_info.path.clone(), file_info);
+        }
+
+        // Add content search results, not replacing existing entries
+        for file_info in content_results {
+            unique_results.entry(file_info.path.clone()).or_insert(file_info);
+        }
+
+        // Convert HashMap values into a Vec
+        let combined_results = unique_results.into_values().collect();
+
+        Ok(combined_results)
+    }
+
+    /// Get text groups with embeddings for a given file path from the database.
+    /// This function retrieves the existing chunks and their embeddings from the database.
+    pub fn get_text_groups_with_embeddings(
+        path: ShinkaiPath,
+        sqlite_manager: &SqliteManager,
+    ) -> Result<Vec<(String, Vec<f32>)>, ShinkaiFsError> {
+        // Get the relative path
+        let rel_path = path.relative_path();
+
+        // Get the parsed file from the database
+        let parsed_file = sqlite_manager
+            .get_parsed_file_by_rel_path(&rel_path)?
+            .ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+
+        // Get the parsed file ID
+        let parsed_file_id = parsed_file.id.ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+
+        // Get all chunks for this file
+        let chunks = sqlite_manager.get_chunks_for_parsed_file(parsed_file_id)?;
+
+        // Collect chunks with their embeddings
+        let mut text_groups_with_embeddings = Vec::new();
+        for chunk in chunks {
+            let chunk_id = chunk.chunk_id.ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+            let (_, embedding) = sqlite_manager
+                .get_chunk_with_embedding(chunk_id)?
+                .ok_or(ShinkaiFsError::FailedToRetrieveParsedFileID)?;
+
+            if let Some(embedding) = embedding {
+                text_groups_with_embeddings.push((chunk.content, embedding));
+            }
+        }
+
+        Ok(text_groups_with_embeddings)
     }
 }
 
@@ -478,7 +685,7 @@ mod tests {
 
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }
@@ -528,7 +735,7 @@ mod tests {
 
         // Create a mock embedding generator
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
         let generator = MockGenerator::new(model_type, 384); // 128 is the number of floats in the mock embedding
 
         (db, dir, ShinkaiPath::from_string(file_path), generator)
@@ -965,7 +1172,7 @@ mod tests {
         // Test exact content match
         let results = ShinkaiFileManager::search_files_by_content(base_path.clone(), "January 2024", &db).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].path, "docs/reports/2024/january.txt");
+        assert_eq!(results[0].path,  os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
         assert!(results[0].has_embeddings);
 
         // Test partial content match
@@ -993,5 +1200,298 @@ mod tests {
             assert!(file_info.created_time.is_some());
             assert!(file_info.modified_time.is_some());
         }
+    }
+
+    #[test]
+    #[serial]
+    fn test_search_files_by_name() {
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
+        let base_path = ShinkaiPath::from_base_path();
+
+        // Create test directory structure and files with content
+        let test_files = vec![
+            ("docs/reports/2024/january.txt", "January 2024 monthly report", 1),
+            ("docs/reports/2024/february.txt", "February 2024 quarterly update", 2),
+            ("docs/other/2024/march.txt", "March 2024 meeting notes", 3),
+            ("projects/report-2024.md", "2024 Project Status Report", 4),
+            ("misc/notes.txt", "Random notes from 2024 meetings", 5),
+        ];
+
+        // Create directories and files
+        for (path, content, id) in &test_files {
+            // Create directory structure
+            if let Some(parent) = Path::new(path).parent() {
+                fs::create_dir_all(base_path.as_path().join(parent)).unwrap();
+            }
+
+            // Create and write to file
+            let mut file = File::create(base_path.as_path().join(path)).unwrap();
+            writeln!(file, "{}", content).unwrap();
+
+            // Add file to database with embeddings
+            let pf = create_test_parsed_file(*id, path);
+            db.add_parsed_file(&pf).unwrap();
+        }
+
+        // Create a directory that should match name searches
+        let report_dir_path = base_path.as_path().join("reports-2024");
+        fs::create_dir(&report_dir_path).unwrap();
+
+        // Test exact name match
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "january.txt", &db).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
+        assert!(results[0].has_embeddings);
+
+        // Test partial name match
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "2024", &db).unwrap();
+        assert_eq!(results.len(), 4); // Should find all files whose name contains "2024"
+
+        // Test case insensitive match
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "REPORT", &db).unwrap();
+        assert_eq!(results.len(), 3); // Should find files containing "report" regardless of case
+
+        // Test name spanning multiple files
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "meeting", &db).unwrap();
+        assert_eq!(results.len(), 0); // Should not find any files containing "meeting" because is searching now only by name
+
+        // Test no matches
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "nonexistent", &db).unwrap();
+        assert_eq!(results.len(), 0);
+
+        // Verify file and directory metadata
+        let results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "2024", &db).unwrap();
+        for file_info in results {
+            // Check appropriate properties based on whether it's a file or directory
+            if file_info.is_directory {
+                assert!(file_info.size.is_none(), "Directories should have no size");
+                assert!(!file_info.has_embeddings, "Directories should not have embeddings");
+            } else {
+                assert!(file_info.size.is_some(), "Files should have size");
+                // Only check for embeddings on files we explicitly added to the database
+                let has_expected_embeddings = test_files.iter().any(|(path, _, _)| file_info.path == *path);
+                if has_expected_embeddings {
+                    assert!(file_info.has_embeddings, "Expected file should have embeddings");
+                }
+            }
+            assert!(file_info.created_time.is_some(), "All entries should have created_time");
+            assert!(
+                file_info.modified_time.is_some(),
+                "All entries should have modified_time"
+            );
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_search_files_by_name_and_content() {
+        let (db, _dir, _shinkai_path, _generator) = setup_test_environment();
+        let base_path = ShinkaiPath::from_base_path();
+
+        // Create test directory structure and files with content
+        let test_files = vec![
+            ("docs/reports/2024/january.txt", "January 2024 monthly report", 1),
+            ("docs/reports/2024/february.txt", "February 2024 quarterly update", 2),
+            ("docs/other/2024/march.txt", "March 2024 meeting notes", 3),
+            ("projects/report-2024.md", "2024 Project Status Report", 4),
+            ("misc/notes.txt", "Random notes from 2024 meetings", 5),
+        ];
+
+        // Create directories and files
+        for (path, content, id) in &test_files {
+            // Create directory structure
+            if let Some(parent) = Path::new(path).parent() {
+                fs::create_dir_all(base_path.as_path().join(parent)).unwrap();
+            }
+
+            // Create and write to file
+            let mut file = File::create(base_path.as_path().join(path)).unwrap();
+            writeln!(file, "{}", content).unwrap();
+
+            // Add file to database with embeddings
+            let pf = create_test_parsed_file(*id, path);
+            db.add_parsed_file(&pf).unwrap();
+        }
+
+        // Create a directory that should match name searches
+        let report_dir_path = base_path.as_path().join("reports-2024");
+        fs::create_dir(&report_dir_path).unwrap();
+
+        // Create a file that matches by content but not name
+        let content_match_path = "docs/content-only.txt";
+        if let Some(parent) = Path::new(content_match_path).parent() {
+            fs::create_dir_all(base_path.as_path().join(parent)).unwrap();
+        }
+        let mut file = File::create(base_path.as_path().join(content_match_path)).unwrap();
+        writeln!(file, "This file contains meeting notes but no matching filename").unwrap();
+        let pf = create_test_parsed_file(6, content_match_path);
+        db.add_parsed_file(&pf).unwrap();
+
+        // Test simple by-name match
+        let name_results = ShinkaiFileManager::search_files_by_name(base_path.clone(), "january.txt", &db).unwrap();
+        assert_eq!(name_results.len(), 1);
+        assert_eq!(name_results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
+
+        // Test simple by-content match
+        let content_results =
+            ShinkaiFileManager::search_files_by_content(base_path.clone(), "monthly report", &db).unwrap();
+        assert_eq!(content_results.len(), 1);
+        assert_eq!(content_results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
+
+        // Test combined search - exact match by name
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "january.txt", &db).unwrap();
+        assert_eq!(combined_results.len(), 1);
+        assert_eq!(combined_results[0].path, os_path::OsPath::from("docs/reports/2024/january.txt").to_string());
+
+        // Test combined search - exact match by content
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "quarterly update", &db).unwrap();
+        assert_eq!(combined_results.len(), 1);
+        assert_eq!(combined_results[0].path, os_path::OsPath::from("docs/reports/2024/february.txt").to_string());
+
+        // Test combined search - matches both name and content
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "2024", &db).unwrap();
+
+        // Should find:
+        // - 4 files with "2024" in their name
+        // - The "reports-2024" directory
+        // - All 5 files containing "2024" in their content
+        // With duplicates removed, so counting unique paths
+        assert!(
+            combined_results.len() >= 6,
+            "Expected at least 6 results (4 name-matching files + directory + content-only match), found {}",
+            combined_results.len()
+        );
+
+        // Test content-only match
+        let combined_results =
+            ShinkaiFileManager::search_files_by_name_and_content(base_path.clone(), "meeting", &db).unwrap();
+
+        // Should find:
+        // - Zero files with "meeting" in name
+        // - At least 2 files containing "meeting" in content
+        assert!(
+            combined_results.len() >= 2,
+            "Expected at least 2 results for content-only search, found {}",
+            combined_results.len()
+        );
+
+        // Make sure we find the content-only file
+        let content_only_match = combined_results.iter().find(|info| info.path == os_path::OsPath::from(content_match_path).to_string());
+        assert!(content_only_match.is_some(), "Should find the content-only match file");
+
+        // Verify file and directory metadata
+        for file_info in combined_results {
+            // Check appropriate properties based on whether it's a file or directory
+            if file_info.is_directory {
+                assert!(file_info.size.is_none(), "Directories should have no size");
+                assert!(!file_info.has_embeddings, "Directories should not have embeddings");
+            } else {
+                assert!(file_info.size.is_some(), "Files should have size");
+                // Only check for embeddings on files we explicitly added to the database
+                let has_expected_embeddings = test_files.iter().any(|(path, _, _)| file_info.path == *path)
+                    || file_info.path == content_match_path;
+                if has_expected_embeddings {
+                    assert!(file_info.has_embeddings, "Expected file should have embeddings");
+                }
+            }
+            assert!(file_info.created_time.is_some(), "All entries should have created_time");
+            assert!(
+                file_info.modified_time.is_some(),
+                "All entries should have modified_time"
+            );
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_save_process_and_retrieve_embeddings() {
+        let (db, dir, shinkai_path, generator) = setup_test_environment();
+
+        // Create test content
+        let mut test_content = String::new();
+        let text = "This is a test file for embedding generation. It contains some sample text that will be processed and embedded.";
+        for i in 0..100 {
+            test_content = format!("{}\n{}", test_content, text);
+        }
+
+        let data = test_content.as_bytes().to_vec();
+
+        // First write the file to disk
+        ShinkaiFileManager::write_file_to_fs(shinkai_path.clone(), data.clone()).unwrap();
+
+        // Generate embeddings and chunks first
+        let text_groups = SimpleParser::parse_file(
+            shinkai_path.clone(),
+            generator.model_type().max_input_token_count().try_into().unwrap(),
+        )
+        .await
+        .unwrap();
+
+        // Generate embeddings for each text group and collect them
+        let mut text_groups_with_embeddings = Vec::new();
+        for group in text_groups {
+            let embedding = generator.generate_embedding_default(&group.text).await.unwrap();
+            text_groups_with_embeddings.push((group.text, embedding));
+        }
+
+        // Save and process the file with pre-computed embeddings
+        let result = ShinkaiFileManager::save_and_process_file_with_embeddings(
+            shinkai_path.clone(),
+            data,
+            &db,
+            text_groups_with_embeddings,
+        )
+        .await;
+
+        // Assert the save and process was successful
+        assert!(result.is_ok());
+
+        // Verify the file exists in the database
+        let parsed_file = db.get_parsed_file_by_rel_path(&shinkai_path.relative_path()).unwrap();
+        assert!(parsed_file.is_some(), "File should be found in database");
+
+        // Get the parsed file ID
+        let parsed_file_id = parsed_file.unwrap().id.unwrap();
+
+        // Retrieve the chunks with embeddings
+        let chunks: Vec<ShinkaiFileChunk> = db.get_chunks_for_parsed_file(parsed_file_id).unwrap();
+        assert!(!chunks.is_empty(), "Should have at least one chunk");
+
+        // Verify each chunk has an embedding
+        assert_eq!(chunks.len(), 23);
+        for chunk in chunks {
+            let chunk_with_embedding = db.get_chunk_with_embedding(chunk.chunk_id.unwrap()).unwrap();
+            assert!(
+                chunk_with_embedding.is_some(),
+                "Should be able to retrieve chunk with embedding"
+            );
+            let (_, embedding) = chunk_with_embedding.unwrap();
+            assert!(embedding.is_some(), "Each chunk should have an embedding");
+            let embedding = embedding.unwrap();
+            assert_eq!(embedding.len(), 384, "Embedding should match the mock generator size");
+        }
+
+        let text_groups_with_embeddings =
+            ShinkaiFileManager::get_text_groups_with_embeddings(shinkai_path.clone(), &db).unwrap();
+        assert!(
+            !text_groups_with_embeddings.is_empty(),
+            "Should have at least one text group with embedding"
+        );
+        let chunks: Vec<ShinkaiFileChunk> = db.get_chunks_for_parsed_file(parsed_file_id).unwrap();
+
+        let mut index = 0;
+        for (_, embedding) in text_groups_with_embeddings {
+            let chunk = &chunks[index];
+            let chunk_with_embedding = db.get_chunk_with_embedding(chunk.chunk_id.unwrap()).unwrap();
+            let (_, chunk_embedding) = chunk_with_embedding.unwrap();
+            assert_eq!(embedding, chunk_embedding.unwrap());
+            index += 1;
+        }
+
+        // Clean up
+        dir.close().unwrap();
     }
 }

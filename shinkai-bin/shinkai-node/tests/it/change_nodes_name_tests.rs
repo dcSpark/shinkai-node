@@ -1,7 +1,8 @@
 use std::{
     fs,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener},
     path::Path,
+    time::Duration,
 };
 
 use crate::it::utils::node_test_api::api_registration_device_node_profile_main;
@@ -25,9 +26,17 @@ fn setup() {
 #[test]
 fn change_nodes_name_test() {
     setup();
+    std::env::set_var("SKIP_IMPORT_FROM_DIRECTORY", "true");
+    std::env::set_var("IS_TESTING", "1");
 
+    fn port_is_available(port: u16) -> bool {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(_) => true,
+            Err(_) => false,
+        }
+    }
     let rt = Runtime::new().unwrap();
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let new_node_name = "@@change_node_test.sep-shinkai";
         let node1_identity_name = "@@node1_test.sep-shinkai";
         let node1_profile_name = "main";
@@ -46,10 +55,9 @@ fn change_nodes_name_test() {
         let (node1_device_encryption_sk, _node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
-
+        assert!(port_is_available(12002), "Port 12002 is not available");
         // Create node1 and node2
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12002);
         let node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -125,12 +133,28 @@ fn change_nodes_name_test() {
             }
         });
 
-        let _result = tokio::try_join!(node1_handler, interactions_handler);
+        let result = tokio::try_join!(node1_handler, interactions_handler);
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    println!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    Err(e)
+                }
+            }
+        }
     });
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
 
     let rt = Runtime::new().unwrap();
-    rt.block_on(async {
+    let e = rt.block_on(async {
         let new_node_name = "@@change_node_test.sep-shinkai";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -140,10 +164,9 @@ fn change_nodes_name_test() {
             bounded(100);
 
         let node1_db_path = format!("db_tests/{}", hash_signature_public_key(&node1_identity_pk));
-        let node1_fs_db_path = format!("db_tests/vector_fs{}", hash_signature_public_key(&node1_identity_pk));
-
+        assert!(port_is_available(12003), "Port 12003 is not available");
         // Create node1 and node2
-        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12003);
         let node1 = Node::new(
             new_node_name.to_string(),
             addr1,
@@ -158,7 +181,6 @@ fn change_nodes_name_test() {
             None,
             true,
             vec![],
-            
             None,
             None,
             default_embedding_model(),
@@ -199,7 +221,24 @@ fn change_nodes_name_test() {
             abort_handler.abort();
         });
 
-        let _result = tokio::try_join!(node1_handler, interactions_handler);
+        let result = tokio::try_join!(node1_handler, interactions_handler);
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Check if the error is because one of the tasks was aborted
+                if e.is_cancelled() {
+                    println!("One of the tasks was aborted, but this is expected.");
+                    Ok(())
+                } else {
+                    // If the error is not due to an abort, then it's unexpected
+                    Err(e)
+                }
+            }
+        }
     });
-    rt.shutdown_background();
+    rt.shutdown_timeout(Duration::from_secs(10));
+    if let Err(e) = e {
+        assert!(false, "An unexpected error occurred: {:?}", e);
+    }
+    assert!(port_is_available(12003), "Port 12003 is not available");
 }

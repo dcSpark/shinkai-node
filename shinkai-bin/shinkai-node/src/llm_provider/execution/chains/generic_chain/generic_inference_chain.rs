@@ -1,6 +1,6 @@
 use crate::llm_provider::error::LLMProviderError;
 use crate::llm_provider::execution::chains::inference_chain_trait::{
-    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult
+    InferenceChain, InferenceChainContext, InferenceChainContextTrait, InferenceChainResult,
 };
 use crate::llm_provider::execution::prompts::general_prompts::JobPromptGenerator;
 use crate::llm_provider::execution::user_message_parser::ParsedUserMessage;
@@ -8,11 +8,11 @@ use crate::llm_provider::job_callback_manager::JobCallbackManager;
 use crate::llm_provider::job_manager::JobManager;
 use crate::llm_provider::llm_stopper::LLMStopper;
 use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
-use crate::managers::sheet_manager::SheetManager;
 use crate::managers::tool_router::{ToolCallFunctionResponse, ToolRouter};
 use crate::network::agent_payments_manager::external_agent_offerings_manager::ExtAgentOfferingsManager;
 use crate::network::agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager;
 use shinkai_fs::shinkai_file_manager::ShinkaiFileManager;
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 
 use crate::utils::environment::{fetch_node_environment, NodeEnvironment};
 use async_trait::async_trait;
@@ -24,7 +24,7 @@ use shinkai_message_primitives::schemas::llm_providers::common_agent_llm_provide
 use shinkai_message_primitives::schemas::shinkai_fs::ShinkaiFileChunkCollection;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::ws_types::{
-    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata
+    ToolMetadata, ToolStatus, ToolStatusType, WSMessageType, WSUpdateHandler, WidgetMetadata,
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::job_scope::MinimalJobScope;
@@ -38,6 +38,8 @@ use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use base64::Engine;
+use serde_json::json;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -87,7 +89,6 @@ impl InferenceChain for GenericInferenceChain {
             self.context.max_tokens_in_prompt,
             self.ws_manager_trait.clone(),
             self.context.tool_router.clone(),
-            self.context.sheet_manager.clone(),
             self.context.my_agent_payments_manager.clone(),
             self.context.ext_agent_payments_manager.clone(),
             self.context.job_callback_manager.clone(),
@@ -121,7 +122,7 @@ impl GenericInferenceChain {
                     // Retrieve the file content
                     match ShinkaiFileManager::get_file_content(file_path.clone()) {
                         Ok(content) => {
-                            let base64_content = base64::encode(&content);
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                             image_files.insert(file_path.relative_path().to_string(), base64_content);
                         }
                         Err(_) => continue,
@@ -141,7 +142,7 @@ impl GenericInferenceChain {
                 {
                     match ShinkaiFileManager::get_file_content(file_path.clone()) {
                         Ok(content) => {
-                            let base64_content = base64::encode(&content);
+                            let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                             image_files.insert(file_path.relative_path().to_string(), base64_content);
                         }
                         Err(_) => continue,
@@ -171,7 +172,7 @@ impl GenericInferenceChain {
                             let shinkai_path = ShinkaiPath::from_string(path.to_string_lossy().to_string());
                             match ShinkaiFileManager::get_file_content(shinkai_path.clone()) {
                                 Ok(content) => {
-                                    let base64_content = base64::encode(&content);
+                                    let base64_content = base64::engine::general_purpose::STANDARD.encode(&content);
                                     image_files.insert(shinkai_path.relative_path().to_string(), base64_content);
                                 }
                                 Err(_) => continue,
@@ -213,7 +214,6 @@ impl GenericInferenceChain {
         max_tokens_in_prompt: usize,
         ws_manager_trait: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         tool_router: Option<Arc<ToolRouter>>,
-        sheet_manager: Option<Arc<Mutex<SheetManager>>>,
         my_agent_payments_manager: Option<Arc<Mutex<MyAgentOfferingsManager>>>,
         ext_agent_payments_manager: Option<Arc<Mutex<ExtAgentOfferingsManager>>>,
         job_callback_manager: Option<Arc<Mutex<JobCallbackManager>>>,
@@ -538,22 +538,58 @@ impl GenericInferenceChain {
         // First, attempt to use the custom_prompt from the job's config.
         // If it doesn't exist, fall back to the agent's custom_prompt if the
         // llm_provider is an Agent.
-        let custom_prompt = job_config.and_then(|config| config.custom_prompt.clone()).or_else(|| {
-            if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                agent.config.as_ref().and_then(|config| config.custom_prompt.clone())
-            } else {
-                None
-            }
-        });
-
-        let custom_system_prompt = job_config
-            .and_then(|config| config.custom_system_prompt.clone())
+        let custom_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_prompt exists and is not empty
+                config
+                    .custom_prompt
+                    .clone()
+                    .and_then(|prompt| if prompt.is_empty() { None } else { Some(prompt) })
+            })
             .or_else(|| {
                 if let ProviderOrAgent::Agent(agent) = &llm_provider {
-                    agent
-                        .config
-                        .as_ref()
-                        .and_then(|config| config.custom_system_prompt.clone())
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_prompt.clone().and_then(
+                            |prompt| {
+                                if prompt.is_empty() {
+                                    None
+                                } else {
+                                    Some(prompt)
+                                }
+                            },
+                        )
+                    })
+                } else {
+                    None
+                }
+            });
+
+        let custom_system_prompt = job_config
+            .and_then(|config| {
+                // Only return Some if custom_system_prompt exists and is not empty
+                config.custom_system_prompt.clone().and_then(
+                    |prompt| {
+                        if prompt.is_empty() {
+                            None
+                        } else {
+                            Some(prompt)
+                        }
+                    },
+                )
+            })
+            .or_else(|| {
+                if let ProviderOrAgent::Agent(agent) = &llm_provider {
+                    agent.config.as_ref().and_then(|config| {
+                        // Also check for empty string in agent config
+                        config.custom_system_prompt.clone().and_then(|prompt| {
+                            if prompt.is_empty() {
+                                None
+                            } else {
+                                Some(prompt)
+                            }
+                        })
+                    })
                 } else {
                     None
                 }
@@ -576,6 +612,9 @@ impl GenericInferenceChain {
 
         // We'll keep a record of *every* function call + response across all iterations:
         let mut all_function_responses = Vec::new();
+
+        // NEW: Accumulate all LLM response messages
+        let mut all_llm_messages = Vec::new();
 
         let mut filled_prompt = JobPromptGenerator::generic_inference_prompt(
             db.clone(),
@@ -605,8 +644,16 @@ impl GenericInferenceChain {
                     tool_calls_history.len()
                 );
 
+                // Use the accumulator to show the full conversation if max_iterations is reached
+                let full_conversation = all_llm_messages
+                    .iter()
+                    .map(|msg: &String| msg.trim())
+                    .filter(|msg| !msg.is_empty())
+                    .collect::<Vec<&str>>()
+                    .join("\n\n");
+
                 let inference_result = InferenceChainResult::with_full_details(
-                    max_iterations_message,
+                    format!("{}\n\n{}", full_conversation, max_iterations_message),
                     None,
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),
@@ -624,11 +671,12 @@ impl GenericInferenceChain {
             let response_res = JobManager::inference_with_llm_provider(
                 llm_provider.clone(),
                 filled_prompt.clone(),
-                inbox_name,
+                inbox_name.clone(),
                 ws_manager_trait.clone(),
                 job_config.cloned(),
                 llm_stopper.clone(),
                 db.clone(),
+                message_hash_id.clone(),
             )
             .await;
 
@@ -640,6 +688,9 @@ impl GenericInferenceChain {
             }
 
             let response = response_res?;
+
+            // NEW: Accumulate this LLM message
+            all_llm_messages.push(response.response_string.clone());
 
             // 5) Check response if it requires a function call
             if !response.is_function_calls_empty() {
@@ -666,7 +717,6 @@ impl GenericInferenceChain {
                         max_tokens_in_prompt,
                         ws_manager_trait.clone(),
                         tool_router.clone(),
-                        sheet_manager.clone(),
                         my_agent_payments_manager.clone(),
                         ext_agent_payments_manager.clone(),
                         job_callback_manager.clone(),
@@ -677,7 +727,7 @@ impl GenericInferenceChain {
                     // 6) Call workflow or tooling
                     // Find the ShinkaiTool that has a tool with the function name
                     let shinkai_tool = tools.iter().find(|tool| {
-                        tool.internal_sanitized_name() == function_call.name
+                        ToolRouterKey::sanitize(&tool.tool_router_key().name) == function_call.name
                             || tool.tool_router_key().to_string_without_version()
                                 == function_call.tool_router_key.clone().unwrap_or_default()
                     });
@@ -687,6 +737,21 @@ impl GenericInferenceChain {
                         return Err(LLMProviderError::FunctionNotFound(function_call.name.clone()));
                     }
                     let shinkai_tool = shinkai_tool.unwrap();
+
+                    if let Some(ref msg_id) = message_hash_id {
+                        let trace_info = json!({
+                            "tool": shinkai_tool.tool_router_key().to_string_without_version(),
+                            "function": function_call.name
+                        });
+                        if let Err(e) = db.add_tracing(
+                            msg_id,
+                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                            "tool_call",
+                            &trace_info,
+                        ) {
+                            eprintln!("failed to add tool call trace: {:?}", e);
+                        }
+                    }
 
                     // Note: here we can add logic to handle the case that we have network tools
                     // TODO: if shinkai_tool is None we need to retry with the LLM (hallucination)
@@ -702,6 +767,22 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("Invalid function arguments") =>
                                 {
+
+                                    if let Some(ref msg_id) = message_hash_id {
+                                        let trace_info = json!({
+                                            "error": error_msg,
+                                            "function": function_call.name
+                                        });
+                                        if let Err(e) = db.add_tracing(
+                                            msg_id,
+                                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                                            "tool_error_invalid_arguments",
+                                            &trace_info,
+                                        ) {
+                                            eprintln!("failed to add tool error trace: {:?}", e);
+                                        }
+                                    }
+
                                     // For invalid arguments, we'll retry with the LLM by including the error
                                     // message in the next prompt to help it fix
                                     // the parameters
@@ -747,6 +828,21 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("MissingConfigError") =>
                                 {
+                                    if let Some(ref msg_id) = message_hash_id {
+                                        let trace_info = json!({
+                                            "error": error_msg,
+                                            "function": function_call.name
+                                        });
+                                        if let Err(e) = db.add_tracing(
+                                            msg_id,
+                                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                                            "tool_error_missing_config",
+                                            &trace_info,
+                                        ) {
+                                            eprintln!("failed to add tool error trace: {:?}", e);
+                                        }
+                                    }
+
                                     // For missing config, we'll pass through the error directly
                                     // This will show up in the UI prompting the user to update their config
                                     eprintln!("Missing config error: {:?}", error_msg);
@@ -759,6 +855,20 @@ impl GenericInferenceChain {
                             }
                         }
                     };
+                    if let Some(ref msg_id) = message_hash_id {
+                        let trace_info = json!({
+                            "response": function_response.response,
+                            "function": function_call.name
+                        });
+                        if let Err(e) = db.add_tracing(
+                            msg_id,
+                            inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                            "tool_response",
+                            &trace_info,
+                        ) {
+                            eprintln!("failed to add tool response trace: {:?}", e);
+                        }
+                    }
 
                     let mut function_call_with_router_key = function_call.clone();
                     function_call_with_router_key.tool_router_key =
@@ -815,8 +925,11 @@ impl GenericInferenceChain {
                 // No more function calls required, return the final response
                 let answer_duration_ms = Some(format!("{:.2}", start_time.elapsed().as_millis()));
 
+                // We'll use the last message as the final response to not sound spammy
+                let last_message = all_llm_messages.last().cloned().unwrap_or_default();
+
                 let inference_result = InferenceChainResult::with_full_details(
-                    response.response_string,
+                    last_message,
                     response.tps.map(|tps| tps.to_string()),
                     answer_duration_ms,
                     Some(tool_calls_history.clone()),

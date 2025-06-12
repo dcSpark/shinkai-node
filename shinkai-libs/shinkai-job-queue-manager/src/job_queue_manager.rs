@@ -87,7 +87,7 @@ pub struct JobQueueManager<T: Debug> {
 // Note: these are the ones that are kept in memory but the complete list is kept in the database
 static BUFFER_SIZE: usize = 10;
 
-impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> JobQueueManager<T> {
+impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + PartialOrd + Debug> JobQueueManager<T> {
     pub async fn new(db: Weak<SqliteManager>, prefix: Option<String>) -> Result<Self, SqliteManagerError> {
         // Lock the db for safe access
         let db_arc = db.upgrade().ok_or("Failed to upgrade shinkai_db").unwrap();
@@ -199,7 +199,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
             let a_first = db_queues.get(a).and_then(|q| q.first());
             let b_first = db_queues.get(b).and_then(|q| q.first());
             match (a_first, b_first) {
-                (Some(a), Some(b)) => a.cmp(b),
+                (Some(a), Some(b)) => a.partial_cmp(b).unwrap_or(Ordering::Equal),
                 (Some(_), None) => Ordering::Less,    // Consider Some < None
                 (None, Some(_)) => Ordering::Greater, // Consider None > Some
                 (None, None) => a.cmp(b),             // Fallback to key comparison if both are None
@@ -259,8 +259,7 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::{
-        schemas::shinkai_name::ShinkaiName,
-        shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        schemas::shinkai_name::ShinkaiName, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -270,7 +269,7 @@ mod tests {
         let db_path = PathBuf::from(temp_file.path());
         let api_url = String::new();
         let model_type =
-            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbed_M);
+            EmbeddingModelType::OllamaTextEmbeddingsInference(OllamaTextEmbeddingsInference::SnowflakeArcticEmbedM);
 
         SqliteManager::new(db_path, api_url, model_type).unwrap()
     }

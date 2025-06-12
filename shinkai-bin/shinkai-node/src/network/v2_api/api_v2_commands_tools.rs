@@ -1,25 +1,45 @@
 use crate::{
-    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{node_error::NodeError, node_shareable_logic::download_zip_file, Node}, tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
-    }, utils::environment::NodeEnvironment
+    llm_provider::job_manager::JobManager,
+    managers::{tool_router::ToolRouter, IdentityManager},
+    network::{
+        node_error::NodeError,
+        node_shareable_logic::{download_zip_from_url, ZipFileContents},
+        zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool},
+        Node,
+    },
+    tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
+        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
+        tool_generation::v2_create_and_send_job_message,
+        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
+    },
+    utils::environment::NodeEnvironment,
 };
 use async_channel::Sender;
+use base64::Engine;
 use chrono::Utc;
 use ed25519_dalek::{ed25519::signature::SignerMut, SigningKey};
 use reqwest::StatusCode;
+use rusqlite::Error as RusqliteError;
 use serde_json::{json, Map, Value};
+use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, shinkai_name::ShinkaiSubidentityType, tool_router_key::ToolRouterKey
-    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, MessageSchemaType}, shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
-    }
-};
-use shinkai_message_primitives::{
-    schemas::{
-        shinkai_name::ShinkaiName, shinkai_tools::{CodeLanguage, DynamicToolType}
-    }, shinkai_message::shinkai_message_schemas::JobMessage
+        inbox_name::InboxName,
+        indexable_version::IndexableVersion,
+        job::JobLike,
+        job_config::JobConfig,
+        shinkai_name::ShinkaiName,
+        shinkai_name::ShinkaiSubidentityType,
+        shinkai_tools::{CodeLanguage, DynamicToolType},
+        tool_router_key::ToolRouterKey,
+    },
+    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType},
+    shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+        signatures::clone_signature_secret_key,
+    },
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
@@ -27,23 +47,25 @@ use shinkai_tools_primitives::tools::{
     error::ToolError,
     parameters::Parameters,
     python_tools::PythonTool,
+    shinkai_tool::ShinkaiToolHeader,
     shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
     tool_config::{OAuth, ToolConfig},
     tool_output_arg::ToolOutputArg,
     tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
+    tool_types::{OperatingSystem, RunnerType, ToolResult},
 };
-use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolHeader, tool_types::{OperatingSystem, RunnerType, ToolResult}
-};
-use std::{collections::HashMap, path::PathBuf};
 use std::{
-    env, fs::File, io::{Read, Write}, sync::Arc, time::Instant
+    collections::HashMap,
+    env,
+    io::Read,
+    path::{absolute, PathBuf},
+    sync::Arc,
+    time::Instant,
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use zip::{write::FileOptions, ZipWriter};
 
 // Helper function to serialize Vec<ToolConfig> into the specific object format
 fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> Value {
@@ -56,7 +78,10 @@ fn serialize_tool_config_to_schema_and_form_data(configs: &Vec<ToolConfig>) -> V
             // --- Build Schema Part ---
             let mut property_details = Map::new();
             property_details.insert("description".to_string(), json!(basic.description));
-            let type_value = basic.type_name.as_ref().map_or_else(|| "string".to_string(), |t| t.clone());
+            let type_value = basic
+                .type_name
+                .as_ref()
+                .map_or_else(|| "string".to_string(), |t| t.clone());
             property_details.insert("type".to_string(), json!(type_value));
             schema_properties.insert(basic.key_name.clone(), Value::Object(property_details));
 
@@ -140,7 +165,7 @@ impl Node {
         let vector_start_time = Instant::now();
 
         // Use different search method based on whether we have allowed_tools
-        let vector_search_result = if let Some(tools) = allowed_tools {
+        let vector_search_res = if let Some(tools) = allowed_tools {
             // First generate the embedding from the query
             let embedding = db
                 .generate_embeddings(&sanitized_query)
@@ -162,9 +187,23 @@ impl Node {
 
         // Start the timer for FTS search
         let fts_start_time = Instant::now();
-        let fts_search_result = db.search_tools_fts(&sanitized_query);
+        let fts_search_res = db.search_tools_fts(&sanitized_query);
         let fts_elapsed_time = fts_start_time.elapsed();
         println!("Time taken for FTS search: {:?}", fts_elapsed_time);
+
+        let vector_search_result = match vector_search_res {
+            Ok(v) => Ok(v),
+            Err(SqliteManagerError::ToolNotFound(_))
+            | Err(SqliteManagerError::DatabaseError(RusqliteError::QueryReturnedNoRows)) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        };
+
+        let fts_search_result = match fts_search_res {
+            Ok(v) => Ok(v),
+            Err(SqliteManagerError::ToolNotFound(_))
+            | Err(SqliteManagerError::DatabaseError(RusqliteError::QueryReturnedNoRows)) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        };
 
         match (vector_search_result, fts_search_result) {
             (Ok(vector_tools), Ok(fts_tools)) => {
@@ -507,6 +546,118 @@ impl Node {
         }
     }
 
+    pub async fn v2_api_list_all_network_shinkai_tools(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_name: ShinkaiName,
+        tool_router: Option<Arc<ToolRouter>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        match db.get_all_tool_headers() {
+            Ok(tools) => {
+                use std::collections::HashMap;
+                let mut tool_groups: HashMap<String, Vec<ShinkaiToolHeader>> = HashMap::new();
+
+                for tool in tools {
+                    if tool.tool_type.to_lowercase() == "network" {
+                        let tool_router_key = tool.tool_router_key.clone();
+                        tool_groups.entry(tool_router_key).or_default().push(tool);
+                    }
+                }
+
+                let mut latest_tools = Vec::new();
+                for (_, mut group) in tool_groups {
+                    if group.len() == 1 {
+                        latest_tools.push(group.pop().unwrap());
+                    } else {
+                        group.sort_by(|a, b| {
+                            let a_version = IndexableVersion::from_string(&a.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            let b_version = IndexableVersion::from_string(&b.version.clone())
+                                .unwrap_or(IndexableVersion::from_number(0));
+                            b_version.cmp(&a_version)
+                        });
+
+                        latest_tools.push(group.remove(0));
+                    }
+                }
+
+                let t = latest_tools.iter().map(|tool| json!(tool)).collect();
+                let _ = res.send(Ok(t)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to list network tools: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    /// Merges tool, handling both existing and new configs.
+    /// This method supports modifying existing config items and adding new ones,
+    /// but does not support deleting config items.
+    pub fn merge_tool(existing_tool_value: &Value, input_value: &Value) -> Value {
+        let mut merged_value = Self::merge_json(existing_tool_value.clone(), input_value.clone());
+
+        if let Some(Value::Array(input_configs)) = input_value
+            .get("content")
+            .and_then(|v| v.as_array().and_then(|v| v.first()).and_then(|v| v.get("config")))
+        {
+            let existing_configs = existing_tool_value
+                .get("content")
+                .and_then(|v| v.as_array().and_then(|v| v.first()).and_then(|v| v.get("config")))
+                .and_then(|v| v.as_array())
+                .unwrap_or(&vec![])
+                .to_vec();
+            let mut new_configs = existing_configs;
+
+            // For each input config, either merge with existing or add new
+            for input_config in input_configs {
+                let input_key_name = input_config
+                    .get("BasicConfig")
+                    .and_then(|c| c.get("key_name"))
+                    .and_then(|k| k.as_str());
+
+                if let Some(key_name) = input_key_name {
+                    // Try to find matching existing config
+                    if let Some(existing_idx) = new_configs.iter().position(|c| {
+                        c.get("BasicConfig")
+                            .and_then(|c| c.get("key_name"))
+                            .and_then(|k| k.as_str())
+                            == Some(key_name)
+                    }) {
+                        // Merge with existing config
+                        new_configs[existing_idx] =
+                            Self::merge_json(new_configs[existing_idx].clone(), input_config.clone());
+                    } else {
+                        // Add new config
+                        new_configs.push(input_config.clone());
+                    }
+                }
+            }
+
+            // Update the merged value with new configs
+            if let Some(content_array) = merged_value.get_mut("content").and_then(|v| v.as_array_mut()) {
+                if let Some(first_content) = content_array.get_mut(0) {
+                    if let Some(obj) = first_content.as_object_mut() {
+                        obj.insert("config".to_string(), Value::Array(new_configs));
+                    }
+                }
+            }
+        }
+
+        merged_value
+    }
+
     pub async fn v2_api_set_shinkai_tool(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -556,8 +707,7 @@ impl Node {
             }
         };
 
-        // Merge existing_tool_value with input_value
-        let merged_value = Self::merge_json(existing_tool_value, input_value);
+        let merged_value = Self::merge_tool(&existing_tool_value, &input_value);
 
         // Convert merged_value to ShinkaiTool
         let merged_tool: ShinkaiTool = match serde_json::from_value(merged_value) {
@@ -647,7 +797,7 @@ impl Node {
                         // Create the assets
                         for asset in assets {
                             let asset_path = file_path.join(asset.file_name);
-                            let asset_content = base64::decode(asset.data).unwrap();
+                            let asset_content = base64::engine::general_purpose::STANDARD.decode(asset.data).unwrap();
                             let status = fs::write(asset_path, asset_content).await;
                             if status.is_err() {
                                 let api_error = APIError {
@@ -670,7 +820,7 @@ impl Node {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
-                    message: format!("Failed to add tool to LanceShinkaiDb: {}", err),
+                    message: format!("Failed to add tool to SqliteManager: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 Ok(())
@@ -691,19 +841,20 @@ impl Node {
         }
 
         // Get the tool from the database using the tool_key directly
-        match db.get_tool_by_key(&tool_key) { // Use tool_key directly
+        match db.get_tool_by_key(&tool_key) {
+            // Use tool_key directly
             Ok(tool) => {
                 // Serialize the tool object to JSON value first.
                 let mut response_value = match serde_json::to_value(&tool) {
                     Ok(val) => val,
                     Err(e) => {
-                         let api_error = APIError {
+                        let api_error = APIError {
                             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                             error: "Internal Server Error".to_string(),
                             message: format!("Failed to serialize tool: {:?}", e),
-                         };
-                         let _ = res.send(Err(api_error)).await;
-                         return Ok(());
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
                     }
                 };
 
@@ -712,12 +863,22 @@ impl Node {
                     if let Value::Object(ref mut map) = response_value {
                         // Get the original config Vec from the tool struct
                         let original_config = tool.get_config(); // Assumes ShinkaiTool implements GetConfig trait or similar
-                        // Serialize the config vector using the updated helper function
+                                                                 // Serialize the config vector using the updated helper function
                         let serialized_config_data = serialize_tool_config_to_schema_and_form_data(&original_config); // Use new function name
-                        // Replace the existing 'config' field in the JSON map with the new structure
-                        if let Some(Value::Object(ref mut contents_map)) = map.get_mut("content").and_then(|v| v.as_array_mut()).and_then(|arr| arr.get_mut(0)) {
-                            contents_map.insert("configurations".to_string(), serialized_config_data.get("schema").unwrap().clone());
-                            contents_map.insert("configFormData".to_string(), serialized_config_data.get("configFormData").unwrap().clone());
+                                                                                                                      // Replace the existing 'config' field in the JSON map with the new structure
+                        if let Some(Value::Object(ref mut contents_map)) = map
+                            .get_mut("content")
+                            .and_then(|v| v.as_array_mut())
+                            .and_then(|arr| arr.get_mut(0))
+                        {
+                            contents_map.insert(
+                                "configurations".to_string(),
+                                serialized_config_data.get("schema").unwrap().clone(),
+                            );
+                            contents_map.insert(
+                                "configFormData".to_string(),
+                                serialized_config_data.get("configFormData").unwrap().clone(),
+                            );
                         }
                     }
                 }
@@ -814,8 +975,15 @@ impl Node {
 
         let shinkai_tool = match payload.language {
             CodeLanguage::Typescript => {
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    payload.metadata.author.clone(),
+                    payload.metadata.name.clone(),
+                    None,
+                );
                 let tool = DenoTool {
                     name: payload.metadata.name.clone(),
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: payload.metadata.homepage.clone(),
                     author: payload.metadata.author.clone(),
                     version: payload.metadata.version.clone(),
@@ -842,8 +1010,16 @@ impl Node {
                 ShinkaiTool::Deno(tool, false)
             }
             CodeLanguage::Python => {
+                let tool_router_key = ToolRouterKey::new(
+                    "local".to_string(),
+                    payload.metadata.author.clone(),
+                    payload.metadata.name.clone(),
+                    None,
+                );
+
                 let tool = PythonTool {
                     name: payload.metadata.name.clone(),
+                    tool_router_key: Some(tool_router_key.clone()),
                     homepage: payload.metadata.homepage.clone(),
                     version: payload.metadata.version.clone(),
                     author: payload.metadata.author.clone(),
@@ -1158,6 +1334,7 @@ impl Node {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         extra_config: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -1185,6 +1362,7 @@ impl Node {
             parameters,
             tool_id,
             app_id,
+            agent_id,
             llm_provider,
             tool_configs,
             identity_manager,
@@ -1223,6 +1401,7 @@ impl Node {
         parameters: Map<String, Value>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         extra_config: Map<String, Value>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager: Arc<Mutex<JobManager>>,
@@ -1243,6 +1422,7 @@ impl Node {
             parameters,
             tool_id,
             app_id,
+            agent_id,
             tool_configs,
             identity_manager,
             job_manager,
@@ -1281,6 +1461,7 @@ impl Node {
         oauth: Option<Vec<OAuth>>,
         tool_id: String,
         app_id: String,
+        agent_id: Option<String>,
         llm_provider: String,
         node_name: ShinkaiName,
         mounts: Option<Vec<String>>,
@@ -1314,6 +1495,7 @@ impl Node {
             db,
             tool_id,
             app_id,
+            agent_id,
             llm_provider,
             bearer,
             node_name,
@@ -2109,53 +2291,10 @@ impl Node {
         Ok(())
     }
 
-    async fn get_tool_zip(tool: ShinkaiTool, node_env: NodeEnvironment) -> Result<Vec<u8>, NodeError> {
-        let mut tool = tool;
-        tool.sanitize_config();
-
-        let tool_bytes = serde_json::to_vec(&tool).unwrap();
-
-        let name = format!(
-            "{}.zip",
-            tool.tool_router_key().to_string_without_version().replace(':', "_")
-        );
-        let path = std::env::temp_dir().join(&name);
-        let file = File::create(&path).map_err(|e| NodeError::from(e.to_string()))?;
-
-        let mut zip = ZipWriter::new(file);
-
-        let assets = PathBuf::from(&node_env.node_storage_path.unwrap_or_default())
-            .join(".tools_storage")
-            .join("tools")
-            .join(tool.tool_router_key().convert_to_path());
-
-        if assets.exists() {
-            for entry in std::fs::read_dir(assets).unwrap() {
-                let entry = entry.unwrap();
-                let path = entry.path();
-                if path.is_file() {
-                    zip.start_file::<_, ()>(path.file_name().unwrap().to_str().unwrap(), FileOptions::default())
-                        .unwrap();
-                    zip.write_all(&fs::read(path).await.unwrap()).unwrap();
-                }
-            }
-        }
-
-        zip.start_file::<_, ()>("__tool.json", FileOptions::default())
-            .map_err(|e| NodeError::from(e.to_string()))?;
-        zip.write_all(&tool_bytes).map_err(|e| NodeError::from(e.to_string()))?;
-        zip.finish().map_err(|e| NodeError::from(e.to_string()))?;
-
-        println!("Zip file created successfully!");
-        let file_bytes = fs::read(&path).await?;
-        // Delete the zip file after reading it
-        fs::remove_file(&path).await?;
-        Ok(file_bytes)
-    }
-
     pub async fn v2_api_export_tool(
         db: Arc<SqliteManager>,
         bearer: String,
+        shinkai_name: ShinkaiName,
         node_env: NodeEnvironment,
         tool_key_path: String,
         res: Sender<Result<Vec<u8>, APIError>>,
@@ -2165,10 +2304,9 @@ impl Node {
             return Ok(());
         }
 
-        let sqlite_manager_read = db;
-        match sqlite_manager_read.get_tool_by_key(&tool_key_path.clone()) {
+        match db.get_tool_by_key(&tool_key_path.clone()) {
             Ok(tool) => {
-                let file_bytes = Self::get_tool_zip(tool, node_env).await;
+                let file_bytes = generate_tool_zip(db.clone(), shinkai_name.clone(), node_env, tool, true).await;
                 match file_bytes {
                     Ok(file_bytes) => {
                         let _ = res.send(Ok(file_bytes)).await;
@@ -2198,6 +2336,7 @@ impl Node {
     pub async fn v2_api_publish_tool(
         db: Arc<SqliteManager>,
         bearer: String,
+        shinkai_name: ShinkaiName,
         node_env: NodeEnvironment,
         tool_key_path: String,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -2208,7 +2347,15 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
-        let response = Self::publish_tool(db, node_env, tool_key_path, identity_manager, signing_secret_key).await;
+        let response = Self::publish_tool(
+            db.clone(),
+            shinkai_name,
+            node_env,
+            tool_key_path,
+            identity_manager,
+            signing_secret_key,
+        )
+        .await;
 
         match response {
             Ok(response) => {
@@ -2223,6 +2370,7 @@ impl Node {
 
     async fn publish_tool(
         db: Arc<SqliteManager>,
+        shinkai_name: ShinkaiName,
         node_env: NodeEnvironment,
         tool_key_path: String,
         identity_manager: Arc<Mutex<IdentityManager>>,
@@ -2235,11 +2383,13 @@ impl Node {
             message: format!("Failed to get tool: {}", e),
         })?;
 
-        let file_bytes: Vec<u8> = Self::get_tool_zip(tool, node_env).await.map_err(|e| APIError {
-            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            error: "Internal Server Error".to_string(),
-            message: format!("Failed to get tool zip: {}", e),
-        })?;
+        let file_bytes: Vec<u8> = generate_tool_zip(db.clone(), shinkai_name.clone(), node_env, tool, true)
+            .await
+            .map_err(|e| APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to get tool zip: {}", e),
+            })?;
 
         let identity_manager = identity_manager.lock().await;
         let local_node_name = identity_manager.local_node_name.clone();
@@ -2311,7 +2461,7 @@ impl Node {
                     map.insert("response".to_string(), response_json);
                     Value::Object(map)
                 }
-                o => o,
+                _ => unreachable!(),
             };
             return Ok(r);
         } else {
@@ -2324,13 +2474,14 @@ impl Node {
         }
     }
 
-    pub async fn v2_api_import_tool(
+    pub async fn v2_api_import_tool_url(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         url: String,
-        node_name: String,
         signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -2338,31 +2489,35 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::v2_api_import_tool_internal(db, node_env, url, node_name, signing_secret_key).await;
-        match result {
-            Ok(response) => {
-                let _ = res.send(Ok(response)).await;
-            }
-            Err(err) => {
-                let _ = res.send(Err(err)).await;
-            }
-        }
+        let result = Self::v2_api_import_tool_url_internal(
+            db,
+            full_identity,
+            node_env,
+            url,
+            signing_secret_key,
+            embedding_generator,
+        )
+        .await;
+        let _ = match result {
+            Ok(response) => res.send(Ok(response)).await,
+            Err(err) => res.send(Err(err)).await,
+        };
         Ok(())
     }
 
-    pub async fn v2_api_import_tool_internal(
+    pub async fn v2_api_import_tool_url_internal(
         db: Arc<SqliteManager>,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         url: String,
-        node_name: String,
         signing_secret_key: SigningKey,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<Value, APIError> {
-        let mut zip_contents =
-            match download_zip_file(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
+        let node_name = full_identity.node_name.clone();
+        let zip_contents: ZipFileContents =
+            match download_zip_from_url(url, "__tool.json".to_string(), node_name, signing_secret_key).await {
                 Ok(contents) => contents,
-                Err(err) => {
-                    return Err(err);
-                }
+                Err(err) => return Err(err),
             };
 
         // Parse the JSON into a ShinkaiTool
@@ -2377,112 +2532,18 @@ impl Node {
             }
         };
 
-        // Check if the tool can be enabled and enable it if possible
-        let mut tool = tool.clone();
-        if !tool.is_enabled() && tool.can_be_enabled() {
-            tool.enable();
+        let import_status = import_dependencies_tools(
+            db.clone(),
+            full_identity,
+            node_env.clone(),
+            zip_contents.archive.clone(),
+            embedding_generator,
+        )
+        .await;
+        if let Err(err) = import_status {
+            return Err(err);
         }
-
-        // check if any version of the tool exists in the database
-        let db_tool = match db.get_tool_by_key(&tool.tool_router_key().to_string_without_version()) {
-            Ok(tool) => Some(tool),
-            Err(_) => None,
-        };
-
-        // if the tool exists in the database, check if the version is the same or newer
-        if let Some(db_tool) = db_tool.clone() {
-            let version_db = db_tool.version_number()?;
-            let version_zip = tool.version_number()?;
-            if version_db >= version_zip {
-                // No need to update
-                return Ok(json!({
-                    "status": "success",
-                    "message": "Tool already up-to-date",
-                    "tool_key": tool.tool_router_key().to_string_without_version(),
-                    "tool": tool.clone()
-                }));
-            }
-        }
-
-        // Save the tool to the database
-
-        let tool = match db_tool {
-            None => db.add_tool(tool).await.map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Database Error".to_string(),
-                message: format!("Failed to save tool to database: {}", e),
-            })?,
-            Some(_) => db.upgrade_tool(tool).await.map_err(|e| APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Database Error".to_string(),
-                message: format!("Failed to upgrade tool: {}", e),
-            })?,
-        };
-
-        let archive_clone = zip_contents.archive.clone();
-        let files = archive_clone.file_names();
-        for file in files {
-            if file.contains("__MACOSX/") {
-                continue;
-            }
-            if file == "__tool.json" {
-                continue;
-            }
-            let mut buffer = Vec::new();
-            {
-                let file = zip_contents.archive.by_name(file);
-                let mut tool_file = match file {
-                    Ok(file) => file,
-                    Err(_) => {
-                        return Err(APIError {
-                            code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Invalid Tool Archive".to_string(),
-                            message: "Archive does not contain tool.json".to_string(),
-                        });
-                    }
-                };
-
-                // Read the tool file contents into a buffer
-                if let Err(err) = tool_file.read_to_end(&mut buffer) {
-                    return Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Read Error".to_string(),
-                        message: format!("Failed to read tool.json contents: {}", err),
-                    });
-                }
-            } // `tool_file` goes out of scope here
-
-            let mut file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
-                .join(".tools_storage")
-                .join("tools")
-                .join(tool.tool_router_key().convert_to_path());
-            if !file_path.exists() {
-                let s = std::fs::create_dir_all(&file_path);
-                if s.is_err() {
-                    return Err(APIError {
-                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                        error: "Failed to create directory".to_string(),
-                        message: format!("Failed to create directory: {}", s.err().unwrap()),
-                    });
-                }
-            }
-            file_path.push(file);
-            let s = std::fs::write(&file_path, &buffer);
-            if s.is_err() {
-                return Err(APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Failed to write file".to_string(),
-                    message: format!("Failed to write file: {}", s.err().unwrap()),
-                });
-            }
-        }
-
-        Ok(json!({
-            "status": "success",
-            "message": "Tool imported successfully",
-            "tool_key": tool.tool_router_key().to_string_without_version(),
-            "tool": tool
-        }))
+        import_tool(db, node_env, zip_contents, tool).await
     }
 
     /// Resolves a Shinkai file protocol URL into actual file bytes.
@@ -2646,6 +2707,43 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_api_upload_playground_file(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        _tool_id: String,
+        app_id: String,
+        file_name: String,
+        file_data: Vec<u8>,
+        node_env: NodeEnvironment,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let mut file_path = PathBuf::from(&node_env.node_storage_path.unwrap_or_default());
+        file_path.push(".tools_storage");
+        file_path.push("playground_files");
+        file_path.push(app_id);
+        // Create directories if they don't exist
+        if !file_path.exists() {
+            std::fs::create_dir_all(&file_path)?;
+        }
+        file_path.push(&file_name);
+        std::fs::write(&file_path, &file_data)?;
+        let absolute_file_path = absolute(&file_path)?;
+        let response = json!({
+            "status": "success",
+            "message": "Playground file uploaded successfully",
+            "file": file_data.len(),
+            "file_name": file_name,
+            "file_path": absolute_file_path.to_string_lossy().to_string()
+        });
+        let _ = res.send(Ok(response)).await;
+        Ok(())
+    }
+
     pub async fn v2_api_list_tool_assets(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -2743,8 +2841,14 @@ impl Node {
         let tool_key_name = tool_router_key.to_string_without_version();
         let version = tool_router_key.version;
 
-        // Attempt to remove the playground tool first
-        let _ = db_write.remove_tool_playground(&tool_key);
+        // Attempt to remove the playground tool first, warn on failure but continue
+        if let Err(e) = db_write.remove_tool_playground(&tool_key) {
+            log::warn!(
+                "Attempt to remove associated playground tool for key '{}' failed (this might be expected if none exists): {}. Continuing with main tool removal.",
+                tool_key,
+                e
+            );
+        }
 
         // Remove the tool from the database
         match db_write.remove_tool(&tool_key_name, version) {
@@ -3009,12 +3113,34 @@ impl Node {
 
         // Create a copy of the tool with "_copy" appended to the name
         let mut new_tool = original_tool.clone();
-        new_tool.update_name(format!(
+        let new_name = format!(
             "{}_{}",
             original_tool.name(),
             chrono::Local::now().format("%Y%m%d_%H%M%S")
-        ));
+        );
+        new_tool.update_name(new_name.clone());
         new_tool.update_author(node_name.node_name.clone());
+
+        // Update the tool_router_key for Deno and Python tools since they store it explicitly
+        if let ShinkaiTool::Deno(deno_tool, _enabled) = &mut new_tool {
+            if deno_tool.tool_router_key.is_some() {
+                deno_tool.tool_router_key = Some(ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name.node_name.clone(),
+                    new_name,
+                    None,
+                ));
+            }
+        } else if let ShinkaiTool::Python(python_tool, _enabled) = &mut new_tool {
+            if python_tool.tool_router_key.is_some() {
+                python_tool.tool_router_key = Some(ToolRouterKey::new(
+                    "local".to_string(),
+                    node_name.node_name.clone(),
+                    new_name,
+                    None,
+                ));
+            }
+        }
 
         // Try to get the original playground tool, or create one from the tool data
         let (new_playground, is_new_playground) = match db.get_tool_playground(&tool_key_path) {
@@ -3162,10 +3288,12 @@ impl Node {
         Ok(response)
     }
 
-    pub async fn process_tool_zip(
+    pub async fn install_tool_from_u8(
         db: Arc<SqliteManager>,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         zip_data: Vec<u8>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
     ) -> Result<Value, APIError> {
         // Create a cursor from the zip data
         let cursor = std::io::Cursor::new(zip_data);
@@ -3181,7 +3309,7 @@ impl Node {
         };
 
         // Extract and parse tool.json
-        let mut buffer = Vec::new();
+        let mut buffer: Vec<u8> = Vec::new();
         {
             let mut file = match archive.by_name("__tool.json") {
                 Ok(file) => file,
@@ -3214,78 +3342,28 @@ impl Node {
                 });
             }
         };
-
-        // Save the tool to the database
-        match db.add_tool(tool).await {
-            Ok(tool) => {
-                // Process all files except __tool.json
-                let mut files_to_process = Vec::new();
-                for i in 0..archive.len() {
-                    if let Ok(mut file) = archive.by_index(i) {
-                        let name = file.name().to_string();
-                        if name != "__tool.json" {
-                            // Read the file data into memory
-                            let mut buffer = Vec::new();
-                            if let Err(err) = file.read_to_end(&mut buffer) {
-                                return Err(APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Read Error".to_string(),
-                                    message: format!("Failed to read file {}: {}", name, err),
-                                });
-                            }
-                            files_to_process.push((name, buffer));
-                        }
-                    }
-                }
-
-                // Process the files after reading them all into memory
-                for (name, buffer) in files_to_process {
-                    // Create the directory structure if it doesn't exist
-                    let file_path = PathBuf::from(&node_env.node_storage_path.clone().unwrap_or_default())
-                        .join(".tools_storage")
-                        .join("tools")
-                        .join(tool.tool_router_key().convert_to_path());
-                    if !file_path.exists() {
-                        if let Err(err) = std::fs::create_dir_all(&file_path) {
-                            return Err(APIError {
-                                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                error: "Failed to create directory".to_string(),
-                                message: format!("Failed to create directory: {}", err),
-                            });
-                        }
-                    }
-
-                    // Write the file
-                    let asset_path = file_path.join(&name);
-                    if let Err(err) = std::fs::write(asset_path, buffer) {
-                        return Err(APIError {
-                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                            error: "Failed to write file".to_string(),
-                            message: format!("Failed to write file {}: {}", name, err),
-                        });
-                    }
-                }
-
-                Ok(json!({
-                    "status": "success",
-                    "message": "Tool imported successfully",
-                    "tool_key": tool.tool_router_key().to_string_without_version(),
-                    "tool": tool
-                }))
-            }
-            Err(err) => Err(APIError {
-                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                error: "Database Error".to_string(),
-                message: format!("Failed to save tool to database: {}", err),
-            }),
+        let zip_contents = ZipFileContents { buffer, archive };
+        let import_status = import_dependencies_tools(
+            db.clone(),
+            full_identity,
+            node_env.clone(),
+            zip_contents.archive.clone(),
+            embedding_generator.clone(),
+        )
+        .await;
+        if let Err(err) = import_status {
+            return Err(err);
         }
+        return import_tool(db, node_env, zip_contents, tool).await;
     }
 
     pub async fn v2_api_import_tool_zip(
         db: Arc<SqliteManager>,
         bearer: String,
+        full_identity: ShinkaiName,
         node_env: NodeEnvironment,
         file_data: Vec<u8>,
+        embedding_generator: Arc<dyn EmbeddingGenerator>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -3293,7 +3371,7 @@ impl Node {
             return Ok(());
         }
 
-        let result = Self::process_tool_zip(db, node_env, file_data).await;
+        let result = Self::install_tool_from_u8(db, full_identity, node_env, file_data, embedding_generator).await;
         let _ = res.send(result).await;
         Ok(())
     }
@@ -3542,7 +3620,7 @@ impl Node {
                 message: e.to_string(),
             })?
             .into_iter()
-            .filter_map(|tool| match (ToolRouterKey::from_string(&tool.tool_router_key)) {
+            .filter_map(|tool| match ToolRouterKey::from_string(&tool.tool_router_key) {
                 Ok(tool_router_key) => Some(tool_router_key),
                 Err(_) => None,
             })
@@ -3812,48 +3890,52 @@ LANGUAGE={env_language}
         }
 
         // Get the tool first to verify it exists
-        match db.get_tool_by_key(&tool_router_key) {
-            Ok(mut tool) => {
-                // Update the enabled status using the appropriate method
-                if enabled {
-                    tool.enable();
-                } else {
-                    tool.disable();
-                    tool.disable_mcp();
-                }
-
-                // Save the updated tool
-                match db.update_tool(tool).await {
-                    Ok(_) => {
-                        let response = json!({
-                            "tool_router_key": tool_router_key,
-                            "enabled": enabled,
-                            "success": true
-                        });
-                        let _ = res.send(Ok(response)).await;
-                    }
-                    Err(e) => {
-                        let _ = res
-                            .send(Err(APIError {
-                                code: 500,
-                                error: "Failed to update tool".to_string(),
-                                message: format!("Failed to update tool: {}", e),
-                            }))
-                            .await;
-                    }
-                }
-            }
+        let mut tool = match db.get_tool_by_key(&tool_router_key) {
+            Ok(t) => t,
             Err(_) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: 404,
-                        error: "Tool not found".to_string(),
-                        message: format!("Tool with key '{}' not found", tool_router_key),
-                    }))
-                    .await;
+                let err = APIError {
+                    code: 404,
+                    error: "Tool not found".to_string(),
+                    message: format!("Tool not found: {}", tool_router_key),
+                };
+                let _ = res.send(Err(err)).await;
+                return Ok(());
             }
+        };
+        // Check if the tool can be enabled
+        if enabled && !tool.can_be_enabled() {
+            let err = APIError {
+                code: 400,
+                error: "Tool Cannot Be Enabled".to_string(),
+                message: "Tool Cannot Be Enabled".to_string(),
+            };
+            let _ = res.send(Err(err)).await;
+            return Ok(());
+        }
+        // Enable or disable the tool
+        if enabled {
+            tool.enable();
+        } else {
+            tool.disable();
+            tool.disable_mcp();
         }
 
+        if let Err(e) = db.update_tool(tool).await {
+            let err = APIError {
+                code: 500,
+                error: "Failed to update tool".to_string(),
+                message: format!("Failed to update tool: {}", e),
+            };
+            let _ = res.send(Err(err)).await;
+            return Ok(());
+        }
+
+        let response = json!({
+            "tool_router_key": tool_router_key,
+            "enabled": enabled,
+            "success": true
+        });
+        let _ = res.send(Ok(response)).await;
         Ok(())
     }
 
@@ -3912,6 +3994,52 @@ LANGUAGE={env_language}
         Ok(())
     }
 
+    pub async fn v2_api_get_tools_from_toolset(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_set_key: String,
+        res: Sender<Result<Vec<ShinkaiTool>, APIError>>,
+    ) {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return;
+        }
+        let result = match db.get_tools_by_tool_set(&tool_set_key) {
+            Ok(tools) => Ok(tools),
+            Err(e) => {
+                eprintln!("Error getting tools by toolset '{}': {}", tool_set_key, e);
+                Err(APIError {
+                    code: 500,
+                    error: "Failed to retrieve tools".to_string(),
+                    message: format!("Failed to retrieve tools for toolset '{}': {}", tool_set_key, e),
+                })
+            }
+        };
+        let _ = res.send(result).await;
+    }
+    pub async fn v2_api_set_common_toolset_config(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_set_key: String,
+        values: HashMap<String, Value>,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return;
+        }
+        let result = match db.set_common_toolset_config(&tool_set_key, values).await {
+            Ok(updated_keys) => Ok(updated_keys),
+            Err(e) => {
+                eprintln!("Error setting common config for toolset '{}': {}", tool_set_key, e);
+                Err(APIError {
+                    code: 500,
+                    error: "Failed to set common config".to_string(),
+                    message: format!("Failed to set common config for toolset '{}': {}", tool_set_key, e),
+                })
+            }
+        };
+        let _ = res.send(result).await;
+    }
     pub async fn v2_api_copy_tool_assets(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -4077,31 +4205,31 @@ LANGUAGE={env_language}
                     }
                     None => (),
                 }
-                let tool = DenoTool {
-                    name: "".to_string(),
-                    homepage: None,
-                    author: "".to_string(),
-                    mcp_enabled: Some(false),
-                    version: "".to_string(),
-                    js_code: code.clone(),
-                    tools: vec![],
-                    config: vec![],
-                    description: "".to_string(),
-                    keywords: vec![],
-                    input_args: Parameters::new(),
-                    output_arg: ToolOutputArg { json: "".to_string() },
-                    activated: true,
-                    embedding: None,
-                    result: ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
-                    sql_tables: None,
-                    sql_queries: None,
-                    file_inbox: None,
-                    oauth: None,
-                    assets: None,
-                    runner: RunnerType::Any,
-                    operating_system: vec![],
-                    tool_set: None,
-                };
+                let tool = DenoTool::new(
+                    "".to_string(),
+                    None,
+                    "".to_string(),
+                    "".to_string(),
+                    Some(false),
+                    code.clone(),
+                    vec![],
+                    vec![],
+                    "".to_string(),
+                    vec![],
+                    Parameters::new(),
+                    ToolOutputArg { json: "".to_string() },
+                    true,
+                    None,
+                    ToolResult::new("object".to_string(), serde_json::Value::Null, vec![]),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    RunnerType::Any,
+                    vec![],
+                    None,
+                );
                 tool.check_code(code.clone(), support_files).await
             }
             CodeLanguage::Python => {
@@ -4121,6 +4249,7 @@ LANGUAGE={env_language}
                 let tool: PythonTool = PythonTool {
                     version: "".to_string(),
                     name: "".to_string(),
+                    tool_router_key: None,
                     homepage: None,
                     author: "".to_string(),
                     mcp_enabled: Some(false),
@@ -4167,6 +4296,56 @@ LANGUAGE={env_language}
             }
         }
 
+        Ok(())
+    }
+
+    pub async fn v2_api_get_shinkai_tool_metadata(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_router_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tool = db.get_tool_by_key(&tool_router_key);
+
+        match tool {
+            Ok(tool) => {
+                let metadata_struct = tool.get_metadata();
+                match serde_json::to_value(metadata_struct) {
+                    Ok(metadata_value) => {
+                        if res.send(Ok(metadata_value)).await.is_err() {
+                            eprintln!("Failed to send metadata response");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to serialize metadata: {}", e);
+                        if res
+                            .send(Err(APIError {
+                                code: 500,
+                                error: "Serialization Error".to_string(),
+                                message: format!("Failed to serialize tool metadata: {}", e),
+                            }))
+                            .await
+                            .is_err()
+                        {
+                            eprintln!("Failed to send serialization error response");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: 500,
+                        error: "Failed to get tool metadata".to_string(),
+                        message: format!("Failed to get tool metadata: {}", e),
+                    }))
+                    .await;
+            }
+        }
         Ok(())
     }
 }
@@ -4312,7 +4491,158 @@ mod tests {
             "type": "Workflow"
         });
 
-        let merged_value = Node::merge_json(existing_tool_value, input_value);
+        let merged_value = Node::merge_tool(&existing_tool_value, &input_value);
         assert_eq!(merged_value, expected_merged_value);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_update_existing() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "Updated API Key",
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_config = merged["content"][0]["config"][0]["BasicConfig"].as_object().unwrap();
+        assert_eq!(merged_config["description"], "Updated API Key");
+    }
+
+    #[test]
+    fn test_merge_tool_configs_add_new() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "new_config",
+                            "description": "New Config",
+                            "required": false,
+                            "type_name": "string",
+                            "key_value": "new_value"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_configs = merged["content"][0]["config"].as_array().unwrap();
+        assert_eq!(merged_configs.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_empty_existing() {
+        let existing_tool = json!({
+            "content": [{
+                "config": []
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "new_config",
+                            "description": "New Config",
+                            "required": false,
+                            "type_name": "string",
+                            "key_value": "new_value"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_configs = merged["content"][0]["config"].as_array().unwrap();
+        assert_eq!(merged_configs.len(), 1);
+    }
+
+    #[test]
+    fn test_merge_tool_configs_update_dont_override_wrong_key() {
+        let existing_tool = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key",
+                            "description": "API Key",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key"
+                        }
+                    },
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key2",
+                            "description": "API Key 2",
+                            "required": true,
+                            "type_name": "string",
+                            "key_value": "old_key2"
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let input_value = json!({
+            "content": [{
+                "config": [
+                    {
+                        "BasicConfig": {
+                            "key_name": "api_key2",
+                            "description": "Updated API Key 2",
+                        }
+                    }
+                ]
+            }]
+        });
+
+        let merged = Node::merge_tool(&existing_tool, &input_value);
+        let merged_config = merged["content"][0]["config"][0]["BasicConfig"].as_object().unwrap();
+        assert_eq!(merged_config["key_name"], "api_key");
+        assert_eq!(merged["content"][0]["config"].as_array().unwrap().len(), 2);
+        assert_eq!(merged["content"][0]["config"][1]["BasicConfig"]["key_name"], "api_key2");
     }
 }

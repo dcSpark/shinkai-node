@@ -4,9 +4,9 @@ use shinkai_message_primitives::{
     schemas::{identity::StandardIdentity, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo}, shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}
 };
 use shinkai_sqlite::SqliteManager;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
-use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::{managers::identity_manager::IdentityManagerTrait, network::libp2p_manager::NetworkEvent};
 
 use super::{
     agent_payments_manager::external_agent_offerings_manager::AgentOfferingManagerError, node::ProxyConnectionInfo, Node
@@ -47,6 +47,7 @@ pub async fn send_message_to_peer(
     my_encryption_secret_key: EncryptionStaticKey,
     maybe_identity_manager: Weak<Mutex<dyn IdentityManagerTrait + Send>>,
     proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
+    libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
 ) -> Result<(), AgentOfferingManagerError> {
     shinkai_log(
         ShinkaiLogOption::MySubscriptions,
@@ -99,6 +100,7 @@ pub async fn send_message_to_peer(
         None,
         false,
         None,
+        libp2p_event_sender,
     );
 
     Ok(())
