@@ -1623,12 +1623,38 @@ impl Node {
         job_manager: Arc<Mutex<JobManager>>,
         bearer: String,
         conversation_inbox_name: String,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Vec<V2ChatMessage>, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
+
+        let messages = match db.get_last_messages_from_inbox(conversation_inbox_name.clone(), 100, None) {
+            Ok(messages) => messages,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
+            Ok(v2_messages) => v2_messages.into_iter().filter_map(|msg| msg.first().cloned()).collect(),
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to convert messages: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
 
         match job_manager
             .lock()
@@ -1636,8 +1662,8 @@ impl Node {
             .kill_job_by_conversation_inbox_name(&conversation_inbox_name)
             .await
         {
-            Ok(job_id) => {
-                let _ = res.send(Ok(job_id)).await;
+            Ok(_job_id) => {
+                let _ = res.send(Ok(v2_chat_messages)).await;
             }
             Err(err) => {
                 let api_error = APIError {

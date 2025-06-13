@@ -286,7 +286,7 @@ pub enum NodeCommand {
     V2ApiKillJob {
         bearer: String,
         conversation_inbox_name: String,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<Vec<V2ChatMessage>, APIError>>,
     },
     V2ApiVecFSRetrievePathSimplifiedJson {
         bearer: String,

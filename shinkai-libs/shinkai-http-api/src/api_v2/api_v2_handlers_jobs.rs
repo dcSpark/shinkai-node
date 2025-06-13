@@ -1267,7 +1267,7 @@ pub async fn remove_job_handler(
     path = "/v2/kill_job",
     request_body = KillJobRequest,
     responses(
-        (status = 200, description = "Successfully killed job", body = String),
+        (status = 200, description = "Successfully killed job", body = Vec<V2ChatMessage>),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
@@ -1290,7 +1290,10 @@ pub async fn kill_job_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(response) => Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK)),
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
