@@ -18,6 +18,7 @@ use shinkai_message_primitives::{
         encryption::clone_static_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}, signatures::{clone_signature_secret_key, signature_public_key_to_string}
     }
 };
+use serde_json::json;
 use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
@@ -511,6 +512,12 @@ pub async fn handle_network_message_cases(
                                     &format!("Failed to store InvoiceRequestNetworkError in DB: {:?}", e),
                                 );
                             }
+                            let _ = maybe_db.add_tracing(
+                                &invoice_request_network_error.invoice_id,
+                                None,
+                                "invoice_network_error",
+                                &json!({"error": invoice_request_network_error.error_message}),
+                            );
                         }
                         Err(e) => {
                             shinkai_log(
@@ -518,6 +525,16 @@ pub async fn handle_network_message_cases(
                                 ShinkaiLogLevel::Error,
                                 &format!("Failed to deserialize JSON to InvoiceRequestNetworkError: {}", e),
                             );
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(id) = val.get("invoice_id").and_then(|v| v.as_str()) {
+                                    let _ = maybe_db.add_tracing(
+                                        id,
+                                        None,
+                                        "invoice_network_error_deserialize",
+                                        &json!({"error": e.to_string()}),
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -556,6 +573,14 @@ pub async fn handle_network_message_cases(
                                     &format!("Failed to store invoice: {:?}", e),
                                 );
                             }
+                            if let Err(e) = maybe_db.add_tracing(
+                                &invoice.invoice_id,
+                                None,
+                                "invoice_received",
+                                &json!({"provider": invoice.provider_name}),
+                            ) {
+                                eprintln!("failed to add invoice trace: {:?}", e);
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -564,6 +589,16 @@ pub async fn handle_network_message_cases(
                                 &format!("Failed to deserialize JSON to Invoice: {}", e),
                             );
                             eprintln!("Failed to deserialize JSON to Invoice: {}", e);
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(id) = val.get("invoice_id").and_then(|v| v.as_str()) {
+                                    let _ = maybe_db.add_tracing(
+                                        id,
+                                        None,
+                                        "invoice_deserialize_error",
+                                        &json!({"error": e.to_string()}),
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -651,6 +686,14 @@ pub async fn handle_network_message_cases(
                                     &format!("Failed to store invoice result: {:?}", e),
                                 );
                             }
+                            if let Err(e) = maybe_db.add_tracing(
+                                &invoice_result.invoice_id,
+                                None,
+                                "invoice_result_received",
+                                &json!({"status": invoice_result.status}),
+                            ) {
+                                eprintln!("failed to add invoice result trace: {:?}", e);
+                            }
                         }
                         Err(e) => {
                             shinkai_log(
@@ -659,6 +702,16 @@ pub async fn handle_network_message_cases(
                                 &format!("Failed to deserialize JSON to InvoiceResult: {}", e),
                             );
                             eprintln!("Failed to deserialize JSON to InvoiceResult: {}", e);
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                                if let Some(id) = val.get("invoice_id").and_then(|v| v.as_str()) {
+                                    let _ = maybe_db.add_tracing(
+                                        id,
+                                        None,
+                                        "invoice_result_deserialize_error",
+                                        &json!({"error": e.to_string()}),
+                                    );
+                                }
+                            }
                         }
                     }
                 }

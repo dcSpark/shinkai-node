@@ -1135,7 +1135,11 @@ impl ToolRouter {
 
                     // Send a Network Request Invoice
                     let invoice_request = match my_agent_payments_manager
-                        .network_request_invoice(network_tool.clone(), UsageTypeInquiry::PerUse)
+                        .network_request_invoice(
+                            network_tool.clone(),
+                            UsageTypeInquiry::PerUse,
+                            context.message_hash_id(),
+                        )
                         .await
                     {
                         Ok(request) => request,
