@@ -36,7 +36,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager,
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
     managers::IdentityManager,
     network::{node_error::NodeError, ws_manager::WebSocketManager, Node},
 };
@@ -1622,6 +1622,7 @@ impl Node {
         db: Arc<SqliteManager>,
         job_manager: Arc<Mutex<JobManager>>,
         ws_manager: Option<Arc<Mutex<WebSocketManager>>>,
+        llm_stopper: Arc<LLMStopper>,
         bearer: String,
         conversation_inbox_name: String,
         res: Sender<Result<SendResponseBody, APIError>>,
@@ -1630,6 +1631,9 @@ impl Node {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
+
+        // Signal the LLM to stop processing
+        llm_stopper.stop(&conversation_inbox_name);
 
         // Kill the job and capture necessary info
         let (job_id, identity_sk, node_name) = {
@@ -1691,6 +1695,9 @@ impl Node {
         if let Some(manager) = ws_manager {
             manager.lock().await.clear_fragment(&conversation_inbox_name).await;
         }
+
+        // Clear any stop signal set for this job
+        llm_stopper.reset(&conversation_inbox_name);
 
         let _ = res
             .send(Ok(SendResponseBody {

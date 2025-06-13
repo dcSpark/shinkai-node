@@ -801,11 +801,13 @@ impl Node {
                 let db_clone = self.db.clone();
                 let job_manager_clone = self.job_manager.clone().unwrap();
                 let ws_manager_clone = self.ws_manager.clone();
+                let llm_stopper_clone = self.llm_stopper.clone();
                 tokio::spawn(async move {
                     let _ = Node::v2_api_kill_job(
                         db_clone,
                         job_manager_clone,
                         ws_manager_clone,
+                        llm_stopper_clone,
                         bearer,
                         conversation_inbox_name,
                         res,
