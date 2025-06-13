@@ -8,25 +8,14 @@ use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::{APIError, SendResponseBody, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        identity::Identity,
-        inbox_name::InboxName,
-        job::{ForkedJob, JobLike},
-        job_config::JobConfig,
-        llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider},
-        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
-        smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox},
-    },
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData},
-        shinkai_message_schemas::{
-            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType,
-            V2ChatMessage,
-        },
-    },
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
+        identity::Identity, inbox_name::InboxName, job::{ForkedJob, JobLike}, job_config::JobConfig, llm_providers::{common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::SerializedLLMProvider}, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, smart_inbox::{LLMProviderSubset, ProviderType, SmartInbox, V2SmartInbox}
+    }, shinkai_message::{
+        shinkai_message::{MessageBody, MessageData}, shinkai_message_schemas::{
+            APIChangeJobAgentRequest, ExportInboxMessagesFormat, JobCreationInfo, JobMessage, MessageSchemaType, V2ChatMessage
+        }
+    }, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
+    }
 };
 
 use shinkai_sqlite::inbox_manager::PaginatedSmartInboxes;
@@ -36,9 +25,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper},
-    managers::IdentityManager,
-    network::{node_error::NodeError, ws_manager::WebSocketManager, Node},
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::IdentityManager, network::{node_error::NodeError, ws_manager::WebSocketManager, Node}
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1632,9 +1619,6 @@ impl Node {
             return Ok(());
         }
 
-        // Signal the LLM to stop processing
-        llm_stopper.stop(&conversation_inbox_name);
-
         // Kill the job and capture necessary info
         let (job_id, identity_sk, node_name) = {
             let mut jm = job_manager.lock().await;
@@ -1667,6 +1651,9 @@ impl Node {
         } else {
             String::new()
         };
+
+        // Signal the LLM to stop processing
+        llm_stopper.stop(&conversation_inbox_name);
 
         // Insert an assistant message with the partial text
         let ai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
