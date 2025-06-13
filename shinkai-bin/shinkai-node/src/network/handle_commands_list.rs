@@ -800,9 +800,17 @@ impl Node {
             } => {
                 let db_clone = self.db.clone();
                 let job_manager_clone = self.job_manager.clone().unwrap();
+                let ws_manager_clone = self.ws_manager.clone();
                 tokio::spawn(async move {
-                    let _ =
-                        Node::v2_api_kill_job(db_clone, job_manager_clone, bearer, conversation_inbox_name, res).await;
+                    let _ = Node::v2_api_kill_job(
+                        db_clone,
+                        job_manager_clone,
+                        ws_manager_clone,
+                        bearer,
+                        conversation_inbox_name,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiVecFSRetrievePathSimplifiedJson { bearer, payload, res } => {

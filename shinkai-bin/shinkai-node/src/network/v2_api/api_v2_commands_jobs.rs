@@ -38,7 +38,7 @@ use x25519_dalek::PublicKey as EncryptionPublicKey;
 use crate::{
     llm_provider::job_manager::JobManager,
     managers::IdentityManager,
-    network::{node_error::NodeError, Node},
+    network::{node_error::NodeError, ws_manager::WebSocketManager, Node},
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1621,6 +1621,7 @@ impl Node {
     pub async fn v2_api_kill_job(
         db: Arc<SqliteManager>,
         job_manager: Arc<Mutex<JobManager>>,
+        ws_manager: Option<Arc<Mutex<WebSocketManager>>>,
         bearer: String,
         conversation_inbox_name: String,
         res: Sender<Result<SendResponseBody, APIError>>,
@@ -1651,10 +1652,22 @@ impl Node {
             }
         };
 
-        // Insert an assistant message with the partial text (none available yet)
+        // Obtain partial assistant message from the WebSocket manager
+        let partial_text = if let Some(manager) = ws_manager.as_ref() {
+            manager
+                .lock()
+                .await
+                .get_fragment(&conversation_inbox_name)
+                .await
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        // Insert an assistant message with the partial text
         let ai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
             job_id.clone(),
-            String::new(),
+            partial_text,
             Vec::new(),
             None,
             identity_sk,
@@ -1673,6 +1686,10 @@ impl Node {
             };
             let _ = res.send(Err(api_error)).await;
             return Ok(());
+        }
+
+        if let Some(manager) = ws_manager {
+            manager.lock().await.clear_fragment(&conversation_inbox_name).await;
         }
 
         let _ = res
