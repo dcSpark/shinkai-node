@@ -100,7 +100,7 @@ impl LibP2PManager {
         node_name: String,
         identity_secret_key: SigningKey,
         listen_port: Option<u16>,
-        mut message_handler: ShinkaiMessageHandler,
+        message_handler: ShinkaiMessageHandler,
         relay_address: Option<Multiaddr>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())?;
@@ -179,8 +179,6 @@ impl LibP2PManager {
 
         // Create event channel
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-
-        message_handler.set_libp2p_event_sender(Some(event_sender.clone()));
 
         Ok(LibP2PManager {
             swarm,
@@ -596,7 +594,7 @@ impl LibP2PManager {
                                 eprintln!("Received direct message request from peer {} {:?}", peer, request);
 
                                 // Handle the incoming request message
-                                self.message_handler.handle_message(peer, request, Some(channel)).await;
+                                let _ = self.message_handler.handle_message_internode(peer, &request, Some(channel), Some(self.event_sender.clone())).await;
                             }
                             request_response::Message::Response { response, request_id, .. } => {
                                 shinkai_log(
@@ -606,7 +604,7 @@ impl LibP2PManager {
                                 );
                                 eprintln!("Received direct message response from peer {} {:?}", peer, response);
                                 // Handle the response (acknowledgment)
-                                self.message_handler.handle_message(peer, response, None).await;
+                                let _ = self.message_handler.handle_message_internode(peer, &response, None, Some(self.event_sender.clone())).await;
                                 self.pending_outbound_requests.remove(&request_id);
                             }
                         }

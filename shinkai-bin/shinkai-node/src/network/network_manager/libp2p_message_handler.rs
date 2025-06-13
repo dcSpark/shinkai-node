@@ -36,7 +36,6 @@ pub struct ShinkaiMessageHandler {
     proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     local_addr: SocketAddr,
-    libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
 }
 
 impl ShinkaiMessageHandler {
@@ -52,7 +51,6 @@ impl ShinkaiMessageHandler {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         local_addr: SocketAddr,
-        libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
     ) -> Self {
         Self {
             db,
@@ -65,44 +63,16 @@ impl ShinkaiMessageHandler {
             proxy_connection_info,
             ws_manager,
             local_addr,
-            libp2p_event_sender,
-        }
-    }
-
-    pub fn set_libp2p_event_sender(&mut self, libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>) {
-        self.libp2p_event_sender = libp2p_event_sender;
-    }
-
-    /// Handle a message from a peer - this replaces the NetworkJobManager processing
-    pub async fn handle_message(&self, peer_id: PeerId, message: ShinkaiMessage, channel: Option<ResponseChannel<ShinkaiMessage>>) {
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Info,
-            &format!("Handling message from peer {} via libp2p", peer_id),
-        );
-
-        // Process the message directly using the existing network handlers
-        if let Err(e) = self.handle_message_internode(
-            self.local_addr,
-            peer_id,
-            &message,
-            channel,
-        ).await {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Error,
-                &format!("Failed to handle message from peer {}: {:?}", peer_id, e),
-            );
         }
     }
 
     /// Process the message directly (moved from NetworkJobManager)
-    async fn handle_message_internode(
+    pub async fn handle_message_internode(
         &self,
-        receiver_address: SocketAddr,
         sender_peer_id: PeerId,
         message: &ShinkaiMessage,
         channel: Option<ResponseChannel<ShinkaiMessage>>,
+        libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let maybe_db = self.db
             .upgrade()
@@ -113,7 +83,7 @@ impl ShinkaiMessageHandler {
             ShinkaiLogLevel::Info,
             &format!(
                 "{} {} > Network Job Got message from {:?}",
-                self.node_name.get_node_name_string(), receiver_address, sender_peer_id
+                self.node_name.get_node_name_string(), self.local_addr, sender_peer_id
             ),
         );
 
@@ -133,7 +103,7 @@ impl ShinkaiMessageHandler {
                     ShinkaiLogLevel::Error,
                     &format!(
                         "{} > Failed to get sender identity: {:?} {:?}",
-                        receiver_address, sender_profile_name_string, e
+                        self.local_addr, sender_profile_name_string, e
                     ),
                 );
                 format!("Failed to get sender identity: {:?}", e)
@@ -214,18 +184,18 @@ impl ShinkaiMessageHandler {
             ShinkaiLogLevel::Debug,
             &format!(
                 "{} > Sender Profile Name: {:?}",
-                receiver_address, sender_profile_name_string
+                self.local_addr, sender_profile_name_string
             ),
         );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Node Sender Identity: {}", receiver_address, encryption_sender_identity),
+            &format!("{} > Node Sender Identity: {}", self.local_addr, encryption_sender_identity),
         );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Verified message signature", receiver_address),
+            &format!("{} > Verified message signature", self.local_addr),
         );
 
         let proxy_connection_info = self.proxy_connection_info
@@ -242,13 +212,13 @@ impl ShinkaiMessageHandler {
             &self.node_name.get_node_name_string(),
             maybe_db,
             self.identity_manager.clone(),
-            receiver_address,
+            self.local_addr,
             sender_peer_id,
             self.my_agent_offerings_manager.clone(),
             self.ext_agent_offerings_manager.clone(),
             proxy_connection_info,
             self.ws_manager.clone(),
-            self.libp2p_event_sender.clone(),
+            libp2p_event_sender.clone(),
             channel,
         )
         .await
