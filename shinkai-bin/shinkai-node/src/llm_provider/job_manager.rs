@@ -777,37 +777,20 @@ impl JobManager {
         // Remove from the jobs map
         self.jobs.lock().await.remove(&job_id);
 
-        // Remove from the database
-        if let Some(db_arc) = self.db.upgrade() {
-            // Remove job from database
-            if let Err(e) = db_arc.remove_job(&job_id) {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Error,
-                    &format!("Failed to delete job {} from database: {}", job_id, e),
-                );
-                return Err(LLMProviderError::ShinkaiDB(e));
-            }
+        // Remove from both job queues
+        let _ = self.job_queue_manager_normal.lock().await.dequeue(&job_id).await;
+        let _ = self.job_queue_manager_immediate.lock().await.dequeue(&job_id).await;
 
-            // Remove from both job queues
-            let _ = self.job_queue_manager_normal.lock().await.dequeue(&job_id).await;
-            let _ = self.job_queue_manager_immediate.lock().await.dequeue(&job_id).await;
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!(
+                "Successfully killed job with conversation inbox: {}",
+                conversation_inbox_name
+            ),
+        );
 
-            shinkai_log(
-                ShinkaiLogOption::JobExecution,
-                ShinkaiLogLevel::Info,
-                &format!(
-                    "Successfully killed job with conversation inbox: {}",
-                    conversation_inbox_name
-                ),
-            );
-
-            Ok(job_id)
-        } else {
-            Err(LLMProviderError::DatabaseError(
-                "Failed to upgrade database reference".to_string(),
-            ))
-        }
+        Ok(job_id)
     }
 }
 

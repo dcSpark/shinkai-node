@@ -42,6 +42,7 @@ pub struct WebSocketManager {
     identity_manager_trait: Arc<Mutex<dyn IdentityManagerTrait + Send>>,
     encryption_secret_key: EncryptionStaticKey,
     message_queue: MessageQueue,
+    message_fragments: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl Clone for WebSocketManager {
@@ -55,6 +56,7 @@ impl Clone for WebSocketManager {
             identity_manager_trait: Arc::clone(&self.identity_manager_trait),
             encryption_secret_key: self.encryption_secret_key.clone(),
             message_queue: Arc::clone(&self.message_queue),
+            message_fragments: Arc::clone(&self.message_fragments),
         }
     }
 }
@@ -87,6 +89,7 @@ impl WebSocketManager {
             identity_manager_trait,
             encryption_secret_key,
             message_queue: Arc::new(Mutex::new(VecDeque::new())),
+            message_fragments: Arc::new(Mutex::new(HashMap::new())),
         }));
 
         let manager_clone = Arc::clone(&manager);
@@ -493,6 +496,16 @@ impl WebSocketManager {
             }
         }
     }
+
+    pub async fn get_fragment(&self, inbox: &str) -> Option<String> {
+        let fragments = self.message_fragments.lock().await;
+        fragments.get(inbox).cloned()
+    }
+
+    pub async fn clear_fragment(&self, inbox: &str) {
+        let mut fragments = self.message_fragments.lock().await;
+        fragments.remove(inbox);
+    }
 }
 
 #[async_trait]
@@ -505,6 +518,18 @@ impl WSUpdateHandler for WebSocketManager {
         metadata: WSMessageType,
         is_stream: bool,
     ) {
+        if is_stream && matches!(topic, WSTopic::Inbox) {
+            let mut fragments = self.message_fragments.lock().await;
+            let entry = fragments.entry(subtopic.clone()).or_default();
+            entry.push_str(&update);
+
+            if let WSMessageType::Metadata(meta) = &metadata {
+                if meta.is_done {
+                    fragments.remove(&subtopic);
+                }
+            }
+        }
+
         let mut queue = self.message_queue.lock().await;
         queue.push_back((topic, subtopic, update, metadata, is_stream));
     }

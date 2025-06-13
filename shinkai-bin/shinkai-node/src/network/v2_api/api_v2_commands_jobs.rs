@@ -25,7 +25,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::PublicKey as EncryptionPublicKey;
 
 use crate::{
-    llm_provider::job_manager::JobManager, managers::IdentityManager, network::{node_error::NodeError, Node}
+    llm_provider::{job_manager::JobManager, llm_stopper::LLMStopper}, managers::IdentityManager, network::{node_error::NodeError, ws_manager::WebSocketManager, Node}
 };
 
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
@@ -1605,6 +1605,98 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_api_kill_job(
+        db: Arc<SqliteManager>,
+        job_manager: Arc<Mutex<JobManager>>,
+        ws_manager: Option<Arc<Mutex<WebSocketManager>>>,
+        llm_stopper: Arc<LLMStopper>,
+        bearer: String,
+        conversation_inbox_name: String,
+        res: Sender<Result<SendResponseBody, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        // Kill the job and capture necessary info
+        let (job_id, identity_sk, node_name) = {
+            let mut jm = job_manager.lock().await;
+            match jm.kill_job_by_conversation_inbox_name(&conversation_inbox_name).await {
+                Ok(job_id) => {
+                    let id_sk = clone_signature_secret_key(&jm.identity_secret_key);
+                    let node_name = jm.node_profile_name.clone();
+                    (job_id, id_sk, node_name)
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: err.to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
+            }
+        };
+
+        // Obtain partial assistant message from the WebSocket manager
+        let partial_text = if let Some(manager) = ws_manager.as_ref() {
+            manager
+                .lock()
+                .await
+                .get_fragment(&conversation_inbox_name)
+                .await
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        // Signal the LLM to stop processing
+        llm_stopper.stop(&conversation_inbox_name);
+
+        // Insert an assistant message with the partial text
+        let ai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+            job_id.clone(),
+            partial_text,
+            Vec::new(),
+            None,
+            identity_sk,
+            node_name.node_name.clone(),
+            node_name.node_name.clone(),
+        )
+        .map_err(|_| NodeError {
+            message: "Failed to build message".to_string(),
+        })?;
+
+        if let Err(err) = db.add_message_to_job_inbox(&job_id, &ai_message, None, None).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to add message: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        if let Some(manager) = ws_manager {
+            manager.lock().await.clear_fragment(&conversation_inbox_name).await;
+        }
+
+        // Clear any stop signal set for this job
+        llm_stopper.reset(&conversation_inbox_name);
+
+        let _ = res
+            .send(Ok(SendResponseBody {
+                status: "success".to_string(),
+                message: "Job killed successfully".to_string(),
+                data: None,
+            }))
+            .await;
+
+        Ok(())
+    }
+
     pub async fn v2_export_messages_from_inbox(
         db: Arc<SqliteManager>,
         bearer: String,
@@ -1761,11 +1853,7 @@ impl Node {
 
                 for messages in v2_chat_messages {
                     for message in messages {
-                        let role = if message
-                            .sender_subidentity
-                            .to_lowercase()
-                            .contains("/agent/")
-                        {
+                        let role = if message.sender_subidentity.to_lowercase().contains("/agent/") {
                             "assistant"
                         } else {
                             "user"
