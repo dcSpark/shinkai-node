@@ -1,7 +1,7 @@
 use std::sync::{Arc, Weak};
 
 use ed25519_dalek::SigningKey;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use shinkai_message_primitives::{
     schemas::{
@@ -138,9 +138,12 @@ impl MyAgentOfferingsManager {
         &self,
         network_tool: NetworkTool,
         usage_type_inquiry: UsageTypeInquiry,
+        tracing_message_id: Option<String>,
     ) -> Result<InternalInvoiceRequest, AgentOfferingManagerError> {
         // Request the invoice
-        let internal_invoice_request = self.request_invoice(network_tool.clone(), usage_type_inquiry).await?;
+        let usage_clone = usage_type_inquiry.clone();
+        let internal_invoice_request =
+            self.request_invoice(network_tool.clone(), usage_type_inquiry).await?;
 
         // Create the payload for the invoice request
         let payload = internal_invoice_request.to_invoice_request();
@@ -171,16 +174,30 @@ impl MyAgentOfferingsManager {
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
-            send_message_to_peer(
-                message,
-                self.db.clone(),
-                standard_identity,
-                self.my_encryption_secret_key.clone(),
-                self.identity_manager.clone(),
-                self.proxy_connection_info.clone(),
-                self.libp2p_event_sender.clone(),
-            )
-            .await?;
+        send_message_to_peer(
+            message,
+            self.db.clone(),
+            standard_identity,
+            self.my_encryption_secret_key.clone(),
+            self.identity_manager.clone(),
+            self.proxy_connection_info.clone(),
+            self.libp2p_event_sender.clone(),
+        )
+        .await?;
+
+        if let Some(db) = self.db.upgrade() {
+            let trace_id = tracing_message_id
+                .clone()
+                .unwrap_or_else(|| internal_invoice_request.unique_id.clone());
+            let trace_info = json!({
+                "provider": network_tool.provider.to_string(),
+                "tool": network_tool.name,
+                "usage_type": usage_clone
+            });
+            if let Err(e) = db.add_tracing(&trace_id, None, "invoice_request_sent", &trace_info) {
+                eprintln!("failed to add tracing: {:?}", e);
+            }
+        }
         }
 
         // Return the generated invoice request
@@ -393,12 +410,13 @@ impl MyAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<Invoice, AgentOfferingManagerError>` - The updated invoice or an error.
-    pub async fn pay_invoice_and_send_receipt(
+pub async fn pay_invoice_and_send_receipt(
         &self,
         invoice_id: String,
         tool_data: Value,
         node_name: ShinkaiName,
-    ) -> Result<Invoice, AgentOfferingManagerError> {
+        tracing_message_id: Option<String>,
+) -> Result<Invoice, AgentOfferingManagerError> {
         // TODO: check that the invoice is valid (exists) and still valid (not expired)
 
         // Step 0: Get the invoice from the database
@@ -440,6 +458,16 @@ impl MyAgentOfferingsManager {
 
         // Step 3: Send receipt and data to provider
         self.send_receipt_and_data_to_provider(&updated_invoice).await?;
+
+        if let Some(db) = self.db.upgrade() {
+            let trace_id = tracing_message_id
+                .clone()
+                .unwrap_or_else(|| invoice_id.clone());
+            let trace_info = json!({ "status": "paid" });
+            if let Err(e) = db.add_tracing(&trace_id, None, "invoice_paid", &trace_info) {
+                eprintln!("failed to add tracing: {:?}", e);
+            }
+        }
 
         Ok(updated_invoice)
     }
