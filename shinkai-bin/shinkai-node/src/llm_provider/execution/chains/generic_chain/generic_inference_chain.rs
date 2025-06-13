@@ -32,14 +32,14 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use shinkai_message_primitives::shinkai_utils::shinkai_path::ShinkaiPath;
 use shinkai_sqlite::SqliteManager;
 
+use base64::Engine;
+use serde_json::json;
 use std::fmt;
 use std::path::PathBuf;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use base64::Engine;
-use serde_json::json;
 
 #[derive(Clone)]
 pub struct GenericInferenceChain {
@@ -688,6 +688,21 @@ impl GenericInferenceChain {
             }
 
             let response = response_res?;
+            if let Some(ref msg_id) = message_hash_id {
+                let trace_info = json!({
+                    "response": response.response_string,
+                    "function_calls": response.function_calls,
+                    "json": response.json,
+                });
+                if let Err(e) = db.add_tracing(
+                    msg_id,
+                    inbox_name.as_ref().map(|i| i.get_value()).as_deref(),
+                    "llm_response",
+                    &trace_info,
+                ) {
+                    eprintln!("failed to add response trace: {:?}", e);
+                }
+            }
 
             // NEW: Accumulate this LLM message
             all_llm_messages.push(response.response_string.clone());
@@ -767,7 +782,6 @@ impl GenericInferenceChain {
                                 LLMProviderError::ToolRouterError(ref error_msg)
                                     if error_msg.contains("Invalid function arguments") =>
                                 {
-
                                     if let Some(ref msg_id) = message_hash_id {
                                         let trace_info = json!({
                                             "error": error_msg,
