@@ -483,6 +483,12 @@ impl RelayManager {
             })) => {
                 println!("Identified peer: {} with protocol version: {}", peer_id, info.protocol_version);
                 
+                // Check if this peer is already registered to avoid unnecessary re-processing
+                if let Some(existing_identity) = self.find_identity_by_peer(&peer_id) {
+                    println!("🔄 Peer {} already registered with identity: {} - skipping re-identification", peer_id, existing_identity);
+                    return Ok(());
+                }
+                
                 // Extract the peer's public key from the libp2p identity  
                 // Get the raw public key bytes and try to create an ed25519_dalek::VerifyingKey
                 let public_key_bytes = info.public_key.encode_protobuf();
@@ -516,8 +522,6 @@ impl RelayManager {
                 } else {
                     println!("❌ Peer {} public key too short: {} bytes", peer_id, public_key_bytes.len());
                 }
-
-                println!("📋 Peer {} supports protocols: {:?}", peer_id, info.protocols);
             }      
             SwarmEvent::Behaviour(RelayBehaviourEvent::Ping(ping_event)) => {
                 match ping_event {
