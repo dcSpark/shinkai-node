@@ -1623,57 +1623,65 @@ impl Node {
         job_manager: Arc<Mutex<JobManager>>,
         bearer: String,
         conversation_inbox_name: String,
-        res: Sender<Result<Vec<V2ChatMessage>, APIError>>,
+        res: Sender<Result<SendResponseBody, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        let messages = match db.get_last_messages_from_inbox(conversation_inbox_name.clone(), 100, None) {
-            Ok(messages) => messages,
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to retrieve messages: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
+        // Kill the job and capture necessary info
+        let (job_id, identity_sk, node_name) = {
+            let mut jm = job_manager.lock().await;
+            match jm.kill_job_by_conversation_inbox_name(&conversation_inbox_name).await {
+                Ok(job_id) => {
+                    let id_sk = clone_signature_secret_key(&jm.identity_secret_key);
+                    let node_name = jm.node_profile_name.clone();
+                    (job_id, id_sk, node_name)
+                }
+                Err(err) => {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: err.to_string(),
+                    };
+                    let _ = res.send(Err(api_error)).await;
+                    return Ok(());
+                }
             }
         };
 
-        let v2_chat_messages = match Self::convert_shinkai_messages_to_v2_chat_messages(messages) {
-            Ok(v2_messages) => v2_messages.into_iter().filter_map(|msg| msg.first().cloned()).collect(),
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("Failed to convert messages: {}", err),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
+        // Insert an assistant message with the partial text (none available yet)
+        let ai_message = ShinkaiMessageBuilder::job_message_from_llm_provider(
+            job_id.clone(),
+            String::new(),
+            Vec::new(),
+            None,
+            identity_sk,
+            node_name.node_name.clone(),
+            node_name.node_name.clone(),
+        )
+        .map_err(|_| NodeError {
+            message: "Failed to build message".to_string(),
+        })?;
 
-        match job_manager
-            .lock()
-            .await
-            .kill_job_by_conversation_inbox_name(&conversation_inbox_name)
-            .await
-        {
-            Ok(_job_id) => {
-                let _ = res.send(Ok(v2_chat_messages)).await;
-            }
-            Err(err) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: err.to_string(),
-                };
-                let _ = res.send(Err(api_error)).await;
-            }
+        if let Err(err) = db.add_message_to_job_inbox(&job_id, &ai_message, None, None).await {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("Failed to add message: {}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
         }
+
+        let _ = res
+            .send(Ok(SendResponseBody {
+                status: "success".to_string(),
+                message: "Job killed successfully".to_string(),
+                data: None,
+            }))
+            .await;
 
         Ok(())
     }

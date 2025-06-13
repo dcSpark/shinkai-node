@@ -1267,7 +1267,7 @@ pub async fn remove_job_handler(
     path = "/v2/kill_job",
     request_body = KillJobRequest,
     responses(
-        (status = 200, description = "Successfully killed job", body = Vec<V2ChatMessage>),
+        (status = 200, description = "Successfully killed job", body = SendResponseBody),
         (status = 400, description = "Bad request", body = APIError),
         (status = 500, description = "Internal server error", body = APIError)
     )
