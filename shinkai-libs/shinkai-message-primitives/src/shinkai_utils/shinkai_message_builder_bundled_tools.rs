@@ -1,6 +1,5 @@
 use crate::{
-    schemas::shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo,
-    shinkai_utils::encryption::encryption_public_key_to_string,
+    shinkai_message::shinkai_message::ExternalMetadata, shinkai_utils::encryption::encryption_public_key_to_string
 };
 use ed25519_dalek::SigningKey;
 use serde::Serialize;
@@ -26,13 +25,22 @@ impl ShinkaiMessageBuilder {
         sender_subidentity: ShinkaiNameString,
         node_receiver: ShinkaiNameString,
         node_receiver_subidentity: ShinkaiNameString,
-        proxy_info: Option<ShinkaiProxyBuilderInfo>,
+        external_metadata: Option<ExternalMetadata>,
     ) -> Result<ShinkaiMessage, &'static str> {
         let body = serde_json::to_string(&payload).map_err(|_| "Failed to serialize job creation to JSON")?;
 
         // Convert the encryption secret key to a public key and print it
         let my_encryption_public_key = EncryptionPublicKey::from(&my_encryption_secret_key);
         let my_enc_string = encryption_public_key_to_string(my_encryption_public_key);
+
+        let mut my_enc_string = my_enc_string;
+        let mut sender_subidentity = sender_subidentity;
+        if let Some(external_metadata) = external_metadata {
+            if !external_metadata.other.is_empty() && !external_metadata.intra_sender.is_empty() {
+                my_enc_string = external_metadata.other;
+                sender_subidentity = external_metadata.intra_sender.clone();
+            }
+        }
 
         ShinkaiMessageBuilder::new(
             my_encryption_secret_key,
