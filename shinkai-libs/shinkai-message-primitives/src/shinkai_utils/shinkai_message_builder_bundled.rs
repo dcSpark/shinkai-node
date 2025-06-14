@@ -37,11 +37,13 @@ impl ShinkaiMessageBuilder {
         sender: ShinkaiNameString,
         receiver: ShinkaiNameString,
     ) -> Result<ShinkaiMessage, &'static str> {
+        let my_encryption_public_key = x25519_dalek::PublicKey::from(&my_encryption_secret_key);
+        let my_encryption_public_key_string = encryption_public_key_to_string(my_encryption_public_key);
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .message_raw_content("ACK".to_string())
             .empty_non_encrypted_internal_metadata()
             .no_body_encryption()
-            .external_metadata(receiver, sender)
+            .external_metadata_with_other(receiver, sender, my_encryption_public_key_string)
             .build()
     }
 

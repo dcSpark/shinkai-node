@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
+use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -615,6 +616,7 @@ impl ExtAgentOfferingsManager {
         &mut self,
         requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
+        external_metadata: Option<ExternalMetadata>,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         // Call request_invoice to generate an invoice
         let invoice = self
@@ -652,8 +654,12 @@ impl ExtAgentOfferingsManager {
                         .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
                     drop(identity_manager);
                     let receiver_public_key = standard_identity.node_encryption_public_key;
-                    let proxy_builder_info =
-                        get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
+
+                    let receiver_node_name = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                        requester_node_name.to_string()
+                    } else {
+                        invoice_request.requester_name.to_string()
+                    };
 
                     let error_message = ShinkaiMessageBuilder::create_generic_invoice_message(
                         network_error.clone(),
@@ -663,9 +669,9 @@ impl ExtAgentOfferingsManager {
                         receiver_public_key,
                         self.node_name.to_string(),
                         "".to_string(),
-                        invoice_request.requester_name.to_string(),
+                        receiver_node_name,
                         "main".to_string(),
-                        proxy_builder_info,
+                        external_metadata,
                     )
                     .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
@@ -687,15 +693,20 @@ impl ExtAgentOfferingsManager {
 
         // Continue
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            eprintln!("🔑 Creating invoice message, requester_node_name: {:?}, invoice_request: {:?}", requester_node_name, invoice_request);
             let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&invoice_request.requester_name.to_string(), None)
+                .external_profile_to_global_identity(&requester_node_name.to_string(), None)
                 .await
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
+
             let receiver_public_key = standard_identity.node_encryption_public_key;
-            let proxy_builder_info =
-                get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
+            let receiver_node_name = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                requester_node_name.to_string()
+            } else {
+                invoice_request.requester_name.to_string()
+            };
 
             // Generate the message to request the invoice
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
@@ -706,14 +717,14 @@ impl ExtAgentOfferingsManager {
                 receiver_public_key,
                 self.node_name.to_string(),
                 "".to_string(),
-                invoice_request.requester_name.to_string(),
+                receiver_node_name,
                 "main".to_string(),
-                proxy_builder_info,
+                external_metadata,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
             eprintln!(
-                "sending message to peer {:?}",
+                "💸 Sending invoice message to peer {:?}",
                 invoice_request.requester_name.to_string()
             );
             send_message_to_peer(
@@ -943,7 +954,9 @@ impl ExtAgentOfferingsManager {
         &mut self,
         requester_node_name: ShinkaiName,
         invoice: Invoice,
+        external_metadata: Option<ExternalMetadata>,
     ) -> Result<(), AgentOfferingManagerError> {
+        eprintln!("💸 network_confirm_invoice_payment_and_process, requester_node_name: {:?}, invoice: {:?}, external_metadata: {:?}", requester_node_name, invoice, external_metadata);
         // Call confirm_invoice_payment_and_process to process the invoice
         let local_invoice = self
             .confirm_invoice_payment_and_process(requester_node_name.clone(), invoice.clone())
@@ -958,8 +971,12 @@ impl ExtAgentOfferingsManager {
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
-            let proxy_builder_info =
-                get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
+
+            let receiver_node_name = if invoice.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                requester_node_name.to_string()
+            } else {
+                invoice.requester_name.to_string()
+            };
 
             // Send result back to requester
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
@@ -970,9 +987,9 @@ impl ExtAgentOfferingsManager {
                 receiver_public_key,
                 self.node_name.to_string(),
                 "".to_string(),
-                requester_node_name.to_string(),
+                receiver_node_name,
                 "main".to_string(),
-                proxy_builder_info,
+                external_metadata,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 

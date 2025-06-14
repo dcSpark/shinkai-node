@@ -100,7 +100,7 @@ impl LibP2PManager {
         node_name: String,
         identity_secret_key: SigningKey,
         listen_port: Option<u16>,
-        mut message_handler: ShinkaiMessageHandler,
+        message_handler: ShinkaiMessageHandler,
         relay_address: Option<Multiaddr>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())?;
@@ -124,7 +124,11 @@ impl LibP2PManager {
             .with_relay_client(noise::Config::new, yamux::Config::default)?
             .with_behaviour(|keypair, relay_behaviour| ShinkaiNetworkBehaviour {
                 relay_client: relay_behaviour,
-                ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(10))),
+                ping: ping::Behaviour::new(
+                    ping::Config::new()
+                        .with_interval(Duration::from_secs(5))  // Reduced from 10s to 5s
+                        .with_timeout(Duration::from_secs(10))  // Add explicit timeout
+                ),
                 identify: identify::Behaviour::new(identify::Config::new(
                     "/shinkai/1.0.0".to_string(),
                     keypair.public(),
@@ -135,7 +139,8 @@ impl LibP2PManager {
                 dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
                 request_response: request_response::json::Behaviour::new(
                     std::iter::once((libp2p::StreamProtocol::new("/shinkai/message/1.0.0"), request_response::ProtocolSupport::Full)),
-                    request_response::Config::default().with_request_timeout(Duration::from_secs(300)),
+                    request_response::Config::default()
+                        .with_request_timeout(Duration::from_secs(30))
                 ),
             })?
             .build();
@@ -174,8 +179,6 @@ impl LibP2PManager {
 
         // Create event channel
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
-
-        message_handler.set_libp2p_event_sender(Some(event_sender.clone()));
 
         Ok(LibP2PManager {
             swarm,
@@ -311,8 +314,8 @@ impl LibP2PManager {
 
     /// Run the network manager
     pub async fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut reconnection_timer = tokio::time::interval(Duration::from_secs(5)); // Check reconnection every 5 seconds
-        let mut message_retry_timer = tokio::time::interval(Duration::from_secs(2)); // Process message queue every 2 seconds
+        let mut reconnection_timer = tokio::time::interval(Duration::from_secs(3)); // Check reconnection every 3 seconds
+        let mut message_retry_timer = tokio::time::interval(Duration::from_secs(1)); // Process message queue every 1 second
         
         loop {
             tokio::select! {
@@ -591,7 +594,7 @@ impl LibP2PManager {
                                 eprintln!("Received direct message request from peer {} {:?}", peer, request);
 
                                 // Handle the incoming request message
-                                self.message_handler.handle_message(peer, request, Some(channel)).await;
+                                let _ = self.message_handler.handle_message_internode(peer, &request, Some(channel), Some(self.event_sender.clone())).await;
                             }
                             request_response::Message::Response { response, request_id, .. } => {
                                 shinkai_log(
@@ -601,7 +604,7 @@ impl LibP2PManager {
                                 );
                                 eprintln!("Received direct message response from peer {} {:?}", peer, response);
                                 // Handle the response (acknowledgment)
-                                self.message_handler.handle_message(peer, response, None).await;
+                                let _ = self.message_handler.handle_message_internode(peer, &response, None, Some(self.event_sender.clone())).await;
                                 self.pending_outbound_requests.remove(&request_id);
                             }
                         }
@@ -983,13 +986,20 @@ impl LibP2PManager {
         Ok(())
     }
 
-    /// Calculate exponential backoff duration for reconnection attempts
+    /// Calculate exponential backoff duration for reconnection attempts with jitter
     fn calculate_backoff_duration(&self) -> Duration {
-        // Exponential backoff: 5s, 10s, 20s, 40s, then max out at 60s
-        let base_delay = 5;
-        let max_delay = 60;
+        // Exponential backoff: 2s, 4s, 8s, 16s, then max out at 30s
+        let base_delay = 2;
+        let max_delay = 30;
         let delay_seconds = std::cmp::min(base_delay * (2_u32.saturating_pow(self.reconnection_attempts)), max_delay);
-        Duration::from_secs(delay_seconds as u64)
+        
+        // Add jitter (0-1000ms) to prevent thundering herd
+        let jitter_ms = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos() % 1_000_000_000) / 1_000_000; // Convert to milliseconds
+        
+        Duration::from_millis((delay_seconds * 1000) as u64 + (jitter_ms % 1000) as u64)
     }
 
     /// Mark relay as connected and reset reconnection state
@@ -1156,6 +1166,30 @@ impl LibP2PManager {
                     ShinkaiLogLevel::Debug,
                     &format!("Message retry sent to peer {}", queued_message.peer_id),
                 );
+
+                // Update retry metadata
+                queued_message.retry_count += 1;
+                queued_message.last_attempt = now;
+
+                if queued_message.retry_count < self.max_retry_attempts {
+                    let peer_id = queued_message.peer_id;
+                    let retry_count = queued_message.retry_count;
+                    self.message_queue.push_back(queued_message);
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Queued message for peer {} for retry {}", peer_id, retry_count),
+                    );
+                } else {
+                    shinkai_log(
+                        ShinkaiLogOption::Network,
+                        ShinkaiLogLevel::Error,
+                        &format!(
+                            "Dropping message to peer {} after {} attempts",
+                            queued_message.peer_id, queued_message.retry_count
+                        ),
+                    );
+                }                
             }
         }
 

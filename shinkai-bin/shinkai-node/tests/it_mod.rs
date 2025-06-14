@@ -2,6 +2,7 @@
 
 mod it {
     mod a3_micropayment_flow_tests;
+    mod a4_micropayment_localhost_tests;
     mod cron_job_tests;
     mod db_identity_tests;
     mod db_inbox_tests;
@@ -26,8 +27,8 @@ mod it {
     mod websocket_tests;
 
     mod change_nodes_name_tests;
+    mod echo_tool_router_key_test;
     mod job_code_duplicate;
     mod native_tool_tests;
     mod tool_config_override_test;
-    mod echo_tool_router_key_test;
 }
