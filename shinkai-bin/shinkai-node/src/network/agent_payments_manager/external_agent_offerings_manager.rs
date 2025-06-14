@@ -655,6 +655,12 @@ impl ExtAgentOfferingsManager {
                     drop(identity_manager);
                     let receiver_public_key = standard_identity.node_encryption_public_key;
 
+                    let receiver_node_name = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                        requester_node_name.to_string()
+                    } else {
+                        invoice_request.requester_name.to_string()
+                    };
+
                     let error_message = ShinkaiMessageBuilder::create_generic_invoice_message(
                         network_error.clone(),
                         MessageSchemaType::InvoiceRequestNetworkError,
@@ -663,7 +669,7 @@ impl ExtAgentOfferingsManager {
                         receiver_public_key,
                         self.node_name.to_string(),
                         "".to_string(),
-                        invoice_request.requester_name.to_string(),
+                        receiver_node_name,
                         "main".to_string(),
                         external_metadata,
                     )
@@ -694,17 +700,12 @@ impl ExtAgentOfferingsManager {
                 .await
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
-            let receiver_public_key = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
-                // For localhost nodes, we need to use the public key from the external metadata
-                let public_key_bytes = hex::decode(external_metadata.clone().unwrap().other).map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to decode public key hex: {}", e)))?;
-                if public_key_bytes.len() != 32 {
-                    return Err(AgentOfferingManagerError::OperationFailed("Public key must be 32 bytes".to_string()));
-                }
-                let mut array = [0u8; 32];
-                array.copy_from_slice(&public_key_bytes);
-                x25519_dalek::PublicKey::from(array)
+
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let receiver_node_name = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                requester_node_name.to_string()
             } else {
-                standard_identity.node_encryption_public_key
+                invoice_request.requester_name.to_string()
             };
 
             // Generate the message to request the invoice
@@ -716,14 +717,14 @@ impl ExtAgentOfferingsManager {
                 receiver_public_key,
                 self.node_name.to_string(),
                 "".to_string(),
-                invoice_request.requester_name.to_string(),
+                receiver_node_name,
                 "main".to_string(),
                 external_metadata,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
             eprintln!(
-                "sending message to peer {:?}",
+                "💸 Sending invoice message to peer {:?}",
                 invoice_request.requester_name.to_string()
             );
             send_message_to_peer(
@@ -953,7 +954,9 @@ impl ExtAgentOfferingsManager {
         &mut self,
         requester_node_name: ShinkaiName,
         invoice: Invoice,
+        external_metadata: Option<ExternalMetadata>,
     ) -> Result<(), AgentOfferingManagerError> {
+        eprintln!("💸 network_confirm_invoice_payment_and_process, requester_node_name: {:?}, invoice: {:?}, external_metadata: {:?}", requester_node_name, invoice, external_metadata);
         // Call confirm_invoice_payment_and_process to process the invoice
         let local_invoice = self
             .confirm_invoice_payment_and_process(requester_node_name.clone(), invoice.clone())
@@ -969,6 +972,12 @@ impl ExtAgentOfferingsManager {
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
 
+            let receiver_node_name = if invoice.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                requester_node_name.to_string()
+            } else {
+                invoice.requester_name.to_string()
+            };
+
             // Send result back to requester
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
                 local_invoice.clone(),
@@ -978,9 +987,9 @@ impl ExtAgentOfferingsManager {
                 receiver_public_key,
                 self.node_name.to_string(),
                 "".to_string(),
-                requester_node_name.to_string(),
+                receiver_node_name,
                 "main".to_string(),
-                None,
+                external_metadata,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
