@@ -30,17 +30,6 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let body = serde_json::to_string(&payload).map_err(|_| "Failed to serialize job creation to JSON")?;
 
-        // It will encrypt the message with the proxy's pk if the sender is localhost and we have a proxy
-        let effective_receiver_public_key = if let Some(proxy) = proxy_info {
-            if !sender.starts_with("@@localhost.") {
-                receiver_public_key
-            } else {
-                proxy.proxy_enc_public_key
-            }
-        } else {
-            receiver_public_key
-        };
-
         // Convert the encryption secret key to a public key and print it
         let my_encryption_public_key = EncryptionPublicKey::from(&my_encryption_secret_key);
         let my_enc_string = encryption_public_key_to_string(my_encryption_public_key);
@@ -48,7 +37,7 @@ impl ShinkaiMessageBuilder {
         ShinkaiMessageBuilder::new(
             my_encryption_secret_key,
             my_signature_secret_key,
-            effective_receiver_public_key,
+            receiver_public_key,
         )
         .message_raw_content(body)
         .internal_metadata_with_schema(

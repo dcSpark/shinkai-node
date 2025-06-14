@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
+use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -615,6 +616,7 @@ impl ExtAgentOfferingsManager {
         &mut self,
         requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
+        external_metadata: ExternalMetadata,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         // Call request_invoice to generate an invoice
         let invoice = self
@@ -687,13 +689,25 @@ impl ExtAgentOfferingsManager {
 
         // Continue
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            eprintln!("🔑 Creating invoice message, requester_node_name: {:?}, invoice_request: {:?}", requester_node_name, invoice_request);
             let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
-                .external_profile_to_global_identity(&invoice_request.requester_name.to_string(), None)
+                .external_profile_to_global_identity(&requester_node_name.to_string(), None)
                 .await
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
-            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let receiver_public_key = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                // For localhost nodes, we need to use the public key from the external metadata
+                let public_key_bytes = hex::decode(external_metadata.other).map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to decode public key hex: {}", e)))?;
+                if public_key_bytes.len() != 32 {
+                    return Err(AgentOfferingManagerError::OperationFailed("Public key must be 32 bytes".to_string()));
+                }
+                let mut array = [0u8; 32];
+                array.copy_from_slice(&public_key_bytes);
+                x25519_dalek::PublicKey::from(array)
+            } else {
+                standard_identity.node_encryption_public_key
+            };
             let proxy_builder_info =
                 get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
 

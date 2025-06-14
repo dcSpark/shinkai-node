@@ -319,14 +319,13 @@ impl RelayManager {
         *self.swarm.local_peer_id()
     }
 
-    pub fn register_peer(&mut self, identity: String, peer_id: PeerId) {
-        println!("🔄 Peer {} registered with PeerId: {} - will update peer discovery information", identity, peer_id);
-        self.registered_peers.insert(identity.clone(), peer_id);
-        self.peer_identities.insert(peer_id, identity);
-    }
-
     /// Handle identity registration with conflict resolution
-    pub async fn handle_identity_registration(&mut self, identity: String, new_peer_id: PeerId) {
+    pub async fn handle_identity_registration(&mut self, mut identity: String, new_peer_id: PeerId, is_localhost: bool) {
+        // If the identity is localhost, we need to check if the peer is localhost
+        if is_localhost {
+            identity = new_peer_id.to_string();
+        }
+
         // Check if this identity is already registered to a different peer
         if let Some(existing_peer_id) = self.registered_peers.get(&identity) {
             let existing_peer_id = *existing_peer_id.value();
@@ -356,7 +355,8 @@ impl RelayManager {
         }
         
         // Register the new peer with this identity
-        self.register_peer(identity, new_peer_id);
+        self.registered_peers.insert(identity.clone(), new_peer_id);
+        self.peer_identities.insert(new_peer_id, identity);
     }
 
     pub fn unregister_peer(&mut self, peer_id: &PeerId) {
@@ -501,7 +501,7 @@ impl RelayManager {
                         // Verify the peer's identity using blockchain registry (with caching)
                         if let Some(verified_identity) = self.verify_peer_identity_internal(verifying_key, info.agent_version.clone()).await {
                             println!("🔑 Verified and registering peer {} with identity: {}", peer_id, verified_identity);
-                            self.handle_identity_registration(verified_identity, peer_id).await;
+                            self.handle_identity_registration(verified_identity, peer_id, false).await;
                         } else {
                             let possible_identity = if info.agent_version.ends_with("shinkai") {
                                 if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
@@ -511,7 +511,7 @@ impl RelayManager {
 
                             if let Some(identity) = possible_identity {
                                 println!("❌ Verification failed, registering peer {} with identity: {}", peer_id, identity);
-                                self.handle_identity_registration(identity, peer_id).await;
+                                self.handle_identity_registration(identity, peer_id, true).await;
                             } else {
                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
                             }
@@ -558,6 +558,8 @@ impl RelayManager {
                 // Handle request-response events for relaying direct messages between Shinkai nodes
                 match req_resp_event {
                     request_response::Event::Message { peer, message, .. } => {
+                        eprintln!("🔄 Relay: Received request-response message from peer {}", peer);
+                        eprintln!("   Message: {:?}", message);
                         match message {
                             request_response::Message::Request { mut request, channel, .. } => {
                                 println!("🔄 Relay: Received direct message request from peer {}", peer);
@@ -572,24 +574,33 @@ impl RelayManager {
                                 } else {
                                     target_identity.clone()
                                 };
+
+                                if let Ok(peer_id) = request.external_metadata.intra_sender.parse::<PeerId>() {
+                                    if let Some(intra_sender) = self.find_identity_by_peer(&peer_id) {
+                                        println!("🔑 Relay: Intra sender is localhost: {}", intra_sender);
+                                        request.external_metadata.intra_sender = request.external_metadata.sender.clone();
+                                        request.external_metadata.sender = self.config.relay_node_name.clone();
+                                        request.external_metadata.recipient = "@@localhost.sep-shinkai".to_string();
+
+                                        // Re-sign outer layer with the relay identity key
+                                        if let Ok(resigned) = request.sign_outer_layer(&self.config.identity_secret_key) {
+                                            request = resigned;
+                                        } else {
+                                            println!("❌ Failed to re-sign message from localhost");
+                                        }                                        
+                                    
+                                        let outbound_id = self.swarm.behaviour_mut().request_response.send_request(&peer_id, request);
+                                        self.request_response_channels.insert(outbound_id, channel);
+                                        return Ok(());
+                                    }
+                                }
                                 
                                 if request.external_metadata.sender.starts_with("@@localhost.") {
-                                    println!("🔄 Relay: We need to re-encrypt message from localhost to {}", target_node);
-                                    let original_sender = request.external_metadata.sender.clone();
+                                    println!("🔑 Relay: We need to re-sign the outer layer of the message from localhost to {}", target_node);
 
-                                    // Check if the message is body-encrypted (likely encrypted with relay's key due to proxy logic)
-                                    let is_body_encrypted = matches!(request.body, shinkai_message_primitives::shinkai_message::shinkai_message::MessageBody::Encrypted(_));
-                                    println!("🔍 Debug: is_body_encrypted = {}", is_body_encrypted);
-                                    if is_body_encrypted {
-                                        println!("🔓 Relay: Message from localhost is body-encrypted, attempting to decrypt and re-encrypt for recipient");
-                                        self.relay_message_encryption(&mut request, &target_node).await;
-                                    }
-
-                                    // Preserve original sender in intra_sender so the recipient knows who originated the request
-                                    request.external_metadata.intra_sender = original_sender;
-
-                                    // Replace outer sender with the relay identity so signature verification succeeds
+                                    // Tell the recipient that the message was relayed by the relay node
                                     request.external_metadata.sender = self.config.relay_node_name.clone();
+                                    request.external_metadata.intra_sender = peer.to_string();
 
                                     // Re-sign outer layer with the relay identity key
                                     if let Ok(resigned) = request.sign_outer_layer(&self.config.identity_secret_key) {
@@ -606,15 +617,30 @@ impl RelayManager {
                                 } else {
                                     // Target not found, send error response
                                     println!("❌ Target not found for request from {} to {}", request.external_metadata.sender, request.external_metadata.recipient);
-                                    request.external_metadata.other = "Target not found".to_string();
-                                    let _ = self.swarm.behaviour_mut().request_response.send_response(channel, request);
+                                    // request.external_metadata.other = "Target not found".to_string();
+                                    // let _ = self.swarm.behaviour_mut().request_response.send_response(channel, request);
                                 }
                             }
-                            request_response::Message::Response { response, request_id, .. } => {
+                            request_response::Message::Response { mut response, request_id, .. } => {
                                 println!("🔄 Relay: Received direct message response from peer {}", peer);
                                 println!("   Message from: {} to: {}", 
                                     response.external_metadata.sender,
-                                    response.external_metadata.recipient);                                
+                                    response.external_metadata.recipient);                  
+
+                                if response.external_metadata.sender.starts_with("@@localhost.") {
+                                    println!("🔑 Relay: We need to re-sign the outer layer of the message from localhost to {}", response.external_metadata.recipient);
+
+                                    // Tell the recipient that the message was relayed by the relay node
+                                    response.external_metadata.sender = self.config.relay_node_name.clone();
+                                    response.external_metadata.intra_sender = peer.to_string();
+
+                                    // Re-sign outer layer with the relay identity key
+                                    if let Ok(resigned) = response.sign_outer_layer(&self.config.identity_secret_key) {
+                                        response = resigned;
+                                    } else {
+                                        println!("❌ Failed to re-sign message from localhost");
+                                    }
+                                }
 
                                 if let Some((_, channel)) = self.request_response_channels.remove(&request_id) {
                                     let _ = self.swarm.behaviour_mut().request_response.send_response(channel, response);
