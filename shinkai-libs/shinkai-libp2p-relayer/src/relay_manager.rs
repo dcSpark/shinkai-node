@@ -510,7 +510,7 @@ impl RelayManager {
                             } else { None };
 
                             if let Some(identity) = possible_identity {
-                                println!("❌ Verification failed, registering peer {} with identity: {}", peer_id, identity);
+                                println!("🔑 Verification failed, registering peer {} with identity: {}, using peer id as identity.", peer_id, identity);
                                 self.handle_identity_registration(identity, peer_id, true).await;
                             } else {
                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
@@ -575,24 +575,26 @@ impl RelayManager {
                                     target_identity.clone()
                                 };
 
-                                if let Ok(peer_id) = request.external_metadata.intra_sender.parse::<PeerId>() {
-                                    if let Some(intra_sender) = self.find_identity_by_peer(&peer_id) {
-                                        println!("🔑 Relay: Intra sender is localhost: {}", intra_sender);
-                                        request.external_metadata.intra_sender = request.external_metadata.sender.clone();
-                                        request.external_metadata.sender = self.config.relay_node_name.clone();
-                                        request.external_metadata.recipient = "@@localhost.sep-shinkai".to_string();
+                                if request.external_metadata.recipient.contains(self.config.relay_node_name.as_str()) {
+                                    println!("🔑 Relay: We need to re-encrypt the message from relay to {}", request.external_metadata.intra_sender);
+                                    let peer_id = request.external_metadata.intra_sender.parse::<PeerId>().unwrap();
+                                    request.external_metadata.intra_sender = request.external_metadata.sender.clone();
+                                    request.external_metadata.sender = self.config.relay_node_name.clone();
+                                    request.external_metadata.recipient = "@@localhost.sep-shinkai".to_string();
 
-                                        // Re-sign outer layer with the relay identity key
-                                        if let Ok(resigned) = request.sign_outer_layer(&self.config.identity_secret_key) {
-                                            request = resigned;
-                                        } else {
-                                            println!("❌ Failed to re-sign message from localhost");
-                                        }                                        
-                                    
-                                        let outbound_id = self.swarm.behaviour_mut().request_response.send_request(&peer_id, request);
-                                        self.request_response_channels.insert(outbound_id, channel);
-                                        return Ok(());
+                                    // Re-encrypt message for localhost recipient
+                                    self.relay_message_encryption(&mut request, &"@@localhost.sep-shinkai".to_string()).await;
+
+                                    // Re-sign outer layer with the relay identity key
+                                    if let Ok(resigned) = request.sign_outer_layer(&self.config.identity_secret_key) {
+                                        request = resigned;
+                                    } else {
+                                        println!("❌ Failed to re-sign message from localhost");
                                     }
+                                
+                                    let outbound_id = self.swarm.behaviour_mut().request_response.send_request(&peer_id, request);
+                                    self.request_response_channels.insert(outbound_id, channel);
+                                    return Ok(());
                                 }
                                 
                                 if request.external_metadata.sender.starts_with("@@localhost.") {
@@ -743,8 +745,41 @@ async fn relay_message_encryption(&mut self, request: &mut ShinkaiMessage, targe
         };
 
         // Get recipient's identity from registry
-        let recipient_node_name = recipient_name.get_node_name_string();
-        let recipient_identity = match self.registry.get_identity_record(recipient_node_name.clone(), None).await {
+
+        // For localhost nodes (unregistered), use deterministic key generation
+        let recipient_enc_key = if target_node.contains("localhost") {
+            println!("🔑 Relay: Using other field for localhost node");
+            // Parse recipient's encryption key
+            match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&request.external_metadata.other) {
+                Ok(key) => key,
+                Err(_) => {
+                    println!("❌ Relay: Failed to parse recipient's encryption key");
+                    return;
+                }
+            }
+        } else {
+            // For registered nodes, try to get from blockchain registry
+            let recipient_node_name = recipient_name.get_node_name_string();
+            let recipient_identity = match self.registry.get_identity_record(recipient_node_name.clone(), None).await {
+                Ok(identity) => identity,
+                Err(e) => {
+                    println!("❌ Relay: Failed to get recipient's identity from registry: {}", e);
+                    return;
+                }
+            };
+    
+            // Parse recipient's encryption key
+            match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&recipient_identity.encryption_key) {
+                Ok(key) => key,
+                Err(_) => {
+                    println!("❌ Relay: Failed to parse recipient's encryption key");
+                    return;
+                }
+            }
+        };
+
+        let original_sender_node_name = request.external_metadata.intra_sender.clone();
+        let original_sender_identity = match self.registry.get_identity_record(original_sender_node_name.clone(), None).await {
             Ok(identity) => identity,
             Err(e) => {
                 println!("❌ Relay: Failed to get recipient's identity from registry: {}", e);
@@ -752,43 +787,52 @@ async fn relay_message_encryption(&mut self, request: &mut ShinkaiMessage, targe
             }
         };
 
-        // Parse recipient's encryption key
-        let recipient_enc_key = match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&recipient_identity.encryption_key) {
-            Ok(key) => key,
-            Err(_) => {
-                println!("❌ Relay: Failed to parse recipient's encryption key");
-                return;
-            }
-        };
-
-        // Check if 'other' field has original sender's encryption key
-        if request.external_metadata.other.is_empty() {
-            println!("❌ Relay: 'other' field is empty, cannot get original sender's encryption key");
-            return;
-        }
-
         // Parse original sender's encryption key
-        let original_sender_enc_key = match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&request.external_metadata.other) {
+        let original_sender_enc_key = match shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key(&original_sender_identity.encryption_key) {
             Ok(key) => key,
             Err(_) => {
-                println!("❌ Relay: Failed to parse original sender's encryption key from 'other' field");
+                println!("❌ Relay: Failed to parse original sender's encryption key");
                 return;
             }
-        };
+        };        
 
         // Decrypt the message using relay's private key and original sender's public key
-        let decrypted_message = match request.decrypt_outer_layer(&self.config.encryption_secret_key, &original_sender_enc_key) {
-            Ok(message) => message,
+        let mut decrypted_message = match request.decrypt_outer_layer(&self.config.encryption_secret_key, &original_sender_enc_key) {
+            Ok(message) => {
+                println!("✅ Relay: Successfully decrypted outer layer.");
+                message
+            }
             Err(e) => {
-                println!("❌ Relay: Failed to decrypt message: {}", e);
+                println!("❌ Relay: Failed to decrypt outer layer: {}", e);
                 return;
             }
         };
 
-        // Re-encrypt with recipient's key
+        // Also decrypt and re-encrypt the inner layer for end-to-end encryption between profiles
+        println!("🔑 Relay: Re-encrypting inner layer for final recipient");
+        if let Ok(inner_decrypted) = decrypted_message.decrypt_inner_layer(&self.config.encryption_secret_key, &original_sender_enc_key) {
+            println!("✅ Relay: Successfully decrypted inner layer.");
+            // Re-encrypt inner layer with relay's key + recipient's profile key  
+            if let Ok(inner_re_encrypted) = inner_decrypted.encrypt_inner_layer(&self.config.encryption_secret_key, &recipient_enc_key) {
+                println!("✅ Relay: Successfully re-encrypted inner layer");
+                decrypted_message = inner_re_encrypted;
+            } else {
+                println!("❌ Relay: Failed to re-encrypt inner layer");
+            }
+        } else {
+            println!("⚠️  Relay: Could not decrypt inner layer, proceeding with outer layer only");
+        }
+
+        // Re-encrypt outer layer with recipient's key
         match decrypted_message.encrypt_outer_layer(&self.config.encryption_secret_key, &recipient_enc_key) {
-            Ok(re_encrypted_message) => {
+            Ok(mut re_encrypted_message) => {
                 println!("✅ Relay: Successfully decrypted and re-encrypted message for recipient");
+                
+                // Update the 'other' field to contain relay's public key for final decryption
+                use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
+                let relay_public_key = x25519_dalek::PublicKey::from(&self.config.encryption_secret_key);
+                re_encrypted_message.external_metadata.other = encryption_public_key_to_string(relay_public_key);
+
                 *request = re_encrypted_message;
             },
             Err(e) => {

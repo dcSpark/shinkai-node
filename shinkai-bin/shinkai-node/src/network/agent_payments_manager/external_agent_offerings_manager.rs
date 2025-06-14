@@ -616,7 +616,7 @@ impl ExtAgentOfferingsManager {
         &mut self,
         requester_node_name: ShinkaiName,
         invoice_request: InvoiceRequest,
-        external_metadata: ExternalMetadata,
+        external_metadata: Option<ExternalMetadata>,
     ) -> Result<Invoice, AgentOfferingManagerError> {
         // Call request_invoice to generate an invoice
         let invoice = self
@@ -654,8 +654,6 @@ impl ExtAgentOfferingsManager {
                         .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
                     drop(identity_manager);
                     let receiver_public_key = standard_identity.node_encryption_public_key;
-                    let proxy_builder_info =
-                        get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
 
                     let error_message = ShinkaiMessageBuilder::create_generic_invoice_message(
                         network_error.clone(),
@@ -667,7 +665,7 @@ impl ExtAgentOfferingsManager {
                         "".to_string(),
                         invoice_request.requester_name.to_string(),
                         "main".to_string(),
-                        proxy_builder_info,
+                        external_metadata,
                     )
                     .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
@@ -698,7 +696,7 @@ impl ExtAgentOfferingsManager {
             drop(identity_manager);
             let receiver_public_key = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
                 // For localhost nodes, we need to use the public key from the external metadata
-                let public_key_bytes = hex::decode(external_metadata.other).map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to decode public key hex: {}", e)))?;
+                let public_key_bytes = hex::decode(external_metadata.clone().unwrap().other).map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to decode public key hex: {}", e)))?;
                 if public_key_bytes.len() != 32 {
                     return Err(AgentOfferingManagerError::OperationFailed("Public key must be 32 bytes".to_string()));
                 }
@@ -708,8 +706,6 @@ impl ExtAgentOfferingsManager {
             } else {
                 standard_identity.node_encryption_public_key
             };
-            let proxy_builder_info =
-                get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
 
             // Generate the message to request the invoice
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
@@ -722,7 +718,7 @@ impl ExtAgentOfferingsManager {
                 "".to_string(),
                 invoice_request.requester_name.to_string(),
                 "main".to_string(),
-                proxy_builder_info,
+                external_metadata,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
@@ -972,8 +968,6 @@ impl ExtAgentOfferingsManager {
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
-            let proxy_builder_info =
-                get_proxy_builder_info_static(identity_manager_arc, self.proxy_connection_info.clone()).await;
 
             // Send result back to requester
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
@@ -986,7 +980,7 @@ impl ExtAgentOfferingsManager {
                 "".to_string(),
                 requester_node_name.to_string(),
                 "main".to_string(),
-                proxy_builder_info,
+                None,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 

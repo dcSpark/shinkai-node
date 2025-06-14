@@ -477,7 +477,7 @@ pub async fn handle_network_message_cases(
                             // Successfully converted, you can now use shared_folder_infos
                             let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
                             let _ = ext_agent_offering_manager
-                                .network_invoice_requested(requester, invoice_request, message.external_metadata)
+                                .network_invoice_requested(requester, invoice_request, Some(message.external_metadata))
                                 .await;
                         }
                         Err(e) => {
