@@ -21,6 +21,7 @@ use shinkai_message_primitives::schemas::identity::{
 use shinkai_message_primitives::schemas::inbox_permission::InboxPermission;
 use shinkai_message_primitives::schemas::smart_inbox::SmartInbox;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
+use shinkai_message_primitives::shinkai_utils::encryption::encryption_secret_key_to_string;
 use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName, llm_providers::serialized_llm_provider::SerializedLLMProvider, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}
@@ -3072,12 +3073,12 @@ impl Node {
         res: Sender<Result<SendResponseBodyData, APIError>>,
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        if node_name.get_node_name_string().starts_with("@@localhost.") {
+        if potentially_encrypted_msg.external_metadata.recipient.starts_with("@@localhost.") {
             let _ = res
                 .send(Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
-                    message: "Invalid node name: @@localhost".to_string(),
+                    message: "Invalid recipient node name: @@localhost".to_string(),
                 }))
                 .await;
             return Ok(());
@@ -3204,9 +3205,7 @@ impl Node {
             }
         };
 
-        msg.external_metadata.intra_sender = "".to_string();
         msg.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
-
         let encrypted_msg = msg.encrypt_outer_layer(
             &encryption_secret_key.clone(),
             &external_global_identity.node_encryption_public_key,
@@ -3238,7 +3237,7 @@ impl Node {
             };
 
             let scheduled_time = msg.external_metadata.scheduled_time;
-            let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();
+            let message_hash = potentially_encrypted_msg.calculate_message_hash_for_pagination();            
 
             let parent_key = if !inbox_name.is_empty() {
                 match db.get_parent_message_hash(&inbox_name, &message_hash) {

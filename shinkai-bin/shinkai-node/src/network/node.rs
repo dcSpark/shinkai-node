@@ -591,7 +591,6 @@ impl Node {
                 Arc::downgrade(&self.proxy_connection_info),
                 self.ws_manager_trait.clone(),
                 self.listen_address,
-                None,
             );
 
             match LibP2PManager::new(self.node_name.to_string(), self.identity_secret_key.clone(), listen_port, message_handler, relay_address).await {
