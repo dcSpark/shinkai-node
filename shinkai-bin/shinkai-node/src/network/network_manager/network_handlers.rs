@@ -390,7 +390,7 @@ pub async fn handle_network_message_cases(
         let proxy_connection = proxy_connection_info.lock().await;
         if let Some(proxy_info) = &*proxy_connection {
             if message.external_metadata.sender == proxy_info.proxy_identity.get_node_name_string() {
-                match ShinkaiName::new(message.external_metadata.other.clone()) {
+                match ShinkaiName::new(message.external_metadata.intra_sender.clone()) {
                     Ok(origin_identity) => {
                         message.external_metadata.sender = origin_identity.get_node_name_string();
                         if let MessageBody::Unencrypted(ref mut body) = message.body {
