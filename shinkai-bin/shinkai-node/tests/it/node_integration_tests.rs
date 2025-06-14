@@ -1403,11 +1403,27 @@ fn test_send_message_to_localhost_node() {
         let node2_identity_name = "@@localhost.sep-shinkai";
         let relay_identity_name = Some("@@libp2p_relayer.sep-shinkai".to_string());
 
+        // Get relay's encryption public key from blockchain identity
+        let relay_encryption_pk = {
+            use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
+            // Relay's encryption key from blockchain: e2705427237521cf0ca3703a95a20039bd17728a38c7693341dc3d1ae590080c
+            string_to_encryption_public_key("e2705427237521cf0ca3703a95a20039bd17728a38c7693341dc3d1ae590080c")
+                .expect("Failed to parse relay encryption key")
+        };
+        let relay_signature_pk = {
+            use shinkai_message_primitives::shinkai_utils::signatures::string_to_signature_public_key;
+            // Relay's signature key from blockchain: f5f44767a4efcc1e608bc289454610a14ecb762f9340bcabf9f934af174cfe6f
+            string_to_signature_public_key("f5f44767a4efcc1e608bc289454610a14ecb762f9340bcabf9f934af174cfe6f")
+                .expect("Failed to parse relay signature key")
+        };
+
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(101);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(101);
+
+        let node2_peer_id = shinkai_node::network::libp2p_manager::verifying_key_to_peer_id(node2_identity_pk).unwrap();
 
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
@@ -1532,6 +1548,11 @@ fn test_send_message_to_localhost_node() {
             eprintln!("Profile 1 Encryption Public Key: {}", encryption_public_key_to_string(profile1_encryption_pk));
             eprintln!("Profile 2 Public Key: {}", signature_public_key_to_string(profile2_pk));               
             eprintln!("Profile 2 Encryption Public Key: {}", encryption_public_key_to_string(profile2_encryption_pk));
+            eprintln!("=== RELAY KEYS ===");
+            eprintln!("Relay Encryption Public Key: {}", encryption_public_key_to_string(relay_encryption_pk));
+            eprintln!("Relay Signature Public Key: {}", signature_public_key_to_string(relay_signature_pk));
+            eprintln!("=== PEER IDS ===");
+            eprintln!("Node 2 Peer ID: {}", node2_peer_id);
 
             // Wait for tools to be ready
             let tools_ready1 = wait_for_default_tools(
@@ -1552,14 +1573,6 @@ fn test_send_message_to_localhost_node() {
             eprintln!(">> Sending message from registered node ({}) to unregistered node ({})", node1_identity_name, node2_identity_name);
             let message_content_1to2 = "Hello from registered node to unregistered node via relay!".to_string();
             
-            // Get relay's encryption public key from blockchain identity
-            let relay_encryption_pk = {
-                use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
-                // Relay's encryption key from blockchain: e2705427237521cf0ca3703a95a20039bd17728a38c7693341dc3d1ae590080c
-                string_to_encryption_public_key("e2705427237521cf0ca3703a95a20039bd17728a38c7693341dc3d1ae590080c")
-                    .expect("Failed to parse relay encryption key")
-            };
-            
             let message_1to2 = ShinkaiMessageBuilder::new(
                 profile1_encryption_sk.clone(),
                 clone_signature_secret_key(&profile1_sk),
@@ -1577,8 +1590,8 @@ fn test_send_message_to_localhost_node() {
             .external_metadata_with_other_and_intra_sender(
                 relay_identity_name.clone().unwrap(),
                 node1_identity_name.to_string(),
-                encryption_public_key_to_string(profile2_encryption_pk),
-                "12D3KooWChKp6HfSYuC8C2q7F3v6JjGx7v23MPB89178bQRGtzUC".to_string(),
+                encryption_public_key_to_string(node2_encryption_pk), // use destination (localhost) node encryption pk
+                node2_peer_id.to_string(), // use destination (localhost) peer id
             )
             .build()
             .unwrap();
@@ -1661,7 +1674,7 @@ fn test_send_message_to_localhost_node() {
                     
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile1_encryption_sk, &profile2_encryption_pk) {
+                        match message.clone().decrypt_inner_layer(&profile1_encryption_sk, &relay_encryption_pk) {
                             Ok(decrypted_msg) => {
                                 eprintln!(">> Node 1 - Decrypted content: {:?}", decrypted_msg.get_message_content());
                             },
@@ -1682,7 +1695,7 @@ fn test_send_message_to_localhost_node() {
                     
                     // Try to decrypt the message if it's encrypted
                     if ShinkaiMessage::is_content_currently_encrypted(message) {
-                        match message.clone().decrypt_inner_layer(&profile2_encryption_sk, &profile1_encryption_pk) {
+                        match message.clone().decrypt_inner_layer(&profile2_encryption_sk, &relay_encryption_pk) {
                             Ok(decrypted_msg) => {
                                 eprintln!(">> Node 2 - Decrypted content: {:?}", decrypted_msg.get_message_content());
                             },
