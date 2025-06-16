@@ -78,6 +78,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 ShinkaiLogLevel::Debug,
                 &format!("{} > Body encrypted", receiver_address),
             );
+            eprintln!("🔑 Body encrypted, message: {:?}", message);
             handle_default_encryption(
                 message,
                 sender_encryption_pk,
@@ -105,6 +106,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 ShinkaiLogLevel::Debug,
                 &format!("{} {} > Content encrypted", my_node_profile_name, receiver_address),
             );
+            eprintln!("🔑 Content encrypted, message: {:?}", message);
             handle_network_message_cases(
                 message,
                 sender_encryption_pk,
@@ -290,16 +292,30 @@ pub async fn handle_default_encryption(
     match decrypted_message_result {
         Ok(decrypted_message) => {
             println!(
-                "{} {} > Successfully decrypted message outer layer",
+                "{} {} > 🔑 Successfully decrypted message outer layer",
                 my_node_profile_name, receiver_address
             );
-            let message = decrypted_message.get_message_content();
+            let shinkai_message = if decrypted_message.is_content_currently_encrypted() {
+                match decrypted_message.decrypt_inner_layer(my_encryption_secret_key, &sender_encryption_pk) {
+                    Ok(decrypted_message_inner) => {
+                        eprintln!("🔑 Decrypted inner layer: {:?}", decrypted_message_inner);
+                        decrypted_message_inner
+                    }
+                    Err(e) => {
+                        eprintln!("🔑 Failed to decrypt message inner layer: {:?}", e);
+                        decrypted_message
+                    }
+                }
+            } else {
+                decrypted_message
+            };
+            let message = shinkai_message.get_message_content();
             match message {
                 Ok(message_content) => {
                     if message_content != "ACK" {
                         // Call handle_other_cases after decrypting the payload
                         handle_network_message_cases(
-                            decrypted_message,
+                            shinkai_message,
                             sender_encryption_pk,
                             sender_address,
                             sender_profile_name,
@@ -325,7 +341,7 @@ pub async fn handle_default_encryption(
                     // it is most likely meant for a profile which we don't have the encryption secret key for.
                     Node::save_to_db(
                         false,
-                        &decrypted_message,
+                        &shinkai_message,
                         clone_static_secret_key(my_encryption_secret_key),
                         maybe_db.clone(),
                         maybe_identity_manager.clone(),
@@ -390,7 +406,7 @@ pub async fn handle_network_message_cases(
         let proxy_connection = proxy_connection_info.lock().await;
         if let Some(proxy_info) = &*proxy_connection {
             if message.external_metadata.sender == proxy_info.proxy_identity.get_node_name_string() {
-                match ShinkaiName::new(message.external_metadata.other.clone()) {
+                match ShinkaiName::new(message.external_metadata.intra_sender.clone()) {
                     Ok(origin_identity) => {
                         message.external_metadata.sender = origin_identity.get_node_name_string();
                         if let MessageBody::Unencrypted(ref mut body) = message.body {
@@ -477,7 +493,7 @@ pub async fn handle_network_message_cases(
                             // Successfully converted, you can now use shared_folder_infos
                             let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
                             let _ = ext_agent_offering_manager
-                                .network_invoice_requested(requester, invoice_request)
+                                .network_invoice_requested(requester, invoice_request, Some(message.external_metadata))
                                 .await;
                         }
                         Err(e) => {
@@ -501,6 +517,8 @@ pub async fn handle_network_message_cases(
                             requester, receiver
                         ),
                     );
+
+                    eprintln!("🔑 InvoiceRequestNetworkError Received from: {:?} to {:?}", requester, receiver);
 
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<InvoiceRequestNetworkError>(&content) {
@@ -549,7 +567,7 @@ pub async fn handle_network_message_cases(
                             receiver_address, requester, receiver
                         ),
                     );
-                    println!("Invoice Received from: {:?} to {:?}", requester, receiver);
+                    eprintln!("🔑 Invoice Received from: {:?} to {:?}", requester, receiver);
 
                     let my_agent_offering_manager = if let Some(manager) = my_agent_offering_manager.upgrade() {
                         manager
@@ -613,7 +631,7 @@ pub async fn handle_network_message_cases(
                             receiver_address, requester, receiver
                         ),
                     );
-                    println!("PaidInvoice Received from: {:?} to {:?}", requester, receiver);
+                    eprintln!("🔑 PaidInvoice Received from: {:?} to {:?}", requester, receiver);
 
                     let ext_agent_offering_manager = if let Some(manager) = external_agent_offering_manager.upgrade() {
                         manager
@@ -631,7 +649,7 @@ pub async fn handle_network_message_cases(
                         Ok(invoice) => {
                             let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
                             if let Err(e) = ext_agent_offering_manager
-                                .network_confirm_invoice_payment_and_process(requester, invoice)
+                                .network_confirm_invoice_payment_and_process(requester, invoice, Some(message.external_metadata))
                                 .await {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
@@ -661,7 +679,7 @@ pub async fn handle_network_message_cases(
                             receiver_address, requester, receiver
                         ),
                     );
-                    println!("InvoiceResult Received from: {:?} to {:?}", requester, receiver);
+                    eprintln!("🔑 InvoiceResult Received from: {:?} to {:?}", requester, receiver);
 
                     let my_agent_offering_manager = if let Some(manager) = my_agent_offering_manager.upgrade() {
                         manager
@@ -717,6 +735,7 @@ pub async fn handle_network_message_cases(
                 }
                 _ => {
                     // Ignore other schemas
+                    eprintln!("🔑 Ignoring other schemas. Schema: {:?}", schema);
                     shinkai_log(
                         ShinkaiLogOption::Network,
                         ShinkaiLogLevel::Debug,
@@ -727,6 +746,7 @@ pub async fn handle_network_message_cases(
         }
         Err(e) => {
             // Handle error case
+            eprintln!("🔑 Error getting message schema: {:?}", e);
             shinkai_log(
                 ShinkaiLogOption::Network,
                 ShinkaiLogLevel::Error,

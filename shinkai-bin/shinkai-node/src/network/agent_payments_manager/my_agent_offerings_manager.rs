@@ -157,7 +157,6 @@ impl MyAgentOfferingsManager {
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
-            let proxy_builder_info = self.get_proxy_builder_info(identity_manager_arc).await;
 
             // Generate the message to request the invoice
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
@@ -170,7 +169,7 @@ impl MyAgentOfferingsManager {
                 "".to_string(),
                 network_tool.provider.get_node_name_string(),
                 "main".to_string(),
-                proxy_builder_info,
+                None,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
@@ -549,7 +548,7 @@ pub async fn pay_invoice_and_send_receipt(
                 "".to_string(),
                 invoice.provider_name.to_string(),
                 "main".to_string(),
-                proxy_builder_info,
+                None,
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 

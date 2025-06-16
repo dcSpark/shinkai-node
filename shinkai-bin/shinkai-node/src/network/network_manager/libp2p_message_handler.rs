@@ -14,6 +14,7 @@ use crate::network::{
 use crate::managers::{IdentityManager, identity_manager::IdentityManagerTrait};
 use ed25519_dalek::SigningKey;
 use libp2p::{request_response::ResponseChannel, PeerId};
+use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, ws_types::WSUpdateHandler},
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -36,7 +37,6 @@ pub struct ShinkaiMessageHandler {
     proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
     ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
     local_addr: SocketAddr,
-    libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
 }
 
 impl ShinkaiMessageHandler {
@@ -52,7 +52,6 @@ impl ShinkaiMessageHandler {
         proxy_connection_info: Weak<Mutex<Option<ProxyConnectionInfo>>>,
         ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
         local_addr: SocketAddr,
-        libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
     ) -> Self {
         Self {
             db,
@@ -65,44 +64,16 @@ impl ShinkaiMessageHandler {
             proxy_connection_info,
             ws_manager,
             local_addr,
-            libp2p_event_sender,
-        }
-    }
-
-    pub fn set_libp2p_event_sender(&mut self, libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>) {
-        self.libp2p_event_sender = libp2p_event_sender;
-    }
-
-    /// Handle a message from a peer - this replaces the NetworkJobManager processing
-    pub async fn handle_message(&self, peer_id: PeerId, message: ShinkaiMessage, channel: Option<ResponseChannel<ShinkaiMessage>>) {
-        shinkai_log(
-            ShinkaiLogOption::Network,
-            ShinkaiLogLevel::Info,
-            &format!("Handling message from peer {} via libp2p", peer_id),
-        );
-
-        // Process the message directly using the existing network handlers
-        if let Err(e) = self.handle_message_internode(
-            self.local_addr,
-            peer_id,
-            &message,
-            channel,
-        ).await {
-            shinkai_log(
-                ShinkaiLogOption::Network,
-                ShinkaiLogLevel::Error,
-                &format!("Failed to handle message from peer {}: {:?}", peer_id, e),
-            );
         }
     }
 
     /// Process the message directly (moved from NetworkJobManager)
-    async fn handle_message_internode(
+    pub async fn handle_message_internode(
         &self,
-        receiver_address: SocketAddr,
-        sender_peer_id: PeerId,
+        receiver_peer_id: PeerId,
         message: &ShinkaiMessage,
         channel: Option<ResponseChannel<ShinkaiMessage>>,
+        libp2p_event_sender: Option<UnboundedSender<NetworkEvent>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let maybe_db = self.db
             .upgrade()
@@ -112,53 +83,139 @@ impl ShinkaiMessageHandler {
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
             &format!(
-                "{} {} > Network Job Got message from {:?}",
-                self.node_name.get_node_name_string(), receiver_address, sender_peer_id
+                "{} {} > Network Job Got message from/to peer {:?}",
+                self.node_name.get_node_name_string(), self.local_addr, receiver_peer_id
             ),
         );
 
-        // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(message)
-            .map_err(|e| format!("Failed to extract sender name: {:?}", e))?
-            .get_node_name_string();
-        
-        let sender_identity = self.identity_manager
-            .lock()
-            .await
-            .external_profile_to_global_identity(&sender_profile_name_string, None)
-            .await
-            .map_err(|e| {
-                shinkai_log(
-                    ShinkaiLogOption::Node,
-                    ShinkaiLogLevel::Error,
-                    &format!(
-                        "{} > Failed to get sender identity: {:?} {:?}",
-                        receiver_address, sender_profile_name_string, e
-                    ),
-                );
-                format!("Failed to get sender identity: {:?}", e)
-            })?;
+        // Check if this message came through a relay (has intra_sender)
+        // If so, we need to use the original sender's encryption key for decryption
+        let (encryption_sender_identity, encryption_public_key, actual_sender_name) = if !message.external_metadata.intra_sender.is_empty() {
+            // Message came through relay - use intra_sender for encryption/decryption
+            println!("🔄 Message came through relay - original sender: {}, relay: {}", 
+                message.external_metadata.intra_sender, 
+                message.external_metadata.sender);
 
-        verify_message_signature(sender_identity.node_signature_public_key, message)
-            .map_err(|e| format!("Signature verification failed: {:?}", e))?;
+            let sender_profile_name_string = message.external_metadata.sender.clone();
+            
+            let sender_identity = self.identity_manager
+                .lock()
+                .await
+                .external_profile_to_global_identity(&sender_profile_name_string, None)
+                .await
+                .map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!(
+                            "{} > Failed to get sender identity: {:?} {:?}",
+                            self.local_addr, sender_profile_name_string, e
+                        ),
+                    );
+                    format!("Failed to get sender identity: {:?}", e)
+                })?;
+
+            verify_message_signature(sender_identity.node_signature_public_key, message)
+                .map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Signature verification failed: {:?}", e)
+                    );
+                    format!("Signature verification failed: {:?}", e)
+                })?;
+            
+            let original_sender_name = message.external_metadata.intra_sender.clone();
+            let original_sender_node = ShinkaiName::new(original_sender_name.clone())
+                .map_err(|e| format!("Failed to parse original sender name: {:?}", e))?
+                .get_node_name_string();
+            
+            // First check if the 'other' field contains the encryption public key (like in node_shareable_logic.rs)
+            eprintln!("🔍 Debug: message.external_metadata.other = {}", message.external_metadata.other);
+            if !message.external_metadata.other.is_empty() {
+                match string_to_encryption_public_key(&message.external_metadata.other) {
+                    Ok(encryption_pk) => {
+                        println!("✅ Using encryption public key from 'other' field for original sender: {}", original_sender_node);
+                        // Use the relay's identity for address but original sender's encryption key
+                        (sender_identity.clone(), encryption_pk, original_sender_name.clone())
+                    },
+                    Err(e) => {
+                        println!("⚠️  Failed to parse encryption public key from 'other' field, using relay's identity: {}", e);
+                        (sender_identity.clone(), sender_identity.node_encryption_public_key, sender_profile_name_string.clone())
+                    }
+                }
+            } else {
+                // No 'other' field, try to get the original sender's identity for decryption
+                match self.identity_manager
+                .lock()
+                .await
+                .external_profile_to_global_identity(&original_sender_node, None)
+                .await {
+                    Ok(original_identity) => {
+                        println!("✅ Found original sender identity for decryption: {}", original_sender_node);
+                        (original_identity.clone(), original_identity.node_encryption_public_key, original_sender_name)
+                    },
+                    Err(e) => {
+                        // If we can't find the original sender's identity, fall back to using the relay's identity
+                        // but log a warning as this will likely fail decryption
+                        println!("⚠️  Could not find original sender identity {}, falling back to relay identity: {}", original_sender_node, e);
+                        (sender_identity.clone(), sender_identity.node_encryption_public_key, sender_profile_name_string.clone())
+                    }
+                }                
+            }
+        } else {
+            // Direct message - use the sender's identity
+            let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(message)
+                .map_err(|e| format!("Failed to extract sender name: {:?}", e))?
+                .get_node_name_string();
+            
+            let sender_identity = self.identity_manager
+                .lock()
+                .await
+                .external_profile_to_global_identity(&sender_profile_name_string, None)
+                .await
+                .map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!(
+                            "{} > Failed to get sender identity: {:?} {:?}",
+                            self.local_addr, sender_profile_name_string, e
+                        ),
+                    );
+                    format!("Failed to get sender identity: {:?}", e)
+                })?;
+
+            verify_message_signature(sender_identity.node_signature_public_key, message)
+                .map_err(|e| {
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Signature verification failed: {:?}", e)
+                    );
+                    format!("Signature verification failed: {:?}", e)
+                })?;
+
+            (sender_identity.clone(), sender_identity.node_encryption_public_key, sender_profile_name_string.clone())
+        };
 
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
             &format!(
                 "{} > Sender Profile Name: {:?}",
-                receiver_address, sender_profile_name_string
+                self.local_addr, actual_sender_name
             ),
         );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity),
+            &format!("{} > Node Sender Identity: {}", self.local_addr, encryption_sender_identity),
         );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Verified message signature", receiver_address),
+            &format!("{} > Verified message signature", self.local_addr),
         );
 
         let proxy_connection_info = self.proxy_connection_info
@@ -167,21 +224,21 @@ impl ShinkaiMessageHandler {
 
         handle_based_on_message_content_and_encryption(
             message.clone(),
-            sender_identity.node_encryption_public_key,
-            sender_identity.addr.unwrap(),
-            sender_profile_name_string.clone(),
+            encryption_public_key,
+            encryption_sender_identity.addr.unwrap(),
+            actual_sender_name.clone(),
             &self.encryption_secret_key,
             &self.signature_secret_key,
             &self.node_name.get_node_name_string(),
             maybe_db,
             self.identity_manager.clone(),
-            receiver_address,
-            sender_peer_id,
+            self.local_addr,
+            receiver_peer_id,
             self.my_agent_offerings_manager.clone(),
             self.ext_agent_offerings_manager.clone(),
             proxy_connection_info,
             self.ws_manager.clone(),
-            self.libp2p_event_sender.clone(),
+            libp2p_event_sender.clone(),
             channel,
         )
         .await
