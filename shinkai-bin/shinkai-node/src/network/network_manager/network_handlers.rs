@@ -295,16 +295,19 @@ pub async fn handle_default_encryption(
                 "{} {} > 🔑 Successfully decrypted message outer layer",
                 my_node_profile_name, receiver_address
             );
-            let decrypted_message_inner = decrypted_message.decrypt_inner_layer(my_encryption_secret_key, &sender_encryption_pk);
-            let shinkai_message = match decrypted_message_inner {
-                Ok(decrypted_message_inner) => {
-                    eprintln!("🔑 Decrypted inner layer: {:?}", decrypted_message_inner);
-                    decrypted_message_inner
+            let shinkai_message = if decrypted_message.is_content_currently_encrypted() {
+                match decrypted_message.decrypt_inner_layer(my_encryption_secret_key, &sender_encryption_pk) {
+                    Ok(decrypted_message_inner) => {
+                        eprintln!("🔑 Decrypted inner layer: {:?}", decrypted_message_inner);
+                        decrypted_message_inner
+                    }
+                    Err(e) => {
+                        eprintln!("🔑 Failed to decrypt message inner layer: {:?}", e);
+                        decrypted_message
+                    }
                 }
-                Err(e) => {
-                    eprintln!("🔑 Failed to decrypt message inner layer: {:?}", e);
-                    decrypted_message
-                }
+            } else {
+                decrypted_message
             };
             let message = shinkai_message.get_message_content();
             match message {
