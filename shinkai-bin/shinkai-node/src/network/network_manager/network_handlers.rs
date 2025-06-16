@@ -302,8 +302,8 @@ pub async fn handle_default_encryption(
                     decrypted_message_inner
                 }
                 Err(e) => {
-                    eprintln!("Failed to decrypt message inner layer: {:?}", e);
-                    return Ok(());
+                    eprintln!("🔑 Failed to decrypt message inner layer: {:?}", e);
+                    decrypted_message
                 }
             };
             let message = shinkai_message.get_message_content();
