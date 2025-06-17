@@ -578,7 +578,7 @@ impl ExtAgentOfferingsManager {
             provider_name: self.node_name.clone(),
             requester_name: invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {
-                tool_key: invoice_request.tool_key_name,
+                tool_key: actual_tool_key_name,
                 usage_type,
                 meta_description: None,
             },
