@@ -6,11 +6,13 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey
+    shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}
+    network_tool::NetworkTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
 };
 
 use crate::network::{node_error::NodeError, Node};
@@ -124,13 +126,12 @@ impl Node {
                     detailed_tool_headers.push(tool_header);
                 }
                 Err(SqliteManagerError::ToolNotFound(_)) => {
-                    let api_error = APIError {
-                        code: StatusCode::NOT_FOUND.as_u16(),
-                        error: "Not Found".to_string(),
-                        message: format!("Tool not found for key {}", tool_key),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    shinkai_log(
+                        ShinkaiLogOption::Api,
+                        ShinkaiLogLevel::Warn,
+                        format!("Tool offering references missing tool key {}, skipping", tool_key).as_str(),
+                    );
+                    continue;
                 }
                 Err(err) => {
                     let api_error = APIError {
@@ -322,13 +323,16 @@ impl Node {
             let tool = match db.get_tool_by_key(&offering.tool_key) {
                 Ok(tool) => tool,
                 Err(SqliteManagerError::ToolNotFound(_)) => {
-                    let api_error = APIError {
-                        code: StatusCode::NOT_FOUND.as_u16(),
-                        error: "Not Found".to_string(),
-                        message: format!("Tool not found for key {}", offering.tool_key),
-                    };
-                    let _ = res.send(Err(api_error)).await;
-                    return Ok(());
+                    shinkai_log(
+                        ShinkaiLogOption::Api,
+                        ShinkaiLogLevel::Warn,
+                        format!(
+                            "Tool offering references missing tool key {}, skipping",
+                            offering.tool_key
+                        )
+                        .as_str(),
+                    );
+                    continue;
                 }
                 Err(err) => {
                     let api_error = APIError {
