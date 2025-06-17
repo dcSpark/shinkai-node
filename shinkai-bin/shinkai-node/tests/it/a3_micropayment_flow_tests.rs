@@ -910,6 +910,33 @@ fn micropayment_flow_test() {
                 }
             }
 
+            {
+                eprintln!("Get registered offerings on each node.");
+                let (sender, receiver) = async_channel::bounded(1);
+                node1_commands_sender.send(NodeCommand::V2ApiGetAllToolOfferings {
+                    bearer: api_v2_key.to_string(),
+                    res: sender,
+                })
+                .await
+                .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp get registered offerings on node1: {:?}", resp.clone().unwrap());
+                assert!(resp.is_ok(), "Failed to get registered offerings on node1");
+                assert!(resp.unwrap().len() == 1, "Expected 1 offering on node1");
+
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender.send(NodeCommand::V2ApiGetAllToolOfferings {
+                    bearer: api_v2_key.to_string(),
+                    res: sender,
+                })
+                .await
+                .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp get registered offerings on node2: {:?}", resp.clone().unwrap());
+                assert!(resp.is_ok(), "Failed to get registered offerings on node2");
+                assert!(resp.unwrap().len() == 0, "Expected 0 offerings on node2");
+            }
+
             node1_abort_handler.abort();
             node2_abort_handler.abort();
         });

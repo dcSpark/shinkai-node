@@ -69,7 +69,8 @@ impl SqliteManager {
     pub fn get_all_tool_offerings(&self) -> Result<Vec<ShinkaiToolOffering>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
-            conn.prepare("SELECT tool_key, usage_type, meta_description FROM tool_micropayments_requirements")?;
+            conn.prepare("SELECT tool_key, usage_type, meta_description FROM tool_micropayments_requirements
+                               WHERE tool_key LIKE 'local%'")?;
 
         let tool_offerings = stmt.query_map([], |row| {
             let tool_key: String = row.get(0)?;
@@ -190,7 +191,7 @@ mod tests {
     async fn test_get_all_tool_offerings() {
         let manager = setup_test_db();
         let tool_offering1 = ShinkaiToolOffering {
-            tool_key: "tool_key1".to_string(),
+            tool_key: "local:::__localhost_sep_shinkai:::tool_key1".to_string(),
             usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 scheme: "exact".to_string(),
                 description: "Payment for service 1".to_string(),
@@ -211,7 +212,7 @@ mod tests {
         };
 
         let tool_offering2 = ShinkaiToolOffering {
-            tool_key: "tool_key2".to_string(),
+            tool_key: "local:::__localhost_sep_shinkai:::tool_key2".to_string(),
             usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 scheme: "exact".to_string(),
                 description: "Payment for service 2".to_string(),
