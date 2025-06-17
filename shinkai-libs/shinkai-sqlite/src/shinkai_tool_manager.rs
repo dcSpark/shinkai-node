@@ -619,6 +619,12 @@ impl SqliteManager {
             tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
         }
 
+        // Also remove any tool offering associated with this tool key
+        tx.execute(
+            "DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1",
+            params![tool_key_lower],
+        )?;
+
         tx.commit()?;
 
         // Now remove those rowids from the FTS table in the separate in-memory DB
