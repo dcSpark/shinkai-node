@@ -191,7 +191,7 @@ mod tests {
     async fn test_get_all_tool_offerings() {
         let manager = setup_test_db();
         let tool_offering1 = ShinkaiToolOffering {
-            tool_key: "tool_key1".to_string(),
+            tool_key: "local:::__localhost_sep_shinkai:::tool_key1".to_string(),
             usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 scheme: "exact".to_string(),
                 description: "Payment for service 1".to_string(),
@@ -212,7 +212,7 @@ mod tests {
         };
 
         let tool_offering2 = ShinkaiToolOffering {
-            tool_key: "tool_key2".to_string(),
+            tool_key: "local:::__localhost_sep_shinkai:::tool_key2".to_string(),
             usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
                 scheme: "exact".to_string(),
                 description: "Payment for service 2".to_string(),
