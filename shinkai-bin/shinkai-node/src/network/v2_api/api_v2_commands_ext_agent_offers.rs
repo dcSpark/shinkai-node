@@ -6,11 +6,12 @@ use reqwest::StatusCode;
 use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
 use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey
+    shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey,
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}
+    network_tool::NetworkTool,
+    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
 };
 
 use crate::network::{node_error::NodeError, Node};
@@ -49,31 +50,36 @@ impl Node {
         db: Arc<SqliteManager>,
         bearer: String,
         tool_key_name: String,
-        res: Sender<Result<ShinkaiToolOffering, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        // Attempt to get the tool offering before removing it
+        // Try to retrieve the tool offering; it's fine if it doesn't exist
         let tool_offering = match db.get_tool_offering(&tool_key_name) {
-            Ok(tool_offering) => tool_offering,
+            Ok(offering) => Some(offering),
+            Err(SqliteManagerError::ToolOfferingNotFound(_)) => None,
             Err(err) => {
                 let api_error = APIError {
-                    code: StatusCode::NOT_FOUND.as_u16(),
-                    error: "Not Found".to_string(),
-                    message: format!("Tool offering not found: {}", err),
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to retrieve tool offering: {}", err),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
             }
         };
 
-        // Remove the tool offering
+        // Remove the tool offering (no-op if it doesn't exist)
         match db.remove_tool_offering(&tool_key_name) {
             Ok(_) => {
-                let _ = res.send(Ok(tool_offering)).await;
+                let response = match tool_offering {
+                    Some(off) => json!({ "removed": off }),
+                    None => json!({}),
+                };
+                let _ = res.send(Ok(response)).await;
             }
             Err(err) => {
                 let api_error = APIError {
