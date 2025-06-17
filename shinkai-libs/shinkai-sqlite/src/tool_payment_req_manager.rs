@@ -69,7 +69,8 @@ impl SqliteManager {
     pub fn get_all_tool_offerings(&self) -> Result<Vec<ShinkaiToolOffering>, SqliteManagerError> {
         let conn = self.get_connection()?;
         let mut stmt =
-            conn.prepare("SELECT tool_key, usage_type, meta_description FROM tool_micropayments_requirements")?;
+            conn.prepare("SELECT tool_key, usage_type, meta_description FROM tool_micropayments_requirements
+                               WHERE tool_key LIKE 'local%'")?;
 
         let tool_offerings = stmt.query_map([], |row| {
             let tool_key: String = row.get(0)?;
