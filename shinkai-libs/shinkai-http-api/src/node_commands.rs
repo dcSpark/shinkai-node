@@ -526,7 +526,7 @@ pub enum NodeCommand {
     V2ApiRemoveToolOffering {
         bearer: String,
         tool_key_name: String,
-        res: Sender<Result<ShinkaiToolOffering, APIError>>,
+        res: Sender<Result<Value, APIError>>,
     },
     V2ApiGetAllToolOfferings {
         bearer: String,
