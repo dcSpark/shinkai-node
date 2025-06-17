@@ -27,13 +27,28 @@ impl SqliteManager {
                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         )?;
 
-        // Add tool offering if it does not exist
-        match self.get_tool_offering(&invoice.shinkai_offering.tool_key) {
-            Err(SqliteManagerError::ToolOfferingNotFound(_)) => {
-                self.set_tool_offering(invoice.shinkai_offering.clone())?
+        // Add tool offering if it does not exist. We also check for the local
+        // version of the tool key to avoid inserting duplicate offerings when
+        // a network scoped key is used.
+        let mut offering_exists = self
+            .get_tool_offering(&invoice.shinkai_offering.tool_key)
+            .is_ok();
+        if !offering_exists {
+            if let Ok(local_key) = invoice.shinkai_offering.convert_tool_to_local() {
+                offering_exists = self.get_tool_offering(&local_key).is_ok();
             }
-            Err(e) => return Err(e),
-            Ok(_) => {}
+        }
+        if !offering_exists {
+            self.set_tool_offering(invoice.shinkai_offering.clone())?;
+        }
+
+        let mut tool_key_for_invoice = invoice.shinkai_offering.tool_key.clone();
+        if self.get_tool_offering(&tool_key_for_invoice).is_err() {
+            if let Ok(local_key) = invoice.shinkai_offering.convert_tool_to_local() {
+                if self.get_tool_offering(&local_key).is_ok() {
+                    tool_key_for_invoice = local_key;
+                }
+            }
         }
 
         stmt.execute(params![
@@ -43,7 +58,7 @@ impl SqliteManager {
             serde_json::to_string(&invoice.usage_type_inquiry).map_err(|e| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?,
-            invoice.shinkai_offering.tool_key,
+            tool_key_for_invoice,
             invoice.request_date_time.to_rfc3339(),
             invoice.invoice_date_time.to_rfc3339(),
             invoice.expiration_time.to_rfc3339(),
@@ -418,6 +433,10 @@ mod tests {
     use shinkai_message_primitives::schemas::{
         invoices::InvoiceStatusEnum, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry}, wallet_mixed::{NetworkIdentifier, PublicAddress}, x402_types::Network
     };
+    use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
+    use shinkai_message_primitives::schemas::x402_types::PaymentRequirements;
+    use shinkai_tools_primitives::tools::deno_tools::DenoTool;
+    use shinkai_tools_primitives::tools::shinkai_tool::ShinkaiTool;
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -623,5 +642,117 @@ mod tests {
         db.remove_invoice_network_error("invoice_id").unwrap();
         let errors = db.get_all_invoice_network_errors().unwrap();
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_set_invoice_doesnt_add_different_tool_version() {
+        let db = setup_test_db();
+
+        // Create and insert a tool
+        let new_tool_json_str = r#"{
+            "content": [
+                {
+                    "activated": true,
+                    "assets": [],
+                    "author": "@@localhost.sep-shinkai",
+                    "config": [],
+                    "configFormData": {},
+                    "configurations": {"properties": {}, "required": [], "type": "object"},
+                    "description": "A function that echoes back the input message.",
+                    "embedding": null,
+                    "file_inbox": null,
+                    "homepage": null,
+                    "input_args": {"properties": {"message": {"description": "The message to echo", "type": "string"}}, "required": ["message"], "type": "object"},
+                    "js_code": "export async function run(_c, i){ return { echoed: i.message }; }",
+                    "keywords": ["echo"],
+                    "mcp_enabled": false,
+                    "name": "Echo Function",
+                    "oauth": [],
+                    "operating_system": ["linux"],
+                    "output_arg": {"json": "{}"},
+                    "result": {"properties": {"echoed": {"description": "The echoed message", "type": "string"}}, "required": ["echoed"], "type": "object"},
+                    "runner": "any",
+                    "sql_queries": [],
+                    "sql_tables": [],
+                    "tool_router_key": "local:::__localhost_sep_shinkai:::echo_function",
+                    "tool_set": "",
+                    "tools": [],
+                    "version": "1.0.0"
+                },
+                true
+            ],
+            "type": "Deno"
+        }"#;
+
+        let parsed_json: serde_json::Value = serde_json::from_str(new_tool_json_str).unwrap();
+        let tool_content = parsed_json["content"][0].clone();
+        let is_active = parsed_json["content"][1].as_bool().unwrap();
+        let deno_tool: DenoTool = serde_json::from_value(tool_content).unwrap();
+        let shinkai_tool = ShinkaiTool::Deno(deno_tool, is_active);
+
+        db
+            .add_tool_with_vector(shinkai_tool.clone(), SqliteManager::generate_vector_for_testing(0.1))
+            .unwrap();
+
+        // Add tool offering
+        let payment_req = PaymentRequirements {
+            scheme: "exact".to_string(),
+            description: "Echo tool payment".to_string(),
+            network: Network::BaseSepolia,
+            max_amount_required: "1".to_string(),
+            resource: "https://shinkai.com".to_string(),
+            mime_type: "application/json".to_string(),
+            pay_to: "0xd68b44BcAB515C326226392922fC08c3C4913746".to_string(),
+            max_timeout_seconds: 300,
+            asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
+            output_schema: Some(serde_json::json!({})),
+            extra: None,
+        };
+
+        let tool_offering = ShinkaiToolOffering {
+            tool_key: "local:::__localhost_sep_shinkai:::echo_function".to_string(),
+            usage_type: UsageType::PerUse(ToolPrice::Payment(vec![payment_req.clone()])),
+            meta_description: None,
+        };
+
+        db.set_tool_offering(tool_offering.clone()).unwrap();
+        assert_eq!(db.get_all_tool_offerings().unwrap().len(), 1);
+
+        // Prepare invoice using network version of the tool key
+        let network_tool_key = ToolRouterKey::to_network_router_key(
+            &tool_offering.tool_key,
+            "@@node1.sep-shinkai",
+        )
+        .unwrap();
+
+        let invoice = Invoice {
+            invoice_id: "inv1".to_string(),
+            provider_name: ShinkaiName::new("@@node1.sep-shinkai".to_string()).unwrap(),
+            requester_name: ShinkaiName::new("@@requester.sep-shinkai".to_string()).unwrap(),
+            usage_type_inquiry: UsageTypeInquiry::PerUse,
+            shinkai_offering: ShinkaiToolOffering {
+                tool_key: network_tool_key,
+                usage_type: UsageType::PerUse(ToolPrice::Payment(vec![payment_req])),
+                meta_description: None,
+            },
+            request_date_time: chrono::Utc::now(),
+            invoice_date_time: chrono::Utc::now(),
+            expiration_time: chrono::Utc::now(),
+            status: InvoiceStatusEnum::Pending,
+            payment: None,
+            address: PublicAddress {
+                network_id: Network::BaseSepolia,
+                address_id: "address_id".to_string(),
+            },
+            tool_data: None,
+            response_date_time: None,
+            result_str: None,
+        };
+
+        db.set_invoice(&invoice).unwrap();
+
+        let offerings = db.get_all_tool_offerings().unwrap();
+        assert_eq!(offerings.len(), 1);
+        assert_eq!(offerings[0].tool_key, tool_offering.tool_key);
     }
 }
