@@ -415,22 +415,7 @@ fn micropayment_flow_test() {
 
             let shinkai_tool_offering = ShinkaiToolOffering {
                 tool_key: test_local_tool_key_name.to_string(),
-                usage_type: UsageType::PerUse(ToolPrice::Payment(vec![PaymentRequirements {
-                    scheme: "exact".to_string(),
-                    description: "Echo tool payment".to_string(),
-                    network: Network::BaseSepolia,
-                    max_amount_required: "1".to_string(), // This does "include decimals"
-                    resource: "https://shinkai.com".to_string(),
-                    mime_type: "application/json".to_string(),
-                    pay_to: "0xd68b44BcAB515C326226392922fC08c3C4913746".to_string(),
-                    max_timeout_seconds: 300,
-                    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e".to_string(),
-                    output_schema: Some(serde_json::json!({})),
-                    extra: Some(serde_json::json!({
-                        "name": "USDC",
-                        "version": "2"
-                    })),
-                }])),
+                usage_type: UsageType::PerUse(ToolPrice::Free),
                 meta_description: Some("Echo tool offering".to_string()),
             };
 

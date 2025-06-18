@@ -282,8 +282,25 @@ impl MyAgentOfferingsManager {
                 AgentOfferingManagerError::OperationFailed("Failed to get price for usage type".to_string())
             })?;
 
-        // Assuming the price is of type ToolPrice::Payment
+        // Assuming the price is of type ToolPrice::Payment or ToolPrice::Free
         let asset_payment = match price {
+            ToolPrice::Free => {
+                // For free tools, create a payment with zero cost using a mock transaction hash
+                // Generate a realistic mock transaction hash in Ethereum format (0x + 64 hex chars)
+                let mut bytes = [0u8; 32];
+                rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
+                let mock_tx_hash = format!("0x{}", hex::encode(bytes));
+                
+                let payment = Payment::new(
+                    mock_tx_hash,
+                    invoice.invoice_id.clone(),
+                    Some(chrono::Utc::now().to_rfc3339()),
+                    shinkai_message_primitives::schemas::invoices::PaymentStatusEnum::Signed,
+                );
+                
+                println!("Free tool payment created: {:?}", payment);
+                return Ok(payment);
+            }
             ToolPrice::Payment(payments) => payments.first().ok_or_else(|| {
                 AgentOfferingManagerError::OperationFailed("No payments found in ToolPrice".to_string())
             })?,
