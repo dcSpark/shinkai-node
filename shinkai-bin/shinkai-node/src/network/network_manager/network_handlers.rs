@@ -1,31 +1,43 @@
 use crate::{
-    managers::IdentityManager, network::{
+    managers::IdentityManager,
+    network::{
         agent_payments_manager::{
-            external_agent_offerings_manager::ExtAgentOfferingsManager, my_agent_offerings_manager::MyAgentOfferingsManager
-        }, libp2p_manager::NetworkEvent, node::ProxyConnectionInfo, Node
-    }
+            external_agent_offerings_manager::ExtAgentOfferingsManager,
+            my_agent_offerings_manager::MyAgentOfferingsManager,
+        },
+        libp2p_manager::NetworkEvent,
+        node::ProxyConnectionInfo,
+        Node,
+    },
 };
 use ed25519_dalek::{SigningKey, VerifyingKey};
 
 use libp2p::{request_response::ResponseChannel, PeerId};
+use serde_json::json;
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError}, shinkai_name::ShinkaiName
-    }, shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage}, shinkai_message_error::ShinkaiMessageError, shinkai_message_extension::EncryptionStatus, shinkai_message_schemas::MessageSchemaType
-    }, shinkai_utils::{
-        encryption::clone_static_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}, signatures::{clone_signature_secret_key, signature_public_key_to_string}
-    }
+        invoices::{Invoice, InvoiceRequest, InvoiceRequestNetworkError},
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_error::ShinkaiMessageError,
+        shinkai_message_extension::EncryptionStatus,
+        shinkai_message_schemas::MessageSchemaType,
+    },
+    shinkai_utils::{
+        encryption::clone_static_secret_key,
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string},
+    },
 };
-use serde_json::json;
 use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
-
 
 pub enum PingPong {
     Ping,
@@ -518,7 +530,10 @@ pub async fn handle_network_message_cases(
                         ),
                     );
 
-                    eprintln!("🔑 InvoiceRequestNetworkError Received from: {:?} to {:?}", requester, receiver);
+                    eprintln!(
+                        "🔑 InvoiceRequestNetworkError Received from: {:?} to {:?}",
+                        requester, receiver
+                    );
 
                     let content = message.get_message_content().unwrap_or("".to_string());
                     match serde_json::from_str::<InvoiceRequestNetworkError>(&content) {
@@ -591,6 +606,25 @@ pub async fn handle_network_message_cases(
                                     &format!("Failed to store invoice: {:?}", e),
                                 );
                             }
+                            let inbox_name = match message.get_message_inbox() {
+                                Ok(name) => name,
+                                Err(_) => String::new(),
+                            };
+                            let pref_key = format!(
+                                "autopay:{}:{}:{}:{}",
+                                invoice.requester_name.full_name,
+                                invoice.provider_name.full_name,
+                                invoice.shinkai_offering.tool_key,
+                                inbox_name
+                            );
+                            if let Ok(Some(true)) = maybe_db.get_preference::<bool>(&pref_key) {
+                                if let Err(e) = my_agent_offering_manager
+                                    .auto_pay_invoice(invoice.clone(), my_agent_offering_manager.node_name.clone())
+                                    .await
+                                {
+                                    eprintln!("failed to auto pay invoice: {:?}", e);
+                                }
+                            }
                             if let Err(e) = maybe_db.add_tracing(
                                 &invoice.invoice_id,
                                 None,
@@ -649,8 +683,13 @@ pub async fn handle_network_message_cases(
                         Ok(invoice) => {
                             let mut ext_agent_offering_manager = ext_agent_offering_manager.lock().await;
                             if let Err(e) = ext_agent_offering_manager
-                                .network_confirm_invoice_payment_and_process(requester, invoice, Some(message.external_metadata))
-                                .await {
+                                .network_confirm_invoice_payment_and_process(
+                                    requester,
+                                    invoice,
+                                    Some(message.external_metadata),
+                                )
+                                .await
+                            {
                                 shinkai_log(
                                     ShinkaiLogOption::Network,
                                     ShinkaiLogLevel::Error,
@@ -809,9 +848,12 @@ pub async fn send_ack(
             );
         }
     } else {
-        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No channel defined.")));
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "No channel defined.",
+        )));
     }
-    
+
     Ok(())
 }
 

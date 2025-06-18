@@ -259,6 +259,12 @@ components:
         data_for_tool: {}
         invoice_id:
           type: string
+        inbox:
+          type: string
+          description: Inbox the invoice belongs to
+        auto_pay:
+          type: boolean
+          description: Automatically pay future invoices from this provider and tool
     RestoreCoinbaseMPCWalletRequest:
       type: object
       required:
