@@ -267,6 +267,53 @@ impl Node {
         Ok(())
     }
 
+    pub async fn v2_api_reject_invoice(
+        db: Arc<SqliteManager>,
+        my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+        bearer: String,
+        invoice_id: String,
+        reason: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let invoice = match my_agent_offerings_manager
+            .lock()
+            .await
+            .reject_invoice_and_notify(invoice_id.clone(), reason)
+            .await
+        {
+            Ok(inv) => inv,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to reject invoice: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let invoice_value = match serde_json::to_value(invoice) {
+            Ok(value) => value,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to serialize invoice: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let _ = res.send(Ok(invoice_value)).await;
+        Ok(())
+    }
+
     pub async fn v2_api_list_invoices(
         db: Arc<SqliteManager>,
         bearer: String,

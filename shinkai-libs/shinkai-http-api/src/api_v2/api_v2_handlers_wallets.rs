@@ -35,6 +35,13 @@ pub fn wallet_routes(
         .and(warp::body::json())
         .and_then(pay_invoice_handler);
 
+    let reject_invoice_route = warp::path("reject_invoice")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(reject_invoice_handler);
+
     let restore_coinbase_mpc_wallet_route = warp::path("restore_coinbase_mpc_wallet")
         .and(warp::post())
         .and(with_sender(node_commands_sender.clone()))
@@ -57,6 +64,7 @@ pub fn wallet_routes(
     restore_local_wallet_route
         .or(create_local_wallet_route)
         .or(pay_invoice_route)
+        .or(reject_invoice_route)
         .or(restore_coinbase_mpc_wallet_route)
         .or(list_wallets_route)
         .or(get_wallet_balance_route)
@@ -150,6 +158,12 @@ pub struct PayInvoiceRequest {
     pub data_for_tool: Value,
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct RejectInvoiceRequest {
+    pub invoice_id: String,
+    pub reason: Option<String>,
+}
+
 #[utoipa::path(
     post,
     path = "/v2/pay_invoice",
@@ -171,6 +185,40 @@ pub async fn pay_invoice_handler(
             bearer,
             invoice_id: payload.invoice_id,
             data_for_tool: payload.data_for_tool,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => Ok(warp::reply::json(&response)),
+        Err(error) => Err(warp::reject::custom(error)),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/reject_invoice",
+    request_body = RejectInvoiceRequest,
+    responses(
+        (status = 200, description = "Successfully rejected invoice", body = Value),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn reject_invoice_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: RejectInvoiceRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiRejectInvoice {
+            bearer,
+            invoice_id: payload.invoice_id,
+            reason: payload.reason,
             res: res_sender,
         })
         .await
@@ -291,10 +339,11 @@ pub async fn get_wallet_balance_handler(
         restore_local_wallet_handler,
         create_local_wallet_handler,
         pay_invoice_handler,
+        reject_invoice_handler,
         restore_coinbase_mpc_wallet_handler,
     ),
     components(
-        schemas(APIError, CreateLocalWalletRequest, PayInvoiceRequest, RestoreCoinbaseMPCWalletRequest, RestoreLocalWalletRequest,
+        schemas(APIError, CreateLocalWalletRequest, PayInvoiceRequest, RejectInvoiceRequest, RestoreCoinbaseMPCWalletRequest, RestoreLocalWalletRequest,
             NetworkProtocolFamilyEnum, WalletRole, WalletSource, CoinbaseMPCWalletConfig, Address, Asset)
     ),
     tags(
