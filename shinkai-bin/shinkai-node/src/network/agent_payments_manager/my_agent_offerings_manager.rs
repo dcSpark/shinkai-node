@@ -589,46 +589,6 @@ pub async fn pay_invoice_and_send_receipt(
         Ok(())
     }
 
-    /// Send an invoice result back to the provider
-    pub async fn send_invoice_result_to_provider(&self, invoice: &Invoice) -> Result<(), AgentOfferingManagerError> {
-        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
-            let identity_manager = identity_manager_arc.lock().await;
-            let standard_identity = identity_manager
-                .external_profile_to_global_identity(&invoice.provider_name.to_string(), None)
-                .await
-                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
-            drop(identity_manager);
-            let receiver_public_key = standard_identity.node_encryption_public_key;
-
-            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
-                invoice.clone(),
-                MessageSchemaType::InvoiceResult,
-                clone_static_secret_key(&self.my_encryption_secret_key),
-                clone_signature_secret_key(&self.my_signature_secret_key),
-                receiver_public_key,
-                self.node_name.to_string(),
-                "".to_string(),
-                invoice.provider_name.to_string(),
-                "main".to_string(),
-                None,
-            )
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
-
-            send_message_to_peer(
-                message,
-                self.db.clone(),
-                standard_identity,
-                self.my_encryption_secret_key.clone(),
-                self.identity_manager.clone(),
-                self.proxy_connection_info.clone(),
-                self.libp2p_event_sender.clone(),
-            )
-            .await?;
-        }
-
-        Ok(())
-    }
-
     /// Reject an invoice and notify the provider
     pub async fn reject_invoice_and_notify(
         &self,
@@ -650,8 +610,6 @@ pub async fn pay_invoice_and_send_receipt(
 
         db.set_invoice(&invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
-
-        self.send_invoice_result_to_provider(&invoice).await?;
 
         Ok(invoice)
     }
