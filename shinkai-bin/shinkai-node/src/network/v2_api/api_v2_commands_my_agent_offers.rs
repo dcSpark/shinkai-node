@@ -69,10 +69,7 @@ impl Node {
         let manager = my_agent_payments_manager.lock().await;
 
         // Request the invoice
-        match manager
-            .network_request_invoice(network_tool, usage, None)
-            .await
-        {
+        match manager.network_request_invoice(network_tool, usage, None).await {
             Ok(invoice_request) => {
                 let invoice_value = match serde_json::to_value(invoice_request) {
                     Ok(value) => value,
@@ -107,6 +104,8 @@ impl Node {
         bearer: String,
         invoice_id: String,
         data_for_tool: Value,
+        inbox: Option<String>,
+        auto_pay: Option<bool>,
         node_name: ShinkaiName,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
@@ -216,12 +215,7 @@ impl Node {
         let payment = match my_agent_offerings_manager
             .lock()
             .await
-            .pay_invoice_and_send_receipt(
-                invoice_id,
-                data_for_tool,
-                node_name.clone(),
-                None,
-            )
+            .pay_invoice_and_send_receipt(invoice_id, data_for_tool, node_name.clone(), None)
             .await
         {
             Ok(payment) => payment,
@@ -249,6 +243,21 @@ impl Node {
                 return Ok(());
             }
         };
+
+        if let Some(true) = auto_pay {
+            if let Some(inbox_name) = inbox.clone() {
+                let pref_key = format!(
+                    "autopay:{}:{}:{}:{}",
+                    invoice.requester_name.full_name,
+                    invoice.provider_name.full_name,
+                    invoice.shinkai_offering.tool_key,
+                    inbox_name
+                );
+                if let Err(e) = db.set_preference(&pref_key, &true, Some("auto pay preference")) {
+                    eprintln!("Failed to store auto-pay preference: {:?}", e);
+                }
+            }
+        }
 
         // Send success response with payment details
         let payment_value = match serde_json::to_value(payment) {

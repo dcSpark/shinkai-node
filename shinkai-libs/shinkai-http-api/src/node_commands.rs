@@ -583,6 +583,8 @@ pub enum NodeCommand {
         bearer: String,
         invoice_id: String,
         data_for_tool: Value,
+        inbox: Option<String>,
+        auto_pay: Option<bool>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiListInvoices {

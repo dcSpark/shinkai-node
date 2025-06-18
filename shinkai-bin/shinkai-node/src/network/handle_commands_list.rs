@@ -17,11 +17,7 @@ impl Node {
                 let listen_address_clone = self.listen_address;
                 let libp2p_manager_clone = self.libp2p_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Self::ping_all(
-                        listen_address_clone,
-                        libp2p_manager_clone,
-                    )
-                    .await;
+                    let _ = Self::ping_all(listen_address_clone, libp2p_manager_clone).await;
                 });
             }
             NodeCommand::GetPublicKeys(sender) => {
@@ -1245,11 +1241,16 @@ impl Node {
                     let _ = Node::v2_api_get_shinkai_tool_metadata(db_clone, bearer, tool_router_key, res).await;
                 });
             }
-            NodeCommand::V2ApiGetToolWithOffering { bearer, tool_key_name, res } => {
+            NodeCommand::V2ApiGetToolWithOffering {
+                bearer,
+                tool_key_name,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 let node_name_clone = self.node_name.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_tool_with_offering(db_clone, node_name_clone, bearer, tool_key_name, res).await;
+                    let _ = Node::v2_api_get_tool_with_offering(db_clone, node_name_clone, bearer, tool_key_name, res)
+                        .await;
                 });
             }
             NodeCommand::V2ApiGetToolsWithOfferings { bearer, res } => {
@@ -1508,6 +1509,8 @@ impl Node {
                 bearer,
                 invoice_id,
                 data_for_tool,
+                inbox,
+                auto_pay,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1520,6 +1523,8 @@ impl Node {
                         bearer,
                         invoice_id,
                         data_for_tool,
+                        inbox,
+                        auto_pay,
                         node_name,
                         res,
                     )
@@ -1669,7 +1674,11 @@ impl Node {
                     let _ = Node::v2_api_get_job_scope(db_clone, bearer, job_id, res).await;
                 });
             }
-            NodeCommand::V2ApiGetMessageTraces { bearer, message_id, res } => {
+            NodeCommand::V2ApiGetMessageTraces {
+                bearer,
+                message_id,
+                res,
+            } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {
                     let _ = Node::v2_api_get_message_traces(db_clone, bearer, message_id, res).await;
