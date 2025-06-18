@@ -773,37 +773,49 @@ impl ExtAgentOfferingsManager {
         println!("local_invoice: {:?}", local_invoice);
         println!("received invoice: {:?}", invoice);
 
-        // Step 2: verify that the invoice is actually paid
-        let payment_payload = invoice
-            .payment
-            .as_ref()
-            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("No payment found in invoice".to_string()))?;
-        let transaction_signed = Some(payment_payload.transaction_signed.clone());
+        let is_free_tool = matches!(
+            local_invoice.shinkai_offering.usage_type,
+            UsageType::PerUse(ToolPrice::Free)
+        );
 
-        // Extract payment requirements from local_invoice
-        let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
-            // Note: we are only supporting one payment requirement for now
-            UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.get(0).ok_or_else(|| {
-                AgentOfferingManagerError::OperationFailed("No payment requirements found".to_string())
-            })?,
-            _ => {
-                return Err(AgentOfferingManagerError::OperationFailed(
-                    "Unsupported usage type".to_string(),
-                ))
-            }
-        };
+        // Step 2: verify that the invoice is actually paid (skip for free tools)
+        let output_opt = if !is_free_tool {
+            let payment_payload = invoice
+                .payment
+                .as_ref()
+                .ok_or_else(|| {
+                    AgentOfferingManagerError::OperationFailed(
+                        "No payment found in invoice".to_string(),
+                    )
+                })?;
+            let transaction_signed = Some(payment_payload.transaction_signed.clone());
 
-        // TODO: needs refactor
-        let input = {
-            // If the asset is USDC, use ERC20TokenAmount, otherwise use Money
-            if payment_requirements.asset == "USDC"
+            // Extract payment requirements from local_invoice
+            let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
+                UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.get(0).ok_or_else(|| {
+                    AgentOfferingManagerError::OperationFailed(
+                        "No payment requirements found".to_string(),
+                    )
+                })?,
+                _ => {
+                    return Err(AgentOfferingManagerError::OperationFailed(
+                        "Unsupported usage type".to_string(),
+                    ))
+                }
+            };
+
+            // TODO: needs refactor
+            let input = if payment_requirements.asset == "USDC"
                 || payment_requirements.asset.to_lowercase() == "usdc"
                 || payment_requirements.asset == "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
                 || payment_requirements.asset == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
             {
                 // Determine address and decimals based on network
                 let (address, decimals) = match payment_requirements.network {
-                    Network::BaseSepolia => ("0x036CbD53842c5426634e7929541eC2318f3dCF7e", 6),
+                    Network::BaseSepolia => (
+                        "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+                        6,
+                    ),
                     Network::Base => ("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6),
                     _ => (payment_requirements.asset.as_str(), 6), // fallback
                 };
@@ -828,29 +840,43 @@ impl ExtAgentOfferingsManager {
                 }
             } else {
                 x402::verify_payment::Input {
-                    price: Price::Money(payment_requirements.max_amount_required.parse::<f64>().unwrap_or(0.0)),
+                    price: Price::Money(
+                        payment_requirements
+                            .max_amount_required
+                            .parse::<f64>()
+                            .unwrap_or(0.0),
+                    ),
                     network: payment_requirements.network.clone(),
                     pay_to: payment_requirements.pay_to.clone(),
                     payment: transaction_signed,
                     x402_version: 1, // or your version
                     facilitator: FacilitatorConfig::default(),
                 }
+            };
+
+            println!("\n\ninput for payment verification: {:?}", input);
+
+            let output = verify_payment(input)
+                .await
+                .map_err(|e| {
+                    AgentOfferingManagerError::OperationFailed(format!(
+                        "Payment verification failed: {:?}",
+                        e
+                    ))
+                })?;
+
+            println!("\noutput of payment verification: {:?}", output);
+
+            if output.valid.is_none() {
+                return Err(AgentOfferingManagerError::OperationFailed(
+                    "Payment verification failed".to_string(),
+                ));
             }
+
+            Some(output)
+        } else {
+            None
         };
-
-        println!("\n\ninput for payment verification: {:?}", input);
-
-        let output = verify_payment(input)
-            .await
-            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Payment verification failed: {:?}", e)))?;
-
-        println!("\noutput of payment verification: {:?}", output);
-
-        if output.valid.is_none() {
-            return Err(AgentOfferingManagerError::OperationFailed(
-                "Payment verification failed".to_string(),
-            ));
-        }
 
         // Step 3: we extract the data_payload and then we call the tool with it
         let data_payload = invoice
@@ -890,7 +916,8 @@ impl ExtAgentOfferingsManager {
         // Step 4: if we got a successful result, we settle the payment
         // For testing maybe we can add a flag to avoid this step
         let is_testing = std::env::var("IS_TESTING").ok().map(|v| v == "1").unwrap_or(false);
-        if !is_testing {
+        if !is_testing && !is_free_tool {
+            let output = output_opt.as_ref().expect("Missing verification output");
             // Extract decoded_payment for settlement
             let decoded_payment = output.valid.as_ref().unwrap().decoded_payment.clone();
 
