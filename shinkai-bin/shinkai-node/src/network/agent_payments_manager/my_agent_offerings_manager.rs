@@ -256,8 +256,40 @@ impl MyAgentOfferingsManager {
         // Mocking the payment process
         println!("Initiating payment for invoice ID: {}", invoice.invoice_id);
 
+        // Determine the price for this invoice
+        let usage_type_inquiry = UsageTypeInquiry::PerUse;
+        let price = invoice
+            .shinkai_offering
+            .get_price_for_usage(&usage_type_inquiry)
+            .ok_or_else(|| {
+                AgentOfferingManagerError::OperationFailed(
+                    "Failed to get price for usage type".to_string(),
+                )
+            })?;
+
+        // If the tool is free, we don't need a wallet manager or to perform any
+        // blockchain checks. We simply generate a mock payment and return.
+        if let ToolPrice::Free = price {
+            let mut bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
+            let mock_tx_hash = format!("0x{}", hex::encode(bytes));
+
+            let payment = Payment::new(
+                mock_tx_hash,
+                invoice.invoice_id.clone(),
+                Some(chrono::Utc::now().to_rfc3339()),
+                shinkai_message_primitives::schemas::invoices::PaymentStatusEnum::Signed,
+            );
+
+            println!("Free tool payment created: {:?}", payment);
+            return Ok(payment);
+        }
+
+        // For paid tools we require a wallet manager
         let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
-            AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
+            AgentOfferingManagerError::OperationFailed(
+                "Failed to upgrade wallet_manager reference".to_string(),
+            )
         })?;
 
         let wallet_manager_lock = wallet_manager.lock().await;
@@ -270,39 +302,17 @@ impl MyAgentOfferingsManager {
         }
 
         let wallet = wallet_manager_lock.as_ref().ok_or_else(|| {
-            AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
+            AgentOfferingManagerError::OperationFailed(
+                "Failed to get wallet manager lock".to_string(),
+            )
         })?;
 
-        // Get the price for the usage type
-        let usage_type_inquiry = UsageTypeInquiry::PerUse;
-        let price = invoice
-            .shinkai_offering
-            .get_price_for_usage(&usage_type_inquiry)
-            .ok_or_else(|| {
-                AgentOfferingManagerError::OperationFailed("Failed to get price for usage type".to_string())
-            })?;
-
-        // Assuming the price is of type ToolPrice::Payment or ToolPrice::Free
+        // Price must be ToolPrice::Payment here
         let asset_payment = match price {
-            ToolPrice::Free => {
-                // For free tools, create a payment with zero cost using a mock transaction hash
-                // Generate a realistic mock transaction hash in Ethereum format (0x + 64 hex chars)
-                let mut bytes = [0u8; 32];
-                rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut bytes);
-                let mock_tx_hash = format!("0x{}", hex::encode(bytes));
-                
-                let payment = Payment::new(
-                    mock_tx_hash,
-                    invoice.invoice_id.clone(),
-                    Some(chrono::Utc::now().to_rfc3339()),
-                    shinkai_message_primitives::schemas::invoices::PaymentStatusEnum::Signed,
-                );
-                
-                println!("Free tool payment created: {:?}", payment);
-                return Ok(payment);
-            }
             ToolPrice::Payment(payments) => payments.first().ok_or_else(|| {
-                AgentOfferingManagerError::OperationFailed("No payments found in ToolPrice".to_string())
+                AgentOfferingManagerError::OperationFailed(
+                    "No payments found in ToolPrice".to_string(),
+                )
             })?,
             _ => {
                 return Err(AgentOfferingManagerError::OperationFailed(
