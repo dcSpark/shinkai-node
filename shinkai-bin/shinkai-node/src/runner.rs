@@ -388,6 +388,13 @@ pub fn print_node_info(node_env: &NodeEnvironment, encryption_pk: &str, signatur
     println!("Node API HTTPS address: {}", node_env.api_https_listen_address);
     println!("Node TCP address: {}", node_env.listen_address);
     println!("Node WS address: {:?}", node_env.ws_address);
+    println!(
+        "Node Relayer address: {}",
+        node_env
+            .proxy_identity
+            .as_deref()
+            .unwrap_or("None")
+    );
     println!("Node Shinkai identity: {}", node_env.global_identity_name);
     println!("Node Main Profile: main (assumption)"); // Assuming "main" as the main profile
     println!("Node encryption pk: {}", encryption_pk);
