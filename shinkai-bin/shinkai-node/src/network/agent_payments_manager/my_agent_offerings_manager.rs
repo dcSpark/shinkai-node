@@ -441,8 +441,19 @@ impl MyAgentOfferingsManager {
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
         let db_write = db;
 
+        // Clone the invoice so we can modify it before storing
+        let mut invoice_to_store = invoice.clone();
+
+        // Try to fetch the InternalInvoiceRequest associated with this invoice
+        if let Ok(internal_invoice_request) = db_write.get_internal_invoice_request(&invoice.invoice_id) {
+            // If the invoice does not already have a parent_message_id, use the one from the request
+            if invoice_to_store.parent_message_id.is_none() {
+                invoice_to_store.parent_message_id = internal_invoice_request.parent_message_id;
+            }
+        }
+
         db_write
-            .set_invoice(invoice)
+            .set_invoice(&invoice_to_store)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
     }
 
