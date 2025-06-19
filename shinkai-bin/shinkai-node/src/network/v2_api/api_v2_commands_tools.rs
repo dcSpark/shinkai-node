@@ -1,19 +1,9 @@
 use crate::{
-    llm_provider::job_manager::JobManager,
-    managers::{tool_router::ToolRouter, IdentityManager},
-    network::{
-        node_error::NodeError,
-        node_shareable_logic::{download_zip_from_url, ZipFileContents},
-        zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool},
-        Node,
-    },
-    tools::{
-        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools},
-        tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd},
-        tool_generation::v2_create_and_send_job_message,
-        tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt},
-    },
-    utils::environment::NodeEnvironment,
+    llm_provider::job_manager::JobManager, managers::{tool_router::ToolRouter, IdentityManager}, network::{
+        node_error::NodeError, node_shareable_logic::{download_zip_from_url, ZipFileContents}, zip_export_import::zip_export_import::{generate_tool_zip, import_dependencies_tools, import_tool}, Node
+    }, tools::{
+        tool_definitions::definition_generation::{generate_tool_definitions, get_all_tools}, tool_execution::execution_coordinator::{execute_code, execute_mcp_tool_cmd, execute_tool_cmd}, tool_generation::v2_create_and_send_job_message, tool_prompts::{generate_code_prompt, tool_metadata_implementation_prompt}
+    }, utils::environment::NodeEnvironment
 };
 use async_channel::Sender;
 use base64::Engine;
@@ -26,41 +16,17 @@ use shinkai_embedding::embedding_generator::EmbeddingGenerator;
 use shinkai_http_api::node_api_router::{APIError, SendResponseBodyData};
 use shinkai_message_primitives::{
     schemas::{
-        inbox_name::InboxName,
-        indexable_version::IndexableVersion,
-        job::JobLike,
-        job_config::JobConfig,
-        shinkai_name::ShinkaiName,
-        shinkai_name::ShinkaiSubidentityType,
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-        tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType},
-    shinkai_utils::{
-        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::clone_signature_secret_key,
-    },
+        identity::Identity, inbox_name::InboxName, indexable_version::IndexableVersion, job::JobLike, job_config::JobConfig, llm_providers::agent::Agent, shinkai_name::{ShinkaiName, ShinkaiSubidentityType}, shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::{CallbackAction, JobCreationInfo, JobMessage, MessageSchemaType}, shinkai_utils::{
+        job_scope::MinimalJobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
+    }
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    deno_tools::DenoTool,
-    error::ToolError,
-    parameters::Parameters,
-    python_tools::PythonTool,
-    shinkai_tool::ShinkaiToolHeader,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets},
-    tool_config::{OAuth, ToolConfig},
-    tool_output_arg::ToolOutputArg,
-    tool_playground::{ToolPlayground, ToolPlaygroundMetadata},
-    tool_types::{OperatingSystem, RunnerType, ToolResult},
+    agent_tool_wrapper::AgentToolWrapper, deno_tools::DenoTool, error::ToolError, parameters::Parameters, python_tools::PythonTool, shinkai_tool::ShinkaiToolHeader, shinkai_tool::{ShinkaiTool, ShinkaiToolWithAssets}, tool_config::{OAuth, ToolConfig}, tool_output_arg::ToolOutputArg, tool_playground::{ToolPlayground, ToolPlaygroundMetadata}, tool_types::{OperatingSystem, RunnerType, ToolResult}
 };
 use std::{
-    collections::HashMap,
-    env,
-    io::Read,
-    path::{absolute, PathBuf},
-    sync::Arc,
-    time::Instant,
+    collections::HashMap, env, io::Read, path::{absolute, PathBuf}, sync::Arc, time::Instant
 };
 use tokio::fs;
 use tokio::{process::Command, sync::Mutex};
@@ -814,6 +780,177 @@ impl Node {
 
                 let response = json!({ "status": "success", "message": format!("Tool added with key: {}", tool_key.to_string_without_version()) });
                 let _ = res.send(Ok(response)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to add tool to SqliteManager: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn v2_api_add_network_agent(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        node_env: NodeEnvironment,
+        new_tool_with_assets: ShinkaiToolWithAssets,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the bearer token
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let new_tool = new_tool_with_assets.tool.clone();
+        let dependencies = new_tool.get_tools();
+        for dependency in dependencies {
+            let tool = db.get_tool_by_key(&dependency.to_string_without_version());
+            if tool.is_err() {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Tool not found: {}", dependency.to_string_without_version()),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+
+        // First, add the tool but mark it as inactive (enabled = false)
+        let mut tool_to_save = new_tool_with_assets.tool.clone();
+        tool_to_save.disable();
+
+        let save_result = db.add_tool(tool_to_save.clone()).await;
+
+        match save_result {
+            Ok(tool) => {
+                let tool_key = tool.tool_router_key();
+
+                // Now create an agent with this tool as the only tool
+                let requester_name = match identity_manager.lock().await.get_main_identity() {
+                    Some(Identity::Standard(std_identity)) => std_identity.clone().full_identity_name,
+                    _ => {
+                        let api_error = APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: "Wrong identity type. Expected Standard identity.".to_string(),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                        return Ok(());
+                    }
+                };
+
+                // Generate agent ID based on the tool name
+                let agent_id = format!(
+                    "agent_{}",
+                    ToolRouterKey::sanitize(&tool_key.to_string_without_version())
+                );
+
+                println!("requester_name: {}", requester_name);
+                println!("agent_id: {}", agent_id);
+
+                // Construct the agent's full identity name
+                let agent_full_identity_name = ShinkaiName::new(format!(
+                    "{}/main/agent/{}",
+                    requester_name.get_node_name_string(),
+                    agent_id
+                ))
+                .map_err(|_| {
+                    let api_error = APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: "Failed to create agent identity name".to_string(),
+                    };
+                    api_error
+                })
+                .unwrap();
+
+                // Get the default LLM provider from preferences, with fallback
+                let default_llm_provider = match db.get_preference::<String>("default_llm_provider") {
+                    Ok(Some(provider_id)) => provider_id,
+                    _ => {
+                        // Fallback: Get the first available LLM provider
+                        match db.get_all_llm_providers() {
+                            Ok(providers) if !providers.is_empty() => providers[0].id.clone(),
+                            _ => {
+                                let api_error = APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: "No LLM providers available for agent creation".to_string(),
+                                };
+                                let _ = res.send(Err(api_error)).await;
+                                return Ok(());
+                            }
+                        }
+                    }
+                };
+
+                // Create the agent
+                let agent = Agent {
+                    name: format!("{} Decentralized Agent", tool_to_save.name()),
+                    agent_id: agent_id.clone(),
+                    full_identity_name: agent_full_identity_name,
+                    llm_provider_id: default_llm_provider,
+                    ui_description: format!("Agent created for tool: {}", tool_to_save.name()),
+                    knowledge: vec![],
+                    storage_path: format!(
+                        "{}/agents/{}",
+                        node_env.node_storage_path.clone().unwrap_or_default(),
+                        agent_id
+                    ),
+                    tools: vec![tool_key.clone()], // Only tool is the newly created one
+                    debug_mode: false,
+                    config: None,
+                    cron_tasks: None,
+                    scope: MinimalJobScope::default(),
+                    tools_config_override: None,
+                    edited: true,
+                };
+
+                // Add the agent to the database
+                match db.add_agent(agent.clone(), &requester_name) {
+                    Ok(_) => {
+                        // Create and add Agent tool wrapper (this will be active by default)
+                        let node_name = requester_name.get_node_name_string();
+                        let agent_tool_wrapper = AgentToolWrapper::new(
+                            agent.agent_id.clone(),
+                            agent.name.clone(),
+                            agent.ui_description.clone(),
+                            node_name,
+                            None,
+                        );
+
+                        let shinkai_agent_tool = ShinkaiTool::Agent(agent_tool_wrapper, true);
+
+                        // Add agent tool to database
+                        if let Err(err) = db.add_tool(shinkai_agent_tool).await {
+                            eprintln!("Warning: Failed to add agent tool: {}", err);
+                        }
+
+                        let response = json!({
+                            "status": "success",
+                            "message": format!("Network agent created successfully with tool: {}", tool_key.to_string_without_version()),
+                            "agent_id": agent.agent_id,
+                            "tool_key": tool_key.to_string_without_version()
+                        });
+                        let _ = res.send(Ok(response)).await;
+                    }
+                    Err(err) => {
+                        let api_error = APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to add agent: {}", err),
+                        };
+                        let _ = res.send(Err(api_error)).await;
+                    }
+                }
+
                 Ok(())
             }
             Err(err) => {

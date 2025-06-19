@@ -6,16 +6,11 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 use shinkai_message_primitives::{
     schemas::{
-        shinkai_tools::{CodeLanguage, DynamicToolType},
-        tool_router_key::ToolRouterKey,
-    },
-    shinkai_message::shinkai_message_schemas::JobMessage,
+        shinkai_tools::{CodeLanguage, DynamicToolType}, tool_router_key::ToolRouterKey
+    }, shinkai_message::shinkai_message_schemas::JobMessage
 };
 use shinkai_tools_primitives::tools::{
-    shinkai_tool::ShinkaiToolWithAssets,
-    tool_config::OAuth,
-    tool_playground::ToolPlayground,
-    tool_types::{OperatingSystem, RunnerType},
+    shinkai_tool::ShinkaiToolWithAssets, tool_config::OAuth, tool_playground::ToolPlayground, tool_types::{OperatingSystem, RunnerType}
 };
 use std::collections::HashMap;
 use utoipa::{OpenApi, ToSchema};
@@ -102,6 +97,13 @@ pub fn tool_routes(
         .and(warp::header::<String>("authorization"))
         .and(warp::body::json())
         .and_then(add_shinkai_tool_handler);
+
+    let add_network_agent_route = warp::path("add_network_agent")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(add_network_agent_handler);
 
     let tool_execution_route = warp::path("tool_execution")
         .and(warp::post())
@@ -342,6 +344,7 @@ pub fn tool_routes(
         .or(get_shinkai_tools_by_tool_set_route)
         .or(set_common_toolset_config_route)
         .or(add_shinkai_tool_route)
+        .or(add_network_agent_route)
         .or(duplicate_tool_route)
         .or(set_playground_tool_route)
         .or(list_playground_tools_route)
@@ -930,6 +933,45 @@ pub async fn add_shinkai_tool_handler(
     let (res_sender, res_receiver) = async_channel::bounded(1);
     sender
         .send(NodeCommand::V2ApiAddShinkaiTool {
+            bearer,
+            shinkai_tool: payload,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(response) => {
+            let response = create_success_response(response);
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        }
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
+#[utoipa::path(
+    post,
+    path = "/v2/add_network_agent",
+    request_body = ShinkaiTool,
+    responses(
+        (status = 200, description = "Successfully added network agent with tool", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn add_network_agent_handler(
+    sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: ShinkaiToolWithAssets,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    sender
+        .send(NodeCommand::V2ApiAddNetworkAgent {
             bearer,
             shinkai_tool: payload,
             res: res_sender,
@@ -2527,7 +2569,8 @@ pub async fn get_tools_from_toolset_handler(
         Err(error) => {
             Ok(warp::reply::with_status(
                 warp::reply::json(&error),
-                StatusCode::from_u16(error.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), // Fallback to 500 if code is invalid
+                StatusCode::from_u16(error.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), /* Fallback to 500 if
+                                                                                                * code is invalid */
             ))
         }
     }
@@ -2585,7 +2628,8 @@ pub async fn set_common_toolset_config_handler(
             // fallback
             Ok(warp::reply::with_status(
                 warp::reply::json(&e),
-                StatusCode::from_u16(e.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), // Fallback to 500 if code is invalid
+                StatusCode::from_u16(e.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), /* Fallback to 500 if
+                                                                                            * code is invalid */
             ))
         }
     }
@@ -2697,6 +2741,7 @@ pub async fn tool_check_handler(
         get_shinkai_tool_handler,
         search_shinkai_tool_handler,
         add_shinkai_tool_handler,
+        add_network_agent_handler,
         set_playground_tool_handler,
         list_playground_tools_handler,
         remove_playground_tool_handler,
