@@ -24,6 +24,7 @@ use shinkai_message_primitives::schemas::x402_types::Network;
 use shinkai_message_primitives::schemas::{
     indexable_version::IndexableVersion, invoices::{Invoice, InvoiceStatusEnum}, job::JobLike, llm_providers::common_agent_llm_provider::ProviderOrAgent, shinkai_name::ShinkaiName, shinkai_preferences::ShinkaiInternalComms, shinkai_tool_offering::{ToolPrice, UsageType, UsageTypeInquiry}, tool_router_key::ToolRouterKey, ws_types::{PaymentMetadata, WSMessageType, WidgetMetadata}, x402_types::PaymentRequirements
 };
+use shinkai_message_primitives::schemas::wallet_mixed::AddressBalanceList;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{AssociatedUI, WSTopic};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_sqlite::errors::SqliteManagerError;
@@ -1116,20 +1117,29 @@ impl ToolRouter {
                         }
                     };
 
-                    // Get wallet balances
-                    let balances = match my_agent_payments_manager.get_balances(node_name.clone()).await {
-                        Ok(balances) => balances,
-                        Err(e) => {
-                            eprintln!("Failed to get balances: {}", e);
-                            shinkai_log(
-                                ShinkaiLogOption::Node,
-                                ShinkaiLogLevel::Error,
-                                format!("Failed to get balances: {}", e).as_str(),
-                            );
-                            return Err(LLMProviderError::FunctionExecutionError(format!(
-                                "Failed to get balances: {}",
-                                e
-                            )));
+                    // Retrieve wallet balances only if the tool is not free
+                    let balances = if matches!(network_tool.usage_type, UsageType::PerUse(ToolPrice::Free)) {
+                        AddressBalanceList {
+                            data: vec![],
+                            has_more: false,
+                            next_page: String::new(),
+                            total_count: 0,
+                        }
+                    } else {
+                        match my_agent_payments_manager.get_balances(node_name.clone()).await {
+                            Ok(balances) => balances,
+                            Err(e) => {
+                                eprintln!("Failed to get balances: {}", e);
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Failed to get balances: {}", e).as_str(),
+                                );
+                                return Err(LLMProviderError::FunctionExecutionError(format!(
+                                    "Failed to get balances: {}",
+                                    e
+                                )));
+                            }
                         }
                     };
 
