@@ -1119,9 +1119,24 @@ impl Node {
             return Ok(());
         }
 
+        // Retrieve the agent before removal so that we can inspect its tools
+        let agent_opt = match db.get_agent(&agent_id) {
+            Ok(agent) => agent,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to fetch agent: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // Remove the agent from the database
         match db.remove_agent(&agent_id) {
             Ok(_) => {
+                // Remove the agent wrapper tool
                 let tool = match db.get_tool_by_agent_id(&agent_id) {
                     Ok(tool) => tool,
                     Err(err) => {
@@ -1129,8 +1144,27 @@ impl Node {
                         return Ok(());
                     }
                 };
-                if let Err(err) = db.remove_tool(&tool.tool_router_key().to_string_with_version(), None) {
+                if let Err(err) = db.remove_tool(&tool.tool_router_key().to_string_without_version(), tool.tool_router_key().version().map(|v| v.to_string())) {
                     eprintln!("Warning: Failed to remove agent tool: {}", err);
+                }
+
+                // If the agent only had a single tool and that tool is a Network tool,
+                // also remove that network tool from the database. This mirrors the
+                // logic when creating a network agent via `v2_api_add_network_agent`.
+                if let Some(agent) = agent_opt {
+                    if agent.tools.len() == 1 {
+                        let tk = &agent.tools[0];
+                        match db.get_tool_by_key_and_version(&tk.to_string_without_version(), tk.version()) {
+                            Ok(ShinkaiTool::Network(_, _)) => {
+                                if let Err(err) =
+                                    db.remove_tool(&tk.to_string_without_version(), tk.version().map(|v| v.to_string()))
+                                {
+                                    eprintln!("Warning: Failed to remove network tool: {}", err);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
 
                 let _ = res.send(Ok("Agent removed successfully".to_string())).await;

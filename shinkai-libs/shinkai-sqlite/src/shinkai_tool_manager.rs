@@ -4,7 +4,6 @@ use keyphrases::KeyPhraseExtractor;
 use rusqlite::{params, Result};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::indexable_version::IndexableVersion;
-use shinkai_message_primitives::schemas::mcp_server::MCPServer;
 use shinkai_tools_primitives::tools::mcp_server_tool::MCPServerTool;
 use shinkai_tools_primitives::tools::shinkai_tool::{ShinkaiTool, ShinkaiToolHeader};
 use shinkai_tools_primitives::tools::tool_config::{BasicConfig, ToolConfig};
@@ -613,32 +612,43 @@ impl SqliteManager {
             all_rowids
         };
 
-        // Delete each row from shinkai_tools and shinkai_tools_vec_items
-        for rowid in &rowids {
-            tx.execute("DELETE FROM shinkai_tools WHERE rowid = ?1", params![rowid])?;
-            tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
-        }
+        // Delete dependent records first to avoid foreign key constraint failures
+        // Note: We preserve invoices as they are important financial records
 
-        // Also remove any micropayment data associated with this tool key
-        // First remove invoices and related records that reference this tool.
+        // Remove any invoice network errors related to this tool
+        // (These are error logs, not critical financial records)
         tx.execute(
             "DELETE FROM invoice_network_errors WHERE invoice_id IN (
                 SELECT invoice_id FROM invoices WHERE shinkai_offering_key = ?1
             )",
             params![tool_key_lower],
         )?;
+
+        // Update any existing invoices to set shinkai_offering_key to NULL
+        // This preserves the invoice records but removes the foreign key reference
+        // The tool_data BLOB in invoices already contains the tool information
         tx.execute(
-            "DELETE FROM invoices WHERE shinkai_offering_key = ?1",
+            "UPDATE invoices SET shinkai_offering_key = NULL WHERE shinkai_offering_key = ?1",
             params![tool_key_lower],
         )?;
-        tx.execute(
-            "DELETE FROM invoice_requests WHERE tool_key_name = ?1",
-            params![tool_key_lower],
-        )?;
+
+        // Now we can safely remove the tool offering
         tx.execute(
             "DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1",
             params![tool_key_lower],
         )?;
+
+        // Remove tool playground code history entries (these have cascade delete from tool_playground)
+        // No explicit delete needed as ON DELETE CASCADE should handle it
+
+        // Remove tool playground entries (these reference shinkai_tools with cascade delete)
+        // No explicit delete needed as ON DELETE CASCADE should handle it
+
+        // Delete each row from shinkai_tools and shinkai_tools_vec_items
+        for rowid in &rowids {
+            tx.execute("DELETE FROM shinkai_tools WHERE rowid = ?1", params![rowid])?;
+            tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
+        }
 
         tx.commit()?;
 
