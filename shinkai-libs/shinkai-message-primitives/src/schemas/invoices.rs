@@ -22,6 +22,8 @@ use super::{
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Invoice {
     pub invoice_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_message_id: Option<String>,
     pub provider_name: ShinkaiName,
     pub requester_name: ShinkaiName,
     pub usage_type_inquiry: UsageTypeInquiry,

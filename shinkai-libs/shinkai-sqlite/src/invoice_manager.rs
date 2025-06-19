@@ -1,6 +1,7 @@
 use rusqlite::params;
 use shinkai_message_primitives::schemas::{
-    invoices::{Invoice, InvoiceRequestNetworkError}, shinkai_name::ShinkaiName
+    invoices::{Invoice, InvoiceRequestNetworkError},
+    shinkai_name::ShinkaiName,
 };
 
 use crate::{SqliteManager, SqliteManagerError};
@@ -23,8 +24,9 @@ impl SqliteManager {
                 address, 
                 tool_data,
                 response_date_time,
-                result_str
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                result_str,
+                parent_message_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )?;
 
         // Add tool offering if it does not exist
@@ -61,6 +63,7 @@ impl SqliteManager {
             })?,
             invoice.response_date_time.map(|dt| dt.to_rfc3339()),
             invoice.result_str,
+            invoice.parent_message_id,
         ])?;
 
         Ok(())
@@ -84,9 +87,12 @@ impl SqliteManager {
                 let address: String = row.get(10)?;
                 let tool_data: Vec<u8> = row.get(11)?;
                 let response_date_time: Option<String> = row.get(12)?;
+                let result_str: Option<String> = row.get(13)?;
+                let parent_message_id: Option<String> = row.get(14)?;
 
                 Ok(Invoice {
                     invoice_id: row.get(0)?,
+                    parent_message_id,
                     provider_name: ShinkaiName::new(provider_name).map_err(|e| {
                         rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                             e.to_string(),
@@ -152,7 +158,7 @@ impl SqliteManager {
                         })?),
                         None => None,
                     },
-                    result_str: row.get(13)?,
+                    result_str,
                 })
             })
             .map_err(|e| {
@@ -184,9 +190,12 @@ impl SqliteManager {
                 let address: String = row.get(10)?;
                 let tool_data: Vec<u8> = row.get(11)?;
                 let response_date_time: Option<String> = row.get(12)?;
+                let result_str: Option<String> = row.get(13)?;
+                let parent_message_id: Option<String> = row.get(14)?;
 
                 Ok(Invoice {
                     invoice_id: row.get(0)?,
+                    parent_message_id,
                     provider_name: ShinkaiName::new(provider_name).map_err(|e| {
                         rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(
                             e.to_string(),
@@ -252,7 +261,7 @@ impl SqliteManager {
                         })?),
                         None => None,
                     },
-                    result_str: row.get(13)?,
+                    result_str,
                 })
             })
             .map_err(SqliteManagerError::DatabaseError)?;
@@ -416,7 +425,11 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::{
-        invoices::InvoiceStatusEnum, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry}, wallet_mixed::{NetworkIdentifier, PublicAddress}, x402_types::Network
+        invoices::InvoiceStatusEnum,
+        shinkai_name::ShinkaiName,
+        shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry},
+        wallet_mixed::{NetworkIdentifier, PublicAddress},
+        x402_types::Network,
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
@@ -436,6 +449,7 @@ mod tests {
         let db = setup_test_db();
         let invoice = Invoice {
             invoice_id: "invoice_id".to_string(),
+            parent_message_id: None,
             provider_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
             requester_name: ShinkaiName::new("@@node2.shinkai/main_profile_node2".to_string()).unwrap(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
@@ -468,6 +482,7 @@ mod tests {
         let db = setup_test_db();
         let invoice1 = Invoice {
             invoice_id: "invoice_id1".to_string(),
+            parent_message_id: None,
             provider_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
             requester_name: ShinkaiName::new("@@node2.shinkai/main_profile_node2".to_string()).unwrap(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
@@ -492,6 +507,7 @@ mod tests {
 
         let invoice2 = Invoice {
             invoice_id: "invoice_id2".to_string(),
+            parent_message_id: None,
             provider_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
             requester_name: ShinkaiName::new("@@node2.shinkai/main_profile_node2".to_string()).unwrap(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
@@ -528,6 +544,7 @@ mod tests {
         let db = setup_test_db();
         let invoice = Invoice {
             invoice_id: "invoice_id".to_string(),
+            parent_message_id: None,
             provider_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
             requester_name: ShinkaiName::new("@@node2.shinkai/main_profile_node2".to_string()).unwrap(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
