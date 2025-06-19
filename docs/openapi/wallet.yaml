@@ -56,6 +56,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/APIError'
+  /v2/reject_invoice:
+    post:
+      tags:
+      - crate
+      operationId: reject_invoice_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectInvoiceRequest'
+        required: true
+      responses:
+        '200':
+          description: Successfully rejected invoice
+          content:
+            application/json:
+              schema: {}
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
   /v2/restore_coinbase_mpc_wallet:
     post:
       tags:
@@ -259,6 +282,16 @@ components:
         data_for_tool: {}
         invoice_id:
           type: string
+    RejectInvoiceRequest:
+      type: object
+      required:
+      - invoice_id
+      properties:
+        invoice_id:
+          type: string
+        reason:
+          type: string
+          nullable: true
     RestoreCoinbaseMPCWalletRequest:
       type: object
       required:

@@ -585,6 +585,12 @@ pub enum NodeCommand {
         data_for_tool: Value,
         res: Sender<Result<Value, APIError>>,
     },
+    V2ApiRejectInvoice {
+        bearer: String,
+        invoice_id: String,
+        reason: Option<String>,
+        res: Sender<Result<Value, APIError>>,
+    },
     V2ApiListInvoices {
         bearer: String,
         res: Sender<Result<Value, APIError>>,

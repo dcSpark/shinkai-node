@@ -59,6 +59,7 @@ pub enum InvoiceStatusEnum {
     Paid,
     Failed,
     Processed,
+    Rejected,
 }
 
 #[derive(Debug)]

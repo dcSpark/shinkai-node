@@ -598,6 +598,31 @@ pub async fn pay_invoice_and_send_receipt(
 
         Ok(())
     }
+
+    /// Reject an invoice and notify the provider
+    pub async fn reject_invoice_and_notify(
+        &self,
+        invoice_id: String,
+        reason: Option<String>,
+    ) -> Result<Invoice, AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        let mut invoice = db
+            .get_invoice(&invoice_id)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to get invoice: {:?}", e)))?;
+
+        invoice.update_status(InvoiceStatusEnum::Rejected);
+        invoice.result_str = Some(reason.clone().unwrap_or_else(|| "Rejected by user".to_string()));
+        invoice.response_date_time = Some(chrono::Utc::now());
+
+        db.set_invoice(&invoice)
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))?;
+
+        Ok(invoice)
+    }
     /// Add a network tool
     ///
     /// # Arguments

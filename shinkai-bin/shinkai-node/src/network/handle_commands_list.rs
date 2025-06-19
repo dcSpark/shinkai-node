@@ -1526,6 +1526,21 @@ impl Node {
                     .await;
                 });
             }
+            NodeCommand::V2ApiRejectInvoice { bearer, invoice_id, reason, res } => {
+                let db_clone = Arc::clone(&self.db);
+                let my_agent_payments_manager_clone = self.my_agent_payments_manager.clone();
+                tokio::spawn(async move {
+                    let _ = Node::v2_api_reject_invoice(
+                        db_clone,
+                        my_agent_payments_manager_clone,
+                        bearer,
+                        invoice_id,
+                        reason,
+                        res,
+                    )
+                    .await;
+                });
+            }
             NodeCommand::V2ApiListInvoices { bearer, res } => {
                 let db_clone = Arc::clone(&self.db);
                 tokio::spawn(async move {

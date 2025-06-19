@@ -1339,6 +1339,12 @@ impl ToolRouter {
                                 invoice_result = invoice;
                                 break;
                             }
+
+                            if invoice.status == InvoiceStatusEnum::Rejected {
+                                return Err(LLMProviderError::FunctionExecutionError(
+                                    "Invoice rejected".to_string(),
+                                ));
+                            }
                         }
                         Err(e) => {
                             return Err(LLMProviderError::FunctionExecutionError(format!(
