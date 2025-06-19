@@ -847,10 +847,15 @@ impl Node {
                 };
 
                 // Generate agent ID based on the tool name
-                let agent_id = format!(
-                    "agent_{}",
-                    ToolRouterKey::sanitize(&tool_key.to_string_without_version())
-                );
+                let sanitized_key = ToolRouterKey::sanitize(&tool_key.to_string_without_version());
+                let prefix = "agent_";
+                let mut agent_id = format!("{}{}", prefix, sanitized_key);
+                let max_len = 64;
+                if agent_id.len() > max_len {
+                    let allowed_len = max_len - prefix.len();
+                    let truncated: String = sanitized_key.chars().take(allowed_len).collect();
+                    agent_id = format!("{}{}", prefix, truncated);
+                }
 
                 println!("requester_name: {}", requester_name);
                 println!("agent_id: {}", agent_id);
