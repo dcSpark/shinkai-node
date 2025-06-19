@@ -770,6 +770,7 @@ fn micropayment_flow_test() {
                         bearer: api_v2_key.to_string(),
                         tool_key_name: test_network_tool_name.to_string(),
                         usage: UsageTypeInquiry::PerUse,
+                        inbox_name: None,
                         res: sender,
                     })
                     .await

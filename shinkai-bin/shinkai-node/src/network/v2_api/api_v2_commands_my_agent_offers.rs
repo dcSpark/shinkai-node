@@ -22,6 +22,7 @@ impl Node {
         bearer: String,
         tool_key_name: String,
         usage: UsageTypeInquiry,
+        inbox_name: Option<String>,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         // Validate the bearer token
@@ -70,7 +71,7 @@ impl Node {
 
         // Request the invoice
         match manager
-            .network_request_invoice(network_tool, usage, None)
+            .network_request_invoice(network_tool, usage, inbox_name.clone(), None)
             .await
         {
             Ok(invoice_request) => {

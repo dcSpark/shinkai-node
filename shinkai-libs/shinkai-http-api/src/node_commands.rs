@@ -555,6 +555,7 @@ pub enum NodeCommand {
         bearer: String,
         tool_key_name: String,
         usage: UsageTypeInquiry,
+        inbox_name: Option<String>,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiPayInvoice {

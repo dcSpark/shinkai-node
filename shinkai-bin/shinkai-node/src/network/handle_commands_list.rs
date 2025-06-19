@@ -1509,6 +1509,7 @@ impl Node {
                 bearer,
                 tool_key_name,
                 usage,
+                inbox_name,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
@@ -1520,6 +1521,7 @@ impl Node {
                         bearer,
                         tool_key_name,
                         usage,
+                        inbox_name,
                         res,
                     )
                     .await;

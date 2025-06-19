@@ -138,6 +138,7 @@ impl MyAgentOfferingsManager {
         &self,
         network_tool: NetworkTool,
         usage_type_inquiry: UsageTypeInquiry,
+        inbox_name: Option<String>,
         tracing_message_id: Option<String>,
     ) -> Result<InternalInvoiceRequest, AgentOfferingManagerError> {
         // Request the invoice
@@ -193,7 +194,7 @@ impl MyAgentOfferingsManager {
                 "tool": network_tool.name,
                 "usage_type": usage_clone
             });
-            if let Err(e) = db.add_tracing(&trace_id, None, "invoice_request_sent", &trace_info) {
+            if let Err(e) = db.add_tracing(&trace_id, inbox_name.as_deref(), "invoice_request_sent", &trace_info) {
                 eprintln!("failed to add tracing: {:?}", e);
             }
         }

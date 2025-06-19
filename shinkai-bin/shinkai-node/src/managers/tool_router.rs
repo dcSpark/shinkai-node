@@ -1144,10 +1144,13 @@ impl ToolRouter {
                     };
 
                     // Send a Network Request Invoice
+                    let inbox_name = Some(context.full_job().conversation_inbox_name.to_string());
+
                     let invoice_request = match my_agent_payments_manager
                         .network_request_invoice(
                             network_tool.clone(),
                             UsageTypeInquiry::PerUse,
+                            inbox_name,
                             context.message_hash_id(),
                         )
                         .await
