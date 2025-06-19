@@ -619,7 +619,22 @@ impl SqliteManager {
             tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
         }
 
-        // Also remove any tool offering associated with this tool key
+        // Also remove any micropayment data associated with this tool key
+        // First remove invoices and related records that reference this tool.
+        tx.execute(
+            "DELETE FROM invoice_network_errors WHERE invoice_id IN (
+                SELECT invoice_id FROM invoices WHERE shinkai_offering_key = ?1
+            )",
+            params![tool_key_lower],
+        )?;
+        tx.execute(
+            "DELETE FROM invoices WHERE shinkai_offering_key = ?1",
+            params![tool_key_lower],
+        )?;
+        tx.execute(
+            "DELETE FROM invoice_requests WHERE tool_key_name = ?1",
+            params![tool_key_lower],
+        )?;
         tx.execute(
             "DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1",
             params![tool_key_lower],
