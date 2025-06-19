@@ -280,9 +280,10 @@ impl SqliteManager {
             // 3. Drop old table
             // 4. Rename new table
 
-            conn.execute(
+                conn.execute(
                 "CREATE TABLE invoices_new (
                     invoice_id TEXT NOT NULL UNIQUE,
+                    parent_message_id TEXT,
                     provider_name TEXT NOT NULL,
                     requester_name TEXT NOT NULL,
                     usage_type_inquiry TEXT NOT NULL,
@@ -302,13 +303,58 @@ impl SqliteManager {
             )?;
 
             // Copy data from old table to new table
-            conn.execute("INSERT INTO invoices_new SELECT * FROM invoices", [])?;
+            conn.execute(
+                "INSERT INTO invoices_new (
+                    invoice_id,
+                    provider_name,
+                    requester_name,
+                    usage_type_inquiry,
+                    shinkai_offering_key,
+                    request_date_time,
+                    invoice_date_time,
+                    expiration_time,
+                    status,
+                    payment,
+                    address,
+                    tool_data,
+                    response_date_time,
+                    result_str
+                ) SELECT 
+                    invoice_id,
+                    provider_name,
+                    requester_name,
+                    usage_type_inquiry,
+                    shinkai_offering_key,
+                    request_date_time,
+                    invoice_date_time,
+                    expiration_time,
+                    status,
+                    payment,
+                    address,
+                    tool_data,
+                    response_date_time,
+                    result_str
+                FROM invoices",
+                [],
+            )?;
 
             // Drop the old table
             conn.execute("DROP TABLE invoices", [])?;
 
             // Rename the new table
             conn.execute("ALTER TABLE invoices_new RENAME TO invoices", [])?;
+        }
+
+        // Add parent_message_id column if it doesn't exist.
+        // This keeps older databases compatible with the new schema.
+        let mut stmt = conn
+            .prepare("SELECT COUNT(*) FROM pragma_table_info('invoices') WHERE name = 'parent_message_id'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+        if column_exists == 0 {
+            conn.execute(
+                "ALTER TABLE invoices ADD COLUMN parent_message_id TEXT",
+                [],
+            )?;
         }
 
         Ok(())
@@ -804,6 +850,7 @@ impl SqliteManager {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS invoices (
                 invoice_id TEXT NOT NULL UNIQUE,
+                parent_message_id TEXT,
                 provider_name TEXT NOT NULL,
                 requester_name TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,

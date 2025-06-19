@@ -575,6 +575,7 @@ impl ExtAgentOfferingsManager {
 
         let invoice = Invoice {
             invoice_id: invoice_request.unique_id.clone(),
+            parent_message_id: None,
             provider_name: self.node_name.clone(),
             requester_name: invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {
