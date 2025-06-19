@@ -575,7 +575,7 @@ impl ExtAgentOfferingsManager {
 
         let invoice = Invoice {
             invoice_id: invoice_request.unique_id.clone(),
-            parent_message_id: None,
+            parent_message_id: invoice_request.parent_message_id.clone(),
             provider_name: self.node_name.clone(),
             requester_name: invoice_request.requester_name.clone(),
             shinkai_offering: ShinkaiToolOffering {
@@ -656,7 +656,11 @@ impl ExtAgentOfferingsManager {
                     drop(identity_manager);
                     let receiver_public_key = standard_identity.node_encryption_public_key;
 
-                    let receiver_node_name = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
+                    let receiver_node_name = if invoice_request
+                        .requester_name
+                        .get_node_name_string()
+                        .starts_with("@@localhost.")
+                    {
                         requester_node_name.to_string()
                     } else {
                         invoice_request.requester_name.to_string()
@@ -694,7 +698,10 @@ impl ExtAgentOfferingsManager {
 
         // Continue
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
-            eprintln!("🔑 Creating invoice message, requester_node_name: {:?}, invoice_request: {:?}", requester_node_name, invoice_request);
+            eprintln!(
+                "🔑 Creating invoice message, requester_node_name: {:?}, invoice_request: {:?}",
+                requester_node_name, invoice_request
+            );
             let identity_manager = identity_manager_arc.lock().await;
             let standard_identity = identity_manager
                 .external_profile_to_global_identity(&requester_node_name.to_string(), None)
@@ -703,7 +710,11 @@ impl ExtAgentOfferingsManager {
             drop(identity_manager);
 
             let receiver_public_key = standard_identity.node_encryption_public_key;
-            let receiver_node_name = if invoice_request.requester_name.get_node_name_string().starts_with("@@localhost.") {
+            let receiver_node_name = if invoice_request
+                .requester_name
+                .get_node_name_string()
+                .starts_with("@@localhost.")
+            {
                 requester_node_name.to_string()
             } else {
                 invoice_request.requester_name.to_string()
@@ -784,19 +795,13 @@ impl ExtAgentOfferingsManager {
             let payment_payload = invoice
                 .payment
                 .as_ref()
-                .ok_or_else(|| {
-                    AgentOfferingManagerError::OperationFailed(
-                        "No payment found in invoice".to_string(),
-                    )
-                })?;
+                .ok_or_else(|| AgentOfferingManagerError::OperationFailed("No payment found in invoice".to_string()))?;
             let transaction_signed = Some(payment_payload.transaction_signed.clone());
 
             // Extract payment requirements from local_invoice
             let payment_requirements = match &local_invoice.shinkai_offering.usage_type {
                 UsageType::PerUse(ToolPrice::Payment(reqs)) => reqs.get(0).ok_or_else(|| {
-                    AgentOfferingManagerError::OperationFailed(
-                        "No payment requirements found".to_string(),
-                    )
+                    AgentOfferingManagerError::OperationFailed("No payment requirements found".to_string())
                 })?,
                 _ => {
                     return Err(AgentOfferingManagerError::OperationFailed(
@@ -813,10 +818,7 @@ impl ExtAgentOfferingsManager {
             {
                 // Determine address and decimals based on network
                 let (address, decimals) = match payment_requirements.network {
-                    Network::BaseSepolia => (
-                        "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-                        6,
-                    ),
+                    Network::BaseSepolia => ("0x036CbD53842c5426634e7929541eC2318f3dCF7e", 6),
                     Network::Base => ("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", 6),
                     _ => (payment_requirements.asset.as_str(), 6), // fallback
                 };
@@ -841,12 +843,7 @@ impl ExtAgentOfferingsManager {
                 }
             } else {
                 x402::verify_payment::Input {
-                    price: Price::Money(
-                        payment_requirements
-                            .max_amount_required
-                            .parse::<f64>()
-                            .unwrap_or(0.0),
-                    ),
+                    price: Price::Money(payment_requirements.max_amount_required.parse::<f64>().unwrap_or(0.0)),
                     network: payment_requirements.network.clone(),
                     pay_to: payment_requirements.pay_to.clone(),
                     payment: transaction_signed,
@@ -857,14 +854,9 @@ impl ExtAgentOfferingsManager {
 
             println!("\n\ninput for payment verification: {:?}", input);
 
-            let output = verify_payment(input)
-                .await
-                .map_err(|e| {
-                    AgentOfferingManagerError::OperationFailed(format!(
-                        "Payment verification failed: {:?}",
-                        e
-                    ))
-                })?;
+            let output = verify_payment(input).await.map_err(|e| {
+                AgentOfferingManagerError::OperationFailed(format!("Payment verification failed: {:?}", e))
+            })?;
 
             println!("\noutput of payment verification: {:?}", output);
 
@@ -1000,7 +992,11 @@ impl ExtAgentOfferingsManager {
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
 
-            let receiver_node_name = if invoice.requester_name.get_node_name_string().starts_with("@@localhost.") {
+            let receiver_node_name = if invoice
+                .requester_name
+                .get_node_name_string()
+                .starts_with("@@localhost.")
+            {
                 requester_node_name.to_string()
             } else {
                 invoice.requester_name.to_string()

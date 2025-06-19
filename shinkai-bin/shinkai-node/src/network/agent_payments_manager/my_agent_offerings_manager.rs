@@ -3,6 +3,7 @@ use std::sync::{Arc, Weak};
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Value};
 
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::{
     schemas::{
         invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
@@ -14,7 +15,6 @@ use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
-use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
@@ -92,6 +92,7 @@ impl MyAgentOfferingsManager {
     ///
     /// * `network_tool` - The network tool for which the invoice is requested.
     /// * `usage_type_inquiry` - The type of usage inquiry for the tool.
+    /// * `parent_message_id` - Optional parent message ID to link this invoice request.
     ///
     /// # Returns
     ///
@@ -100,6 +101,7 @@ impl MyAgentOfferingsManager {
         &self,
         network_tool: NetworkTool,
         usage_type_inquiry: UsageTypeInquiry,
+        parent_message_id: Option<String>,
     ) -> Result<InternalInvoiceRequest, AgentOfferingManagerError> {
         // Upgrade the database reference to a strong reference
         let db = self
@@ -113,6 +115,7 @@ impl MyAgentOfferingsManager {
             self.node_name.clone(),
             network_tool.tool_router_key(),
             usage_type_inquiry,
+            parent_message_id,
         );
 
         // Store the InternalInvoiceRequest in the database
@@ -130,6 +133,7 @@ impl MyAgentOfferingsManager {
     ///
     /// * `network_tool` - The network tool for which the invoice is requested.
     /// * `usage_type_inquiry` - The type of usage inquiry for the tool.
+    /// * `tracing_message_id` - Optional tracing message ID that will be saved as parent_message_id.
     ///
     /// # Returns
     ///
@@ -140,10 +144,13 @@ impl MyAgentOfferingsManager {
         usage_type_inquiry: UsageTypeInquiry,
         tracing_message_id: Option<String>,
     ) -> Result<InternalInvoiceRequest, AgentOfferingManagerError> {
+        println!("network_request_invoice (tracing_message_id: {:?})", tracing_message_id);
+
         // Request the invoice
         let usage_clone = usage_type_inquiry.clone();
-        let internal_invoice_request =
-            self.request_invoice(network_tool.clone(), usage_type_inquiry).await?;
+        let internal_invoice_request = self
+            .request_invoice(network_tool.clone(), usage_type_inquiry, tracing_message_id.clone())
+            .await?;
 
         // Create the payload for the invoice request
         let payload = internal_invoice_request.to_invoice_request();
@@ -173,30 +180,36 @@ impl MyAgentOfferingsManager {
             )
             .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
 
-        send_message_to_peer(
-            message,
-            self.db.clone(),
-            standard_identity,
-            self.my_encryption_secret_key.clone(),
-            self.identity_manager.clone(),
-            self.proxy_connection_info.clone(),
-            self.libp2p_event_sender.clone(),
-        )
-        .await?;
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
+            )
+            .await?;
 
-        if let Some(db) = self.db.upgrade() {
-            let trace_id = tracing_message_id
-                .clone()
-                .unwrap_or_else(|| internal_invoice_request.unique_id.clone());
-            let trace_info = json!({
-                "provider": network_tool.provider.to_string(),
-                "tool": network_tool.name,
-                "usage_type": usage_clone
-            });
-            if let Err(e) = db.add_tracing(&trace_id, None, "invoice_request_sent", &trace_info) {
-                eprintln!("failed to add tracing: {:?}", e);
+            if let Some(db) = self.db.upgrade() {
+                let trace_id = tracing_message_id.clone().unwrap_or_else(|| {
+                    internal_invoice_request
+                        .parent_message_id
+                        .clone()
+                        .unwrap_or_else(|| internal_invoice_request.unique_id.clone())
+                });
+                println!("trace_id: {:?}", trace_id);
+                let trace_info = json!({
+                    "provider": network_tool.provider.to_string(),
+                    "tool": network_tool.name,
+                    "tool_description": network_tool.description,
+                    "tool_author": network_tool.author,
+                    "usage_type": usage_clone
+                });
+                if let Err(e) = db.add_tracing(&trace_id, None, "invoice_request_sent", &trace_info) {
+                    eprintln!("failed to add tracing: {:?}", e);
+                }
             }
-        }
         }
 
         // Return the generated invoice request
@@ -262,9 +275,7 @@ impl MyAgentOfferingsManager {
             .shinkai_offering
             .get_price_for_usage(&usage_type_inquiry)
             .ok_or_else(|| {
-                AgentOfferingManagerError::OperationFailed(
-                    "Failed to get price for usage type".to_string(),
-                )
+                AgentOfferingManagerError::OperationFailed("Failed to get price for usage type".to_string())
             })?;
 
         // If the tool is free, we don't need a wallet manager or to perform any
@@ -287,9 +298,7 @@ impl MyAgentOfferingsManager {
 
         // For paid tools we require a wallet manager
         let wallet_manager = self.wallet_manager.upgrade().ok_or_else(|| {
-            AgentOfferingManagerError::OperationFailed(
-                "Failed to upgrade wallet_manager reference".to_string(),
-            )
+            AgentOfferingManagerError::OperationFailed("Failed to upgrade wallet_manager reference".to_string())
         })?;
 
         let wallet_manager_lock = wallet_manager.lock().await;
@@ -302,17 +311,13 @@ impl MyAgentOfferingsManager {
         }
 
         let wallet = wallet_manager_lock.as_ref().ok_or_else(|| {
-            AgentOfferingManagerError::OperationFailed(
-                "Failed to get wallet manager lock".to_string(),
-            )
+            AgentOfferingManagerError::OperationFailed("Failed to get wallet manager lock".to_string())
         })?;
 
         // Price must be ToolPrice::Payment here
         let asset_payment = match price {
             ToolPrice::Payment(payments) => payments.first().ok_or_else(|| {
-                AgentOfferingManagerError::OperationFailed(
-                    "No payments found in ToolPrice".to_string(),
-                )
+                AgentOfferingManagerError::OperationFailed("No payments found in ToolPrice".to_string())
             })?,
             _ => {
                 return Err(AgentOfferingManagerError::OperationFailed(
@@ -368,10 +373,46 @@ impl MyAgentOfferingsManager {
         let payment = match wallet.pay_invoice(invoice.clone(), node_name.clone()).await {
             Ok(payment) => {
                 println!("Payment successful: {:?}", payment);
+
+                // Add tracing for successful payment
+                if let Some(db) = self.db.upgrade() {
+                    let tracing_id = invoice
+                        .parent_message_id
+                        .clone()
+                        .unwrap_or_else(|| invoice.invoice_id.clone());
+                    let trace_info = json!({
+                        "payment_status": "successful",
+                        "transaction_hash": payment.transaction_signed,
+                        "invoice_id": invoice.invoice_id,
+                        "amount": format!("{:?}", price)
+                    });
+                    if let Err(e) = db.add_tracing(&tracing_id, None, "payment_successful", &trace_info) {
+                        eprintln!("failed to add payment success tracing: {:?}", e);
+                    }
+                }
+
                 payment
             }
             Err(e) => {
                 eprintln!("Error paying invoice: {:?}", e);
+
+                // Add tracing for payment error
+                if let Some(db) = self.db.upgrade() {
+                    let tracing_id = invoice
+                        .parent_message_id
+                        .clone()
+                        .unwrap_or_else(|| invoice.invoice_id.clone());
+                    let trace_info = json!({
+                        "payment_status": "failed",
+                        "error": e.to_string(),
+                        "invoice_id": invoice.invoice_id,
+                        "amount": format!("{:?}", price)
+                    });
+                    if let Err(trace_err) = db.add_tracing(&tracing_id, None, "payment_failed", &trace_info) {
+                        eprintln!("failed to add payment error tracing: {:?}", trace_err);
+                    }
+                }
+
                 return Err(AgentOfferingManagerError::OperationFailed(format!(
                     "Error paying invoice: {:?}",
                     e
@@ -436,13 +477,13 @@ impl MyAgentOfferingsManager {
     /// # Returns
     ///
     /// * `Result<Invoice, AgentOfferingManagerError>` - The updated invoice or an error.
-pub async fn pay_invoice_and_send_receipt(
+    pub async fn pay_invoice_and_send_receipt(
         &self,
         invoice_id: String,
         tool_data: Value,
         node_name: ShinkaiName,
         tracing_message_id: Option<String>,
-) -> Result<Invoice, AgentOfferingManagerError> {
+    ) -> Result<Invoice, AgentOfferingManagerError> {
         // TODO: check that the invoice is valid (exists) and still valid (not expired)
 
         // Step 0: Get the invoice from the database
@@ -488,8 +529,40 @@ pub async fn pay_invoice_and_send_receipt(
         if let Some(db) = self.db.upgrade() {
             let trace_id = tracing_message_id
                 .clone()
-                .unwrap_or_else(|| invoice_id.clone());
-            let trace_info = json!({ "status": "paid" });
+                .unwrap_or_else(|| invoice.parent_message_id.clone().unwrap_or_else(|| invoice_id.clone()));
+
+            // Create comprehensive tracing information
+            let mut trace_info = json!({
+                "status": "paid",
+                "invoice_id": updated_invoice.invoice_id,
+                "provider": updated_invoice.provider_name.to_string(),
+                "requester": updated_invoice.requester_name.to_string(),
+                "tool_key": updated_invoice.shinkai_offering.tool_key,
+                "usage_type": format!("{:?}", updated_invoice.usage_type_inquiry),
+                "invoice_date": updated_invoice.invoice_date_time.to_rfc3339(),
+                "paid_date": chrono::Utc::now().to_rfc3339(),
+                "tool_price": format!("{:?}", updated_invoice.shinkai_offering.get_price_for_usage(&updated_invoice.usage_type_inquiry)),
+                "has_tool_data": updated_invoice.tool_data.is_some()
+            });
+
+            // Add payment details if available
+            if let Some(payment) = &updated_invoice.payment {
+                trace_info["payment_details"] = json!({
+                    "transaction_hash": payment.transaction_signed,
+                    "payment_status": format!("{:?}", payment.status),
+                    "date_paid": payment.date_paid
+                });
+            }
+
+            // Add tool-specific information if available
+            if let Some(tool_data) = &updated_invoice.tool_data {
+                // Only include a summary to avoid overwhelming the trace
+                if let Some(obj) = tool_data.as_object() {
+                    trace_info["tool_data_keys"] = json!(obj.keys().collect::<Vec<_>>());
+                    trace_info["tool_data_size"] = json!(obj.len());
+                }
+            }
+
             if let Err(e) = db.add_tracing(&trace_id, None, "invoice_paid", &trace_info) {
                 eprintln!("failed to add tracing: {:?}", e);
             }
@@ -929,7 +1002,8 @@ mod tests {
     //     let usage_type_inquiry = UsageTypeInquiry::PerUse;
 
     //     // Call request_invoice to generate an invoice request
-    //     let internal_invoice_request = manager.request_invoice(network_tool, usage_type_inquiry).await.unwrap();
+    //     let internal_invoice_request = manager.request_invoice(network_tool, usage_type_inquiry,
+    // None).await.unwrap();
 
     //     // Simulate receiving an invoice from the server
     //     let invoice = Invoice {

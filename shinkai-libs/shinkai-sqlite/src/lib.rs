@@ -210,11 +210,12 @@ impl SqliteManager {
     }
 
     fn migrate_tables(conn: &rusqlite::Connection) -> Result<()> {
-        Self::migrate_tools_table(conn)?;
         Self::migrate_agents_table(conn)?;
         Self::migrate_llm_providers_table(conn)?;
-        Self::migrate_mcp_servers_table(conn)?;
         Self::migrate_invoices_table(conn)?;
+        Self::migrate_tools_table(conn)?;
+        Self::migrate_invoice_requests_table(conn)?;
+        Self::migrate_mcp_servers_table(conn)?;
         Ok(())
     }
 
@@ -354,6 +355,20 @@ impl SqliteManager {
         let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
         if column_exists == 0 {
             conn.execute("ALTER TABLE invoices ADD COLUMN parent_message_id TEXT", [])?;
+        }
+
+        Ok(())
+    }
+
+    fn migrate_invoice_requests_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if parent_message_id column exists by trying to select it
+        // If it fails, the column doesn't exist and we need to add it
+        let column_exists = conn
+            .prepare("SELECT parent_message_id FROM invoice_requests LIMIT 1")
+            .is_ok();
+
+        if !column_exists {
+            conn.execute("ALTER TABLE invoice_requests ADD COLUMN parent_message_id TEXT", [])?;
         }
 
         Ok(())
@@ -837,7 +852,8 @@ impl SqliteManager {
                 requester_name TEXT NOT NULL,
                 tool_key_name TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,
-                date_time TEXT NOT NULL
+                date_time TEXT NOT NULL,
+                parent_message_id TEXT
             );",
             [],
         )?;

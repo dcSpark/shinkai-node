@@ -1,13 +1,14 @@
 use rusqlite::params;
 use shinkai_message_primitives::schemas::{
-    invoices::{Invoice, InvoiceRequestNetworkError},
-    shinkai_name::ShinkaiName,
+    invoices::{Invoice, InvoiceRequestNetworkError}, shinkai_name::ShinkaiName
 };
 
 use crate::{SqliteManager, SqliteManagerError};
 
 impl SqliteManager {
     pub fn set_invoice(&self, invoice: &Invoice) -> Result<(), SqliteManagerError> {
+        println!("set_invoice: {:?}", invoice);
+
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
             "INSERT OR REPLACE INTO invoices (
@@ -425,11 +426,7 @@ mod tests {
     use super::*;
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
     use shinkai_message_primitives::schemas::{
-        invoices::InvoiceStatusEnum,
-        shinkai_name::ShinkaiName,
-        shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry},
-        wallet_mixed::{NetworkIdentifier, PublicAddress},
-        x402_types::Network,
+        invoices::InvoiceStatusEnum, shinkai_name::ShinkaiName, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry}, wallet_mixed::{NetworkIdentifier, PublicAddress}, x402_types::Network
     };
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
