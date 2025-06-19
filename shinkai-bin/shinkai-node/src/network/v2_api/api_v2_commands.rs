@@ -1156,7 +1156,9 @@ impl Node {
                         let tk = &agent.tools[0];
                         match db.get_tool_by_key_and_version(&tk.to_string_without_version(), tk.version()) {
                             Ok(ShinkaiTool::Network(_, _)) => {
-                                if let Err(err) = db.remove_tool(&tk.to_string_without_version(), tk.version().map(|v| v.to_string())) {
+                                if let Err(err) =
+                                    db.remove_tool(&tk.to_string_without_version(), tk.version().map(|v| v.to_string()))
+                                {
                                     eprintln!("Warning: Failed to remove network tool: {}", err);
                                 }
                             }

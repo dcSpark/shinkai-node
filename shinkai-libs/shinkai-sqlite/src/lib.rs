@@ -214,6 +214,7 @@ impl SqliteManager {
         Self::migrate_agents_table(conn)?;
         Self::migrate_llm_providers_table(conn)?;
         Self::migrate_mcp_servers_table(conn)?;
+        Self::migrate_invoices_table(conn)?;
         Ok(())
     }
 
@@ -255,6 +256,61 @@ impl SqliteManager {
         if !columns.contains(&"description".to_string()) {
             conn.execute("ALTER TABLE llm_providers ADD COLUMN description TEXT", [])?;
         }
+        Ok(())
+    }
+
+    fn migrate_invoices_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if we need to make shinkai_offering_key nullable
+        // We do this by checking if the table has the NOT NULL constraint
+        let mut stmt = conn.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='invoices'")?;
+        let table_sql: String = match stmt.query_row([], |row| row.get(0)) {
+            Ok(sql) => sql,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                // Table doesn't exist yet, no migration needed
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        };
+
+        // If the table definition still has "shinkai_offering_key TEXT NOT NULL", we need to migrate
+        if table_sql.contains("shinkai_offering_key TEXT NOT NULL") {
+            // SQLite doesn't support ALTER COLUMN directly, so we need to:
+            // 1. Create a new table with the correct schema
+            // 2. Copy data from old table
+            // 3. Drop old table
+            // 4. Rename new table
+
+            conn.execute(
+                "CREATE TABLE invoices_new (
+                    invoice_id TEXT NOT NULL UNIQUE,
+                    provider_name TEXT NOT NULL,
+                    requester_name TEXT NOT NULL,
+                    usage_type_inquiry TEXT NOT NULL,
+                    shinkai_offering_key TEXT, -- Made nullable
+                    request_date_time TEXT NOT NULL,
+                    invoice_date_time TEXT NOT NULL,
+                    expiration_time TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payment TEXT,
+                    address TEXT NOT NULL,
+                    tool_data BLOB,
+                    response_date_time TEXT,
+                    result_str TEXT,
+                    FOREIGN KEY(shinkai_offering_key) REFERENCES tool_micropayments_requirements(tool_key)
+                );",
+                [],
+            )?;
+
+            // Copy data from old table to new table
+            conn.execute("INSERT INTO invoices_new SELECT * FROM invoices", [])?;
+
+            // Drop the old table
+            conn.execute("DROP TABLE invoices", [])?;
+
+            // Rename the new table
+            conn.execute("ALTER TABLE invoices_new RENAME TO invoices", [])?;
+        }
+
         Ok(())
     }
 
@@ -751,7 +807,7 @@ impl SqliteManager {
                 provider_name TEXT NOT NULL,
                 requester_name TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,
-                shinkai_offering_key TEXT NOT NULL,
+                shinkai_offering_key TEXT, -- Made nullable to allow tool deletion
                 request_date_time TEXT NOT NULL,
                 invoice_date_time TEXT NOT NULL,
                 expiration_time TEXT NOT NULL,

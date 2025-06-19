@@ -612,17 +612,43 @@ impl SqliteManager {
             all_rowids
         };
 
+        // Delete dependent records first to avoid foreign key constraint failures
+        // Note: We preserve invoices as they are important financial records
+
+        // Remove any invoice network errors related to this tool
+        // (These are error logs, not critical financial records)
+        tx.execute(
+            "DELETE FROM invoice_network_errors WHERE invoice_id IN (
+                SELECT invoice_id FROM invoices WHERE shinkai_offering_key = ?1
+            )",
+            params![tool_key_lower],
+        )?;
+
+        // Update any existing invoices to set shinkai_offering_key to NULL
+        // This preserves the invoice records but removes the foreign key reference
+        // The tool_data BLOB in invoices already contains the tool information
+        tx.execute(
+            "UPDATE invoices SET shinkai_offering_key = NULL WHERE shinkai_offering_key = ?1",
+            params![tool_key_lower],
+        )?;
+
+        // Now we can safely remove the tool offering
+        tx.execute(
+            "DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1",
+            params![tool_key_lower],
+        )?;
+
+        // Remove tool playground code history entries (these have cascade delete from tool_playground)
+        // No explicit delete needed as ON DELETE CASCADE should handle it
+
+        // Remove tool playground entries (these reference shinkai_tools with cascade delete)
+        // No explicit delete needed as ON DELETE CASCADE should handle it
+
         // Delete each row from shinkai_tools and shinkai_tools_vec_items
         for rowid in &rowids {
             tx.execute("DELETE FROM shinkai_tools WHERE rowid = ?1", params![rowid])?;
             tx.execute("DELETE FROM shinkai_tools_vec_items WHERE rowid = ?1", params![rowid])?;
         }
-
-        // Also remove any tool offering associated with this tool key
-        tx.execute(
-            "DELETE FROM tool_micropayments_requirements WHERE tool_key = ?1",
-            params![tool_key_lower],
-        )?;
 
         tx.commit()?;
 
