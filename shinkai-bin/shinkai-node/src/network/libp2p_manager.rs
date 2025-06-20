@@ -457,7 +457,7 @@ impl LibP2PManager {
                     }
                 }
             }
-            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Identify(identify::Event::Received { peer_id, info })) => {
+            SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::Identify(identify::Event::Received { peer_id, info, .. })) => {
                 shinkai_log(
                     ShinkaiLogOption::Network,
                     ShinkaiLogLevel::Info,
@@ -583,7 +583,7 @@ impl LibP2PManager {
             }
             SwarmEvent::Behaviour(ShinkaiNetworkBehaviourEvent::RequestResponse(req_resp_event)) => {
                 match req_resp_event {
-                    request_response::Event::Message { peer, message } => {
+                    request_response::Event::Message { peer, message, .. } => {
                         match message {
                             request_response::Message::Request { request, channel, .. } => {
                                 shinkai_log(

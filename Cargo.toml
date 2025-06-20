@@ -80,3 +80,17 @@ tracing = "0.1.40"
 serde_yaml = "0.9.34-deprecated"
 tokio-tungstenite = "0.26.2"
 rustls = "0.23.27"
+libp2p = { version = "0.55.0", features = [
+    "noise",
+    "yamux",
+    "tcp",
+    "quic",
+    "dcutr",
+    "identify",
+    "ping",
+    "relay",
+    "request-response",
+    "json",
+    "tokio",
+    "macros"
+] }

@@ -26,22 +26,7 @@ swagger-ui = ["shinkai_http_api/swagger-ui"]
 doctest = false
 
 [dependencies]
-# libp2p dependencies for peer-to-peer networking
-libp2p = { version = "0.53", features = [
-    "noise",
-    "yamux",
-    "tcp",
-    "quic",
-    "dcutr",
-    "identify",
-    "ping",
-    "relay",
-    "request-response",
-    "json",
-    "tokio",
-    "macros"
-] }
-
+libp2p = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 log = { workspace = true }
