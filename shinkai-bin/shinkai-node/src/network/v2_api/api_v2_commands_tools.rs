@@ -3011,6 +3011,80 @@ impl Node {
         }
     }
 
+    pub async fn v2_api_remove_network_tool(
+        db: Arc<SqliteManager>,
+        bearer: String,
+        tool_key: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let tool_router_key = match ToolRouterKey::from_string(&tool_key) {
+            Ok(key) => key,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Invalid tool key: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let tool_key_name = tool_router_key.to_string_without_version();
+        let version = tool_router_key.version;
+
+        let sanitized_key = ToolRouterKey::sanitize(&tool_key_name);
+        let prefix = "agent_";
+        let mut agent_id = format!("{}{}", prefix, sanitized_key);
+        let max_len = 64;
+        if agent_id.len() > max_len {
+            let allowed_len = max_len - prefix.len();
+            let truncated: String = sanitized_key.chars().skip(sanitized_key.len() - allowed_len).collect();
+            agent_id = format!("{}{}", prefix, truncated);
+        }
+
+        if let Ok(Some(_)) = db.get_agent(&agent_id) {
+            if let Err(err) = db.remove_agent(&agent_id) {
+                eprintln!("Warning: Failed to remove associated agent {}: {}", agent_id, err);
+            } else if let Ok(agent_tool) = db.get_tool_by_agent_id(&agent_id) {
+                let tk = agent_tool.tool_router_key();
+                let _ = db.remove_tool(&tk.to_string_without_version(), tk.version().map(|v| v.to_string()));
+            }
+        }
+
+        if let Err(e) = db.remove_tool_playground(&tool_key) {
+            log::warn!(
+                "Attempt to remove associated playground tool for key '{}' failed (this might be expected if none exists): {}. Continuing with main tool removal.",
+                tool_key,
+                e
+            );
+        }
+
+        match db.remove_tool(&tool_key_name, version) {
+            Ok(_) => {
+                let response = json!({
+                    "status": "success",
+                    "message": "Network tool and associated agent removed successfully"
+                });
+                let _ = res.send(Ok(response)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to remove tool: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn v2_api_enable_all_tools(
         db: Arc<SqliteManager>,
         bearer: String,
