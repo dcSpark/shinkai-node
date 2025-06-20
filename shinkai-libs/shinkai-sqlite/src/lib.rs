@@ -361,13 +361,83 @@ impl SqliteManager {
     }
 
     fn migrate_invoice_requests_table(conn: &rusqlite::Connection) -> Result<()> {
-        // Check if parent_message_id column exists by trying to select it
-        // If it fails, the column doesn't exist and we need to add it
-        let column_exists = conn
-            .prepare("SELECT parent_message_id FROM invoice_requests LIMIT 1")
-            .is_ok();
+        // Check if `secret_prehash` column exists in legacy databases
+        let mut stmt =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('invoice_requests') WHERE name='secret_prehash'")?;
+        let has_secret_prehash: i64 = stmt.query_row([], |row| row.get(0))?;
 
-        if !column_exists {
+        // Check if `parent_message_id` column already exists
+        let mut stmt =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('invoice_requests') WHERE name='parent_message_id'")?;
+        let has_parent_msg_id: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        // If secret_prehash exists, recreate table without it
+        if has_secret_prehash > 0 {
+            conn.execute(
+                "CREATE TABLE invoice_requests_new (
+                    unique_id TEXT NOT NULL UNIQUE,
+                    provider_name TEXT NOT NULL,
+                    requester_name TEXT NOT NULL,
+                    tool_key_name TEXT NOT NULL,
+                    usage_type_inquiry TEXT NOT NULL,
+                    date_time TEXT NOT NULL,
+                    parent_message_id TEXT
+                );",
+                [],
+            )?;
+
+            if has_parent_msg_id > 0 {
+                conn.execute(
+                    "INSERT INTO invoice_requests_new (
+                        unique_id,
+                        provider_name,
+                        requester_name,
+                        tool_key_name,
+                        usage_type_inquiry,
+                        date_time,
+                        parent_message_id
+                    ) SELECT
+                        unique_id,
+                        provider_name,
+                        requester_name,
+                        tool_key_name,
+                        usage_type_inquiry,
+                        date_time,
+                        parent_message_id
+                    FROM invoice_requests",
+                    [],
+                )?;
+            } else {
+                conn.execute(
+                    "INSERT INTO invoice_requests_new (
+                        unique_id,
+                        provider_name,
+                        requester_name,
+                        tool_key_name,
+                        usage_type_inquiry,
+                        date_time,
+                        parent_message_id
+                    ) SELECT
+                        unique_id,
+                        provider_name,
+                        requester_name,
+                        tool_key_name,
+                        usage_type_inquiry,
+                        date_time,
+                        NULL
+                    FROM invoice_requests",
+                    [],
+                )?;
+            }
+
+            conn.execute("DROP TABLE invoice_requests", [])?;
+            conn.execute("ALTER TABLE invoice_requests_new RENAME TO invoice_requests", [])?;
+
+            return Ok(());
+        }
+
+        // Otherwise simply add parent_message_id if missing
+        if has_parent_msg_id == 0 {
             conn.execute("ALTER TABLE invoice_requests ADD COLUMN parent_message_id TEXT", [])?;
         }
 
