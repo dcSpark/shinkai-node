@@ -607,12 +607,28 @@ pub async fn handle_network_message_cases(
                                     &format!("Failed to store invoice: {:?}", e),
                                 );
                             }
-                            let tracing_id = get_invoice_tracing_id(&maybe_db, &invoice.invoice_id).await;
+                            let tracing_id =
+                                get_invoice_tracing_id(&maybe_db, &invoice.invoice_id).await;
+
+                            let trace_info = json!({
+                                "provider": invoice.provider_name.to_string(),
+                                "requester": invoice.requester_name.to_string(),
+                                "tool_key": invoice.shinkai_offering.tool_key,
+                                "usage_type": format!("{:?}", invoice.usage_type_inquiry),
+                                "invoice_date": invoice.invoice_date_time.to_rfc3339(),
+                                "expiration": invoice.expiration_time.to_rfc3339(),
+                                "address": {
+                                    "network": format!("{:?}", invoice.address.network_id),
+                                    "address_id": invoice.address.address_id,
+                                },
+                                "has_tool_data": invoice.tool_data.is_some(),
+                            });
+
                             if let Err(e) = maybe_db.add_tracing(
                                 &tracing_id,
                                 None,
                                 "invoice_received",
-                                &json!({"provider": invoice.provider_name}),
+                                &trace_info,
                             ) {
                                 eprintln!("failed to add invoice trace: {:?}", e);
                             }
