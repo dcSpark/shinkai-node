@@ -371,6 +371,61 @@ impl SqliteManager {
             conn.execute("ALTER TABLE invoice_requests ADD COLUMN parent_message_id TEXT", [])?;
         }
 
+        // Check if secret_prehash column exists and drop it if it does
+        // This column was added by mistake in some versions and should be removed
+        let mut stmt =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('invoice_requests') WHERE name = 'secret_prehash'")?;
+        let secret_prehash_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+
+        if secret_prehash_exists > 0 {
+            // SQLite doesn't support DROP COLUMN directly, so we need to:
+            // 1. Create a new table with the correct schema
+            // 2. Copy data from old table
+            // 3. Drop old table
+            // 4. Rename new table
+
+            conn.execute(
+                "CREATE TABLE invoice_requests_new (
+                    unique_id TEXT NOT NULL UNIQUE,
+                    provider_name TEXT NOT NULL,
+                    requester_name TEXT NOT NULL,
+                    tool_key_name TEXT NOT NULL,
+                    usage_type_inquiry TEXT NOT NULL,
+                    date_time TEXT NOT NULL,
+                    parent_message_id TEXT
+                );",
+                [],
+            )?;
+
+            // Copy data from old table to new table, excluding secret_prehash
+            conn.execute(
+                "INSERT INTO invoice_requests_new (
+                    unique_id,
+                    provider_name,
+                    requester_name,
+                    tool_key_name,
+                    usage_type_inquiry,
+                    date_time,
+                    parent_message_id
+                ) SELECT
+                    unique_id,
+                    provider_name,
+                    requester_name,
+                    tool_key_name,
+                    usage_type_inquiry,
+                    date_time,
+                    parent_message_id
+                FROM invoice_requests",
+                [],
+            )?;
+
+            // Drop the old table
+            conn.execute("DROP TABLE invoice_requests", [])?;
+
+            // Rename the new table
+            conn.execute("ALTER TABLE invoice_requests_new RENAME TO invoice_requests", [])?;
+        }
+
         Ok(())
     }
 
