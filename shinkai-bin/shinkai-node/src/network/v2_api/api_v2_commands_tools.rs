@@ -853,7 +853,7 @@ impl Node {
                 let max_len = 64;
                 if agent_id.len() > max_len {
                     let allowed_len = max_len - prefix.len();
-                    let truncated: String = sanitized_key.chars().take(allowed_len).collect();
+                    let truncated: String = sanitized_key.chars().skip(sanitized_key.len() - allowed_len).collect();
                     agent_id = format!("{}{}", prefix, truncated);
                 }
 
