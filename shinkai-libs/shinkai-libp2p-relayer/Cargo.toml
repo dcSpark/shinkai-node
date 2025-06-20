@@ -19,25 +19,10 @@ chrono = { workspace = true }
 dotenv = "0.15.0"
 derivative = "2.2"
 uuid = { workspace = true, features = ["v4"] }
-thiserror = "1.0"
+thiserror = "2.0.12"
 reqwest = { workspace = true, features = ["json"] }
 dashmap = { workspace = true }
-
-# LibP2P dependencies
-libp2p = { version = "0.55.0", features = [
-    "noise",
-    "yamux",
-    "tcp",
-    "quic",
-    "identify",
-    "ping",
-    "tokio",
-    "macros",
-    "relay",
-    "dcutr",
-    "request-response",
-    "json",
-] }
+libp2p = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
