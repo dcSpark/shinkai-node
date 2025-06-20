@@ -210,11 +210,12 @@ impl SqliteManager {
     }
 
     fn migrate_tables(conn: &rusqlite::Connection) -> Result<()> {
-        Self::migrate_tools_table(conn)?;
         Self::migrate_agents_table(conn)?;
         Self::migrate_llm_providers_table(conn)?;
-        Self::migrate_mcp_servers_table(conn)?;
         Self::migrate_invoices_table(conn)?;
+        Self::migrate_tools_table(conn)?;
+        Self::migrate_invoice_requests_table(conn)?;
+        Self::migrate_mcp_servers_table(conn)?;
         Ok(())
     }
 
@@ -296,19 +297,78 @@ impl SqliteManager {
                     tool_data BLOB,
                     response_date_time TEXT,
                     result_str TEXT,
+                    parent_message_id TEXT,
                     FOREIGN KEY(shinkai_offering_key) REFERENCES tool_micropayments_requirements(tool_key)
                 );",
                 [],
             )?;
 
             // Copy data from old table to new table
-            conn.execute("INSERT INTO invoices_new SELECT * FROM invoices", [])?;
+            conn.execute(
+                "INSERT INTO invoices_new (
+                    invoice_id,
+                    provider_name,
+                    requester_name,
+                    usage_type_inquiry,
+                    shinkai_offering_key,
+                    request_date_time,
+                    invoice_date_time,
+                    expiration_time,
+                    status,
+                    payment,
+                    address,
+                    tool_data,
+                    response_date_time,
+                    result_str,
+                    parent_message_id
+                ) SELECT
+                    invoice_id,
+                    provider_name,
+                    requester_name,
+                    usage_type_inquiry,
+                    shinkai_offering_key,
+                    request_date_time,
+                    invoice_date_time,
+                    expiration_time,
+                    status,
+                    payment,
+                    address,
+                    tool_data,
+                    response_date_time,
+                    result_str,
+                    NULL
+                FROM invoices",
+                [],
+            )?;
 
             // Drop the old table
             conn.execute("DROP TABLE invoices", [])?;
 
             // Rename the new table
             conn.execute("ALTER TABLE invoices_new RENAME TO invoices", [])?;
+        }
+
+        // Add parent_message_id column if it doesn't exist.
+        // The column is appended so existing databases remain compatible.
+        let mut stmt =
+            conn.prepare("SELECT COUNT(*) FROM pragma_table_info('invoices') WHERE name = 'parent_message_id'")?;
+        let column_exists: i64 = stmt.query_row([], |row| row.get(0))?;
+        if column_exists == 0 {
+            conn.execute("ALTER TABLE invoices ADD COLUMN parent_message_id TEXT", [])?;
+        }
+
+        Ok(())
+    }
+
+    fn migrate_invoice_requests_table(conn: &rusqlite::Connection) -> Result<()> {
+        // Check if parent_message_id column exists by trying to select it
+        // If it fails, the column doesn't exist and we need to add it
+        let column_exists = conn
+            .prepare("SELECT parent_message_id FROM invoice_requests LIMIT 1")
+            .is_ok();
+
+        if !column_exists {
+            conn.execute("ALTER TABLE invoice_requests ADD COLUMN parent_message_id TEXT", [])?;
         }
 
         Ok(())
@@ -792,7 +852,8 @@ impl SqliteManager {
                 requester_name TEXT NOT NULL,
                 tool_key_name TEXT NOT NULL,
                 usage_type_inquiry TEXT NOT NULL,
-                date_time TEXT NOT NULL
+                date_time TEXT NOT NULL,
+                parent_message_id TEXT
             );",
             [],
         )?;
@@ -817,6 +878,7 @@ impl SqliteManager {
                 tool_data BLOB,
                 response_date_time TEXT,
                 result_str TEXT,
+                parent_message_id TEXT,
 
                 FOREIGN KEY(shinkai_offering_key) REFERENCES tool_micropayments_requirements(tool_key)
             );",

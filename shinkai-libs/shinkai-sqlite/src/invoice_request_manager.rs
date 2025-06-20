@@ -16,8 +16,9 @@ impl SqliteManager {
                 requester_name,
                 tool_key_name,
                 usage_type_inquiry,
-                date_time
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                date_time,
+                parent_message_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?;
 
         stmt.execute(params![
@@ -29,6 +30,7 @@ impl SqliteManager {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(SqliteManagerError::SerializationError(e.to_string())))
             })?,
             internal_invoice_request.date_time.to_rfc3339(),
+            internal_invoice_request.parent_message_id,
         ])?;
 
         Ok(())
@@ -42,7 +44,8 @@ impl SqliteManager {
                 requester_name,
                 tool_key_name,
                 usage_type_inquiry,
-                date_time
+                date_time,
+                parent_message_id
             FROM invoice_requests
             WHERE unique_id = ?1",
         )?;
@@ -70,6 +73,7 @@ impl SqliteManager {
                         e.to_string(),
                     )))
                 })?,
+            parent_message_id: row.get(5)?,
         })
     }
 
@@ -82,7 +86,8 @@ impl SqliteManager {
                 requester_name,
                 tool_key_name,
                 usage_type_inquiry,
-                date_time
+                date_time,
+                parent_message_id
             FROM invoice_requests",
         )?;
 
@@ -116,6 +121,7 @@ impl SqliteManager {
                             e.to_string(),
                         )))
                     })?,
+                parent_message_id: row.get(6)?,
             });
         }
 
@@ -135,8 +141,8 @@ impl SqliteManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageTypeInquiry};
     use shinkai_embedding::model_type::{EmbeddingModelType, OllamaTextEmbeddingsInference};
+    use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, shinkai_tool_offering::UsageTypeInquiry};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
 
@@ -161,6 +167,7 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
+            parent_message_id: Some("test_parent_message_id".to_string()),
         };
 
         db.set_internal_invoice_request(&invoice_request).unwrap();
@@ -181,6 +188,7 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
+            parent_message_id: Some("test_parent_message_id1".to_string()),
         };
 
         let invoice_request2 = InternalInvoiceRequest {
@@ -190,6 +198,7 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
+            parent_message_id: Some("test_parent_message_id2".to_string()),
         };
 
         db.set_internal_invoice_request(&invoice_request1).unwrap();
@@ -213,6 +222,7 @@ mod tests {
             tool_key_name: "test_tool_key_name".to_string(),
             usage_type_inquiry: UsageTypeInquiry::PerUse,
             date_time: chrono::Utc::now(),
+            parent_message_id: Some("test_parent_message_id".to_string()),
         };
 
         db.set_internal_invoice_request(&invoice_request).unwrap();

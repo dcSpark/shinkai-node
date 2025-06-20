@@ -22,6 +22,8 @@ use super::{
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Invoice {
     pub invoice_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_message_id: Option<String>,
     pub provider_name: ShinkaiName,
     pub requester_name: ShinkaiName,
     pub usage_type_inquiry: UsageTypeInquiry,
@@ -92,6 +94,8 @@ pub struct InvoiceRequest {
     pub usage_type_inquiry: UsageTypeInquiry,
     pub request_date_time: DateTime<Utc>,
     pub unique_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_message_id: Option<String>,
 }
 
 impl InvoiceRequest {
@@ -135,6 +139,8 @@ pub struct InternalInvoiceRequest {
     pub usage_type_inquiry: UsageTypeInquiry,
     pub date_time: DateTime<Utc>,
     pub unique_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_message_id: Option<String>,
 }
 
 impl InternalInvoiceRequest {
@@ -143,6 +149,7 @@ impl InternalInvoiceRequest {
         requester_name: ShinkaiName,
         tool_key_name: String,
         usage_type_inquiry: UsageTypeInquiry,
+        parent_message_id: Option<String>,
     ) -> Self {
         // Generate the unique invoice identifier using an x402-style nonce
         let unique_id = generate_x402_nonce();
@@ -154,6 +161,7 @@ impl InternalInvoiceRequest {
             usage_type_inquiry,
             date_time: Utc::now(),
             unique_id,
+            parent_message_id,
         }
     }
 
@@ -165,6 +173,7 @@ impl InternalInvoiceRequest {
             usage_type_inquiry: self.usage_type_inquiry.clone(),
             request_date_time: self.date_time,
             unique_id: self.unique_id.clone(),
+            parent_message_id: self.parent_message_id.clone(),
         }
     }
 }
