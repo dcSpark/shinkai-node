@@ -179,6 +179,11 @@ impl ModelCapabilitiesManager {
     fn get_shared_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
+            model_type if model_type.starts_with("mistral-small3.2")
+                || model_type.starts_with("mistral-small3.1") =>
+            {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             model_type if model_type.starts_with("llama3.2-vision") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -600,6 +605,8 @@ impl ModelCapabilitiesManager {
         match model_type {
             model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
             model_type if model_type.starts_with("mistral-nemo") => 128_000,
+            model_type if model_type.starts_with("mistral-small3.2")
+                || model_type.starts_with("mistral-small3.1") => 128_000,
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("mistral-large") => 128_000,
             model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
@@ -898,6 +905,8 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama-3.2")
                     || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small3.2")
+                    || model.model_type.starts_with("mistral-small3.1")
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
@@ -947,6 +956,8 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("llama-3.1")
                     || model.model_type.starts_with("llama3.1")
                     || model.model_type.starts_with("mistral-nemo")
+                    || model.model_type.starts_with("mistral-small3.2")
+                    || model.model_type.starts_with("mistral-small3.1")
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
