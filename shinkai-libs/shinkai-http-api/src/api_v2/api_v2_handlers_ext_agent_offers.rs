@@ -84,9 +84,15 @@ pub struct GetToolWithOfferingRequest {
     pub tool_key_name: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct GetAgentNetworkOfferingRequest {
-    pub agent_identity: String,
+    pub node_name: String,
+    #[serde(default = "default_true")]
+    pub auto_check: bool,
 }
 
 #[utoipa::path(
@@ -343,7 +349,8 @@ pub async fn get_agent_network_offering_handler(
     node_commands_sender
         .send(NodeCommand::V2ApiGetAgentNetworkOffering {
             bearer,
-            identity: payload.agent_identity,
+            node_name: payload.node_name,
+            auto_check: payload.auto_check,
             res: res_sender,
         })
         .await

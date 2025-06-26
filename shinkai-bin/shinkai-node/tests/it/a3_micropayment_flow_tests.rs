@@ -756,7 +756,8 @@ fn micropayment_flow_test() {
                     node2_commands_sender
                         .send(NodeCommand::V2ApiGetAgentNetworkOffering {
                             bearer: api_v2_key.to_string(),
-                            identity: node1_identity_name.to_string(),
+                            node_name: node1_identity_name.to_string(),
+                            auto_check: true,
                             res: sender,
                         })
                         .await
