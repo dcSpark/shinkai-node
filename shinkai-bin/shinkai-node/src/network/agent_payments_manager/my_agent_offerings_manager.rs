@@ -19,6 +19,7 @@ use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
 
 use crate::{
@@ -534,12 +535,33 @@ impl MyAgentOfferingsManager {
         );
     }
 
-    pub fn get_agent_network_offering(&self, node_name: &str) -> Option<(Vec<ShinkaiToolOffering>, DateTime<Utc>)> {
-        self.agent_network_offerings.get(node_name).map(|v| {
-            let (value, timestamp) = v.value().clone();
-            let offerings = serde_json::from_value::<Vec<ShinkaiToolOffering>>(value).unwrap_or_default();
-            (offerings, timestamp)
-        })
+    pub async fn get_agent_network_offering(
+        &self,
+        node_name: String,
+        auto_check: bool,
+    ) -> Option<(Vec<ShinkaiToolOffering>, DateTime<Utc>)> {
+        if ShinkaiName::new(node_name.clone()).is_err() {
+            return None;
+        }
+
+        let mut attempts = 0;
+        loop {
+            if let Some(v) = self.agent_network_offerings.get(&node_name) {
+                let (value, timestamp) = v.value().clone();
+                let offerings = serde_json::from_value::<Vec<ShinkaiToolOffering>>(
+                    value,
+                )
+                .unwrap_or_default();
+                return Some((offerings, timestamp));
+            }
+
+            if !auto_check || attempts >= 10 {
+                break;
+            }
+            attempts += 1;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+        None
     }
 
     /// Pay an invoice and send receipt and data to provider

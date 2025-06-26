@@ -402,20 +402,20 @@ impl Node {
         db: Arc<SqliteManager>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
-        identity: String,
+        node_name: String,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        let identity = match ShinkaiName::new(identity) {
+        let node_name = match ShinkaiName::new(node_name) {
             Ok(name) => name,
             Err(_) => {
                 let api_error = APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
-                    message: "Invalid identity".to_string(),
+                    message: "Invalid node name".to_string(),
                 };
                 let _ = res.send(Err(api_error)).await;
                 return Ok(());
@@ -424,8 +424,11 @@ impl Node {
 
         {
             let manager = my_agent_offerings_manager.lock().await;
-            let _ = manager.request_agent_network_offering(identity.clone()).await;
-            if let Some((offerings, ts)) = manager.get_agent_network_offering(&identity.to_string()) {
+            let _ = manager.request_agent_network_offering(node_name.clone()).await;
+            if let Some((offerings, ts)) = manager
+                .get_agent_network_offering(node_name.to_string(), true)
+                .await
+            {
                 let value = json!({"offerings": offerings, "last_updated": ts.to_rfc3339()});
                 let _ = res.send(Ok(value)).await;
             } else {
