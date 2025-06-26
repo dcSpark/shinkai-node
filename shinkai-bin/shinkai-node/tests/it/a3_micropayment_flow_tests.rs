@@ -747,6 +747,27 @@ fn micropayment_flow_test() {
                     Err(e) => eprintln!("Error searching tools: {:?}", e),
                 }
             }
+            {
+                eprintln!("Request network offering from node1");
+
+                let (sender, receiver) = async_channel::bounded(1);
+                node2_commands_sender
+                    .send(NodeCommand::V2ApiGetAgentNetworkOffering {
+                        bearer: api_v2_key.to_string(),
+                        identity: node1_identity_name.to_string(),
+                        res: sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = receiver.recv().await.unwrap();
+                eprintln!("resp get agent network offering: {:?}", resp.clone());
+
+                assert!(resp.is_ok(), "Failed to get agent network offering");
+                if let Ok(val) = resp {
+                    assert!(val.get("value").is_some());
+                    assert!(val.get("last_updated").is_some());
+                }
+            }
 
             //
             // Second Part of the Test
