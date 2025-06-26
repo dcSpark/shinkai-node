@@ -9,6 +9,10 @@ use ed25519_dalek::{SigningKey, VerifyingKey};
 
 use libp2p::{request_response::ResponseChannel, PeerId};
 use serde_json::json;
+use serde_json::Value;
+use shinkai_message_primitives::schemas::agent_network_offering::{
+    AgentNetworkOfferingRequest, AgentNetworkOfferingResponse
+};
 use shinkai_message_primitives::schemas::ws_types::WSUpdateHandler;
 use shinkai_message_primitives::{
     schemas::{
@@ -607,8 +611,7 @@ pub async fn handle_network_message_cases(
                                     &format!("Failed to store invoice: {:?}", e),
                                 );
                             }
-                            let tracing_id =
-                                get_invoice_tracing_id(&maybe_db, &invoice.invoice_id).await;
+                            let tracing_id = get_invoice_tracing_id(&maybe_db, &invoice.invoice_id).await;
 
                             let trace_info = json!({
                                 "provider": invoice.provider_name.to_string(),
@@ -624,12 +627,7 @@ pub async fn handle_network_message_cases(
                                 "has_tool_data": invoice.tool_data.is_some(),
                             });
 
-                            if let Err(e) = maybe_db.add_tracing(
-                                &tracing_id,
-                                None,
-                                "invoice_received",
-                                &trace_info,
-                            ) {
+                            if let Err(e) = maybe_db.add_tracing(&tracing_id, None, "invoice_received", &trace_info) {
                                 eprintln!("failed to add invoice trace: {:?}", e);
                             }
                         }
@@ -772,6 +770,47 @@ pub async fn handle_network_message_cases(
                                 }
                             }
                         }
+                    }
+                }
+                MessageSchemaType::AgentNetworkOfferingRequest => {
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    println!("AgentNetworkOfferingRequest received from: {:?}", requester);
+
+                    let ext_agent_offering_manager = if let Some(manager) = external_agent_offering_manager.upgrade() {
+                        manager
+                    } else {
+                        return Ok(());
+                    };
+                    if let Ok(req) = serde_json::from_str::<AgentNetworkOfferingRequest>(
+                        &message.get_message_content().unwrap_or_default(),
+                    ) {
+                        let ext_manager = ext_agent_offering_manager.lock().await;
+                        let _ = ext_manager
+                            .network_agent_offering_requested(requester, Some(message.external_metadata))
+                            .await;
+                    }
+                }
+                MessageSchemaType::AgentNetworkOfferingResponse => {
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+
+                    let my_manager = if let Some(manager) = my_agent_offering_manager.upgrade() {
+                        manager
+                    } else {
+                        return Ok(());
+                    };
+
+                    if let Ok(resp) = serde_json::from_str::<AgentNetworkOfferingResponse>(
+                        &message.get_message_content().unwrap_or_default(),
+                    ) {
+                        let my_manager = my_manager.lock().await;
+                        if let Some(offerings) = resp.offerings {
+                            my_manager.store_agent_network_offering(requester.to_string(), offerings);
+                        }
+                    } else {
+                        eprintln!(
+                            "Failed to deserialize JSON to AgentNetworkOfferingResponse: {:?}",
+                            message.get_message_content()
+                        );
                     }
                 }
                 _ => {

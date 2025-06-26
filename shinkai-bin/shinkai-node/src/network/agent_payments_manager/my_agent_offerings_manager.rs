@@ -1,12 +1,15 @@
 use std::sync::{Arc, Weak};
 
+use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Value};
 
+use dashmap::DashMap;
+use shinkai_message_primitives::schemas::agent_network_offering::AgentNetworkOfferingRequest;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
+        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
     }, shinkai_message::shinkai_message_schemas::MessageSchemaType, shinkai_utils::{
         encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
     }
@@ -42,6 +45,7 @@ pub struct MyAgentOfferingsManager {
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
     pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    pub agent_network_offerings: Arc<DashMap<String, (Value, DateTime<Utc>)>>,
 }
 
 impl MyAgentOfferingsManager {
@@ -67,6 +71,7 @@ impl MyAgentOfferingsManager {
             tool_router,
             wallet_manager,
             libp2p_event_sender,
+            agent_network_offerings: Arc::new(DashMap::new()),
         }
     }
 
@@ -476,6 +481,65 @@ impl MyAgentOfferingsManager {
         db_write
             .set_invoice(invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
+    }
+
+    pub async fn request_agent_network_offering(
+        &self,
+        agent_identity: ShinkaiName,
+    ) -> Result<(), AgentOfferingManagerError> {
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&agent_identity.get_node_name_string(), Some(true))
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let payload = AgentNetworkOfferingRequest {
+                agent_identity: agent_identity.to_string(), // TODO: use node_name instead of agent_identity
+            };
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                payload,
+                MessageSchemaType::AgentNetworkOfferingRequest,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                agent_identity.get_node_name_string(),
+                "main".to_string(),
+                None,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub fn store_agent_network_offering(&self, node_name: String, offerings: Vec<ShinkaiToolOffering>) {
+        self.agent_network_offerings.insert(
+            node_name,
+            (serde_json::to_value(offerings).unwrap_or(Value::Null), Utc::now()),
+        );
+    }
+
+    pub fn get_agent_network_offering(&self, node_name: &str) -> Option<(Vec<ShinkaiToolOffering>, DateTime<Utc>)> {
+        self.agent_network_offerings.get(node_name).map(|v| {
+            let (value, timestamp) = v.value().clone();
+            let offerings = serde_json::from_value::<Vec<ShinkaiToolOffering>>(value).unwrap_or_default();
+            (offerings, timestamp)
+        })
     }
 
     /// Pay an invoice and send receipt and data to provider

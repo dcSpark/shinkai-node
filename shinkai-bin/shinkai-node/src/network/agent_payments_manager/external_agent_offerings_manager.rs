@@ -2,14 +2,16 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::libp2p_manager::NetworkEvent;
-use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
+use crate::network::network_manager_utils::send_message_to_peer;
 use crate::network::node::ProxyConnectionInfo;
 use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use serde_json::Value;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
+use shinkai_message_primitives::schemas::agent_network_offering::AgentNetworkOfferingResponse;
 use shinkai_message_primitives::schemas::invoices::{
     Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
 };
@@ -31,8 +33,7 @@ use shinkai_sqlite::SqliteManager;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;
-use std::sync::Arc;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -1012,6 +1013,67 @@ impl ExtAgentOfferingsManager {
                 self.node_name.to_string(),
                 "".to_string(),
                 receiver_node_name,
+                "main".to_string(),
+                external_metadata,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn network_agent_offering_requested(
+        &self,
+        requester_node_name: ShinkaiName,
+        external_metadata: Option<ExternalMetadata>,
+    ) -> Result<(), AgentOfferingManagerError> {
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        // Get all tool offerings from database instead of just one
+        let tools = db.get_all_tool_offerings().map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
+        })?;
+
+        // Use the tools directly instead of serializing to Value
+        let last_updated = Utc::now();
+
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&requester_node_name.to_string(), None)
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+
+            let payload = AgentNetworkOfferingResponse {
+                offerings: if tools.is_empty() { None } else { Some(tools) },
+                last_updated: Some(last_updated),
+            };
+
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                payload,
+                MessageSchemaType::AgentNetworkOfferingResponse,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                requester_node_name.to_string(),
                 "main".to_string(),
                 external_metadata,
             )
