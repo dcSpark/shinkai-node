@@ -48,6 +48,37 @@ paths:
           content:
             application/json:
               schema:
+  /v2/get_agent_network_offering:
+    post:
+      tags:
+      - crate
+      operationId: get_agent_network_offering_handler
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: #/components/schemas/GetAgentNetworkOfferingRequest
+        required: true
+      responses:
+        '200':
+          description: Successfully retrieved agent network offering
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: #/components/schemas/APIError
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: #/components/schemas/APIError
+
                 $ref: '#/components/schemas/APIError'
   /v2/get_tool_offering:
     post:
@@ -230,6 +261,13 @@ components:
       required:
       - tool_offering
       properties:
+    GetAgentNetworkOfferingRequest:
+      type: object
+      required:
+      - agent_identity
+      properties:
+        agent_identity:
+          type: string
         tool_offering:
           $ref: '#/components/schemas/ShinkaiToolOffering'
     ShinkaiToolOffering:

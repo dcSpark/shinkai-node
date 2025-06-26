@@ -19,6 +19,8 @@ use shinkai_message_primitives::{
         encryption::clone_static_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption}, shinkai_message_builder::{ShinkaiMessageBuilder, ShinkaiNameString}, signatures::{clone_signature_secret_key, signature_public_key_to_string}
     }
 };
+use shinkai_message_primitives::schemas::agent_network_offering::{AgentNetworkOfferingRequest, AgentNetworkOfferingResponse};
+use serde_json::Value;
 use shinkai_sqlite::SqliteManager;
 use std::sync::{Arc, Weak};
 use std::{io, net::SocketAddr};
@@ -771,6 +773,33 @@ pub async fn handle_network_message_cases(
                                     );
                                 }
                             }
+                        }
+                    }
+                }
+                MessageSchemaType::AgentNetworkOfferingRequest => {
+                    let requester = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)?;
+                    let ext_agent_offering_manager = if let Some(manager) = external_agent_offering_manager.upgrade() {
+                        manager
+                    } else {
+                        return Ok(());
+                    };
+                    if let Ok(req) = serde_json::from_str::<AgentNetworkOfferingRequest>(&message.get_message_content().unwrap_or_default()) {
+                        let mut ext_manager = ext_agent_offering_manager.lock().await;
+                        let _ = ext_manager
+                            .network_agent_offering_requested(requester, req.agent_identity, Some(message.external_metadata))
+                            .await;
+                    }
+                }
+                MessageSchemaType::AgentNetworkOfferingResponse => {
+                    let my_manager = if let Some(manager) = my_agent_offering_manager.upgrade() {
+                        manager
+                    } else {
+                        return Ok(());
+                    };
+                    if let Ok(resp) = serde_json::from_str::<AgentNetworkOfferingResponse>(&message.get_message_content().unwrap_or_default()) {
+                        let mut my_manager = my_manager.lock().await;
+                        if let Some(val) = resp.value {
+                            my_manager.store_agent_network_offering(resp.agent_identity, val);
                         }
                     }
                 }

@@ -84,6 +84,11 @@ pub struct GetToolWithOfferingRequest {
     pub tool_key_name: String,
 }
 
+#[derive(Deserialize, ToSchema)]
+pub struct GetAgentNetworkOfferingRequest {
+    pub agent_identity: String,
+}
+
 #[utoipa::path(
     post,
     path = "/v2/set_tool_offering",
@@ -318,6 +323,44 @@ pub async fn get_tools_with_offerings_handler(
         )),
     }
 }
+#[utoipa::path(
+    post,
+    path = "/v2/get_agent_network_offering",
+    request_body = GetAgentNetworkOfferingRequest,
+    responses(
+        (status = 200, description = "Successfully retrieved agent network offering", body = Value),
+        (status = 400, description = "Bad request", body = APIError),
+        (status = 500, description = "Internal server error", body = APIError)
+    )
+)]
+pub async fn get_agent_network_offering_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    authorization: String,
+    payload: GetAgentNetworkOfferingRequest,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let bearer = authorization.strip_prefix("Bearer ").unwrap_or("").to_string();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::V2ApiGetAgentNetworkOffering {
+            bearer,
+            identity: payload.agent_identity,
+            res: res_sender,
+        })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    match result {
+        Ok(info) => Ok(warp::reply::with_status(
+            warp::reply::json(&info),
+            StatusCode::OK,
+        )),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
+}
+
 
 #[derive(OpenApi)]
 #[openapi(

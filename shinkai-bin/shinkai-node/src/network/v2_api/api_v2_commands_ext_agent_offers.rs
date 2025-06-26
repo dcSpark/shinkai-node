@@ -1,10 +1,12 @@
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use async_channel::Sender;
 use reqwest::StatusCode;
 
 use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
+use chrono::Utc;
 use shinkai_message_primitives::schemas::{
     shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey,
 };
@@ -14,7 +16,10 @@ use shinkai_tools_primitives::tools::{
     shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
 };
 
-use crate::network::{node_error::NodeError, Node};
+use crate::network::{
+    agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager,
+    node_error::NodeError, Node,
+};
 
 impl Node {
     pub async fn v2_api_get_tool_offering(
@@ -392,6 +397,43 @@ impl Node {
 
         let _ = res.send(Ok(json!(results))).await;
 
+        Ok(())
+    }
+
+    pub async fn v2_api_get_agent_network_offering(
+        db: Arc<SqliteManager>,
+        my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
+        bearer: String,
+        identity: String,
+        res: Sender<Result<Value, APIError>>,
+    ) -> Result<(), NodeError> {
+        if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
+            return Ok(());
+        }
+
+        let identity = match ShinkaiName::new(identity) {
+            Ok(name) => name,
+            Err(_) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid identity".to_string(),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        {
+            let manager = my_agent_offerings_manager.lock().await;
+            let _ = manager.request_agent_network_offering(identity.clone()).await;
+            if let Some((val, ts)) = manager.get_agent_network_offering(&identity.to_string()) {
+                let value = json!({"value": val, "last_updated": ts.to_rfc3339()});
+                let _ = res.send(Ok(value)).await;
+            } else {
+                let _ = res.send(Ok(json!({"value": null, "last_updated": null}))).await;
+            }
+        }
         Ok(())
     }
 }

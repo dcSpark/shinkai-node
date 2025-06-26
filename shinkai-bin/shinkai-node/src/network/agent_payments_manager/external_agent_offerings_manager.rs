@@ -6,7 +6,7 @@ use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_
 use crate::network::node::ProxyConnectionInfo;
 use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
-use chrono::{Duration, Utc};
+use chrono::{Duration, Utc, DateTime};
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
@@ -17,6 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
+use shinkai_message_primitives::schemas::agent_network_offering::{AgentNetworkOfferingRequest, AgentNetworkOfferingResponse};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -31,8 +32,9 @@ use shinkai_sqlite::SqliteManager;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;
-use std::sync::Arc;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
+use dashmap::DashMap;
+use serde_json::Value;
 use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -91,6 +93,7 @@ pub struct ExtAgentOfferingsManager {
     pub tool_router: Weak<ToolRouter>,
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    pub agent_network_offerings: Arc<DashMap<String, (Value, DateTime<Utc>)>>,
 }
 
 const NUM_THREADS: usize = 4;
@@ -183,6 +186,7 @@ impl ExtAgentOfferingsManager {
             tool_router,
             wallet_manager,
             libp2p_event_sender,
+            agent_network_offerings: Arc::new(DashMap::new()),
         }
     }
 
@@ -1012,6 +1016,62 @@ impl ExtAgentOfferingsManager {
                 self.node_name.to_string(),
                 "".to_string(),
                 receiver_node_name,
+                "main".to_string(),
+                external_metadata,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
+            )
+            .await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn network_agent_offering_requested(
+        &self,
+        requester_node_name: ShinkaiName,
+        agent_identity: String,
+        external_metadata: Option<ExternalMetadata>,
+    ) -> Result<(), AgentOfferingManagerError> {
+        let (value, last_updated) = self
+            .agent_network_offerings
+            .get(&agent_identity)
+            .map(|v| v.value().clone())
+            .unwrap_or((Value::Null, Utc::now()));
+
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&requester_node_name.to_string(), None)
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+
+            let payload = AgentNetworkOfferingResponse {
+                agent_identity,
+                value: if value.is_null() { None } else { Some(value) },
+                last_updated: Some(last_updated),
+            };
+
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                payload,
+                MessageSchemaType::AgentNetworkOfferingResponse,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                requester_node_name.to_string(),
                 "main".to_string(),
                 external_metadata,
             )

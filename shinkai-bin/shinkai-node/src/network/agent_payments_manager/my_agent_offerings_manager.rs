@@ -2,6 +2,7 @@ use std::sync::{Arc, Weak};
 
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Value};
+use chrono::{DateTime, Utc};
 
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::{
@@ -11,12 +12,14 @@ use shinkai_message_primitives::{
         encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
     }
 };
+use shinkai_message_primitives::schemas::agent_network_offering::{AgentNetworkOfferingRequest};
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
+use dashmap::DashMap;
 
 use crate::{
     managers::{identity_manager::IdentityManagerTrait, tool_router::ToolRouter}, network::{
@@ -42,6 +45,7 @@ pub struct MyAgentOfferingsManager {
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     // pub crypto_invoice_manager: Arc<Option<Box<dyn CryptoInvoiceManagerTrait + Send + Sync>>>,
     pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
+    pub agent_network_offerings: Arc<DashMap<String, (Value, DateTime<Utc>)>>,
 }
 
 impl MyAgentOfferingsManager {
@@ -67,6 +71,7 @@ impl MyAgentOfferingsManager {
             tool_router,
             wallet_manager,
             libp2p_event_sender,
+            agent_network_offerings: Arc::new(DashMap::new()),
         }
     }
 
@@ -476,6 +481,58 @@ impl MyAgentOfferingsManager {
         db_write
             .set_invoice(invoice)
             .map_err(|e| AgentOfferingManagerError::OperationFailed(format!("Failed to store invoice: {:?}", e)))
+    }
+
+    pub async fn request_agent_network_offering(
+        &self,
+        agent_identity: ShinkaiName,
+    ) -> Result<(), AgentOfferingManagerError> {
+        if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
+            let identity_manager = identity_manager_arc.lock().await;
+            let standard_identity = identity_manager
+                .external_profile_to_global_identity(&agent_identity.get_node_name_string(), Some(true))
+                .await
+                .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
+            drop(identity_manager);
+
+            let receiver_public_key = standard_identity.node_encryption_public_key;
+            let payload = AgentNetworkOfferingRequest { agent_identity: agent_identity.to_string() };
+            let message = ShinkaiMessageBuilder::create_generic_invoice_message(
+                payload,
+                MessageSchemaType::AgentNetworkOfferingRequest,
+                clone_static_secret_key(&self.my_encryption_secret_key),
+                clone_signature_secret_key(&self.my_signature_secret_key),
+                receiver_public_key,
+                self.node_name.to_string(),
+                "".to_string(),
+                agent_identity.get_node_name_string(),
+                "main".to_string(),
+                None,
+            )
+            .map_err(|e| AgentOfferingManagerError::OperationFailed(e.to_string()))?;
+
+            send_message_to_peer(
+                message,
+                self.db.clone(),
+                standard_identity,
+                self.my_encryption_secret_key.clone(),
+                self.identity_manager.clone(),
+                self.proxy_connection_info.clone(),
+                self.libp2p_event_sender.clone(),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub fn store_agent_network_offering(&self, agent_identity: String, value: Value) {
+        self.agent_network_offerings.insert(agent_identity, (value, Utc::now()));
+    }
+
+    pub fn get_agent_network_offering(&self, agent_identity: &str) -> Option<(Value, DateTime<Utc>)> {
+        self.agent_network_offerings
+            .get(agent_identity)
+            .map(|v| v.value().clone())
     }
 
     /// Pay an invoice and send receipt and data to provider
