@@ -2,14 +2,16 @@ use crate::llm_provider::error::LLMProviderError;
 use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::managers::tool_router::ToolRouter;
 use crate::network::libp2p_manager::NetworkEvent;
-use crate::network::network_manager_utils::{get_proxy_builder_info_static, send_message_to_peer};
+use crate::network::network_manager_utils::send_message_to_peer;
 use crate::network::node::ProxyConnectionInfo;
 use crate::wallet::wallet_error;
 use crate::wallet::wallet_manager::WalletManager;
-use chrono::{Duration, Utc, DateTime};
+use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
+use serde_json::Value;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
+use shinkai_message_primitives::schemas::agent_network_offering::AgentNetworkOfferingResponse;
 use shinkai_message_primitives::schemas::invoices::{
     Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
 };
@@ -17,7 +19,6 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
-use shinkai_message_primitives::schemas::agent_network_offering::{AgentNetworkOfferingRequest, AgentNetworkOfferingResponse};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -33,8 +34,6 @@ use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;
 use std::sync::{Arc, Weak};
-use dashmap::DashMap;
-use serde_json::Value;
 use std::{env, fmt};
 use tokio::sync::{Mutex, Semaphore};
 
@@ -93,7 +92,6 @@ pub struct ExtAgentOfferingsManager {
     pub tool_router: Weak<ToolRouter>,
     pub wallet_manager: Weak<Mutex<Option<WalletManager>>>,
     pub libp2p_event_sender: Option<tokio::sync::mpsc::UnboundedSender<NetworkEvent>>,
-    pub agent_network_offerings: Arc<DashMap<String, (Value, DateTime<Utc>)>>,
 }
 
 const NUM_THREADS: usize = 4;
@@ -186,7 +184,6 @@ impl ExtAgentOfferingsManager {
             tool_router,
             wallet_manager,
             libp2p_event_sender,
-            agent_network_offerings: Arc::new(DashMap::new()),
         }
     }
 
@@ -1042,11 +1039,21 @@ impl ExtAgentOfferingsManager {
         agent_identity: String,
         external_metadata: Option<ExternalMetadata>,
     ) -> Result<(), AgentOfferingManagerError> {
-        let (value, last_updated) = self
-            .agent_network_offerings
-            .get(&agent_identity)
-            .map(|v| v.value().clone())
-            .unwrap_or((Value::Null, Utc::now()));
+        let db = self
+            .db
+            .upgrade()
+            .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
+
+        // Get all tool offerings from database instead of just one
+        let tools = db.get_all_tool_offerings().map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
+        })?;
+
+        // Serialize all tool offerings instead of just one
+        let value = serde_json::to_value(&tools).map_err(|e| {
+            AgentOfferingManagerError::OperationFailed(format!("Failed to serialize tool offerings: {:?}", e))
+        })?;
+        let last_updated = Utc::now();
 
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_arc.lock().await;
@@ -1058,7 +1065,6 @@ impl ExtAgentOfferingsManager {
             let receiver_public_key = standard_identity.node_encryption_public_key;
 
             let payload = AgentNetworkOfferingResponse {
-                agent_identity,
                 value: if value.is_null() { None } else { Some(value) },
                 last_updated: Some(last_updated),
             };

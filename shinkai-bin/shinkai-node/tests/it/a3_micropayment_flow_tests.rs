@@ -750,16 +750,39 @@ fn micropayment_flow_test() {
             {
                 eprintln!("Request network offering from node1");
 
-                let (sender, receiver) = async_channel::bounded(1);
-                node2_commands_sender
-                    .send(NodeCommand::V2ApiGetAgentNetworkOffering {
-                        bearer: api_v2_key.to_string(),
-                        identity: node1_identity_name.to_string(),
-                        res: sender,
-                    })
-                    .await
-                    .unwrap();
-                let resp = receiver.recv().await.unwrap();
+                let mut resp = None;
+                for attempt in 1..=3 {
+                    let (sender, receiver) = async_channel::bounded(1);
+                    node2_commands_sender
+                        .send(NodeCommand::V2ApiGetAgentNetworkOffering {
+                            bearer: api_v2_key.to_string(),
+                            identity: node1_identity_name.to_string(),
+                            res: sender,
+                        })
+                        .await
+                        .unwrap();
+                    let current_resp = receiver.recv().await.unwrap();
+                    
+                    // Check if response is Ok and has valid non-null values
+                    let is_valid = if let Ok(val) = &current_resp {
+                        val.get("value").is_some() && !val["value"].is_null() &&
+                        val.get("last_updated").is_some() && !val["last_updated"].is_null()
+                    } else {
+                        false
+                    };
+                    
+                    if is_valid {
+                        resp = Some(current_resp);
+                        break;
+                    } else {
+                        eprintln!("Attempt {} failed or returned empty values: {:?}", attempt, current_resp);
+                        if attempt < 3 {
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                        }
+                    }
+                }
+
+                let resp = resp.expect("All attempts failed to get network offering");
                 eprintln!("resp get agent network offering: {:?}", resp.clone());
 
                 assert!(resp.is_ok(), "Failed to get agent network offering");

@@ -9,7 +9,6 @@ pub struct AgentNetworkOfferingRequest {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AgentNetworkOfferingResponse {
-    pub agent_identity: String,
     pub value: Option<Value>,
     pub last_updated: Option<DateTime<Utc>>,
 }
