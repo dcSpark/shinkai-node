@@ -4,21 +4,19 @@ use tokio::sync::Mutex;
 use async_channel::Sender;
 use reqwest::StatusCode;
 
+use chrono::Utc;
 use serde_json::{json, Value};
 use shinkai_http_api::node_api_router::APIError;
-use chrono::Utc;
 use shinkai_message_primitives::schemas::{
-    shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey,
+    shinkai_name::ShinkaiName, shinkai_tool_offering::ShinkaiToolOffering, tool_router_key::ToolRouterKey
 };
 use shinkai_sqlite::{errors::SqliteManagerError, SqliteManager};
 use shinkai_tools_primitives::tools::{
-    network_tool::NetworkTool,
-    shinkai_tool::{ShinkaiTool, ShinkaiToolHeader},
+    network_tool::NetworkTool, shinkai_tool::{ShinkaiTool, ShinkaiToolHeader}
 };
 
 use crate::network::{
-    agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager,
-    node_error::NodeError, Node,
+    agent_payments_manager::my_agent_offerings_manager::MyAgentOfferingsManager, node_error::NodeError, Node
 };
 
 impl Node {
@@ -427,11 +425,11 @@ impl Node {
         {
             let manager = my_agent_offerings_manager.lock().await;
             let _ = manager.request_agent_network_offering(identity.clone()).await;
-            if let Some((val, ts)) = manager.get_agent_network_offering(&identity.to_string()) {
-                let value = json!({"value": val, "last_updated": ts.to_rfc3339()});
+            if let Some((offerings, ts)) = manager.get_agent_network_offering(&identity.to_string()) {
+                let value = json!({"offerings": offerings, "last_updated": ts.to_rfc3339()});
                 let _ = res.send(Ok(value)).await;
             } else {
-                let _ = res.send(Ok(json!({"value": null, "last_updated": null}))).await;
+                let _ = res.send(Ok(json!({"offerings": null, "last_updated": null}))).await;
             }
         }
         Ok(())

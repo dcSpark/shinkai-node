@@ -1036,7 +1036,6 @@ impl ExtAgentOfferingsManager {
     pub async fn network_agent_offering_requested(
         &self,
         requester_node_name: ShinkaiName,
-        agent_identity: String,
         external_metadata: Option<ExternalMetadata>,
     ) -> Result<(), AgentOfferingManagerError> {
         let db = self
@@ -1049,10 +1048,7 @@ impl ExtAgentOfferingsManager {
             AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
         })?;
 
-        // Serialize all tool offerings instead of just one
-        let value = serde_json::to_value(&tools).map_err(|e| {
-            AgentOfferingManagerError::OperationFailed(format!("Failed to serialize tool offerings: {:?}", e))
-        })?;
+        // Use the tools directly instead of serializing to Value
         let last_updated = Utc::now();
 
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
@@ -1065,7 +1061,7 @@ impl ExtAgentOfferingsManager {
             let receiver_public_key = standard_identity.node_encryption_public_key;
 
             let payload = AgentNetworkOfferingResponse {
-                value: if value.is_null() { None } else { Some(value) },
+                offerings: if tools.is_empty() { None } else { Some(tools) },
                 last_updated: Some(last_updated),
             };
 

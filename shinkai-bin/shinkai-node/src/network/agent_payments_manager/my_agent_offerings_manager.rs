@@ -1,25 +1,25 @@
 use std::sync::{Arc, Weak};
 
+use chrono::{DateTime, Utc};
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Value};
-use chrono::{DateTime, Utc};
 
+use dashmap::DashMap;
+use shinkai_message_primitives::schemas::agent_network_offering::AgentNetworkOfferingRequest;
 use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::{
     schemas::{
-        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
+        invoices::{InternalInvoiceRequest, Invoice, InvoiceStatusEnum, Payment}, shinkai_name::ShinkaiName, shinkai_proxy_builder_info::ShinkaiProxyBuilderInfo, shinkai_tool_offering::{ShinkaiToolOffering, ToolPrice, UsageTypeInquiry}, wallet_mixed::{AddressBalanceList, Asset}
     }, shinkai_message::shinkai_message_schemas::MessageSchemaType, shinkai_utils::{
         encryption::clone_static_secret_key, shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key
     }
 };
-use shinkai_message_primitives::schemas::agent_network_offering::{AgentNetworkOfferingRequest};
 use shinkai_sqlite::SqliteManager;
 use shinkai_tools_primitives::tools::{
     network_tool::NetworkTool, parameters::Parameters, shinkai_tool::ShinkaiToolHeader, tool_output_arg::ToolOutputArg
 };
 use tokio::sync::Mutex;
 use x25519_dalek::StaticSecret as EncryptionStaticKey;
-use dashmap::DashMap;
 
 use crate::{
     managers::{identity_manager::IdentityManagerTrait, tool_router::ToolRouter}, network::{
@@ -496,7 +496,9 @@ impl MyAgentOfferingsManager {
             drop(identity_manager);
 
             let receiver_public_key = standard_identity.node_encryption_public_key;
-            let payload = AgentNetworkOfferingRequest { agent_identity: agent_identity.to_string() };
+            let payload = AgentNetworkOfferingRequest {
+                agent_identity: agent_identity.to_string(), // TODO: use node_name instead of agent_identity
+            };
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
                 payload,
                 MessageSchemaType::AgentNetworkOfferingRequest,
@@ -525,14 +527,19 @@ impl MyAgentOfferingsManager {
         Ok(())
     }
 
-    pub fn store_agent_network_offering(&self, agent_identity: String, value: Value) {
-        self.agent_network_offerings.insert(agent_identity, (value, Utc::now()));
+    pub fn store_agent_network_offering(&self, node_name: String, offerings: Vec<ShinkaiToolOffering>) {
+        self.agent_network_offerings.insert(
+            node_name,
+            (serde_json::to_value(offerings).unwrap_or(Value::Null), Utc::now()),
+        );
     }
 
-    pub fn get_agent_network_offering(&self, agent_identity: &str) -> Option<(Value, DateTime<Utc>)> {
-        self.agent_network_offerings
-            .get(agent_identity)
-            .map(|v| v.value().clone())
+    pub fn get_agent_network_offering(&self, node_name: &str) -> Option<(Vec<ShinkaiToolOffering>, DateTime<Utc>)> {
+        self.agent_network_offerings.get(node_name).map(|v| {
+            let (value, timestamp) = v.value().clone();
+            let offerings = serde_json::from_value::<Vec<ShinkaiToolOffering>>(value).unwrap_or_default();
+            (offerings, timestamp)
+        })
     }
 
     /// Pay an invoice and send receipt and data to provider

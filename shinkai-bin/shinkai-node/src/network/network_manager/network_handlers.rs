@@ -786,11 +786,7 @@ pub async fn handle_network_message_cases(
                     ) {
                         let ext_manager = ext_agent_offering_manager.lock().await;
                         let _ = ext_manager
-                            .network_agent_offering_requested(
-                                requester,
-                                req.agent_identity,
-                                Some(message.external_metadata),
-                            )
+                            .network_agent_offering_requested(requester, Some(message.external_metadata))
                             .await;
                     }
                 }
@@ -807,8 +803,8 @@ pub async fn handle_network_message_cases(
                         &message.get_message_content().unwrap_or_default(),
                     ) {
                         let my_manager = my_manager.lock().await;
-                        if let Some(val) = resp.value {
-                            my_manager.store_agent_network_offering(requester.to_string(), val);
+                        if let Some(offerings) = resp.offerings {
+                            my_manager.store_agent_network_offering(requester.to_string(), offerings);
                         }
                     } else {
                         eprintln!(

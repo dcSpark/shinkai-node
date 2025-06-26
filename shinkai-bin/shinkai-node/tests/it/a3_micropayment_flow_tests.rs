@@ -763,10 +763,18 @@ fn micropayment_flow_test() {
                         .unwrap();
                     let current_resp = receiver.recv().await.unwrap();
                     
-                    // Check if response is Ok and has valid non-null values
+                    // Check if response is Ok and has valid offerings
                     let is_valid = if let Ok(val) = &current_resp {
-                        val.get("value").is_some() && !val["value"].is_null() &&
-                        val.get("last_updated").is_some() && !val["last_updated"].is_null()
+                        println!("val: {:?}", val);
+                        if let Some(offerings) = val.get("offerings") {
+                            if let Some(offerings_array) = offerings.as_array() {
+                                !offerings_array.is_empty()
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
                     } else {
                         false
                     };
@@ -782,14 +790,9 @@ fn micropayment_flow_test() {
                     }
                 }
 
+                assert!(resp.is_some(), "Failed to get valid network offering after 3 attempts");
                 let resp = resp.expect("All attempts failed to get network offering");
-                eprintln!("resp get agent network offering: {:?}", resp.clone());
-
-                assert!(resp.is_ok(), "Failed to get agent network offering");
-                if let Ok(val) = resp {
-                    assert!(val.get("value").is_some());
-                    assert!(val.get("last_updated").is_some());
-                }
+                eprintln!("resp get agent network offering: {:?}", resp);
             }
 
             //
