@@ -199,6 +199,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.contains("minicpm-v") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
+            model_type if model_type.starts_with("qwen2.5vl") => {
+                vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+            }
             model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -634,6 +637,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("qwen2.5:32b") => 128_000,
             model_type if model_type.starts_with("qwen2.5:72b") => 128_000,
             model_type if model_type.starts_with("qwen2.5-coder") => 128_000,
+            model_type if model_type.starts_with("qwen2.5vl") => 128_000,
             model_type if model_type.starts_with("aya") => 32_000,
             model_type if model_type.starts_with("wizardlm2") => 8_000,
             model_type if model_type.starts_with("phi2") => 4_000,
@@ -911,6 +915,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("qwen2.5-coder")
+                    || model.model_type.starts_with("qwen2.5vl")
                     || model.model_type.starts_with("qwq")
                     || model.model_type.starts_with("gemma3")
                     || model.model_type.starts_with("qwen3")
