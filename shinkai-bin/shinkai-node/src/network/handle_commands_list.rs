@@ -1367,13 +1367,22 @@ impl Node {
             }
             NodeCommand::V2ApiGetAgentNetworkOffering {
                 bearer,
-                identity,
+                node_name,
+                auto_check,
                 res,
             } => {
                 let db_clone = Arc::clone(&self.db);
                 let my_agent_payments_manager_clone = self.my_agent_payments_manager.clone();
                 tokio::spawn(async move {
-                    let _ = Node::v2_api_get_agent_network_offering(db_clone, my_agent_payments_manager_clone, bearer, identity, res).await;
+                    let _ = Node::v2_api_get_agent_network_offering(
+                        db_clone,
+                        my_agent_payments_manager_clone,
+                        bearer,
+                        node_name,
+                        auto_check,
+                        res,
+                    )
+                    .await;
                 });
             }
             NodeCommand::V2ApiRemoveToolOffering {

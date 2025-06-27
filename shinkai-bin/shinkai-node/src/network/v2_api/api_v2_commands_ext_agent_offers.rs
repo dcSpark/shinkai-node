@@ -402,14 +402,15 @@ impl Node {
         db: Arc<SqliteManager>,
         my_agent_offerings_manager: Arc<Mutex<MyAgentOfferingsManager>>,
         bearer: String,
-        identity: String,
+        node_name: String,
+        auto_check: bool,
         res: Sender<Result<Value, APIError>>,
     ) -> Result<(), NodeError> {
         if Self::validate_bearer_token(&bearer, db.clone(), &res).await.is_err() {
             return Ok(());
         }
 
-        let identity = match ShinkaiName::new(identity) {
+        let node_name = match ShinkaiName::new(node_name) {
             Ok(name) => name,
             Err(_) => {
                 let api_error = APIError {
@@ -424,13 +425,26 @@ impl Node {
 
         {
             let manager = my_agent_offerings_manager.lock().await;
-            let _ = manager.request_agent_network_offering(identity.clone()).await;
-            if let Some((offerings, ts)) = manager.get_agent_network_offering(&identity.to_string()) {
-                let value = json!({"offerings": offerings, "last_updated": ts.to_rfc3339()});
-                let _ = res.send(Ok(value)).await;
-            } else {
-                let _ = res.send(Ok(json!({"offerings": null, "last_updated": null}))).await;
+            let _ = manager.request_agent_network_offering(node_name.clone()).await;
+        }
+
+        let start = std::time::Instant::now();
+        loop {
+            {
+                let manager = my_agent_offerings_manager.lock().await;
+                if let Some((offerings, ts)) = manager.get_agent_network_offering(&node_name.to_string()) {
+                    let value = json!({"offerings": offerings, "last_updated": ts.to_rfc3339()});
+                    let _ = res.send(Ok(value)).await;
+                    break;
+                }
             }
+
+            if !auto_check || start.elapsed() >= std::time::Duration::from_secs(5) {
+                let _ = res.send(Ok(json!({"offerings": null, "last_updated": null}))).await;
+                break;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
         Ok(())
     }
