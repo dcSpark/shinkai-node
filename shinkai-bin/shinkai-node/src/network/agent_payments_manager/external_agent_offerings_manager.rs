@@ -9,9 +9,7 @@ use crate::wallet::wallet_manager::WalletManager;
 use chrono::{Duration, Utc};
 use ed25519_dalek::SigningKey;
 use futures::Future;
-use serde_json::Value;
 use shinkai_job_queue_manager::job_queue_manager::JobQueueManager;
-use shinkai_message_primitives::schemas::agent_network_offering::AgentNetworkOfferingResponse;
 use shinkai_message_primitives::schemas::invoices::{
     Invoice, InvoiceError, InvoiceRequest, InvoiceRequestNetworkError, InvoiceStatusEnum
 };
@@ -19,6 +17,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_tool_offering::{
     ShinkaiToolOffering, ToolPrice, UsageType, UsageTypeInquiry
 };
+use shinkai_message_primitives::schemas::tool_router_key::ToolRouterKey;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ExternalMetadata;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
@@ -30,6 +29,7 @@ use shinkai_non_rust_code::functions::x402::settle_payment::settle_payment;
 use shinkai_non_rust_code::functions::x402::settle_payment::Input as SettleInput;
 use shinkai_non_rust_code::functions::x402::verify_payment::verify_payment;
 use shinkai_sqlite::SqliteManager;
+use shinkai_tools_primitives::tools::network_tool::NetworkTool;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::result::Result::Ok;
@@ -1043,13 +1043,61 @@ impl ExtAgentOfferingsManager {
             .upgrade()
             .ok_or_else(|| AgentOfferingManagerError::OperationFailed("Failed to upgrade db reference".to_string()))?;
 
-        // Get all tool offerings from database instead of just one
-        let tools = db.get_all_tool_offerings().map_err(|e| {
+        // Get all tool offerings from database
+        let tool_offerings = db.get_all_tool_offerings().map_err(|e| {
             AgentOfferingManagerError::OperationFailed(format!("Failed to get all tool offerings: {:?}", e))
         })?;
 
-        // Use the tools directly instead of serializing to Value
-        let last_updated = Utc::now();
+        // Build the combined payload array
+        let mut payload = Vec::new();
+
+        for tool_offering in tool_offerings {
+            let tool = match db.get_tool_by_key(&tool_offering.tool_key) {
+                Ok(tool) => tool,
+                Err(_) => {
+                    // Skip tools that can't be found in the database
+                    continue;
+                }
+            };
+
+            let mut header = tool.to_header();
+            header.sanitize_config();
+
+            // Use the existing tool key from the offering
+            let tool_router_key_result =
+                ToolRouterKey::to_network_router_key(&tool_offering.tool_key, &self.node_name.to_string());
+
+            let tool_router_key_str = match tool_router_key_result {
+                Ok(key) => key,
+                Err(_) => {
+                    // Skip tools with invalid router keys
+                    continue;
+                }
+            };
+
+            let network_tool = NetworkTool {
+                name: header.name,
+                description: header.description,
+                version: header.version,
+                author: header.author,
+                mcp_enabled: header.mcp_enabled,
+                provider: self.node_name.clone(),
+                tool_router_key: tool_router_key_str,
+                usage_type: tool_offering.usage_type.clone(),
+                activated: header.enabled,
+                config: header.config.unwrap_or_default(),
+                input_args: header.input_args,
+                output_arg: header.output_arg,
+                embedding: None,
+                restrictions: None,
+            };
+
+            let combined_entry = serde_json::json!({
+                "network_tool": network_tool,
+                "tool_offering": tool_offering
+            });
+            payload.push(combined_entry);
+        }
 
         if let Some(identity_manager_arc) = self.identity_manager.upgrade() {
             let identity_manager = identity_manager_arc.lock().await;
@@ -1059,11 +1107,6 @@ impl ExtAgentOfferingsManager {
                 .map_err(|e| AgentOfferingManagerError::OperationFailed(e))?;
             drop(identity_manager);
             let receiver_public_key = standard_identity.node_encryption_public_key;
-
-            let payload = AgentNetworkOfferingResponse {
-                offerings: if tools.is_empty() { None } else { Some(tools) },
-                last_updated: Some(last_updated),
-            };
 
             let message = ShinkaiMessageBuilder::create_generic_invoice_message(
                 payload,
