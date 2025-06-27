@@ -119,3 +119,5 @@ shinkai-libs/shinkai-non-rust-code/internal_tools_storage
 shinkai-bin/shinkai-node/storage_test_node
 storage_debug_node2_test
 storage_debug_node1_test
+storage_debug_nico_testnet1
+storage_debug_nico_testnet2

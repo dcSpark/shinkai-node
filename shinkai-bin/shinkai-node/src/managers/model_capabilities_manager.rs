@@ -199,6 +199,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.contains("minicpm-v") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
+            model_type if model_type.starts_with("gemma3n") => {
+                vec![ModelCapability::TextInference]
+            }
             model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
@@ -684,6 +687,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("command-r7b") => 128_000,
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("qwq") => 32_000,
+            model_type if model_type.starts_with("gemma3n") => 32_000,
             model_type if model_type.starts_with("gemma3:1b") => 32_000,
             model_type if model_type.starts_with("gemma3:4b") => 128_000,
             model_type if model_type.starts_with("gemma3:12b") => 128_000,
@@ -912,6 +916,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwq")
+                    || model.model_type.starts_with("gemma3n")
                     || model.model_type.starts_with("gemma3")
                     || model.model_type.starts_with("qwen3")
                     || model.model_type.starts_with("deepseek-r1:14b")
@@ -961,6 +966,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-small")
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
+                    || model.model_type.starts_with("gemma3n")
             }
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,

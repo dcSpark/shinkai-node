@@ -517,7 +517,8 @@ pub enum NodeCommand {
     },
     V2ApiGetAgentNetworkOffering {
         bearer: String,
-        identity: String,
+        node_name: String,
+        auto_check: bool,
         res: Sender<Result<Value, APIError>>,
     },
     V2ApiRestoreLocalEthersWallet {

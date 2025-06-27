@@ -756,7 +756,8 @@ fn micropayment_flow_test() {
                     node2_commands_sender
                         .send(NodeCommand::V2ApiGetAgentNetworkOffering {
                             bearer: api_v2_key.to_string(),
-                            identity: node1_identity_name.to_string(),
+                            node_name: node1_identity_name.to_string(),
+                            auto_check: true,
                             res: sender,
                         })
                         .await
@@ -768,7 +769,10 @@ fn micropayment_flow_test() {
                         println!("val: {:?}", val);
                         if let Some(offerings) = val.get("offerings") {
                             if let Some(offerings_array) = offerings.as_array() {
-                                !offerings_array.is_empty()
+                                // Check that offerings array is not empty and contains valid offering objects
+                                !offerings_array.is_empty() && offerings_array.iter().all(|offering| {
+                                    offering.get("network_tool").is_some() && offering.get("tool_offering").is_some()
+                                })
                             } else {
                                 false
                             }

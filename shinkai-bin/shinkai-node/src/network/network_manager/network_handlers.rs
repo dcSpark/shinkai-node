@@ -781,7 +781,7 @@ pub async fn handle_network_message_cases(
                     } else {
                         return Ok(());
                     };
-                    if let Ok(req) = serde_json::from_str::<AgentNetworkOfferingRequest>(
+                    if let Ok(_req) = serde_json::from_str::<AgentNetworkOfferingRequest>(
                         &message.get_message_content().unwrap_or_default(),
                     ) {
                         let ext_manager = ext_agent_offering_manager.lock().await;
@@ -799,16 +799,15 @@ pub async fn handle_network_message_cases(
                         return Ok(());
                     };
 
-                    if let Ok(resp) = serde_json::from_str::<AgentNetworkOfferingResponse>(
-                        &message.get_message_content().unwrap_or_default(),
-                    ) {
+                    // The new format is a direct array of combined objects containing network_tool and tool_offering
+                    if let Ok(combined_offerings) =
+                        serde_json::from_str::<Vec<Value>>(&message.get_message_content().unwrap_or_default())
+                    {
                         let my_manager = my_manager.lock().await;
-                        if let Some(offerings) = resp.offerings {
-                            my_manager.store_agent_network_offering(requester.to_string(), offerings);
-                        }
+                        my_manager.store_agent_network_offering(requester.to_string(), combined_offerings);
                     } else {
                         eprintln!(
-                            "Failed to deserialize JSON to AgentNetworkOfferingResponse: {:?}",
+                            "Failed to deserialize JSON to combined offerings array: {:?}",
                             message.get_message_content()
                         );
                     }
