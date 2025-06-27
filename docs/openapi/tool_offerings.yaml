@@ -264,10 +264,13 @@ components:
     GetAgentNetworkOfferingRequest:
       type: object
       required:
-      - agent_identity
+      - node_name
       properties:
-        agent_identity:
+        node_name:
           type: string
+        auto_check:
+          type: boolean
+          default: true
         tool_offering:
           $ref: '#/components/schemas/ShinkaiToolOffering'
     ShinkaiToolOffering:

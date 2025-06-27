@@ -56,12 +56,20 @@ pub fn ext_agent_offers_routes(
         .and(warp::header::<String>("authorization"))
         .and_then(get_all_tool_offerings_handler);
 
+    let get_agent_network_offering_route = warp::path("get_agent_network_offering")
+        .and(warp::post())
+        .and(with_sender(node_commands_sender.clone()))
+        .and(warp::header::<String>("authorization"))
+        .and(warp::body::json())
+        .and_then(get_agent_network_offering_handler);
+
     set_tool_offering_route
         .or(get_tool_offering_route)
         .or(remove_tool_offering_route)
         .or(get_all_tool_offerings_route)
         .or(get_tool_with_offering_route)
         .or(get_tools_with_offerings_route)
+        .or(get_agent_network_offering_route)
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -84,9 +92,15 @@ pub struct GetToolWithOfferingRequest {
     pub tool_key_name: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct GetAgentNetworkOfferingRequest {
-    pub agent_identity: String,
+    pub node_name: String,
+    #[serde(default = "default_true")]
+    pub auto_check: bool,
 }
 
 #[utoipa::path(
@@ -277,10 +291,7 @@ pub async fn get_tool_with_offering_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(info) => Ok(warp::reply::with_status(
-            warp::reply::json(&info),
-            StatusCode::OK,
-        )),
+        Ok(info) => Ok(warp::reply::with_status(warp::reply::json(&info), StatusCode::OK)),
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
@@ -313,16 +324,14 @@ pub async fn get_tools_with_offerings_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(info) => Ok(warp::reply::with_status(
-            warp::reply::json(&info),
-            StatusCode::OK,
-        )),
+        Ok(info) => Ok(warp::reply::with_status(warp::reply::json(&info), StatusCode::OK)),
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
 }
+
 #[utoipa::path(
     post,
     path = "/v2/get_agent_network_offering",
@@ -343,24 +352,21 @@ pub async fn get_agent_network_offering_handler(
     node_commands_sender
         .send(NodeCommand::V2ApiGetAgentNetworkOffering {
             bearer,
-            identity: payload.agent_identity,
+            node_name: payload.node_name,
+            auto_check: payload.auto_check,
             res: res_sender,
         })
         .await
         .map_err(|_| warp::reject::reject())?;
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
     match result {
-        Ok(info) => Ok(warp::reply::with_status(
-            warp::reply::json(&info),
-            StatusCode::OK,
-        )),
+        Ok(info) => Ok(warp::reply::with_status(warp::reply::json(&info), StatusCode::OK)),
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
 }
-
 
 #[derive(OpenApi)]
 #[openapi(
@@ -370,11 +376,12 @@ pub async fn get_agent_network_offering_handler(
         remove_tool_offering_handler,
         get_all_tool_offerings_handler,
         get_tool_with_offering_handler,
-        get_tools_with_offerings_handler
+        get_tools_with_offerings_handler,
+        get_agent_network_offering_handler
     ),
     components(
         schemas(ShinkaiToolOffering, APIError, GetToolOfferingRequest, UsageType, ToolPrice, PaymentRequirements, Asset, NetworkIdentifier,
-            RemoveToolOfferingRequest, SetToolOfferingRequest, GetToolWithOfferingRequest)
+            RemoveToolOfferingRequest, SetToolOfferingRequest, GetToolWithOfferingRequest, GetAgentNetworkOfferingRequest)
     ),
     tags(
         (name = "tool_offerings", description = "Tool Offering API endpoints")
