@@ -86,7 +86,6 @@ jobs:
       group: Shinkai Runners
       labels: self-hosted
     needs: [test-primitives, test-main, test-integration]
-    if: always()
     steps:
       - name: Remove image
         run: docker rmi testing_image:${{ github.sha }} || true
