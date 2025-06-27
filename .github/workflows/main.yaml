@@ -63,7 +63,7 @@ jobs:
           X402_PRIVATE_KEY: ${{ secrets.X402_PRIVATE_KEY }}
           RESTORE_WALLET_MNEMONICS_NODE2: ${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}
           FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
-        run: docker run --rm --name shinkai_node_tests_main_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} -e X402_PAY_TO="${{ secrets.X402_PAY_TO }}" -e X402_PRIVATE_KEY="${{ secrets.X402_PRIVATE_KEY }}" -e RESTORE_WALLET_MNEMONICS_NODE2="${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}" -e FROM_WALLET_PRIVATE_KEY="${{ secrets.FROM_WALLET_PRIVATE_KEY }}" testing_image:${{ github.sha }} /bin/bash -c "export IS_TESTING=1 && export SKIP_IMPORT_FROM_DIRECTORY=true && export WELCOME_MESSAGE=false && cd /app && cargo test -- --test-threads=1 --nocapture --exclude node_integration_tests --exclude a3_micropayment_flow_tests --exclude a4_micropayment_localhost_tests"
+        run: docker run --rm --name shinkai_node_tests_main_${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }} -e X402_PAY_TO="${{ secrets.X402_PAY_TO }}" -e X402_PRIVATE_KEY="${{ secrets.X402_PRIVATE_KEY }}" -e RESTORE_WALLET_MNEMONICS_NODE2="${{ secrets.RESTORE_WALLET_MNEMONICS_NODE2 }}" -e FROM_WALLET_PRIVATE_KEY="${{ secrets.FROM_WALLET_PRIVATE_KEY }}" testing_image:${{ github.sha }} /bin/bash -c "export IS_TESTING=1 && export SKIP_IMPORT_FROM_DIRECTORY=true && export WELCOME_MESSAGE=false && cd /app && cargo test -- --test-threads=1 --nocapture --skip node_integration_tests --skip a3_micropayment_flow_tests --skip a4_micropayment_localhost_tests"
 
   test-integration:
     runs-on:
