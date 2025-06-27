@@ -1,16 +1,23 @@
 use crate::llm_provider::{
-    error::LLMProviderError, providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages}
+    error::LLMProviderError,
+    providers::shared::{openai_api::openai_prepare_messages, shared_model_logic::llama_prepare_messages},
 };
 use shinkai_message_primitives::{
     schemas::{
-        llm_message::LlmMessage, llm_providers::{
-            common_agent_llm_provider::ProviderOrAgent, serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider}
-        }, prompts::Prompt, shinkai_name::ShinkaiName
-    }, shinkai_utils::utils::count_tokens_from_message_llama3
+        llm_message::LlmMessage,
+        llm_providers::{
+            common_agent_llm_provider::ProviderOrAgent,
+            serialized_llm_provider::{LLMProviderInterface, SerializedLLMProvider},
+        },
+        prompts::Prompt,
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_utils::utils::count_tokens_from_message_llama3,
 };
 use shinkai_sqlite::SqliteManager;
 use std::{
-    fmt, sync::{Arc, Weak}
+    fmt,
+    sync::{Arc, Weak},
 };
 
 #[derive(Debug)]
@@ -179,9 +186,7 @@ impl ModelCapabilitiesManager {
     fn get_shared_capabilities(model_type: &str) -> Vec<ModelCapability> {
         match model_type {
             model_type if model_type.starts_with("llama3") => vec![ModelCapability::TextInference],
-            model_type if model_type.starts_with("mistral-small3.2")
-                || model_type.starts_with("mistral-small3.1") =>
-            {
+            model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
             model_type if model_type.starts_with("llama3.2-vision") => {
@@ -202,6 +207,9 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("qwen2.5vl") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }  
+            model_type if model_type.starts_with("devstral") => {
+                vec![ModelCapability::TextInference]
+            }
             model_type if model_type.starts_with("magistral") => {
                 vec![ModelCapability::TextInference]
             }
@@ -614,8 +622,9 @@ impl ModelCapabilitiesManager {
         match model_type {
             model_type if model_type.starts_with("mistral:7b-instruct-v0.2") => 32_000,
             model_type if model_type.starts_with("mistral-nemo") => 128_000,
-            model_type if model_type.starts_with("mistral-small3.2")
-                || model_type.starts_with("mistral-small3.1") => 128_000,
+            model_type if model_type.starts_with("mistral-small3.2") || model_type.starts_with("mistral-small3.1") => {
+                128_000
+            }
             model_type if model_type.starts_with("mistral-small") => 128_000,
             model_type if model_type.starts_with("mistral-large") => 128_000,
             model_type if model_type.starts_with("mixtral:8x7b-instruct-v0.1") => 16_000,
@@ -629,6 +638,7 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("dolphin-llama3") => 8_000,
             model_type if model_type.starts_with("command-r-plus") => 128_000,
             model_type if model_type.starts_with("codestral") => 32_000,
+            model_type if model_type.starts_with("devstral") => 128_000,
             model_type if model_type.starts_with("gemma2") => 8_000,
             model_type if model_type.starts_with("qwen2:0.5b") => 32_000,
             model_type if model_type.starts_with("qwen2:1.5b") => 32_000,
@@ -928,6 +938,7 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("gemma3n")
                     || model.model_type.starts_with("gemma3")
                     || model.model_type.starts_with("qwen3")
+                    || model.model_type.starts_with("devstral")
                     || model.model_type.starts_with("deepseek-r1:14b")
                     || model.model_type.starts_with("deepseek-r1:8b")
                     || model.model_type.starts_with("deepseek-r1:70b")
