@@ -769,7 +769,10 @@ fn micropayment_flow_test() {
                         println!("val: {:?}", val);
                         if let Some(offerings) = val.get("offerings") {
                             if let Some(offerings_array) = offerings.as_array() {
-                                !offerings_array.is_empty()
+                                // Check that offerings array is not empty and contains valid offering objects
+                                !offerings_array.is_empty() && offerings_array.iter().all(|offering| {
+                                    offering.get("network_tool").is_some() && offering.get("tool_offering").is_some()
+                                })
                             } else {
                                 false
                             }

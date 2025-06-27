@@ -527,17 +527,17 @@ impl MyAgentOfferingsManager {
         Ok(())
     }
 
-    pub fn store_agent_network_offering(&self, node_name: String, offerings: Vec<ShinkaiToolOffering>) {
-        self.agent_network_offerings.insert(
-            node_name,
-            (serde_json::to_value(offerings).unwrap_or(Value::Null), Utc::now()),
-        );
+    pub fn store_agent_network_offering(&self, node_name: String, offerings: Vec<Value>) {
+        // Store offerings directly as a JSON array instead of double-serializing
+        let offerings_value = Value::Array(offerings);
+        self.agent_network_offerings
+            .insert(node_name, (offerings_value, Utc::now()));
     }
 
-    pub fn get_agent_network_offering(&self, node_name: &str) -> Option<(Vec<ShinkaiToolOffering>, DateTime<Utc>)> {
+    pub fn get_agent_network_offering(&self, node_name: &str) -> Option<(Vec<Value>, DateTime<Utc>)> {
         self.agent_network_offerings.get(node_name).map(|v| {
             let (value, timestamp) = v.value().clone();
-            let offerings = serde_json::from_value::<Vec<ShinkaiToolOffering>>(value).unwrap_or_default();
+            let offerings = serde_json::from_value::<Vec<Value>>(value).unwrap_or_default();
             (offerings, timestamp)
         })
     }
