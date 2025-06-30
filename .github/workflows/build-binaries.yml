@@ -26,7 +26,8 @@ jobs:
         if: matrix.os == 'windows-2022'
         run: |
           if (-Not (Test-Path ".cargo")) { mkdir .cargo }
-          Set-Content -Path .cargo/config.toml -Value "[target.x86_64-pc-windows-msvc]`nlinker = \"rust-lld\""     
+          echo '[target.x86_64-pc-windows-msvc]' > .cargo/config.toml
+          echo 'linker = "rust-lld"' >> .cargo/config.toml
 
       - name: Cache cargo assets
         id: cache
