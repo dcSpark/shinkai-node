@@ -115,6 +115,7 @@ impl ToolRouter {
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator.clone(),
+            false,
         )
         .await
         {
@@ -156,6 +157,7 @@ impl ToolRouter {
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator,
+            true,
         )
         .await
         {
@@ -180,6 +182,7 @@ impl ToolRouter {
             self.signing_secret_key.clone(),
             self.default_tool_router_keys.clone(),
             embedding_generator.clone(),
+            false,
         )
         .await
         {
@@ -284,6 +287,7 @@ impl ToolRouter {
         signing_secret_key: SigningKey,
         default_tool_router_keys: Arc<Mutex<Vec<String>>>,
         embedding_generator: Arc<dyn EmbeddingGenerator>,
+        reinstall_tools: bool,
     ) -> Result<(), ToolError> {
         let node_env = fetch_node_environment();
 
@@ -434,6 +438,12 @@ impl ToolRouter {
                             if !do_install {
                                 return Ok::<_, ToolError>(("skipped", tool_name.clone()));
                             }
+
+                            let tool_url = if reinstall_tools {
+                                format!("{}?reinstall=true", tool_url)
+                            } else {
+                                tool_url.to_string()
+                            };
 
                             let val: Value = Node::v2_api_import_tool_url_internal(
                                 db.clone(),
