@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use dashmap::DashMap;
 use shinkai_crypto_identities::ShinkaiRegistry;
 use crate::LibP2PRelayError;
+use serde::{Serialize, Deserialize};
 
 /// A queued message waiting to be delivered
 #[derive(Debug)]
@@ -26,13 +27,71 @@ pub struct QueuedRelayMessage {
 }
 
 /// Connection health tracking for monitoring connection quality
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionHealth {
+    #[serde(with = "serde_instant")]
     pub last_activity: Instant,
     pub ping_failures: u32,
     pub bytes_transferred: u64,
+    #[serde(with = "serde_instant")]
     pub connection_established: Instant,
+    #[serde(with = "serde_duration_option")]
     pub last_ping_rtt: Option<Duration>,
+}
+
+/// HTTP payload for node status updates
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeStatusPayload {
+    pub online: bool,
+    #[serde(rename = "connectionHealth")]
+    pub connection_health: Option<ConnectionHealth>,
+    pub identity: Option<String>,
+}
+
+// Custom serialization modules for Instant and Duration
+mod serde_instant {
+    use super::*;
+    use serde::{Serializer, Deserializer};
+    
+    pub fn serialize<S>(instant: &Instant, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Convert to milliseconds since a reference point (epoch-like behavior)
+        let millis = instant.elapsed().as_millis() as u64;
+        serializer.serialize_u64(millis)
+    }
+    
+    pub fn deserialize<'de, D>(_deserializer: D) -> Result<Instant, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // For deserialization, just use current time since Instant is relative
+        Ok(Instant::now())
+    }
+}
+
+mod serde_duration_option {
+    use super::*;
+    use serde::{Serializer, Deserializer};
+    
+    pub fn serialize<S>(duration_opt: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match duration_opt {
+            Some(duration) => serializer.serialize_some(&duration.as_millis()),
+            None => serializer.serialize_none(),
+        }
+    }
+    
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let opt: Option<u64> = Option::deserialize(deserializer)?;
+        Ok(opt.map(|millis| Duration::from_millis(millis)))
+    }
 }
 
 impl ConnectionHealth {
@@ -86,6 +145,7 @@ pub struct RelayManagerConfig {
     pub relay_node_name: String,
     pub identity_secret_key: SigningKey,
     pub encryption_secret_key: EncryptionStaticKey,
+    pub status_endpoint_url: Option<String>,
 }
 
 pub struct RelayManager {
@@ -103,6 +163,8 @@ pub struct RelayManager {
     // Identity verification caching  
     identity_cache: DashMap<String, (shinkai_crypto_identities::OnchainIdentity, Instant)>,
     cache_ttl: Duration,
+    // HTTP client for status updates
+    http_client: reqwest::Client,
 }
 
 impl RelayManager {
@@ -168,6 +230,7 @@ impl RelayManager {
         identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         registry: ShinkaiRegistry,
+        status_endpoint_url: Option<String>,
     ) -> Result<Self, LibP2PRelayError> {
         // Detect external IP address first
         let external_ip = Self::detect_external_ip().await;
@@ -286,6 +349,7 @@ impl RelayManager {
                 relay_node_name,
                 identity_secret_key,
                 encryption_secret_key,
+                status_endpoint_url,
             },
             // Initialize connection health monitoring
             connection_health: DashMap::new(),
@@ -294,6 +358,8 @@ impl RelayManager {
             // Initialize identity verification caching
             identity_cache: DashMap::new(),
             cache_ttl: Duration::from_secs(600), // 10 minutes cache TTL
+            // Initialize HTTP client
+            http_client: reqwest::Client::new(),
         })
     }
 
@@ -313,6 +379,47 @@ impl RelayManager {
         }
         
         addresses
+    }
+
+    /// Set the status endpoint URL for node health reporting
+    pub fn set_status_endpoint_url(&mut self, url: String) {
+        self.config.status_endpoint_url = Some(url);
+    }
+
+    /// Post node status to the configured HTTP endpoint (non-blocking)
+    fn post_node_status(&self, peer_id: PeerId, online: bool, connection_health: Option<ConnectionHealth>) {
+        if let Some(ref endpoint_url) = self.config.status_endpoint_url {
+            let identity = self.find_identity_by_peer(&peer_id);
+            let payload = NodeStatusPayload {
+                online,
+                connection_health,
+                identity,
+            };
+
+            let url = format!("{}/dapps/nodes/{}", endpoint_url, peer_id);
+            let client = self.http_client.clone();
+            
+            // Spawn the HTTP request as a separate task to avoid blocking the event loop
+            tokio::spawn(async move {
+                match client
+                    .post(&url)
+                    .json(&payload)
+                    .send()
+                    .await 
+                {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            println!("✅ Successfully posted node status for peer {}: online={}", peer_id, online);
+                        } else {
+                            println!("⚠️ Failed to post node status for peer {}: HTTP {}", peer_id, response.status());
+                        }
+                    }
+                    Err(e) => {
+                        println!("❌ Error posting node status for peer {}: {}", peer_id, e);
+                    }
+                }
+            });
+        }
     }
 
     pub fn local_peer_id(&self) -> PeerId {
@@ -502,6 +609,10 @@ impl RelayManager {
                         if let Some(verified_identity) = self.verify_peer_identity_internal(verifying_key, info.agent_version.clone()).await {
                             println!("🔑 Verified and registering peer {} with identity: {}", peer_id, verified_identity);
                             self.handle_identity_registration(verified_identity, peer_id, false).await;
+                            
+                            // Post node status update after successful identification
+                            let health = self.connection_health.get(&peer_id).map(|h| h.clone());
+                            self.post_node_status(peer_id, true, health);
                         } else {
                             let possible_identity = if info.agent_version.ends_with("shinkai") {
                                 if let Some(identity_part) = info.agent_version.split("@@").nth(1) {
@@ -512,6 +623,10 @@ impl RelayManager {
                             if let Some(identity) = possible_identity {
                                 println!("🔑 Verification failed, registering peer {} with identity: {}, using peer id as identity.", peer_id, identity);
                                 self.handle_identity_registration(identity, peer_id, true).await;
+                                
+                                // Post node status update after localhost registration
+                                let health = self.connection_health.get(&peer_id).map(|h| h.clone());
+                                self.post_node_status(peer_id, true, health);
                             } else {
                                 println!("❌ Could not parse identity from agent version: {}", info.agent_version);
                             }
@@ -530,6 +645,11 @@ impl RelayManager {
                         // Update connection health with successful ping
                         if let Some(mut health) = self.connection_health.get_mut(&peer) {
                             health.record_ping_success(rtt);
+                            
+                            // Post updated health status
+                            let health_clone = health.clone();
+                            drop(health); // Release the mutable reference
+                            self.post_node_status(peer, true, Some(health_clone));
                         }
                     }
                     ping::Event { peer, result: Err(failure), .. } => {
@@ -537,11 +657,20 @@ impl RelayManager {
                         // Update connection health with ping failure
                         if let Some(mut health) = self.connection_health.get_mut(&peer) {
                             health.record_ping_failure();
+                            let health_clone = health.clone();
+                            let is_unhealthy = health.is_unhealthy(self.max_ping_failures);
+                            let ping_failures = health.ping_failures;
+                            
+                            // Release the mutable reference before async call
+                            drop(health);
+                            
+                            // Post updated health status
+                            self.post_node_status(peer, !is_unhealthy, Some(health_clone));
                             
                             // Disconnect unhealthy connections
-                            if health.is_unhealthy(self.max_ping_failures) {
+                            if is_unhealthy {
                                 println!("❌ Disconnecting unhealthy peer {} after {} ping failures", 
-                                    peer, health.ping_failures);
+                                    peer, ping_failures);
                                 let _ = self.swarm.disconnect_peer_id(peer);
                             }
                         }
@@ -664,7 +793,11 @@ impl RelayManager {
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 println!("🔗 Connected to peer: {}", peer_id);
                 // Initialize connection health tracking
-                self.connection_health.insert(peer_id, ConnectionHealth::new());
+                let health = ConnectionHealth::new();
+                self.connection_health.insert(peer_id, health.clone());
+                
+                // Post initial connection status
+                self.post_node_status(peer_id, true, Some(health));
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, num_established, .. } => {
                 println!(
@@ -672,6 +805,12 @@ impl RelayManager {
                     peer_id, cause, num_established
                 );
                 if num_established == 0 {
+                    // Get final health status before cleanup
+                    let final_health = self.connection_health.get(&peer_id).map(|h| h.clone());
+                    
+                    // Post offline status
+                    self.post_node_status(peer_id, false, final_health);
+                    
                     self.unregister_peer(&peer_id);
                     // Clean up connection health tracking
                     self.connection_health.remove(&peer_id);
@@ -734,7 +873,7 @@ impl RelayManager {
         }
     }
 
-async fn relay_message_encryption(&mut self, request: &mut ShinkaiMessage, target_node: &String) {
+    async fn relay_message_encryption(&mut self, request: &mut ShinkaiMessage, target_node: &String) {
         // Parse recipient name
         let recipient_name = match shinkai_message_primitives::schemas::shinkai_name::ShinkaiName::new(target_node.clone()) {
             Ok(name) => name,
@@ -840,7 +979,6 @@ async fn relay_message_encryption(&mut self, request: &mut ShinkaiMessage, targe
             }
         }
     }
-
 }
 
 // This allows the noise configuration to work
