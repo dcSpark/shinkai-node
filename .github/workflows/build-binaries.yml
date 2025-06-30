@@ -22,6 +22,13 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Configure rust-lld linker for Windows
+        if: matrix.os == 'windows-2022'
+        run: |
+          mkdir .cargo
+          echo "[target.x86_64-pc-windows-msvc]" > .cargo/config.toml
+          echo 'linker = "rust-lld"' >> .cargo/config.toml        
+
       - name: Cache cargo assets
         id: cache
         uses: actions/cache@v4
