@@ -10,11 +10,12 @@ use libp2p::{
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use x25519_dalek::{StaticSecret as EncryptionStaticKey};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use dashmap::DashMap;
 use shinkai_crypto_identities::ShinkaiRegistry;
 use crate::LibP2PRelayError;
 use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
 
 /// A queued message waiting to be delivered
 #[derive(Debug)]
@@ -29,12 +30,14 @@ pub struct QueuedRelayMessage {
 /// Connection health tracking for monitoring connection quality
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionHealth {
-    #[serde(with = "serde_instant")]
-    pub last_activity: Instant,
+    #[serde(with = "serde_system_time")]
+    pub last_activity: SystemTime,
     pub ping_failures: u32,
+    /// Number of bytes transferred (not currently tracked, placeholder for future implementation)
     pub bytes_transferred: u64,
-    #[serde(with = "serde_instant")]
-    pub connection_established: Instant,
+    #[serde(with = "serde_system_time")]
+    pub connection_established: SystemTime,
+    /// Last ping round-trip time in milliseconds
     #[serde(with = "serde_duration_option")]
     pub last_ping_rtt: Option<Duration>,
 }
@@ -48,26 +51,27 @@ pub struct NodeStatusPayload {
     pub identity: Option<String>,
 }
 
-// Custom serialization modules for Instant and Duration
-mod serde_instant {
+// Custom serialization modules for SystemTime and Duration
+mod serde_system_time {
     use super::*;
     use serde::{Serializer, Deserializer};
     
-    pub fn serialize<S>(instant: &Instant, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(time: &SystemTime, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // Convert to milliseconds since a reference point (epoch-like behavior)
-        let millis = instant.elapsed().as_millis() as u64;
-        serializer.serialize_u64(millis)
+        let datetime: DateTime<Utc> = (*time).into();
+        serializer.serialize_str(&datetime.to_rfc3339())
     }
     
-    pub fn deserialize<'de, D>(_deserializer: D) -> Result<Instant, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
     where
         D: Deserializer<'de>,
     {
-        // For deserialization, just use current time since Instant is relative
-        Ok(Instant::now())
+        let datetime_str: String = String::deserialize(deserializer)?;
+        let datetime = DateTime::parse_from_rfc3339(&datetime_str)
+            .map_err(serde::de::Error::custom)?;
+        Ok(datetime.into())
     }
 }
 
@@ -80,7 +84,7 @@ mod serde_duration_option {
         S: Serializer,
     {
         match duration_opt {
-            Some(duration) => serializer.serialize_some(&duration.as_millis()),
+            Some(duration) => serializer.serialize_some(&(duration.as_secs_f64() * 1000.0)),
             None => serializer.serialize_none(),
         }
     }
@@ -89,14 +93,14 @@ mod serde_duration_option {
     where
         D: Deserializer<'de>,
     {
-        let opt: Option<u64> = Option::deserialize(deserializer)?;
-        Ok(opt.map(|millis| Duration::from_millis(millis)))
+        let opt: Option<f64> = Option::deserialize(deserializer)?;
+        Ok(opt.map(|millis| Duration::from_secs_f64(millis / 1000.0)))
     }
 }
 
 impl ConnectionHealth {
     pub fn new() -> Self {
-        let now = Instant::now();
+        let now = SystemTime::now();
         Self {
             last_activity: now,
             ping_failures: 0,
@@ -107,7 +111,7 @@ impl ConnectionHealth {
     }
 
     pub fn update_activity(&mut self) {
-        self.last_activity = Instant::now();
+        self.last_activity = SystemTime::now();
     }
 
     pub fn record_ping_success(&mut self, rtt: Duration) {
@@ -122,7 +126,7 @@ impl ConnectionHealth {
     }
 
     pub fn is_idle(&self, idle_timeout: Duration) -> bool {
-        self.last_activity.elapsed() > idle_timeout
+        self.last_activity.elapsed().unwrap_or(Duration::ZERO) > idle_timeout
     }
 
     pub fn is_unhealthy(&self, max_ping_failures: u32) -> bool {
@@ -832,7 +836,7 @@ impl RelayManager {
             
             if health.is_idle(self.idle_timeout) {
                 println!("🧹 Marking idle peer {} for disconnection (idle for {:?})", 
-                    peer_id, health.last_activity.elapsed());
+                    peer_id, health.last_activity.elapsed().unwrap_or(Duration::ZERO));
                 peers_to_disconnect.push(peer_id);
             } else if health.is_unhealthy(self.max_ping_failures) {
                 println!("🧹 Marking unhealthy peer {} for disconnection ({} ping failures)", 
