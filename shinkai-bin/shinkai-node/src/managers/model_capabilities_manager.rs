@@ -216,6 +216,13 @@ impl ModelCapabilitiesManager {
             model_type if model_type.starts_with("gemma3n") => {
                 vec![ModelCapability::TextInference]
             }
+            model_type if model_type.starts_with("gemma3") => {
+                if model_type.contains(":1b") {
+                    vec![ModelCapability::TextInference]
+                } else {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                }
+            }
             model_type if model_type.starts_with("regex") => {
                 vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
             }
