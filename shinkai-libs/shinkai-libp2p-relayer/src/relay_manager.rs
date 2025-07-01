@@ -150,6 +150,7 @@ pub struct RelayManagerConfig {
     pub identity_secret_key: SigningKey,
     pub encryption_secret_key: EncryptionStaticKey,
     pub status_endpoint_url: Option<String>,
+    pub ping_interval_secs: u64,
 }
 
 pub struct RelayManager {
@@ -239,6 +240,14 @@ impl RelayManager {
         // Detect external IP address first
         let external_ip = Self::detect_external_ip().await;
 
+        // Read ping interval from environment variable, default to 10 seconds
+        let ping_interval_secs: u64 = std::env::var("PING_INTERVAL_SECS")
+            .unwrap_or_else(|_| "10".to_string())
+            .parse()
+            .expect("Failed to parse PING_INTERVAL_SECS");
+        
+        println!("📶 Ping interval set to {} seconds", ping_interval_secs);
+
         // Generate deterministic PeerId from relay name
         let local_key = libp2p::identity::Keypair::ed25519_from_bytes(identity_secret_key.to_bytes())
             .map_err(|e| LibP2PRelayError::LibP2PError(format!("Failed to create keypair: {}", e)))?;
@@ -266,10 +275,10 @@ impl RelayManager {
         .with_cache_size(100)
         .with_hide_listen_addrs(true));
 
-        // Configure ping protocol with faster intervals for better connection monitoring
+        // Configure ping protocol with configurable interval for connection monitoring
         let ping = ping::Behaviour::new(
             ping::Config::new()
-                .with_interval(Duration::from_secs(5))  // Reduced from 10s to 5s
+                .with_interval(Duration::from_secs(ping_interval_secs))
                 .with_timeout(Duration::from_secs(10))  // Add explicit timeout
         );
 
@@ -354,6 +363,7 @@ impl RelayManager {
                 identity_secret_key,
                 encryption_secret_key,
                 status_endpoint_url,
+                ping_interval_secs: ping_interval_secs,
             },
             // Initialize connection health monitoring
             connection_health: DashMap::new(),
