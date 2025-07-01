@@ -942,8 +942,6 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("qwen2.5-coder")
                     || model.model_type.starts_with("qwen2.5vl")
                     || model.model_type.starts_with("qwq")
-                    || model.model_type.starts_with("gemma3n")
-                    || model.model_type.starts_with("gemma3")
                     || model.model_type.starts_with("qwen3")
                     || model.model_type.starts_with("devstral")
                     || model.model_type.starts_with("deepseek-r1:14b")
@@ -996,7 +994,6 @@ impl ModelCapabilitiesManager {
                     || model.model_type.starts_with("mistral-large")
                     || model.model_type.starts_with("mistral-pixtral")
                     || model.model_type.starts_with("magistral")
-                    || model.model_type.starts_with("gemma3n")
             }
             LLMProviderInterface::Claude(_) => true, // All Claude models support tool calling
             LLMProviderInterface::ShinkaiBackend(_) => true,
