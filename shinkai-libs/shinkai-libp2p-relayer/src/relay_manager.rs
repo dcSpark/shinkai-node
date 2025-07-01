@@ -447,17 +447,34 @@ impl RelayManager {
             identity = new_peer_id.to_string();
         }
 
-        // Check if this identity is already registered to a different peer
+        // Check for peerId conflicts first (same peerId, different identity)
+        if let Some(existing_identity) = self.peer_identities.get(&new_peer_id) {
+            let existing_identity = existing_identity.value().clone();
+            
+            if existing_identity != identity {
+                println!("⚠️  PeerId conflict detected for peer {}: existing identity '{}' vs new identity '{}'", 
+                    new_peer_id, existing_identity, identity);
+                println!("🔄 Applying last-registration-wins strategy: replacing '{}' with '{}'", 
+                    existing_identity, identity);
+                
+                // Remove the old identity mapping (last-registration-wins)
+                self.registered_peers.remove(&existing_identity);
+                
+                // The peer_identities entry will be updated below
+            }
+        }
+
+        // Check for identity conflicts (same identity, different peer)
         if let Some(existing_peer_id) = self.registered_peers.get(&identity) {
             let existing_peer_id = *existing_peer_id.value();
             
             if existing_peer_id != new_peer_id {
-                println!("⚠️  Identity conflict detected for {}: existing peer {} vs new peer {}", 
+                println!("⚠️  Identity conflict detected for '{}': existing peer {} vs new peer {}", 
                     identity, existing_peer_id, new_peer_id);
                 
                 // Check if the existing peer is still connected
                 if self.swarm.is_connected(&existing_peer_id) {
-                    println!("🔄 Disconnecting stale peer {} to allow new peer {} for identity {}", 
+                    println!("🔄 Disconnecting existing peer {} to allow new peer {} for identity '{}' (last-registration-wins)", 
                         existing_peer_id, new_peer_id, identity);
                     
                     // Disconnect the old peer
@@ -466,7 +483,7 @@ impl RelayManager {
                     // Clean up the old mapping
                     self.peer_identities.remove(&existing_peer_id);
                 } else {
-                    println!("🧹 Cleaning up stale mapping for disconnected peer {} with identity {}", 
+                    println!("🧹 Cleaning up stale mapping for disconnected peer {} with identity '{}'", 
                         existing_peer_id, identity);
                     
                     // Clean up the stale mapping
@@ -475,9 +492,11 @@ impl RelayManager {
             }
         }
         
-        // Register the new peer with this identity
+        // Register the new peer with this identity (atomic update of both mappings)
         self.registered_peers.insert(identity.clone(), new_peer_id);
-        self.peer_identities.insert(new_peer_id, identity);
+        self.peer_identities.insert(new_peer_id, identity.clone());
+        
+        println!("✅ Successfully registered peer {} with identity '{}'", new_peer_id, identity);
     }
 
     pub fn unregister_peer(&mut self, peer_id: &PeerId) {
